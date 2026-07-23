@@ -604,6 +604,32 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 	return claudeResponses
 }
 
+// FinalizeOpenAI2ClaudeStream closes a converted Claude stream when the
+// OpenAI-compatible upstream terminates without a final finish chunk. Some
+// providers close the SSE body directly after the last content chunk; Claude
+// clients still require content_block_stop, message_delta, and message_stop.
+// The conversion state makes this helper idempotent.
+func FinalizeOpenAI2ClaudeStream(info *relaycommon.RelayInfo, usage *dto.Usage) []*dto.ClaudeResponse {
+	if info == nil || info.ClaudeConvertInfo == nil || info.ClaudeConvertInfo.Done {
+		return nil
+	}
+
+	info.SendResponseCount++
+	finishReason := info.FinishReason
+	if finishReason == "" {
+		finishReason = "stop"
+	}
+	finalChunk := &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{
+				FinishReason: common.GetPointer(finishReason),
+			},
+		},
+		Usage: usage,
+	}
+	return StreamResponseOpenAI2Claude(finalChunk, info)
+}
+
 func ResponseOpenAI2Claude(openAIResponse *dto.OpenAITextResponse, info *relaycommon.RelayInfo) *dto.ClaudeResponse {
 	var stopReason string
 	contents := make([]dto.ClaudeMediaMessage, 0)

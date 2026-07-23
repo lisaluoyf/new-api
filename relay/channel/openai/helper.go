@@ -216,11 +216,26 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 
 		info.ClaudeConvertInfo.Usage = usage
 
+		info.SendResponseCount++
 		claudeResponses := service.StreamResponseOpenAI2Claude(&streamResponse, info)
 		for _, resp := range claudeResponses {
 			_ = helper.ClaudeData(c, *resp)
 		}
-		info.ClaudeConvertInfo.Done = true
+
+		// [DONE] is consumed by StreamScannerHandler and a number of
+		// OpenAI-compatible providers end with EOF instead. If neither path
+		// included a finish chunk, close the converted Claude protocol here so
+		// clients do not see a connection that ends before message_stop.
+		if !info.ClaudeConvertInfo.Done && info.StreamStatus != nil &&
+			(info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone ||
+				info.StreamStatus.EndReason == relaycommon.StreamEndReasonEOF) {
+			if info.StreamStatus.EndReason == relaycommon.StreamEndReasonEOF && info.FinishReason == "" {
+				info.StreamStatus.RecordError("upstream EOF without finish_reason; synthesized Claude message_stop")
+			}
+			for _, resp := range service.FinalizeOpenAI2ClaudeStream(info, usage) {
+				_ = helper.ClaudeData(c, *resp)
+			}
+		}
 
 	case types.RelayFormatGemini:
 		var streamResponse dto.ChatCompletionsStreamResponse
