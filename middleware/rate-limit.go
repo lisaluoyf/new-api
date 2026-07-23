@@ -103,10 +103,18 @@ func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gi
 }
 
 func GlobalWebRateLimit() func(c *gin.Context) {
-	if common.GlobalWebRateLimitEnable {
-		return rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")
+	if !common.GlobalWebRateLimitEnable {
+		return defNext
 	}
-	return defNext
+	limiter := rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")
+	return func(c *gin.Context) {
+		// Same S2S bypass as API limits — Next.js probes must not burn the browser GW bucket.
+		if skipRateLimitForInternalSync(c) {
+			c.Next()
+			return
+		}
+		limiter(c)
+	}
 }
 
 func GlobalAPIRateLimit() func(c *gin.Context) {
