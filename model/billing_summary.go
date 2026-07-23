@@ -19,9 +19,9 @@ type BillingHourlySummary struct {
 	ModelName              string  `json:"model_name" gorm:"size:256;uniqueIndex:idx_bill_hour_model_ch;default:''"`
 	ChannelId              int     `json:"channel_id" gorm:"uniqueIndex:idx_bill_hour_model_ch;default:0"`
 	CostUSD                float64 `json:"cost_usd" gorm:"type:decimal(20,10);default:0"`                 // SUM(accounting_channel_cost_amount_usd)
-	RevenueUSD             float64 `json:"revenue_usd" gorm:"type:decimal(20,10);default:0"`              // SUM(accounting_user_final_amount_usd)
+	RevenueUSD             float64 `json:"revenue_usd" gorm:"type:decimal(20,10);default:0"`              // SUM(accounting_user_final_amount_usd) + subscription official billing
 	SubscriptionCostUSD    float64 `json:"subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`    // SUM(accounting_channel_cost_amount_usd) where billing_source=subscription
-	SubscriptionBillingUSD float64 `json:"subscription_billing_usd" gorm:"type:decimal(20,10);default:0"` // SUM(accounting_user_final_amount_usd) where billing_source=subscription
+	SubscriptionBillingUSD float64 `json:"subscription_billing_usd" gorm:"type:decimal(20,10);default:0"` // SUM(subscription official price, quota / QuotaPerUnit) where billing_source=subscription
 	RequestCount           int64   `json:"request_count" gorm:"default:0"`
 	UpdatedAt              int64   `json:"updated_at"`
 }
@@ -124,9 +124,9 @@ func GetBillingDailyFromRawLogs(startTimestamp, endTimestamp int64, modelName st
 	tx := LOG_DB.Table("logs").
 		Select(dayExpr+` as day,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN accounting_channel_cost_amount_usd ELSE 0 END) as cost_usd,
-			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN accounting_user_final_amount_usd ELSE 0 END) as revenue_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE accounting_user_final_amount_usd END) as revenue_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as subscription_cost_usd,
-			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN accounting_user_final_amount_usd ELSE 0 END) as subscription_billing_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as subscription_billing_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN 1 ELSE 0 END) as accounting_ok_request_count,
 			SUM(`+billingTargetRequestCountExpr()+`) as accounting_target_request_count`).
 		Where("type = ?", LogTypeConsume)

@@ -103,7 +103,7 @@ func TestGetBillingDailyFromRawLogs_SplitsSubscriptionMetrics(t *testing.T) {
 		CreatedAt:                      baseTs,
 		ModelName:                      modelName,
 		ChannelId:                      channelID,
-		Quota:                          120,
+		Quota:                          615500,
 		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
 		AccountingChannelCostAmountUSD: 0.75,
 		AccountingUserFinalAmountUSD:   2.25,
@@ -129,9 +129,9 @@ func TestGetBillingDailyFromRawLogs_SplitsSubscriptionMetrics(t *testing.T) {
 
 	row := rows[0]
 	assert.InDelta(t, 2.0, row.CostUSD, 1e-9)
-	assert.InDelta(t, 5.75, row.RevenueUSD, 1e-9)
+	assert.InDelta(t, 4.731, row.RevenueUSD, 1e-9)
 	assert.InDelta(t, 0.75, row.SubscriptionCostUSD, 1e-9)
-	assert.InDelta(t, 2.25, row.SubscriptionBillingUSD, 1e-9)
+	assert.InDelta(t, 1.231, row.SubscriptionBillingUSD, 1e-9)
 	assert.Equal(t, int64(2), row.AccountingOKRequestCount)
 	assert.Equal(t, int64(3), row.AccountingTargetReqCount)
 }
@@ -167,7 +167,7 @@ func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {
 		CreatedAt:                      baseTs,
 		ModelName:                      modelName,
 		ChannelId:                      channelID,
-		Quota:                          120,
+		Quota:                          615500,
 		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
 		AccountingChannelCostAmountUSD: 0.75,
 		AccountingUserFinalAmountUSD:   2.25,
@@ -184,8 +184,8 @@ func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {
 	err := model.LOG_DB.Where("hour_bucket = ? AND model_name = ? AND channel_id = ?", baseTs/3600*3600, modelName, channelID).First(&row).Error
 	require.NoError(t, err)
 	assert.InDelta(t, 2.0, row.CostUSD, 1e-9)
-	assert.InDelta(t, 5.75, row.RevenueUSD, 1e-9)
+	assert.InDelta(t, 4.731, row.RevenueUSD, 1e-9)
 	assert.InDelta(t, 0.75, row.SubscriptionCostUSD, 1e-9)
-	assert.InDelta(t, 2.25, row.SubscriptionBillingUSD, 1e-9)
+	assert.InDelta(t, 1.231, row.SubscriptionBillingUSD, 1e-9)
 	assert.Equal(t, int64(2), row.RequestCount)
 }
