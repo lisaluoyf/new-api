@@ -11,12 +11,26 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const apimasterInternalKeyHeader = "X-Apimaster-Internal-Key"
+
 var timeFormat = "2006-01-02T15:04:05.000Z"
 
 var inMemoryRateLimiter common.InMemoryRateLimiter
 
 var defNext = func(c *gin.Context) {
 	c.Next()
+}
+
+// skipRateLimitForInternalSync bypasses IP rate limits for APIMaster Next.js
+// server-to-server calls (console session sync, marketplace proxy, etc.).
+// Without this, all host→container traffic shares 172.18.0.1 and exhausts
+// GLOBAL_API_RATE_LIMIT / CRITICAL_RATE_LIMIT, causing console white-screens.
+func skipRateLimitForInternalSync(c *gin.Context) bool {
+	secret := common.ApimasterInternalSyncKey
+	if secret == "" {
+		return false
+	}
+	return c.GetHeader(apimasterInternalKeyHeader) == secret
 }
 
 func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string) {
@@ -102,6 +116,10 @@ func GlobalAPIRateLimit() func(c *gin.Context) {
 	publicLimiter := rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
 	adminLimiter := rateLimitFactory(common.GlobalAdminApiRateLimitNum, common.GlobalAdminApiRateLimitDuration, "GAD")
 	return func(c *gin.Context) {
+		if skipRateLimitForInternalSync(c) {
+			c.Next()
+			return
+		}
 		if strings.HasPrefix(c.Request.URL.Path, "/api/admin/") {
 			adminLimiter(c)
 			return
@@ -112,7 +130,14 @@ func GlobalAPIRateLimit() func(c *gin.Context) {
 
 func CriticalRateLimit() func(c *gin.Context) {
 	if common.CriticalRateLimitEnable {
-		return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")
+		limiter := rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")
+		return func(c *gin.Context) {
+			if skipRateLimitForInternalSync(c) {
+				c.Next()
+				return
+			}
+			limiter(c)
+		}
 	}
 	return defNext
 }

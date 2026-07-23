@@ -220,6 +220,11 @@ var (
 	CriticalRateLimitNum            = 20
 	CriticalRateLimitDuration int64 = 20 * 60
 
+	// Shared secret for APIMaster Next.js → new-api server-to-server calls.
+	// When request header X-Apimaster-Internal-Key matches, Global/Critical
+	// IP rate limits are skipped (see middleware/rate-limit.go).
+	ApimasterInternalSyncKey string
+
 	UploadRateLimitNum            = 10
 	UploadRateLimitDuration int64 = 60
 
