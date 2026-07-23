@@ -27,6 +27,11 @@ import type { BillingTableRow } from '../types'
 export function buildBillingSummaryColumns(
   t: (key: string) => string
 ): ColumnDef<BillingTableRow, unknown>[] {
+  const getNonSubscriptionCost = (row: BillingTableRow) =>
+    row.cost_usd - row.subscription_cost_usd
+  const getNonSubscriptionRevenue = (row: BillingTableRow) =>
+    row.revenue_usd - row.subscription_billing_usd
+
   return [
     {
       accessorKey: 'day',
@@ -62,30 +67,38 @@ export function buildBillingSummaryColumns(
     {
       accessorKey: 'cost_usd',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Platform Cost')} />
+        <DataTableColumnHeader
+          column={column}
+          title={t('Non-subscription Cost')}
+        />
       ),
       cell: ({ row }) => (
         <span className='font-mono text-sm'>
-          {formatUSD(row.original.cost_usd)}
+          {formatUSD(getNonSubscriptionCost(row.original))}
         </span>
       ),
     },
     {
       accessorKey: 'revenue_usd',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Revenue')} />
+        <DataTableColumnHeader
+          column={column}
+          title={t('Non-subscription Revenue')}
+        />
       ),
       cell: ({ row }) => (
         <span className='font-mono text-sm'>
-          {formatUSD(row.original.revenue_usd)}
+          {formatUSD(getNonSubscriptionRevenue(row.original))}
         </span>
       ),
     },
     {
       id: 'profit_usd',
-      header: () => <span>{t('Profit')}</span>,
+      header: () => <span>{t('Non-subscription Profit')}</span>,
       cell: ({ row }) => {
-        const profit = row.original.revenue_usd - row.original.cost_usd
+        const profit =
+          getNonSubscriptionRevenue(row.original) -
+          getNonSubscriptionCost(row.original)
         return (
           <span
             className={`font-mono text-sm ${profit < 0 ? 'text-destructive' : ''}`}
@@ -97,9 +110,10 @@ export function buildBillingSummaryColumns(
     },
     {
       id: 'margin',
-      header: () => <span>{t('Margin')}</span>,
+      header: () => <span>{t('Non-subscription Margin')}</span>,
       cell: ({ row }) => {
-        const { cost_usd: cost, revenue_usd: revenue } = row.original
+        const cost = getNonSubscriptionCost(row.original)
+        const revenue = getNonSubscriptionRevenue(row.original)
         if (cost <= 0)
           return <span className='text-muted-foreground text-sm'>—</span>
         const margin = ((revenue - cost) / cost) * 100
@@ -111,6 +125,31 @@ export function buildBillingSummaryColumns(
           </span>
         )
       },
+    },
+    {
+      accessorKey: 'subscription_cost_usd',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Subscription Cost')} />
+      ),
+      cell: ({ row }) => (
+        <span className='font-mono text-sm'>
+          {formatUSD(row.original.subscription_cost_usd)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'subscription_billing_usd',
+      header: ({ column }) => (
+        <DataTableColumnHeader
+          column={column}
+          title={t('Subscription Billing')}
+        />
+      ),
+      cell: ({ row }) => (
+        <span className='font-mono text-sm'>
+          {formatUSD(row.original.subscription_billing_usd)}
+        </span>
+      ),
     },
   ]
 }

@@ -14,14 +14,16 @@ import (
 // view (no token/username/email filter). Lives in LOG_DB since it's built
 // from the logs table, which itself may live in a separate LOG_SQL_DSN db.
 type BillingHourlySummary struct {
-	Id           int64   `json:"id" gorm:"primaryKey;autoIncrement"`
-	HourBucket   int64   `json:"hour_bucket" gorm:"uniqueIndex:idx_bill_hour_model_ch;index;not null"` // unix seconds, floored to the hour
-	ModelName    string  `json:"model_name" gorm:"size:256;uniqueIndex:idx_bill_hour_model_ch;default:''"`
-	ChannelId    int     `json:"channel_id" gorm:"uniqueIndex:idx_bill_hour_model_ch;default:0"`
-	CostUSD      float64 `json:"cost_usd" gorm:"type:decimal(20,10);default:0"`    // SUM(accounting_channel_cost_amount_usd)
-	RevenueUSD   float64 `json:"revenue_usd" gorm:"type:decimal(20,10);default:0"` // SUM(accounting_user_final_amount_usd)
-	RequestCount int64   `json:"request_count" gorm:"default:0"`
-	UpdatedAt    int64   `json:"updated_at"`
+	Id                     int64   `json:"id" gorm:"primaryKey;autoIncrement"`
+	HourBucket             int64   `json:"hour_bucket" gorm:"uniqueIndex:idx_bill_hour_model_ch;index;not null"` // unix seconds, floored to the hour
+	ModelName              string  `json:"model_name" gorm:"size:256;uniqueIndex:idx_bill_hour_model_ch;default:''"`
+	ChannelId              int     `json:"channel_id" gorm:"uniqueIndex:idx_bill_hour_model_ch;default:0"`
+	CostUSD                float64 `json:"cost_usd" gorm:"type:decimal(20,10);default:0"`                 // SUM(accounting_channel_cost_amount_usd)
+	RevenueUSD             float64 `json:"revenue_usd" gorm:"type:decimal(20,10);default:0"`              // SUM(accounting_user_final_amount_usd)
+	SubscriptionCostUSD    float64 `json:"subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`    // SUM(accounting_channel_cost_amount_usd) where billing_source=subscription
+	SubscriptionBillingUSD float64 `json:"subscription_billing_usd" gorm:"type:decimal(20,10);default:0"` // SUM(accounting_user_final_amount_usd) where billing_source=subscription
+	RequestCount           int64   `json:"request_count" gorm:"default:0"`
+	UpdatedAt              int64   `json:"updated_at"`
 }
 
 // UpsertBillingHourlySummaries writes/merges rows keyed by (hour_bucket, model_name, channel_id).
@@ -32,7 +34,7 @@ func UpsertBillingHourlySummaries(rows []BillingHourlySummary) error {
 	return LOG_DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "hour_bucket"}, {Name: "model_name"}, {Name: "channel_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"cost_usd", "revenue_usd", "request_count", "updated_at",
+			"cost_usd", "revenue_usd", "subscription_cost_usd", "subscription_billing_usd", "request_count", "updated_at",
 		}),
 	}).Create(&rows).Error
 }
@@ -43,6 +45,8 @@ type BillingDailyRow struct {
 	Day                      int64   `json:"day" gorm:"column:day"` // unix seconds, floored to Beijing (UTC+8) midnight
 	CostUSD                  float64 `json:"cost_usd" gorm:"column:cost_usd"`
 	RevenueUSD               float64 `json:"revenue_usd" gorm:"column:revenue_usd"`
+	SubscriptionCostUSD      float64 `json:"subscription_cost_usd" gorm:"column:subscription_cost_usd"`
+	SubscriptionBillingUSD   float64 `json:"subscription_billing_usd" gorm:"column:subscription_billing_usd"`
 	AccountingOKRequestCount int64   `json:"accounting_ok_request_count" gorm:"column:accounting_ok_request_count"`
 	AccountingTargetReqCount int64   `json:"accounting_target_request_count" gorm:"column:accounting_target_request_count"`
 }
@@ -80,6 +84,8 @@ func GetBillingDailyFromSummary(startTimestamp, endTimestamp int64, modelName st
 		Select(dayExpr + ` as day,
 			SUM(cost_usd) as cost_usd,
 			SUM(revenue_usd) as revenue_usd,
+			COALESCE(SUM(subscription_cost_usd), 0) as subscription_cost_usd,
+			COALESCE(SUM(subscription_billing_usd), 0) as subscription_billing_usd,
 			SUM(request_count) as accounting_ok_request_count`)
 	if startTimestamp != 0 {
 		tx = tx.Where("hour_bucket >= ?", startTimestamp)
@@ -119,6 +125,8 @@ func GetBillingDailyFromRawLogs(startTimestamp, endTimestamp int64, modelName st
 		Select(dayExpr+` as day,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN accounting_channel_cost_amount_usd ELSE 0 END) as cost_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN accounting_user_final_amount_usd ELSE 0 END) as revenue_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as subscription_cost_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN accounting_user_final_amount_usd ELSE 0 END) as subscription_billing_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN 1 ELSE 0 END) as accounting_ok_request_count,
 			SUM(`+billingTargetRequestCountExpr()+`) as accounting_target_request_count`).
 		Where("type = ?", LogTypeConsume)

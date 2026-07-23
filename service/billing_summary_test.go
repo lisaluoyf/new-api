@@ -1,6 +1,19 @@
 package service
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func seedConsumeLog(t *testing.T, log *model.Log) {
+	t.Helper()
+	require.NoError(t, model.LOG_DB.Create(log).Error)
+}
 
 func TestBillingDayStartUsesBeijingBoundary(t *testing.T) {
 	// 2026-07-12 14:00:00 Asia/Shanghai == 2026-07-12 06:00:00 UTC
@@ -57,4 +70,122 @@ func TestPlanBillingDailyHybridRange_MixedHistoryAndToday(t *testing.T) {
 	if plan.rawStart != 1_783_785_600 || plan.rawEnd != 0 {
 		t.Fatalf("unexpected raw range: %+v", plan)
 	}
+}
+
+func TestGetBillingDailyFromRawLogs_SplitsSubscriptionMetrics(t *testing.T) {
+	truncate(t)
+
+	const (
+		userID    = 1001
+		channelID = 2001
+		modelName = "gpt-5"
+		baseTs    = int64(1_783_800_000)
+	)
+
+	seedUser(t, userID, 0)
+	seedChannel(t, channelID)
+
+	seedConsumeLog(t, &model.Log{
+		UserId:                         userID,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      baseTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          100,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceWallet}),
+		AccountingChannelCostAmountUSD: 1.25,
+		AccountingUserFinalAmountUSD:   3.5,
+		AccountingStatus:               "ok",
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId:                         userID,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      baseTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          120,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
+		AccountingChannelCostAmountUSD: 0.75,
+		AccountingUserFinalAmountUSD:   2.25,
+		AccountingStatus:               "ok",
+	})
+	// Non-OK rows should not affect the billing totals.
+	seedConsumeLog(t, &model.Log{
+		UserId:                         userID,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      baseTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          80,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
+		AccountingChannelCostAmountUSD: 9.99,
+		AccountingUserFinalAmountUSD:   9.99,
+		AccountingStatus:               "partial",
+	})
+
+	rows, err := model.GetBillingDailyFromRawLogs(baseTs-10, baseTs+10, modelName, channelID, "", "", "")
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+
+	row := rows[0]
+	assert.InDelta(t, 2.0, row.CostUSD, 1e-9)
+	assert.InDelta(t, 5.75, row.RevenueUSD, 1e-9)
+	assert.InDelta(t, 0.75, row.SubscriptionCostUSD, 1e-9)
+	assert.InDelta(t, 2.25, row.SubscriptionBillingUSD, 1e-9)
+	assert.Equal(t, int64(2), row.AccountingOKRequestCount)
+	assert.Equal(t, int64(3), row.AccountingTargetReqCount)
+}
+
+func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {
+	truncate(t)
+
+	const (
+		userID    = 1002
+		channelID = 2002
+		modelName = "gpt-5"
+		baseTs    = int64(1_783_800_000)
+	)
+
+	seedUser(t, userID, 0)
+	seedChannel(t, channelID)
+
+	seedConsumeLog(t, &model.Log{
+		UserId:                         userID,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      baseTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          100,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceWallet}),
+		AccountingChannelCostAmountUSD: 1.25,
+		AccountingUserFinalAmountUSD:   3.5,
+		AccountingStatus:               "ok",
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId:                         userID,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      baseTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          120,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
+		AccountingChannelCostAmountUSD: 0.75,
+		AccountingUserFinalAmountUSD:   2.25,
+		AccountingStatus:               "ok",
+	})
+
+	originalNow := billingSummaryNow
+	billingSummaryNow = func() time.Time { return time.Unix(baseTs+3600, 0) }
+	defer func() { billingSummaryNow = originalNow }()
+
+	runBillingSummaryOnce()
+
+	var row model.BillingHourlySummary
+	err := model.LOG_DB.Where("hour_bucket = ? AND model_name = ? AND channel_id = ?", baseTs/3600*3600, modelName, channelID).First(&row).Error
+	require.NoError(t, err)
+	assert.InDelta(t, 2.0, row.CostUSD, 1e-9)
+	assert.InDelta(t, 5.75, row.RevenueUSD, 1e-9)
+	assert.InDelta(t, 0.75, row.SubscriptionCostUSD, 1e-9)
+	assert.InDelta(t, 2.25, row.SubscriptionBillingUSD, 1e-9)
+	assert.Equal(t, int64(2), row.RequestCount)
 }

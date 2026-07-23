@@ -50,6 +50,10 @@ export function BillingSummaryPage() {
       (acc, row) => ({
         cost_usd: acc.cost_usd + row.cost_usd,
         revenue_usd: acc.revenue_usd + row.revenue_usd,
+        subscription_cost_usd:
+          acc.subscription_cost_usd + row.subscription_cost_usd,
+        subscription_billing_usd:
+          acc.subscription_billing_usd + row.subscription_billing_usd,
         accounting_ok_request_count:
           acc.accounting_ok_request_count + row.accounting_ok_request_count,
         accounting_target_request_count:
@@ -59,6 +63,8 @@ export function BillingSummaryPage() {
       {
         cost_usd: 0,
         revenue_usd: 0,
+        subscription_cost_usd: 0,
+        subscription_billing_usd: 0,
         accounting_ok_request_count: 0,
         accounting_target_request_count: 0,
       }
