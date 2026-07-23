@@ -220,7 +220,10 @@ func main() {
 		MaxAge:   2592000, // 30 days
 		HttpOnly: true,
 		Secure:   false,
-		SameSite: http.SameSiteStrictMode,
+		// Lax (not Strict): console-bridge sets the session via a same-site
+		// redirect into /_panel; Strict has caused intermittent auth drops in
+		// the embedded console iframe after the bridge hand-off.
+		SameSite: http.SameSiteLaxMode,
 	})
 	server.Use(sessions.Sessions("session", store))
 
