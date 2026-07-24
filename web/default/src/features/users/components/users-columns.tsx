@@ -43,6 +43,15 @@ function getQuotaProgressColor(percentage: number): string {
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
+const GPT_TRIAL_BLOCKED_RE = /\s*\[GPT_TRIAL_BLOCKED:([^\]]+)\]/
+
+function parseTrialBlocked(remark: string | undefined) {
+  if (!remark) return { riskReason: undefined, cleanRemark: '' }
+  const match = remark.match(GPT_TRIAL_BLOCKED_RE)
+  const cleanRemark = remark.replace(GPT_TRIAL_BLOCKED_RE, '').trim()
+  return { riskReason: match?.[1], cleanRemark }
+}
+
 export function useUsersColumns(): ColumnDef<User>[] {
   const { t } = useTranslation()
   const { setSelectedUserId, setUserInfoDialogOpen } = useUsers()
@@ -105,7 +114,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
       cell: ({ row }) => {
         const username = row.getValue('username') as string
         const email = row.original.email
-        const remark = row.original.remark
+        const { cleanRemark } = parseTrialBlocked(row.original.remark)
 
         return (
           <div className='flex min-w-[160px] flex-col gap-1'>
@@ -120,15 +129,15 @@ export function useUsersColumns(): ColumnDef<User>[] {
               >
                 <LongText className='max-w-[140px]'>{username}</LongText>
               </button>
-              {remark && (
+              {cleanRemark && (
                 <Tooltip>
                   <TooltipTrigger
                     render={<StatusBadge variant='success' copyable={false} />}
                   >
-                    <LongText className='max-w-[80px]'>{remark}</LongText>
+                    <LongText className='max-w-[80px]'>{cleanRemark}</LongText>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p className='text-xs'>{remark}</p>
+                    <p className='text-xs'>{cleanRemark}</p>
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -247,6 +256,55 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       enableSorting: false,
       meta: { label: t('Status'), mobileBadge: true },
+    },
+    {
+      id: 'trial',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title='Trial' />
+      ),
+      cell: ({ row }) => {
+        const { riskReason } = parseTrialBlocked(row.original.remark)
+        const status = row.original.trial_claim_status
+
+        if (riskReason) {
+          return (
+            <Tooltip>
+              <TooltipTrigger
+                render={<StatusBadge variant='danger' copyable={false} />}
+              >
+                {t('Blocked')}
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className='text-xs'>{riskReason}</p>
+              </TooltipContent>
+            </Tooltip>
+          )
+        }
+
+        if (!status || status === 'not_claimed') {
+          return <span className='text-muted-foreground text-sm'>-</span>
+        }
+
+        const config: Record<
+          string,
+          { label: string; variant: 'success' | 'info' | 'warning' | 'danger' }
+        > = {
+          granted: { label: t('Claimed'), variant: 'success' },
+          shared: { label: t('Shared'), variant: 'info' },
+          claiming: { label: t('Claiming'), variant: 'warning' },
+          failed: { label: t('Claim Failed'), variant: 'danger' },
+        }
+        const info = config[status]
+        return (
+          <StatusBadge
+            label={info?.label ?? status}
+            variant={info?.variant ?? 'neutral'}
+            copyable={false}
+          />
+        )
+      },
+      enableSorting: false,
+      meta: { label: 'Trial', mobileHidden: true },
     },
     {
       id: 'quota',

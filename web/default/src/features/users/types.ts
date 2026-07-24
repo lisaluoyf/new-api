@@ -59,6 +59,7 @@ export const userSchema = z.object({
   registration_utm: z.string().optional(),
   registration_inviter_email: z.string().optional(),
   registration_provider: z.string().optional(),
+  trial_claim_status: z.string().optional(),
   linux_do_id: z.string().optional(),
   status: userStatusSchema,
   role: userRoleSchema,
