@@ -19,6 +19,13 @@ var (
 func FeishuAppID() string     { return os.Getenv("FEISHU_APP_ID") }
 func FeishuAppSecret() string { return os.Getenv("FEISHU_APP_SECRET") }
 func FeishuOpsChatID() string { return os.Getenv("FEISHU_OPS_CHAT_ID") }
+func FeishuChannelChatID() string {
+	chatID := os.Getenv("FEISHU_CHANNEL_CHAT_ID")
+	if chatID != "" {
+		return chatID
+	}
+	return FeishuOpsChatID()
+}
 func FeishuNewAPILogChatID() string {
 	return os.Getenv("FEISHU_NEWAPI_LOG_CHAT_ID")
 }

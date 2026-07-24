@@ -105,7 +105,7 @@ func channelModelNotifyLines(channelName string, channelID int, modelName string
 }
 
 func notifyFeishuChannelDisabled(channelError types.ChannelError, modelName string, reason string) {
-	chatID := common.FeishuOpsChatID()
+	chatID := common.FeishuChannelChatID()
 	if chatID == "" {
 		return
 	}
@@ -134,7 +134,7 @@ func notifyFeishuChannelDisabled(channelError types.ChannelError, modelName stri
 }
 
 func notifyFeishuChannelEnabled(channelID int, channelName string, modelName string) {
-	chatID := common.FeishuOpsChatID()
+	chatID := common.FeishuChannelChatID()
 	if chatID == "" {
 		return
 	}
@@ -163,7 +163,7 @@ func notifyFeishuChannelEnabled(channelID int, channelName string, modelName str
 }
 
 func NotifyChannelDisableProbePassed(channelError types.ChannelError, modelName string, reason string, latencyMs int64) {
-	chatID := common.FeishuOpsChatID()
+	chatID := common.FeishuChannelChatID()
 	if chatID == "" {
 		return
 	}
@@ -193,7 +193,7 @@ func NotifyChannelDisableProbePassed(channelError types.ChannelError, modelName 
 // NotifyUpstreamRecharge sends a Feishu card when upstream account balance is depleted.
 // err may be nil when triggered from balance polling.
 func NotifyUpstreamRecharge(channelError types.ChannelError, err *types.NewAPIError) {
-	chatID := common.FeishuOpsChatID()
+	chatID := common.FeishuChannelChatID()
 	if chatID == "" {
 		return
 	}
