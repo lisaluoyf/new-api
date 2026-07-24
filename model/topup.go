@@ -1162,3 +1162,10 @@ func RefundClinkTopUp(referenceId string, refundUSD float64, refundId string) (r
 	note := fmt.Sprintf("Clink 退款回收额度：退款金额 $%.2f（订单 %s，refund_id %s，refund 已在 Clink 完成）", refundUSD, referenceId, refundId)
 	return refundTopUpByReference(referenceId, PaymentProviderClink, note)
 }
+
+// RefundPlategaTopUp reverses a Platega top-up on a chargeback. A chargeback
+// reverses the whole payment, so the full credited quota is clawed back.
+func RefundPlategaTopUp(tradeNo, transactionId string) (reversedQuota int, userId int, err error) {
+	note := fmt.Sprintf("Platega 拒付回收额度（订单 %s，transaction_id %s，chargeback 已在 Platega 发生）", tradeNo, transactionId)
+	return refundTopUpByReference(tradeNo, PaymentProviderPlatega, note)
+}

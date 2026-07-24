@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -293,7 +294,19 @@ func handlePlategaCallback(c *gin.Context, bodyBytes []byte, headersJSON string)
 		if err := order.ApplyPlategaStatus(payload.Status); err != nil {
 			return err
 		}
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Platega chargeback recorded trade_no=%s transaction_id=%s — manual review required", order.TradeNo, order.PlategaTransactionId))
+		// Chargeback = money reversed by Platega. Claw back the credited quota.
+		reversed, userID, err := model.RefundPlategaTopUp(order.TradeNo, order.PlategaTransactionId)
+		if err != nil {
+			if errors.Is(err, model.ErrTopUpStatusInvalid) {
+				// Order was never success (still pending/failed/already refunded) —
+				// nothing credited to reverse. Record and move on.
+				logger.LogWarn(c.Request.Context(), fmt.Sprintf("Platega chargeback 订单非 success 无需回收 trade_no=%s transaction_id=%s", order.TradeNo, order.PlategaTransactionId))
+				return nil
+			}
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Platega chargeback 回收额度失败 trade_no=%s transaction_id=%s error=%q — 需人工处理", order.TradeNo, order.PlategaTransactionId, err.Error()))
+			return err
+		}
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Platega chargeback 已回收额度 trade_no=%s transaction_id=%s user_id=%d 回收额度=%d", order.TradeNo, order.PlategaTransactionId, userID, reversed))
 		return nil
 	default:
 		return nil
