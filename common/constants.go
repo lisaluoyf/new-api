@@ -126,17 +126,17 @@ var QuotaForInvitee = 0
 var AffRatio = 0 // 充值返佣比例 (%)，0 = 关闭
 
 // 新用户首充优惠（参数可在「系统设置」改，支持 ABtest / 一键关）
-var FirstTopupPromoEnabled = false  // 总开关
-var FirstTopupPromoDiscount = 0.75  // 折扣率 (0~1)，0.75=7.5折；卡类付 amount×discount，crypto 到账 = 实付/discount
-var FirstTopupPromoAmount = 10      // 适用档位（美元）；卡类仅此档打折，crypto 让利封顶按此
-var FirstTopupPromoWindowDays = 3   // 注册后多少天内有效
+var FirstTopupPromoEnabled = false // 总开关
+var FirstTopupPromoDiscount = 0.75 // 折扣率 (0~1)，0.75=7.5折；卡类付 amount×discount，crypto 到账 = 实付/discount
+var FirstTopupPromoAmount = 10     // 适用档位（美元）；卡类仅此档打折，crypto 让利封顶按此
+var FirstTopupPromoWindowDays = 3  // 注册后多少天内有效
 
 // gpt-image-2 渠道竞速兜底：主渠道超过对应分辨率的等待阈值仍未完成时，
 // 并发提交给另一个可用渠道，谁先返回成功结果就用谁的（参数可在「系统设置」改）
 var GptImage2RaceFallbackEnabled = false // 总开关；关闭后仅在上游明确报错时走 relay 渠道重试，不因慢/超时竞速 fallback
-var GptImage2RaceTimeout1K = 45         // 秒，1k 分辨率触发竞速的等待阈值
-var GptImage2RaceTimeout2K = 90         // 秒，2k 分辨率触发竞速的等待阈值
-var GptImage2RaceTimeout4K = 135        // 秒，4k/hd 分辨率触发竞速的等待阈值
+var GptImage2RaceTimeout1K = 45          // 秒，1k 分辨率触发竞速的等待阈值
+var GptImage2RaceTimeout2K = 90          // 秒，2k 分辨率触发竞速的等待阈值
+var GptImage2RaceTimeout4K = 135         // 秒，4k/hd 分辨率触发竞速的等待阈值
 
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
@@ -265,8 +265,9 @@ const (
 )
 
 const (
-	TopUpStatusPending = "pending"
-	TopUpStatusSuccess = "success"
-	TopUpStatusFailed  = "failed"
-	TopUpStatusExpired = "expired"
+	TopUpStatusPending  = "pending"
+	TopUpStatusSuccess  = "success"
+	TopUpStatusFailed   = "failed"
+	TopUpStatusExpired  = "expired"
+	TopUpStatusRefunded = "refunded"
 )

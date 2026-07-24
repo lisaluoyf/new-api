@@ -50,6 +50,32 @@ type payPalCaptureResource struct {
 	} `json:"amount"`
 }
 
+// payPalRefundResource models the PAYMENT.CAPTURE.REFUNDED / REVERSED resource.
+type payPalRefundResource struct {
+	ID       string `json:"id"`
+	Status   string `json:"status"`
+	CustomID string `json:"custom_id"`
+	Amount   struct {
+		Value        string `json:"value"`
+		CurrencyCode string `json:"currency_code"`
+	} `json:"amount"`
+}
+
+// parsePayPalRefundUSD validates and parses a PayPal refund amount (USD string).
+func parsePayPalRefundUSD(currency, value string) (float64, error) {
+	if currency != "" && currency != "USD" {
+		return 0, fmt.Errorf("unsupported refund currency %q", currency)
+	}
+	amt, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid refund amount %q: %w", value, err)
+	}
+	if amt <= 0 {
+		return 0, fmt.Errorf("non-positive refund amount %q", value)
+	}
+	return amt, nil
+}
+
 func RequestPayPalAmount(c *gin.Context) {
 	if abortIfTopupForbidden(c) {
 		return
@@ -195,6 +221,8 @@ func PayPalWebhook(c *gin.Context) {
 		handlePayPalOrderApproved(ctx, event.Resource, c.ClientIP())
 	case "PAYMENT.CAPTURE.COMPLETED":
 		handlePayPalCaptureCompleted(ctx, event.Resource, c.ClientIP())
+	case "PAYMENT.CAPTURE.REFUNDED", "PAYMENT.CAPTURE.REVERSED":
+		handlePayPalRefund(ctx, event.Resource, c.ClientIP())
 	case "CHECKOUT.ORDER.CANCELLED", "CHECKOUT.ORDER.VOIDED":
 		handlePayPalOrderCancelled(ctx, event.Resource)
 	default:
@@ -242,6 +270,51 @@ func handlePayPalCaptureCompleted(ctx context.Context, resource json.RawMessage,
 		return
 	}
 	logger.LogInfo(ctx, fmt.Sprintf("PayPal 充值成功 trade_no=%s amount=%s %s client_ip=%s", referenceID, capture.Amount.Value, capture.Amount.CurrencyCode, callerIP))
+}
+
+// handlePayPalRefund reverses a top-up on PayPal refund/reversal. Full refunds
+// only; partial refunds are logged for manual review, not auto-processed.
+func handlePayPalRefund(ctx context.Context, resource json.RawMessage, callerIP string) {
+	var refund payPalRefundResource
+	if err := json.Unmarshal(resource, &refund); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("PayPal refund 解析失败 client_ip=%s error=%q", callerIP, err.Error()))
+		return
+	}
+
+	referenceID := refund.CustomID
+	if referenceID == "" {
+		logger.LogWarn(ctx, fmt.Sprintf("PayPal refund 缺少 custom_id refund_id=%s client_ip=%s", refund.ID, callerIP))
+		return
+	}
+
+	refundUSD, err := parsePayPalRefundUSD(refund.Amount.CurrencyCode, refund.Amount.Value)
+	if err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("PayPal refund 金额无效 trade_no=%s refund_id=%s error=%q", referenceID, refund.ID, err.Error()))
+		return
+	}
+
+	LockOrder(referenceID)
+	defer UnlockOrder(referenceID)
+
+	// Partial-refund guard: only full refunds are reversed automatically.
+	topUp := model.GetTopUpByTradeNo(referenceID)
+	if topUp != nil && refundUSD+0.001 < topUp.Money {
+		logger.LogError(ctx, fmt.Sprintf("PayPal 部分退款需人工处理 trade_no=%s refund=$%.2f order=$%.2f refund_id=%s client_ip=%s",
+			referenceID, refundUSD, topUp.Money, refund.ID, callerIP))
+		return
+	}
+
+	reversed, userID, err := model.RefundPayPalTopUp(referenceID, refundUSD, callerIP)
+	if err != nil {
+		if err == model.ErrTopUpStatusInvalid {
+			logger.LogInfo(ctx, fmt.Sprintf("PayPal refund 幂等跳过（订单非 success）trade_no=%s refund_id=%s", referenceID, refund.ID))
+		} else {
+			logger.LogError(ctx, fmt.Sprintf("PayPal 退款处理失败 trade_no=%s refund_id=%s client_ip=%s error=%q", referenceID, refund.ID, callerIP, err.Error()))
+		}
+		return
+	}
+	logger.LogInfo(ctx, fmt.Sprintf("PayPal 退款回收成功 trade_no=%s user_id=%d refund=$%.2f 回收额度=%d refund_id=%s client_ip=%s",
+		referenceID, userID, refundUSD, reversed, refund.ID, callerIP))
 }
 
 func handlePayPalOrderCancelled(ctx context.Context, resource json.RawMessage) {

@@ -1088,3 +1088,57 @@ func EnrichTopupsWithUserInfo(topups []*TopUp) {
 		}
 	}
 }
+
+// RefundPayPalTopUp reverses a completed PayPal top-up when PayPal reports a
+// full refund/reversal. Idempotent via the status guard: only success->refunded
+// transitions, so PayPal's duplicate webhook deliveries become no-ops.
+//
+// Partial refunds (refundUSD < order money) are NOT auto-processed here — correct
+// partial handling needs cumulative-refund tracking; callers must flag for review.
+// Returns the reversed quota and the affected user id for audit logging.
+func RefundPayPalTopUp(referenceId string, refundUSD float64, callerIp string) (reversedQuota int, userId int, err error) {
+	if referenceId == "" {
+		return 0, 0, errors.New("未提供支付单号")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingPostgreSQL {
+		refCol = `"trade_no"`
+	}
+
+	topUp := &TopUp{}
+	var quota float64
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		if e := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error; e != nil {
+			return errors.New("充值订单不存在")
+		}
+		if topUp.PaymentProvider != PaymentProviderPayPal {
+			return ErrPaymentMethodMismatch
+		}
+		// Idempotency: only a still-successful order can be refunded.
+		if topUp.Status != common.TopUpStatusSuccess {
+			return ErrTopUpStatusInvalid
+		}
+		quota = topUpCreditQuota(topUp)
+		topUp.Status = common.TopUpStatusRefunded
+		if e := tx.Save(topUp).Error; e != nil {
+			return e
+		}
+		// Claw back the exact quota that was credited. Balance may go negative
+		// if already spent — that is the honest ledger and blocks further use.
+		if e := tx.Model(&User{}).Where("id = ?", topUp.UserId).
+			Update("quota", gorm.Expr("quota - ?", quota)).Error; e != nil {
+			return e
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	_ = invalidateUserCache(topUp.UserId)
+	RecordLog(topUp.UserId, LogTypeRefund, fmt.Sprintf(
+		"PayPal 退款回收额度：退款金额 $%.2f，回收 %s（订单 %s，refund 已在 PayPal 完成）",
+		refundUSD, logger.FormatQuota(int(quota)), referenceId))
+	return int(quota), topUp.UserId, nil
+}
