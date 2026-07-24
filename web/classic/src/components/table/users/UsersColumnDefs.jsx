@@ -223,6 +223,25 @@ const renderInviteInfo = (text, record, t) => {
   );
 };
 
+const renderTrialClaimStatus = (text, record, t) => {
+  const status = record.trial_claim_status;
+  if (!status || status === 'not_claimed') {
+    return <span className='text-gray-400'>-</span>;
+  }
+  const statusMap = {
+    granted: { color: 'green', text: t('已领取') },
+    shared: { color: 'yellow', text: t('已分享') },
+    claiming: { color: 'blue', text: t('领取中') },
+    failed: { color: 'red', text: t('领取失败') },
+  };
+  const info = statusMap[status] || { color: 'grey', text: status };
+  return (
+    <Tag color={info.color} shape='circle' className='!text-xs'>
+      {info.text}
+    </Tag>
+  );
+};
+
 const renderRegistrationChannel = (text, record, t) => {
   if (!record.registration_channel_code) {
     return <span className='text-gray-400'>-</span>;
@@ -402,6 +421,11 @@ export const getUsersColumns = ({
       dataIndex: 'registration_channel_code',
       render: (text, record, index) =>
         renderRegistrationChannel(text, record, t),
+    },
+    {
+      title: t('GPT体验卡'),
+      dataIndex: 'trial_claim_status',
+      render: (text, record, index) => renderTrialClaimStatus(text, record, t),
     },
     {
       title: t('创建时间'),

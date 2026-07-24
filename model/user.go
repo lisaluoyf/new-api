@@ -67,6 +67,11 @@ type User struct {
 	RegistrationUTM          string `json:"registration_utm,omitempty" gorm:"-:all"`
 	RegistrationInviterEmail string `json:"registration_inviter_email,omitempty" gorm:"-:all"`
 	RegistrationProvider     string `json:"registration_provider,omitempty" gorm:"-:all"`
+
+	// TrialClaimStatus mirrors apimaster's trial_claims.claim_status
+	// (not_claimed / shared / claiming / granted / failed). "granted" means the
+	// user successfully claimed the GPT trial subscription card.
+	TrialClaimStatus string `json:"trial_claim_status,omitempty" gorm:"-:all"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -253,6 +258,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	}
 
 	EnrichUsersRegistrationChannels(users)
+	EnrichUsersTrialClaimStatus(users)
 	for _, user := range users {
 		user.ApplyDerivedFlags()
 	}
@@ -325,6 +331,7 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 	}
 
 	EnrichUsersRegistrationChannels(users)
+	EnrichUsersTrialClaimStatus(users)
 	for _, user := range users {
 		user.ApplyDerivedFlags()
 	}
