@@ -17,15 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatCompactNumber, formatQuota } from '@/lib/format'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -60,6 +63,7 @@ export function UserInfoDialog({
   onOpenChange,
 }: UserInfoDialogProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -109,6 +113,19 @@ export function UserInfoDialog({
     if (value === null || value === undefined) return empty
     return `${value}%`
   }
+
+  const handleViewUsageLogs = useCallback(() => {
+    if (!userInfo?.email) return
+    onOpenChange(false)
+    void navigate({
+      to: '/usage-logs/$section',
+      params: { section: 'common' },
+      search: {
+        email: userInfo.email,
+        page: 1,
+      },
+    })
+  }, [navigate, onOpenChange, userInfo?.email])
 
   const InfoItem = ({
     label,
@@ -239,6 +256,15 @@ export function UserInfoDialog({
             {t('No user information available')}
           </div>
         )}
+        <DialogFooter>
+          <Button
+            variant='outline'
+            onClick={handleViewUsageLogs}
+            disabled={!userInfo?.email}
+          >
+            {t('Usage Logs')}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
