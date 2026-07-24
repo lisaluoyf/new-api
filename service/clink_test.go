@@ -109,3 +109,34 @@ func TestClinkAmountForValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeClinkRefundWebhookData(t *testing.T) {
+	// Mirrors Clink's real EventRefundVo shape: data.object wraps RefundApiVo,
+	// and metadata.merchantReferenceId carries our trade_no.
+	data := json.RawMessage(`{"object":{"refundId":"rf_123","orderId":"ord_999","refundAmount":50.00,"refundCurrency":"USD","status":"succeeded","metadata":{"arn":"837725","merchantReferenceId":"pp_trade_abc"}}}`)
+	var refund ClinkRefundWebhookData
+	if err := DecodeClinkWebhookData(data, &refund); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if refund.Metadata.MerchantReferenceID != "pp_trade_abc" {
+		t.Errorf("merchantReferenceId = %q, want pp_trade_abc", refund.Metadata.MerchantReferenceID)
+	}
+	if refund.RefundAmount != 50.00 {
+		t.Errorf("refundAmount = %v, want 50.00", refund.RefundAmount)
+	}
+	if refund.RefundID != "rf_123" {
+		t.Errorf("refundId = %q, want rf_123", refund.RefundID)
+	}
+}
+
+func TestDecodeClinkRefundWebhookDataFlat(t *testing.T) {
+	// Also accept the documented flat shape (no data.object wrapper).
+	data := json.RawMessage(`{"refundId":"rf_2","orderId":"ord_2","refundAmount":12.5,"status":"succeeded","metadata":{"merchantReferenceId":"tn_2"}}`)
+	var refund ClinkRefundWebhookData
+	if err := DecodeClinkWebhookData(data, &refund); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if refund.Metadata.MerchantReferenceID != "tn_2" || refund.RefundAmount != 12.5 {
+		t.Errorf("got %+v", refund)
+	}
+}

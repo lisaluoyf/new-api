@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -309,10 +310,59 @@ func handleClinkWebhook(c *gin.Context, bodyBytes []byte) error {
 		}
 		paidAmount := service.ClinkAmountForValidation(session.AmountSubtotal, session.AmountTotal, session.OriginalCurrency, session.PaymentCurrency)
 		return completeClinkTopUp(c, session.MerchantReferenceID, paidAmount)
+	case "refund.succeeded":
+		var refund service.ClinkRefundWebhookData
+		if err := service.DecodeClinkWebhookData(event.Data, &refund); err != nil {
+			return fmt.Errorf("invalid clink refund payload: %w", err)
+		}
+		return handleClinkRefund(c, &refund)
+	case "dispute.lost", "dispute.won", "dispute.created", "dispute.updated", "dispute.closed":
+		// Chargebacks carry only Clink's internal orderId (no merchantReferenceId),
+		// so we cannot auto-link to a top_up yet. Log loudly for manual clawback.
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 拒付事件需人工处理 event_type=%s data=%s client_ip=%s", event.Type, string(event.Data), c.ClientIP()))
+		return nil
 	default:
 		logger.LogInfo(c.Request.Context(), fmt.Sprintf("Clink webhook ignored event_type=%s", event.Type))
 		return nil
 	}
+}
+
+// handleClinkRefund reverses a top-up when Clink reports a completed refund.
+// Only full refunds are auto-processed; partial refunds are logged for manual
+// review to avoid over-clawing on cumulative partial refunds.
+func handleClinkRefund(c *gin.Context, refund *service.ClinkRefundWebhookData) error {
+	tradeNo := strings.TrimSpace(refund.Metadata.MerchantReferenceID)
+	if tradeNo == "" {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 退款缺少 merchantReferenceId 无法关联订单 refund_id=%s clink_order_id=%s client_ip=%s", refund.RefundID, refund.OrderID, c.ClientIP()))
+		return nil
+	}
+
+	topUp := model.GetTopUpByTradeNo(tradeNo)
+	if topUp == nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 退款订单不存在 trade_no=%s refund_id=%s client_ip=%s", tradeNo, refund.RefundID, c.ClientIP()))
+		return nil
+	}
+	// Partial-refund guard: only full refunds reverse automatically.
+	if refund.RefundAmount+0.001 < topUp.Money {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 部分退款需人工处理 trade_no=%s refund=$%.2f order=$%.2f refund_id=%s client_ip=%s",
+			tradeNo, refund.RefundAmount, topUp.Money, refund.RefundID, c.ClientIP()))
+		return nil
+	}
+
+	LockOrder(tradeNo)
+	defer UnlockOrder(tradeNo)
+	reversed, userID, err := model.RefundClinkTopUp(tradeNo, refund.RefundAmount, refund.RefundID)
+	if err != nil {
+		if errors.Is(err, model.ErrTopUpStatusInvalid) {
+			logger.LogInfo(c.Request.Context(), fmt.Sprintf("Clink 退款幂等跳过（订单非 success）trade_no=%s refund_id=%s", tradeNo, refund.RefundID))
+			return nil
+		}
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 退款处理失败 trade_no=%s refund_id=%s client_ip=%s error=%q", tradeNo, refund.RefundID, c.ClientIP(), err.Error()))
+		return err
+	}
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Clink 退款回收成功 trade_no=%s user_id=%d refund=$%.2f 回收额度=%d refund_id=%s client_ip=%s",
+		tradeNo, userID, refund.RefundAmount, reversed, refund.RefundID, c.ClientIP()))
+	return nil
 }
 
 func completeClinkTopUp(c *gin.Context, tradeNo string, paidAmount float64) error {

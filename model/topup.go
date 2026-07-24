@@ -1097,6 +1097,20 @@ func EnrichTopupsWithUserInfo(topups []*TopUp) {
 // partial handling needs cumulative-refund tracking; callers must flag for review.
 // Returns the reversed quota and the affected user id for audit logging.
 func RefundPayPalTopUp(referenceId string, refundUSD float64, callerIp string) (reversedQuota int, userId int, err error) {
+	note := fmt.Sprintf("PayPal 退款回收额度：退款金额 $%.2f（订单 %s，refund 已在 PayPal 完成）", refundUSD, referenceId)
+	return refundTopUpByReference(referenceId, PaymentProviderPayPal, note)
+}
+
+// refundTopUpByReference reverses a successful top-up identified by trade_no,
+// clawing back exactly the quota that was credited. It is provider-agnostic:
+// callers pass the expected payment provider (guards cross-provider mismatch)
+// and a human-readable audit note. Only full refunds should reach here —
+// partial-refund detection is the caller's responsibility.
+//
+// Idempotency: only a still-`success` order transitions to `refunded`; repeat
+// webhook deliveries hit the status guard and return ErrTopUpStatusInvalid,
+// which callers treat as a benign no-op. Returns reversed quota + user id.
+func refundTopUpByReference(referenceId, provider, auditNote string) (reversedQuota int, userId int, err error) {
 	if referenceId == "" {
 		return 0, 0, errors.New("未提供支付单号")
 	}
@@ -1112,7 +1126,7 @@ func RefundPayPalTopUp(referenceId string, refundUSD float64, callerIp string) (
 		if e := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error; e != nil {
 			return errors.New("充值订单不存在")
 		}
-		if topUp.PaymentProvider != PaymentProviderPayPal {
+		if topUp.PaymentProvider != provider {
 			return ErrPaymentMethodMismatch
 		}
 		// Idempotency: only a still-successful order can be refunded.
@@ -1138,7 +1152,13 @@ func RefundPayPalTopUp(referenceId string, refundUSD float64, callerIp string) (
 
 	_ = invalidateUserCache(topUp.UserId)
 	RecordLog(topUp.UserId, LogTypeRefund, fmt.Sprintf(
-		"PayPal 退款回收额度：退款金额 $%.2f，回收 %s（订单 %s，refund 已在 PayPal 完成）",
-		refundUSD, logger.FormatQuota(int(quota)), referenceId))
+		"%s，回收额度 %s", auditNote, logger.FormatQuota(int(quota))))
 	return int(quota), topUp.UserId, nil
+}
+
+// RefundClinkTopUp reverses a Clink top-up on a completed refund. Mirrors the
+// PayPal path; linkage is Clink's metadata.merchantReferenceId == trade_no.
+func RefundClinkTopUp(referenceId string, refundUSD float64, refundId string) (reversedQuota int, userId int, err error) {
+	note := fmt.Sprintf("Clink 退款回收额度：退款金额 $%.2f（订单 %s，refund_id %s，refund 已在 Clink 完成）", refundUSD, referenceId, refundId)
+	return refundTopUpByReference(referenceId, PaymentProviderClink, note)
 }

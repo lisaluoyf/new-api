@@ -103,6 +103,20 @@ type ClinkSessionWebhookData struct {
 	PaymentCurrency     string  `json:"paymentCurrency"`
 }
 
+// ClinkRefundWebhookData models the refund.* webhook payload (RefundApiVo).
+// The original order is linked via metadata.merchantReferenceId (== our
+// trade_no); Clink's own orderId/refundId are kept for audit only.
+type ClinkRefundWebhookData struct {
+	RefundID       string  `json:"refundId"`
+	OrderID        string  `json:"orderId"`
+	RefundAmount   float64 `json:"refundAmount"`
+	RefundCurrency string  `json:"refundCurrency"`
+	Status         string  `json:"status"`
+	Metadata       struct {
+		MerchantReferenceID string `json:"merchantReferenceId"`
+	} `json:"metadata"`
+}
+
 func ClinkSecretKey() string {
 	return strings.TrimSpace(os.Getenv("CLINK_SECRET_KEY"))
 }
