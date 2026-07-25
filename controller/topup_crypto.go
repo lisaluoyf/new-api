@@ -27,7 +27,7 @@ import (
 
 type cryptoChainConfig struct {
 	rpcEnvKey      string
-	defaultRPC     string
+	defaultRPCs    []string
 	usdtAddress    string
 	usdcAddress    string
 	usdtDecimals   int
@@ -42,7 +42,7 @@ const transferEventTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628
 var cryptoChains = map[string]cryptoChainConfig{
 	"eth": {
 		rpcEnvKey:      "CRYPTO_RPC_ETH",
-		defaultRPC:     "https://eth.llamarpc.com",
+		defaultRPCs:    []string{"https://eth.llamarpc.com"},
 		usdtAddress:    "0xdAC17F958D2ee523a2206206994597C13D831ec7",
 		usdcAddress:    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
 		usdtDecimals:   6,
@@ -52,7 +52,7 @@ var cryptoChains = map[string]cryptoChainConfig{
 	},
 	"bsc": {
 		rpcEnvKey:      "CRYPTO_RPC_BSC",
-		defaultRPC:     "https://bsc-dataseed.binance.org",
+		defaultRPCs:    []string{"https://bsc-dataseed.binance.org"},
 		usdtAddress:    "0x55d398326f99059fF775485246999027B3197955",
 		usdcAddress:    "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
 		usdtDecimals:   18,
@@ -62,7 +62,7 @@ var cryptoChains = map[string]cryptoChainConfig{
 	},
 	"polygon": {
 		rpcEnvKey:      "CRYPTO_RPC_POLYGON",
-		defaultRPC:     "https://polygon-bor-rpc.publicnode.com",
+		defaultRPCs:    []string{"https://polygon-bor-rpc.publicnode.com", "https://polygon.drpc.org"},
 		usdtAddress:    "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
 		usdcAddress:    "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
 		usdtDecimals:   6,
@@ -72,7 +72,7 @@ var cryptoChains = map[string]cryptoChainConfig{
 	},
 	"arbitrum": {
 		rpcEnvKey:      "CRYPTO_RPC_ARBITRUM",
-		defaultRPC:     "https://arb1.arbitrum.io/rpc",
+		defaultRPCs:    []string{"https://arb1.arbitrum.io/rpc"},
 		usdtAddress:    "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
 		usdcAddress:    "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
 		usdtDecimals:   6,
@@ -82,7 +82,7 @@ var cryptoChains = map[string]cryptoChainConfig{
 	},
 	"base": {
 		rpcEnvKey:      "CRYPTO_RPC_BASE",
-		defaultRPC:     "https://mainnet.base.org",
+		defaultRPCs:    []string{"https://mainnet.base.org"},
 		usdtAddress:    "",
 		usdcAddress:    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
 		usdtDecimals:   0,
@@ -100,11 +100,27 @@ func getPlatformWallet() string {
 	return strings.ToLower(w)
 }
 
-func getRPC(cfg cryptoChainConfig) string {
-	if v := os.Getenv(cfg.rpcEnvKey); v != "" {
-		return v
+func getRPCs(cfg cryptoChainConfig) []string {
+	rpcs := make([]string, 0, len(cfg.defaultRPCs)+1)
+	seen := make(map[string]struct{}, len(cfg.defaultRPCs)+1)
+	appendRPC := func(v string) {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return
+		}
+		if _, ok := seen[v]; ok {
+			return
+		}
+		seen[v] = struct{}{}
+		rpcs = append(rpcs, v)
 	}
-	return cfg.defaultRPC
+	if v := os.Getenv(cfg.rpcEnvKey); v != "" {
+		appendRPC(v)
+	}
+	for _, rpc := range cfg.defaultRPCs {
+		appendRPC(rpc)
+	}
+	return rpcs
 }
 
 // ============================================================================
@@ -243,17 +259,40 @@ func fetchCoinPrice(ctx context.Context, coingeckoID string) (float64, error) {
 // On-chain verification
 // ============================================================================
 
-func verifyAndCredit(depositId string, rec *depositRecord, cfg cryptoChainConfig, rpcURL string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
+func verifyAndCredit(depositId string, rec *depositRecord, cfg cryptoChainConfig, rpcURLs []string) {
+	if len(rpcURLs) == 0 {
+		rec.Status = "failed"
+		return
+	}
 
 	platformWallet := getPlatformWallet()
 
-	receipt, err := waitForReceipt(ctx, rpcURL, rec.TxHash)
-	if err != nil {
-		common.SysLog(fmt.Sprintf("crypto: receipt error txHash=%s err=%v", rec.TxHash, err))
+	var (
+		ctx       context.Context
+		cancel    context.CancelFunc
+		receipt   map[string]interface{}
+		err       error
+		rpcURL    string
+		usedIndex int
+	)
+
+	for i, candidate := range rpcURLs {
+		ctx, cancel = context.WithTimeout(context.Background(), 3*time.Minute)
+		receipt, err = waitForReceipt(ctx, candidate, rec.TxHash)
+		cancel()
+		if err == nil && receipt != nil {
+			rpcURL = candidate
+			usedIndex = i
+			break
+		}
+		common.SysLog(fmt.Sprintf("crypto: receipt error txHash=%s rpc=%s err=%v", rec.TxHash, candidate, err))
+	}
+	if receipt == nil || err != nil {
 		rec.Status = "failed"
 		return
+	}
+	if usedIndex > 0 {
+		common.SysLog(fmt.Sprintf("crypto: rpc fallback hit txHash=%s rpc=%s", rec.TxHash, rpcURL))
 	}
 
 	statusHex, _ := receipt["status"].(string)
@@ -312,7 +351,9 @@ func verifyAndCredit(depositId string, rec *depositRecord, cfg cryptoChainConfig
 
 	// ── 2. Fallback: native coin transfer ────────────────────────────────────
 	if usdValue <= 0 && cfg.nativeCGID != "" {
+		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 		txResult, err := ethCall(ctx, rpcURL, "eth_getTransactionByHash", []interface{}{rec.TxHash})
+		cancel()
 		if err == nil && txResult != nil {
 			txMap, ok := txResult.(map[string]interface{})
 			if ok {
@@ -323,7 +364,9 @@ func verifyAndCredit(depositId string, rec *depositRecord, cfg cryptoChainConfig
 					if ok {
 						nativeAmt := decimal.NewFromBigInt(weiAmount, int32(-cfg.nativeDecimals))
 						// Fetch price from CoinGecko
+						ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 						price, err := fetchCoinPrice(ctx, cfg.nativeCGID)
+						cancel()
 						if err == nil && price > 0 {
 							nativeFloat, _ := nativeAmt.Float64()
 							usdValue = nativeFloat * price
@@ -442,7 +485,7 @@ func SubmitCryptoDeposit(c *gin.Context) {
 	deposits.Store(depositId, rec)
 	txHashIndex.Store(normHash, depositId)
 
-	go verifyAndCredit(depositId, rec, cfg, getRPC(cfg))
+	go verifyAndCredit(depositId, rec, cfg, getRPCs(cfg))
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "depositId": depositId})
 }
