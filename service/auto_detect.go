@@ -15,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/types"
 	"github.com/bytedance/gopkg/util/gopool"
 )
 
@@ -277,25 +276,18 @@ func detectOneChannel(ctx context.Context, flaskURL string, ch *model.Channel, t
 		"last_detect_result": detectStatus,
 	}
 
-	// Routing algorithm 0.2 status machine:
-	//   suspicious → disable only this channel+model ability, leaving other models
-	//     on the same channel routable.
+	// Routing algorithm 0.2 status machine (detect-driven part):
+	//   suspicious → no-op. Fingerprint auto-disable was removed: a "suspicious"
+	//     detection no longer disables the channel+model ability. Detection still
+	//     runs and is logged/notified above; routing is left untouched.
 	//   pass for an auto-disabled model → counter+1; counter==threshold → re-enable
-	//     that channel+model ability.
+	//     that channel+model ability (recovery direction is kept).
 	//   pass while channel status=3 → keep legacy channel recovery behavior.
 	//   pass while status=1 → no-op (counter only matters during recovery)
 	//   notcomplete → leave status & counter alone (transient errors shouldn't punish)
 	//   status=2 (ManuallyDisabled) → algorithm never touches it
 	if ch.Status != common.ChannelStatusManuallyDisabled {
 		switch detectStatus {
-		case "suspicious":
-			// Gated by FingerprintAutoDisableEnabled: when paused, detection still
-			// ran and was logged/notified above; we simply skip disabling the ability.
-			if common.FingerprintAutoDisableEnabled {
-				disableModelForFingerprint(ch, targetModel, now, updates)
-			} else {
-				logger.LogInfo(ctx, fmt.Sprintf("auto-detect: fingerprint auto-disable paused, skip disabling channel=%d model=%s (suspicious)", ch.Id, targetModel))
-			}
 		case "pass":
 			recoverModelForFingerprint(ch, targetModel, updates)
 			if ch.Status == common.ChannelStatusAutoDisabled {
@@ -316,53 +308,6 @@ func detectOneChannel(ctx context.Context, flaskURL string, ch *model.Channel, t
 }
 
 const autoDisabledModelsInfoKey = "auto_disabled_models"
-
-func disableModelForFingerprint(ch *model.Channel, targetModel string, now int64, updates map[string]interface{}) {
-	targetModel = strings.TrimSpace(targetModel)
-	if ch == nil || targetModel == "" {
-		return
-	}
-
-	info := ch.GetOtherInfo()
-	autoDisabledModels := autoDisabledModelInfo(info)
-	_, alreadyAutoDisabled := autoDisabledModels[targetModel]
-
-	var enabledCount int64
-	if err := model.DB.Table("abilities").
-		Where("channel_id = ? AND model = ? AND enabled = ?", ch.Id, targetModel, true).
-		Count(&enabledCount).Error; err != nil {
-		logger.LogWarn(context.Background(), fmt.Sprintf("auto-detect: failed to count enabled abilities channel=%d model=%s: %v", ch.Id, targetModel, err))
-		return
-	}
-
-	// If the operator had already disabled this model manually, do not mark it as
-	// auto-disabled. That prevents future fingerprint passes from re-enabling a
-	// manually disabled channel+model pair.
-	if enabledCount == 0 && !alreadyAutoDisabled {
-		return
-	}
-
-	result := model.DB.Table("abilities").
-		Where("channel_id = ? AND model = ? AND enabled = ?", ch.Id, targetModel, true).
-		Update("enabled", false)
-	if result.Error != nil {
-		logger.LogWarn(context.Background(), fmt.Sprintf("auto-detect: failed to disable ability channel=%d model=%s: %v", ch.Id, targetModel, result.Error))
-		return
-	}
-
-	autoDisabledModels[targetModel] = newAutoDisabledModelEntry(now, "fingerprint suspicious")
-	info[autoDisabledModelsInfoKey] = autoDisabledModels
-	ch.SetOtherInfo(info)
-	updates["other_info"] = ch.OtherInfo
-	model.InitChannelCache()
-	if result.RowsAffected > 0 {
-		notifyFeishuChannelDisabled(types.ChannelError{
-			ChannelId:   ch.Id,
-			ChannelName: ch.Name,
-			AutoBan:     ch.GetAutoBan(),
-		}, targetModel, "fingerprint suspicious")
-	}
-}
 
 func newAutoDisabledModelEntry(now int64, reason string) map[string]interface{} {
 	if reason == "" {

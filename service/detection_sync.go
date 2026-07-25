@@ -132,14 +132,12 @@ func applyDetectionResult(ctx context.Context, d apimasterDetectionRow) {
 			"last_detect_result": boostedStatus,
 		}
 
-		// Keep fingerprint sync consistent with auto_detect:
-		// suspicious disables only this channel+model ability; pass recovers only
-		// a model that was auto-disabled by fingerprint. Other models on the same
-		// channel must remain routable.
+		// Fingerprint auto-disable was removed: a "suspicious" synced detection no
+		// longer disables the channel+model ability (kept consistent with
+		// auto_detect). Only the recovery direction remains: a "pass" can still
+		// re-enable a model previously left AutoDisabled by other means.
 		if ch.Status != common.ChannelStatusManuallyDisabled {
 			switch boostedStatus {
-			case "suspicious":
-				disableModelForFingerprint(&ch, d.ClaimedModel, now, updates)
 			case "pass":
 				recoverModelForFingerprint(&ch, d.ClaimedModel, updates)
 				if ch.Status == common.ChannelStatusAutoDisabled {
