@@ -74,6 +74,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { NumericInput } from '@/components/ui/numeric-input'
 import {
   Select,
   SelectContent,
@@ -490,17 +491,12 @@ function ManualGroupRatioField({
         <FormItem>
           <FormLabel>{t('Group Ratio (manual fallback)')}</FormLabel>
           <FormControl>
-            <Input
-              type='number'
+            <NumericInput
               step='0.0001'
               min='0'
               placeholder={t('e.g. 1.5')}
-              value={field.value ?? ''}
-              onChange={(e) =>
-                field.onChange(
-                  e.target.value === '' ? undefined : parseFloat(parseFloat(e.target.value).toPrecision(10)),
-                )
-              }
+              value={field.value}
+              onValueChange={field.onChange}
             />
           </FormControl>
           <FormDescription>
@@ -582,14 +578,13 @@ function RechargeRateField({
           </SelectContent>
         </Select>
         <FormControl>
-          <Input
-            type='number'
+          <NumericInput
             step='0.0001'
             min='0'
             placeholder='e.g. 1.0'
             disabled={preset !== RECHARGE_PRESET_CUSTOM}
-            value={field.value ?? ''}
-            onChange={(e) => field.onChange(e.target.value === '' ? undefined : Number(e.target.value))}
+            value={field.value}
+            onValueChange={field.onChange}
           />
         </FormControl>
       </div>
@@ -609,13 +604,12 @@ function ModelPriceRatioField({ control }: { control: Control<ChannelFormValues>
     <FormItem>
       <FormLabel>{t('Model Price Ratio')}</FormLabel>
       <FormControl>
-        <Input
-          type='number'
+        <NumericInput
           step='0.01'
           min='0'
           placeholder='e.g. 1.0'
-          value={field.value ?? ''}
-          onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseFloat(parseFloat(e.target.value).toPrecision(10)))}
+          value={field.value}
+          onValueChange={field.onChange}
         />
       </FormControl>
       <FormDescription>
@@ -634,13 +628,12 @@ function ApimasterPriceRatioField({ control }: { control: Control<ChannelFormVal
     <FormItem>
       <FormLabel>{t('User Price Ratio')}</FormLabel>
       <FormControl>
-        <Input
-          type='number'
+        <NumericInput
           step='0.01'
           min='0'
           placeholder='e.g. 1.0'
-          value={field.value ?? ''}
-          onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseFloat(parseFloat(e.target.value).toPrecision(10)))}
+          value={field.value}
+          onValueChange={field.onChange}
         />
       </FormControl>
       <FormDescription>
@@ -717,16 +710,16 @@ function ModelPriceRatiosField({
                   </option>
                 ))}
             </select>
-            <Input
-              type='number'
+            <NumericInput
               step='0.01'
               min='0'
               className='w-28'
               placeholder='e.g. 1.5'
-              value={row.ratio}
-              onChange={(e) => {
-                const v = e.target.value === '' ? ('' as const) : parseFloat(e.target.value)
-                const next = displayRows.map((r, i) => (i === idx ? { ...r, ratio: v } : r))
+              value={row.ratio === '' ? undefined : row.ratio}
+              onValueChange={(v) => {
+                const next = displayRows.map((r, i) =>
+                  i === idx ? { ...r, ratio: v ?? ('' as const) } : r,
+                )
                 commit(next)
               }}
             />
