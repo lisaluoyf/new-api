@@ -35,11 +35,11 @@ const usersSearchSchema = z.object({
     .optional()
     .catch([]),
   group: z.string().optional().catch(''),
-  language: z.string().optional().catch(''),
-  country: z.string().optional().catch(''),
-  provider: z.string().optional().catch(''),
+  language: z.array(z.string()).optional().catch([]),
+  country: z.array(z.string()).optional().catch([]),
+  provider: z.array(z.string()).optional().catch([]),
   channel: z.string().optional().catch(''),
-  trial: z.string().optional().catch(''),
+  trial: z.array(z.string()).optional().catch([]),
 })
 
 export const Route = createFileRoute('/_authenticated/users/')({

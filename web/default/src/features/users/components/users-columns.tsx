@@ -162,6 +162,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
     },
     {
       id: 'registration_provider',
+      accessorFn: (row) => row.registration_provider,
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title={t('Registration Method')} />
       ),
@@ -262,6 +263,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
     },
     {
       id: 'trial',
+      accessorFn: (row) => row.trial_claim_status,
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title='Trial' />
       ),
