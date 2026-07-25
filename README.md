@@ -916,7 +916,7 @@ APIMaster 语言存于 `localStorage["apimaster-locale"]`，`i18n/config.ts` 初
 PLATFORM_WALLET_ADDRESS=0x33de43dad6955655ec0543f32069ac331e633c9c
 CRYPTO_RPC_ETH=https://eth.llamarpc.com
 CRYPTO_RPC_BSC=https://bsc-dataseed.binance.org
-CRYPTO_RPC_POLYGON=https://polygon-rpc.com
+CRYPTO_RPC_POLYGON=https://polygon-bor-rpc.publicnode.com
 CRYPTO_RPC_ARBITRUM=https://arb1.arbitrum.io/rpc
 CRYPTO_RPC_BASE=https://mainnet.base.org
 ```
