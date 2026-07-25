@@ -548,6 +548,13 @@ func getHardcodedCompletionModelRatio(name string) (float64, bool) {
 				}
 				return 6, true
 			}
+			// gpt-5.6 (sol/luna/terra 等): 默认 completion_ratio=6，但不锁定
+			// (返回 false)，让 System Settings→模型定价 里配置的值可以覆盖。
+			// 之前落到下面通用 gpt-5 的 `return 8, true`：8 且锁定，导致后台
+			// 配的 completion_ratio 被忽略、output 官方价被高估 (sol 30→40 等)。
+			if strings.HasPrefix(name, "gpt-5.6") {
+				return 6, false
+			}
 			return 8, true
 		}
 		// gpt-4.5-preview匹配
