@@ -226,7 +226,65 @@ func GetMaxUserId() int {
 	return user.Id
 }
 
-func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err error) {
+// UserListFilters holds the optional filter values accepted by GetAllUsers /
+// SearchUsers. Language/Country are real columns on the main users table.
+// Provider/RegistrationChannel/TrialStatus are not persisted on the main
+// table (they live in apimaster's own Postgres, see
+// EnrichUsersRegistrationChannels / EnrichUsersTrialClaimStatus) so applying
+// them requires a pre-query against APIMASTER_PG_DB to resolve a set of
+// usernames/ids to filter the main query by.
+type UserListFilters struct {
+	Language            string
+	Country             string
+	Provider            string
+	RegistrationChannel string
+	TrialStatus         string // not_claimed | claiming | shared | granted | failed | blocked
+}
+
+// applyUserListFilters adds WHERE conditions for the given filters to query.
+// Provider/RegistrationChannel resolve via a single apimaster lookup (both
+// conditions ANDed in one query); TrialStatus resolves separately since it
+// comes from a different apimaster table. An apimaster-side condition that
+// matches zero rows still narrows the main query to empty (via IN on an
+// empty slice), rather than being silently skipped.
+func applyUserListFilters(query *gorm.DB, filters UserListFilters) (*gorm.DB, error) {
+	if filters.Language != "" {
+		query = query.Where("language = ?", filters.Language)
+	}
+	if filters.Country != "" {
+		query = query.Where("country = ?", filters.Country)
+	}
+
+	if filters.Provider != "" || filters.RegistrationChannel != "" {
+		usernames, err := FindUsernamesByAttribution(filters.Provider, filters.RegistrationChannel)
+		if err != nil {
+			return nil, err
+		}
+		query = query.Where("username IN (?)", usernames)
+	}
+
+	if filters.TrialStatus != "" {
+		if filters.TrialStatus == "blocked" {
+			query = query.Where("remark LIKE ?", "%GPT_TRIAL_BLOCKED%")
+		} else if filters.TrialStatus == "not_claimed" {
+			ids, err := FindUserIdsWithAnyTrialClaim()
+			if err != nil {
+				return nil, err
+			}
+			query = query.Where("id NOT IN (?)", ids)
+		} else {
+			ids, err := FindUserIdsByTrialStatus(filters.TrialStatus)
+			if err != nil {
+				return nil, err
+			}
+			query = query.Where("id IN (?)", ids)
+		}
+	}
+
+	return query, nil
+}
+
+func GetAllUsers(pageInfo *common.PageInfo, filters UserListFilters) (users []*User, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -238,15 +296,22 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 		}
 	}()
 
+	query := tx.Unscoped().Model(&User{})
+	query, err = applyUserListFilters(query, filters)
+	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+
 	// Get total count within transaction
-	err = tx.Unscoped().Model(&User{}).Count(&total).Error
+	err = query.Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
+	err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -266,7 +331,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, filters UserListFilters, startIdx int, num int) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -309,6 +374,12 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 			query = query.Where(likeCondition,
 				"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
 		}
+	}
+
+	query, err = applyUserListFilters(query, filters)
+	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
 	}
 
 	// 获取总数

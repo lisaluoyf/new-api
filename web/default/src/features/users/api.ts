@@ -35,6 +35,18 @@ import type {
 // User Management APIs
 // ============================================================================
 
+function buildListFilterParams(
+  params: GetUsersParams | SearchUsersParams
+): URLSearchParams {
+  const qs = new URLSearchParams()
+  if (params.language) qs.set('language', params.language)
+  if (params.country) qs.set('country', params.country)
+  if (params.provider) qs.set('provider', params.provider)
+  if (params.channel) qs.set('channel', params.channel)
+  if (params.trial) qs.set('trial', params.trial)
+  return qs
+}
+
 /**
  * Get paginated users list
  */
@@ -42,7 +54,10 @@ export async function getUsers(
   params: GetUsersParams = {}
 ): Promise<GetUsersResponse> {
   const { p = 1, page_size = 10 } = params
-  const res = await api.get(`/api/user/?p=${p}&page_size=${page_size}`)
+  const qs = buildListFilterParams(params)
+  qs.set('p', String(p))
+  qs.set('page_size', String(page_size))
+  const res = await api.get(`/api/user/?${qs.toString()}`)
   return res.data
 }
 
@@ -53,9 +68,12 @@ export async function searchUsers(
   params: SearchUsersParams
 ): Promise<GetUsersResponse> {
   const { keyword = '', group = '', p = 1, page_size = 10 } = params
-  const res = await api.get(
-    `/api/user/search?keyword=${keyword}&group=${group}&p=${p}&page_size=${page_size}`
-  )
+  const qs = buildListFilterParams(params)
+  qs.set('keyword', keyword)
+  qs.set('group', group)
+  qs.set('p', String(p))
+  qs.set('page_size', String(page_size))
+  const res = await api.get(`/api/user/search?${qs.toString()}`)
   return res.data
 }
 

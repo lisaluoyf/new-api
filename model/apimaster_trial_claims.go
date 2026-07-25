@@ -48,3 +48,36 @@ func EnrichUsersTrialClaimStatus(users []*User) {
 		}
 	}
 }
+
+// FindUserIdsByTrialStatus returns the new-api user ids whose trial claim_status
+// matches the given value, for use as a WHERE id IN (...) filter against the
+// main users table. "not_claimed" also matches users with no trial_claims row
+// at all, so it is handled by the caller via NOT IN instead of calling this.
+func FindUserIdsByTrialStatus(status string) ([]int, error) {
+	if APIMASTER_PG_DB == nil {
+		return nil, nil
+	}
+	var ids []int
+	err := APIMASTER_PG_DB.Raw(`
+		SELECT newapi_user_id FROM trial_claims WHERE claim_status = ?
+	`, status).Scan(&ids).Error
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// FindUserIdsWithAnyTrialClaim returns every new-api user id that has a row in
+// trial_claims, regardless of status — used to compute the "not_claimed"
+// filter as the complement set (main users table minus this set).
+func FindUserIdsWithAnyTrialClaim() ([]int, error) {
+	if APIMASTER_PG_DB == nil {
+		return nil, nil
+	}
+	var ids []int
+	err := APIMASTER_PG_DB.Raw(`SELECT newapi_user_id FROM trial_claims`).Scan(&ids).Error
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}

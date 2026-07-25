@@ -234,9 +234,20 @@ func Register(c *gin.Context) {
 	return
 }
 
+func getUserListFiltersFromQuery(c *gin.Context) model.UserListFilters {
+	return model.UserListFilters{
+		Language:            c.Query("language"),
+		Country:             c.Query("country"),
+		Provider:            c.Query("provider"),
+		RegistrationChannel: c.Query("channel"),
+		TrialStatus:         c.Query("trial"),
+	}
+}
+
 func GetAllUsers(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.GetAllUsers(pageInfo)
+	filters := getUserListFiltersFromQuery(c)
+	users, total, err := model.GetAllUsers(pageInfo, filters)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -252,8 +263,9 @@ func GetAllUsers(c *gin.Context) {
 func SearchUsers(c *gin.Context) {
 	keyword := c.Query("keyword")
 	group := c.Query("group")
+	filters := getUserListFiltersFromQuery(c)
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	users, total, err := model.SearchUsers(keyword, group, filters, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return

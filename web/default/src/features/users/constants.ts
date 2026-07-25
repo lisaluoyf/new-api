@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Shield, User, Users } from 'lucide-react'
+import { COUNTRY_NAMES } from '@/lib/country'
 import type { User as UserType } from './types'
 
 // ============================================================================
@@ -94,6 +95,64 @@ export const getUserRoleOptions = (t: (key: string) => string) => [
   { label: t('User'), value: String(USER_ROLE.USER), icon: User },
   { label: t('Admin'), value: String(USER_ROLE.ADMIN), icon: Users },
   { label: t('Root'), value: String(USER_ROLE.ROOT), icon: Shield },
+]
+
+// ============================================================================
+// Registration Provider Configuration
+// ============================================================================
+
+export const getProviderOptions = (t: (key: string) => string) => [
+  { label: t('Email'), value: 'email' },
+  { label: t('Google'), value: 'google' },
+  { label: t('GitHub'), value: 'github' },
+]
+
+// ============================================================================
+// Language Configuration
+// ============================================================================
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  en: 'English',
+  zh: '中文',
+  'zh-TW': '中文(繁體)',
+  ru: 'Русский',
+  ja: '日本語',
+  ko: '한국어',
+  de: 'Deutsch',
+  fr: 'Français',
+  es: 'Español',
+  it: 'Italiano',
+  pt: 'Português',
+  pl: 'Polski',
+  tr: 'Türkçe',
+  vi: 'Tiếng Việt',
+  id: 'Indonesia',
+}
+
+export const getLanguageOptions = () =>
+  Object.entries(LANGUAGE_LABELS).map(([value, label]) => ({ label, value }))
+
+// ============================================================================
+// Country Configuration
+// ============================================================================
+
+export const getCountryOptions = () =>
+  Object.entries(COUNTRY_NAMES).map(([code, name]) => ({
+    label: name ? `${code} ${name}` : code,
+    value: code,
+  }))
+
+// ============================================================================
+// Trial Status Configuration
+// ============================================================================
+
+export const getTrialStatusOptions = (t: (key: string) => string) => [
+  { label: t('Claimed'), value: 'granted' },
+  { label: t('Shared'), value: 'shared' },
+  { label: t('Claiming'), value: 'claiming' },
+  { label: t('Claim Failed'), value: 'failed' },
+  { label: t('Blocked'), value: 'blocked' },
+  { label: t('Not Claimed'), value: 'not_claimed' },
 ]
 
 // ============================================================================

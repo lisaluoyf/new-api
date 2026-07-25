@@ -182,6 +182,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
           </StatusBadge>
         )
       },
+      filterFn: () => true,
       enableSorting: false,
       meta: { label: t('Registration Method'), mobileHidden: true },
     },
@@ -199,6 +200,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
             </div>
           : <span className='text-muted-foreground text-xs'>—</span>
       },
+      filterFn: () => true,
       enableSorting: false,
       meta: { label: '国家', mobileHidden: true },
     },
@@ -213,6 +215,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
           ? <span className='text-xs font-medium'>{lang}</span>
           : <span className='text-muted-foreground text-xs'>—</span>
       },
+      filterFn: () => true,
       enableSorting: false,
       meta: { label: '语言', mobileHidden: true },
     },
@@ -303,6 +306,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
           />
         )
       },
+      filterFn: () => true,
       enableSorting: false,
       meta: { label: 'Trial', mobileHidden: true },
     },
@@ -509,6 +513,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
           </Tooltip>
         )
       },
+      filterFn: () => true,
       enableSorting: false,
       meta: { label: t('Registration Channel'), mobileHidden: true },
     },

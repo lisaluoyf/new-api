@@ -30,10 +30,11 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { useMediaQuery } from '@/hooks'
+import { useDebounce, useMediaQuery } from '@/hooks'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
+import { Input } from '@/components/ui/input'
 import {
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
@@ -44,12 +45,40 @@ import {
   USER_STATUS,
   getUserStatusOptions,
   getUserRoleOptions,
+  getProviderOptions,
+  getLanguageOptions,
+  getCountryOptions,
+  getTrialStatusOptions,
   isUserDeleted,
 } from '../constants'
 import type { User } from '../types'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 import { useUsersColumns } from './users-columns'
 import { useUsers } from './users-provider'
+
+const SUGGEST_MAX = 8
+
+function getChannelSuggestions(): string[] {
+  try {
+    const raw = localStorage.getItem('users_suggest_channel')
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+function saveChannelSuggestion(value: string) {
+  if (!value.trim()) return
+  try {
+    const prev = getChannelSuggestions().filter((v) => v !== value)
+    localStorage.setItem(
+      'users_suggest_channel',
+      JSON.stringify([value, ...prev].slice(0, SUGGEST_MAX))
+    )
+  } catch {
+    /* localStorage unavailable */
+  }
+}
 
 const route = getRouteApi('/_authenticated/users/')
 
@@ -83,8 +112,70 @@ export function UsersTable() {
       { columnId: 'status', searchKey: 'status', type: 'array' },
       { columnId: 'role', searchKey: 'role', type: 'array' },
       { columnId: 'group', searchKey: 'group', type: 'string' },
+      { columnId: 'language', searchKey: 'language', type: 'array' },
+      { columnId: 'country', searchKey: 'country', type: 'array' },
+      {
+        columnId: 'registration_provider',
+        searchKey: 'provider',
+        type: 'array',
+      },
+      { columnId: 'trial', searchKey: 'trial', type: 'array' },
+      {
+        columnId: 'registration_channel',
+        searchKey: 'channel',
+        type: 'string',
+      },
     ],
   })
+
+  const languageFilter =
+    (columnFilters.find((f) => f.id === 'language')?.value as string[]) || []
+  const countryFilter =
+    (columnFilters.find((f) => f.id === 'country')?.value as string[]) || []
+  const providerFilter =
+    (columnFilters.find((f) => f.id === 'registration_provider')
+      ?.value as string[]) || []
+  const trialFilter =
+    (columnFilters.find((f) => f.id === 'trial')?.value as string[]) || []
+  const channelFilterFromUrl =
+    (columnFilters.find((f) => f.id === 'registration_channel')
+      ?.value as string) || ''
+
+  const [channelFilterInput, setChannelFilterInput] = useState(
+    channelFilterFromUrl
+  )
+  const debouncedChannelFilter = useDebounce(channelFilterInput, 500)
+
+  useEffect(() => {
+    setChannelFilterInput(channelFilterFromUrl)
+  }, [channelFilterFromUrl])
+
+  useEffect(() => {
+    if (debouncedChannelFilter !== channelFilterFromUrl) {
+      onColumnFiltersChange((prev) => {
+        const filtered = prev.filter((f) => f.id !== 'registration_channel')
+        return debouncedChannelFilter
+          ? [
+              ...filtered,
+              { id: 'registration_channel', value: debouncedChannelFilter },
+            ]
+          : filtered
+      })
+      if (debouncedChannelFilter) {
+        saveChannelSuggestion(debouncedChannelFilter)
+      }
+    }
+  }, [debouncedChannelFilter, channelFilterFromUrl, onColumnFiltersChange])
+
+  const channelFilter = channelFilterFromUrl
+
+  const filterParams = {
+    language: languageFilter[0],
+    country: countryFilter[0],
+    provider: providerFilter[0],
+    trial: trialFilter[0],
+    channel: channelFilter || undefined,
+  }
 
   // Fetch data with React Query
   const { data, isLoading, isFetching } = useQuery({
@@ -93,6 +184,7 @@ export function UsersTable() {
       pagination.pageIndex + 1,
       pagination.pageSize,
       globalFilter,
+      filterParams,
       refreshTrigger,
     ],
     queryFn: async () => {
@@ -100,6 +192,7 @@ export function UsersTable() {
       const params = {
         p: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
+        ...filterParams,
       }
 
       const result = hasFilter
@@ -160,7 +253,8 @@ export function UsersTable() {
     onPaginationChange,
     onGlobalFilterChange,
     onColumnFiltersChange,
-    manualPagination: !globalFilter,
+    manualPagination: true,
+    manualFiltering: true,
     pageCount: Math.ceil((data?.total || 0) / pagination.pageSize),
   })
 
@@ -182,6 +276,24 @@ export function UsersTable() {
       skeletonKeyPrefix='users-skeleton'
       toolbarProps={{
         searchPlaceholder: t('Filter by username, name or email...'),
+        additionalSearch: (
+          <div className='relative'>
+            <Input
+              list='users-suggest-channel'
+              placeholder={t('Filter by channel...')}
+              value={channelFilterInput}
+              onChange={(e) => setChannelFilterInput(e.target.value)}
+              className='w-full sm:w-[150px] lg:w-[180px]'
+            />
+            {getChannelSuggestions().length > 0 && (
+              <datalist id='users-suggest-channel'>
+                {getChannelSuggestions().map((v) => (
+                  <option key={v} value={v} />
+                ))}
+              </datalist>
+            )}
+          </div>
+        ),
         filters: [
           {
             columnId: 'status',
@@ -192,6 +304,30 @@ export function UsersTable() {
             columnId: 'role',
             title: t('Role'),
             options: getUserRoleOptions(t),
+          },
+          {
+            columnId: 'registration_provider',
+            title: t('Registration Method'),
+            options: getProviderOptions(t),
+            singleSelect: true,
+          },
+          {
+            columnId: 'language',
+            title: t('Language'),
+            options: getLanguageOptions(),
+            singleSelect: true,
+          },
+          {
+            columnId: 'country',
+            title: '国家',
+            options: getCountryOptions(),
+            singleSelect: true,
+          },
+          {
+            columnId: 'trial',
+            title: 'Trial',
+            options: getTrialStatusOptions(t),
+            singleSelect: true,
           },
         ],
       }}

@@ -1,4 +1,4 @@
-const COUNTRY_NAMES: Record<string, string> = {
+export const COUNTRY_NAMES: Record<string, string> = {
   CN: '中国', TW: '台湾', HK: '香港', MO: '澳门',
   US: '美国', GB: '英国', JP: '日本', KR: '韩国',
   SG: '新加坡', MY: '马来西亚', ID: '印尼', TH: '泰国',

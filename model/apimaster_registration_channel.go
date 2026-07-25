@@ -507,3 +507,32 @@ func EnrichUsersRegistrationChannels(users []*User) {
 		user.RegistrationProvider = row.Provider
 	}
 }
+
+// FindUsernamesByAttribution looks up apimaster usernames matching the given
+// provider (exact) and/or registration channel code (substring), AND'd
+// together when both are set. Returns new-api usernames (the derived
+// LEFT(REPLACE(id,'-',''),20) key used to join against the main users table),
+// suitable for a WHERE username IN (...) filter. Either argument may be empty
+// to skip that condition; calling with both empty is a no-op (returns nil).
+func FindUsernamesByAttribution(provider string, channelLike string) ([]string, error) {
+	if APIMASTER_PG_DB == nil || (provider == "" && channelLike == "") {
+		return nil, nil
+	}
+
+	query := `SELECT LEFT(REPLACE(id::text, '-', ''), 20) AS username FROM users WHERE 1=1`
+	args := []interface{}{}
+	if provider != "" {
+		query += ` AND provider = ?`
+		args = append(args, provider)
+	}
+	if channelLike != "" {
+		query += ` AND registration_channel_code ILIKE ?`
+		args = append(args, "%"+channelLike+"%")
+	}
+
+	var usernames []string
+	if err := APIMASTER_PG_DB.Raw(query, args...).Scan(&usernames).Error; err != nil {
+		return nil, err
+	}
+	return usernames, nil
+}

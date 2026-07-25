@@ -87,7 +87,15 @@ export interface ApiResponse<T = unknown> {
   data?: T
 }
 
-export interface GetUsersParams {
+export interface UserListFilterParams {
+  language?: string
+  country?: string
+  provider?: string
+  channel?: string
+  trial?: string
+}
+
+export interface GetUsersParams extends UserListFilterParams {
   p?: number
   page_size?: number
 }
@@ -103,7 +111,7 @@ export interface GetUsersResponse {
   }
 }
 
-export interface SearchUsersParams {
+export interface SearchUsersParams extends UserListFilterParams {
   keyword?: string
   group?: string
   p?: number
