@@ -995,28 +995,9 @@ func ToggleChannelStatus(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	// abilities.enabled controls UI visibility only; actual routing uses channels.status.
-	// Sync channels.status so the disable/enable takes effect in the routing cache.
-	if enabled {
-		model.DB.Table("channels").
-			Where("id = ? AND status = ?", req.ChannelID, common.ChannelStatusManuallyDisabled).
-			Updates(map[string]any{"status": common.ChannelStatusEnabled, "consecutive_fingerprint_pass": 0})
-	} else {
-		model.DB.Table("channels").
-			Where("id = ? AND status = ?", req.ChannelID, common.ChannelStatusEnabled).
-			Updates(map[string]any{"status": common.ChannelStatusManuallyDisabled})
-	}
-	// When re-enabling, also bring the channel back to enabled regardless of how
-	// it was disabled — both fingerprint auto-disable (status=3) AND operator
-	// manual-disable (status=2). An explicit "enable" here means "make this
-	// usable"; without lifting status=2 the button silently no-ops on
-	// manually-disabled channels. Resets the recovery counter so fingerprint
-	// auto-disable starts fresh.
-	if enabled {
-		model.DB.Table("channels").
-			Where("id = ? AND status <> ?", req.ChannelID, common.ChannelStatusEnabled).
-			Updates(map[string]any{"status": common.ChannelStatusEnabled, "consecutive_fingerprint_pass": 0})
-	}
+	// Keep the channel's global status unchanged. The routing cache is built from
+	// enabled abilities, so a per-model toggle must not disable or re-enable the
+	// entire channel.
 	// Refresh the in-memory/Redis routing cache so the toggle takes effect
 	// immediately — every channel mutation in controller/channel.go does this.
 	model.InitChannelCache()
