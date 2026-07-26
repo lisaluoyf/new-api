@@ -942,7 +942,7 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 	}
 	go func() {
 		var user User
-		if err := DB.Select("email, country, created_at, quota").Where("id = ?", userId).First(&user).Error; err != nil {
+		if err := DB.Select("email, country, language, created_at, quota").Where("id = ?", userId).First(&user).Error; err != nil {
 			user.Email = fmt.Sprintf("user#%d", userId)
 		}
 		email := user.Email
@@ -952,6 +952,10 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 		country := user.Country
 		if country == "" {
 			country = "—"
+		}
+		language := user.Language
+		if language == "" {
+			language = "—"
 		}
 		registeredAt := "—"
 		if user.CreatedAt > 0 {
@@ -975,11 +979,12 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
 		}
 		lines := []string{
-			fmt.Sprintf("用户：%s", email),
+			fmt.Sprintf("用户：`%s`", email),
 			fmt.Sprintf("本次到账（USD）：$%.2f", usdAmount),
 			cumulativeLine,
 			fmt.Sprintf("余额：$%.2f", walletBalance),
 			fmt.Sprintf("国家：%s", country),
+			fmt.Sprintf("语言：%s", language),
 			fmt.Sprintf("方式：%s", methodLabel),
 			fmt.Sprintf("注册于：%s", registeredAt),
 		}
