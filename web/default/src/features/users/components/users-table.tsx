@@ -141,9 +141,8 @@ export function UsersTable() {
     (columnFilters.find((f) => f.id === 'registration_channel')
       ?.value as string) || ''
 
-  const [channelFilterInput, setChannelFilterInput] = useState(
-    channelFilterFromUrl
-  )
+  const [channelFilterInput, setChannelFilterInput] =
+    useState(channelFilterFromUrl)
   const debouncedChannelFilter = useDebounce(channelFilterInput, 500)
 
   useEffect(() => {
@@ -320,7 +319,7 @@ export function UsersTable() {
           },
           {
             columnId: 'country',
-            title: '国家',
+            title: t('Country'),
             options: getCountryOptions(),
             singleSelect: true,
           },

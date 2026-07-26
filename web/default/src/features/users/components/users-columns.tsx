@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { type ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
+import { parseCountry } from '@/lib/country'
 import { formatQuota, formatTimestamp } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -27,7 +28,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { parseCountry } from '@/lib/country'
 import { DataTableColumnHeader } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { LongText } from '@/components/long-text'
@@ -53,8 +53,13 @@ function parseTrialBlocked(remark: string | undefined) {
 }
 
 export function useUsersColumns(): ColumnDef<User>[] {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { setSelectedUserId, setUserInfoDialogOpen } = useUsers()
+  const isEnglish = (i18n.resolvedLanguage || i18n.language)
+    .toLowerCase()
+    .startsWith('en')
+  const headerTitle = (compactEnglish: string, translationKey: string) =>
+    isEnglish ? compactEnglish : t(translationKey)
 
   const openUserInfo = (userId: number) => {
     setSelectedUserId(userId)
@@ -127,7 +132,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
             <div className='flex items-center gap-2'>
               <button
                 type='button'
-                className='min-w-0 max-w-[118px] text-left font-medium hover:underline'
+                className='max-w-[118px] min-w-0 text-left font-medium hover:underline'
                 onClick={(e) => {
                   e.stopPropagation()
                   openUserInfo(row.original.id)
@@ -173,7 +178,10 @@ export function useUsersColumns(): ColumnDef<User>[] {
       id: 'registration_provider',
       accessorFn: (row) => row.registration_provider,
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Registration Method')} />
+        <DataTableColumnHeader
+          column={column}
+          title={headerTitle('Method', 'Registration Method')}
+        />
       ),
       cell: ({ row }) => {
         const provider = row.original.registration_provider
@@ -202,41 +210,53 @@ export function useUsersColumns(): ColumnDef<User>[] {
     {
       accessorKey: 'country',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title='国家' />
+        <DataTableColumnHeader
+          column={column}
+          title={headerTitle('Ctry.', 'Country')}
+        />
       ),
       cell: ({ row }) => {
         const c = parseCountry(row.getValue('country') as string | undefined)
-        return c
-          ? <div className='flex flex-col gap-0.5'>
-              <span className='text-xs font-medium'>{c.code}</span>
-              {c.name && <span className='text-muted-foreground text-xs'>{c.name}</span>}
-            </div>
-          : <span className='text-muted-foreground text-xs'>—</span>
+        return c ? (
+          <div className='flex flex-col gap-0.5'>
+            <span className='text-xs font-medium'>{c.code}</span>
+            {c.name && (
+              <span className='text-muted-foreground text-xs'>{c.name}</span>
+            )}
+          </div>
+        ) : (
+          <span className='text-muted-foreground text-xs'>—</span>
+        )
       },
       filterFn: () => true,
       enableSorting: false,
       size: 56,
       minSize: 56,
       maxSize: 56,
-      meta: { label: '国家', mobileHidden: true },
+      meta: { label: t('Country'), mobileHidden: true },
     },
     {
       accessorKey: 'language',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Language')} />
+        <DataTableColumnHeader
+          column={column}
+          title={headerTitle('Lang', 'Language')}
+        />
       ),
       cell: ({ row }) => {
         const lang = row.getValue('language') as string | undefined
-        return lang
-          ? <span className='text-xs font-medium'>{lang}</span>
-          : <span className='text-muted-foreground text-xs'>—</span>
+        return lang ? (
+          <span className='text-xs font-medium'>{lang}</span>
+        ) : (
+          <span className='text-muted-foreground text-xs'>—</span>
+        )
       },
       filterFn: () => true,
       enableSorting: false,
       size: 48,
       minSize: 48,
       maxSize: 48,
-      meta: { label: '语言', mobileHidden: true },
+      meta: { label: t('Language'), mobileHidden: true },
     },
     {
       accessorKey: 'status',
@@ -454,7 +474,10 @@ export function useUsersColumns(): ColumnDef<User>[] {
     {
       id: 'invite_info',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Invited Count')} />
+        <DataTableColumnHeader
+          column={column}
+          title={headerTitle('Invites', 'Invited Count')}
+        />
       ),
       cell: ({ row }) => {
         const user = row.original
@@ -502,7 +525,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
       header: ({ column }) => (
         <DataTableColumnHeader
           column={column}
-          title={t('Registration Channel')}
+          title={headerTitle('Channel', 'Registration Channel')}
         />
       ),
       cell: ({ row }) => {
@@ -526,9 +549,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
           <Tooltip>
             <TooltipTrigger render={<div className='cursor-help' />}>
               <div className='flex w-[132px] min-w-0 flex-col gap-1'>
-                <span className='truncate text-sm font-medium'>
-                  {headline}
-                </span>
+                <span className='truncate text-sm font-medium'>{headline}</span>
                 <code className='text-muted-foreground truncate text-xs'>
                   {channelCode}
                 </code>
