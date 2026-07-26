@@ -49,6 +49,7 @@ func includePublicDetectHistoryStatus(status string) bool {
 type ModelDataItem struct {
 	ChannelID       int    `json:"channel_id"`
 	ChannelName     string `json:"channel_name"`
+	Group           string `json:"group"`
 	KeyGroup        string `json:"key_group"`
 	ClientExclusive string `json:"client_exclusive"` // "" | codex | claude_code
 	// Pricing fields: nil = no pricing row (upstream 401/404 / cookie-only auth / no endpoint).
@@ -120,6 +121,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 	type row struct {
 		ChannelID                  int
 		ChannelName                string
+		ChannelGroup               string
 		BaseURL                    *string
 		Setting                    *string
 		ModelMapping               *string
@@ -158,9 +160,13 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 	// input_price=0. The `p.model_name IN (candidates)` filter must live in the
 	// ON clause — putting it in WHERE would degenerate LEFT JOIN to INNER JOIN
 	// (any non-NULL filter on the right table re-excludes the no-match rows).
+	channelGroupColumn := "c.`group`"
+	if common.UsingPostgreSQL {
+		channelGroupColumn = `c."group"`
+	}
 	var rows []row
 	model.DB.Table("channels c").
-		Select("c.id as channel_id, c.name as channel_name, c.base_url, c.setting, c.model_mapping, p.input_price, p.output_price, p.cache_price, p.cache_creation_price, p.group_ratio, p.pricing_source, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.status, c.consecutive_fingerprint_pass, COALESCE(a.enabled, true) as model_enabled, c.other_info").
+		Select("c.id as channel_id, c.name as channel_name, "+channelGroupColumn+" as channel_group, c.base_url, c.setting, c.model_mapping, p.input_price, p.output_price, p.cache_price, p.cache_creation_price, p.group_ratio, p.pricing_source, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.status, c.consecutive_fingerprint_pass, COALESCE(a.enabled, true) as model_enabled, c.other_info").
 		Joins("LEFT JOIN channel_model_pricings p ON c.id = p.channel_id AND p.model_name IN ?", candidates).
 		Joins("LEFT JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND a.group = 'default'", modelName).
 		// Show all status (1/2/3) so the operator can act on auto-disabled ones from the table.
@@ -399,6 +405,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		items = append(items, ModelDataItem{
 			ChannelID:                  r.ChannelID,
 			ChannelName:                r.ChannelName,
+			Group:                      r.ChannelGroup,
 			KeyGroup:                   keyGroup,
 			ClientExclusive:            clientExclusive,
 			ModelPrice:                 modelPricePtr,

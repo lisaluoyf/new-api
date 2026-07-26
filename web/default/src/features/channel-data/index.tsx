@@ -24,6 +24,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { GroupBadge } from '@/components/group-badge'
+import { StatusBadge } from '@/components/status-badge'
+import { parseGroupsList } from '@/features/channels/lib'
 import { MODEL_TABS } from './constants'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -47,6 +50,7 @@ interface DetectPoint {
 interface ModelDataItem {
   channel_id: number
   channel_name: string
+  group: string
   key_group: string
   client_exclusive?: string  // '' | codex | claude_code
   // null when upstream /api/pricing returned 401/404 or cookie-only auth —
@@ -154,6 +158,48 @@ function ClientExclusiveBadge({ value }: { value?: string }) {
     <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${styles[value] ?? 'bg-gray-100 text-gray-600'}`}>
       {labels[value] ?? value}
     </span>
+  )
+}
+
+function ChannelGroups({ value }: { value?: string }) {
+  const groups = parseGroupsList(value ?? '')
+  if (groups.length === 0) {
+    return <span className='text-muted-foreground text-xs'>-</span>
+  }
+
+  const badges = groups.map((group) => (
+    <GroupBadge key={group} group={group} size='sm' />
+  ))
+  const visibleBadges = badges.slice(0, 2)
+  const remaining = badges.length - visibleBadges.length
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger render={<div />}>
+          <div className='flex max-w-full items-center gap-1 overflow-hidden'>
+            {visibleBadges}
+            {remaining > 0 && (
+              <StatusBadge
+                label={`+${remaining}`}
+                variant='neutral'
+                size='sm'
+                copyable={false}
+                className='flex-shrink-0'
+              />
+            )}
+          </div>
+        </TooltipTrigger>
+        {remaining > 0 && (
+          <TooltipContent
+            side='top'
+            className='border-border bg-popover max-h-48 max-w-[320px] overflow-y-auto p-2'
+          >
+            <div className='flex flex-wrap gap-1'>{badges}</div>
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -1039,6 +1085,7 @@ export function ChannelDataPage() {
               <tr className='border-b border-gray-100'>
                 <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>ID</th>
                 <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide w-36'>{t('Site')}</th>
+                <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Groups')}</th>
                 <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Site Group')}</th>
                 <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Client')}</th>
                 <th className='text-right px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Recharge Rate')}</th>
@@ -1079,12 +1126,12 @@ export function ChannelDataPage() {
             <tbody className='divide-y divide-gray-50'>
               {loading && (
                 <tr>
-                  <td colSpan={17} className='px-5 py-12 text-center text-sm text-gray-400'>{t('Loading…')}</td>
+                  <td colSpan={18} className='px-5 py-12 text-center text-sm text-gray-400'>{t('Loading…')}</td>
                 </tr>
               )}
               {!loading && data.length === 0 && (
                 <tr>
-                  <td colSpan={17} className='px-5 py-12 text-center text-sm text-gray-400'>
+                  <td colSpan={18} className='px-5 py-12 text-center text-sm text-gray-400'>
                     {t('No data — please add channels supporting this model in Channel Management')}
                   </td>
                 </tr>
@@ -1148,6 +1195,9 @@ export function ChannelDataPage() {
                           )}
                         </div>
                       </div>
+                    </td>
+                    <td className={`px-3 py-2.5 ${dim}`}>
+                      <ChannelGroups value={item.group} />
                     </td>
                     <td className={`px-3 py-2.5 text-gray-500 ${dim}`}>{item.key_group || <span className='text-gray-300'>—</span>}</td>
                     <td className={`px-3 py-2.5 ${dim}`}>
