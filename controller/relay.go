@@ -997,7 +997,7 @@ func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *t
 
 	probeErr := result.newAPIError
 	classificationErr := probeErr
-	if service.ChannelRequiresClaudeCodeProbe(channel) {
+	if service.ChannelRequiresClientExclusiveProbe(channel) {
 		// The CLI worker returns a plain diagnostic error. The original routed
 		// error remains the source of truth for disable-category classification.
 		classificationErr = originalErr

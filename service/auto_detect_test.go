@@ -18,11 +18,13 @@ func TestExtractAPIFormatHonorsClientExclusive(t *testing.T) {
 	require.Equal(t, "openai-compatible", extractAPIFormat(nil))
 }
 
-func TestChannelRequiresClaudeCodeProbeUsesStructuredSetting(t *testing.T) {
+func TestChannelClientProbeFormatUsesStructuredSetting(t *testing.T) {
 	cc := `{"key_group":"Claude Max（仅限CC）","client_exclusive":"claude_code"}`
+	codex := `{"key_group":"codex","client_exclusive":"codex"}`
 	labelOnly := `{"key_group":"cc"}`
 
-	require.True(t, ChannelRequiresClaudeCodeProbe(&model.Channel{Setting: &cc}))
-	require.False(t, ChannelRequiresClaudeCodeProbe(&model.Channel{Setting: &labelOnly}))
-	require.False(t, ChannelRequiresClaudeCodeProbe(nil))
+	require.Equal(t, "claude-cli", ChannelClientProbeFormat(&model.Channel{Setting: &cc}))
+	require.Equal(t, "codex-cli", ChannelClientProbeFormat(&model.Channel{Setting: &codex}))
+	require.Empty(t, ChannelClientProbeFormat(&model.Channel{Setting: &labelOnly}))
+	require.Empty(t, ChannelClientProbeFormat(nil))
 }

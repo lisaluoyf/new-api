@@ -169,11 +169,11 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 		return
 	}
 
-	// Explicit Claude Code-only channels must be probed with the real CLI.
-	// Sending /chat/completions first can produce relay-specific rejection text
-	// that the fallback classifier does not recognize, causing a false outage.
-	if ChannelRequiresClaudeCodeProbe(ch) {
-		ok, latencyMs, err := ProbeClaudeCodeChannel(ctx, ch, targetModel)
+	// Client-exclusive channels must be probed with their real CLI. Sending
+	// /chat/completions first can produce relay-specific rejection text and a
+	// false outage.
+	if ChannelRequiresClientExclusiveProbe(ch) {
+		ok, latencyMs, err := ProbeClientExclusiveChannel(ctx, ch, targetModel)
 		status := "pass"
 		note := ""
 		if !ok {
@@ -223,7 +223,7 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 					// CC-only relay — delegate to Flask, which spawns the real
 					// claude binary (not available in this container). Definitive
 					// signal: don't try other URL/model candidates.
-					st, lat, note := claudeCliUptimeProbe(ctx, baseURL, apiKey, m)
+					st, lat, note := clientExclusiveUptimeProbe(ctx, baseURL, apiKey, m, "claude-cli")
 					recordUptimeResult(ch, targetModel, baseURL, st, lat, note)
 					return
 				default:
@@ -492,34 +492,34 @@ func buildChatCompletionsURL(baseURL string) string {
 	}
 }
 
-// claudeCliUptimeProbe delegates a liveness probe to the Flask backend's
-// /internal/uptime-probe endpoint, which runs the real claude CLI. Used for
-// CC-only relays that reject plain HTTP. Returns (status, latencyMs, note).
-func claudeCliUptimeProbe(ctx context.Context, baseURL, apiKey, modelName string) (string, float64, string) {
+// clientExclusiveUptimeProbe delegates liveness to the Flask worker, which
+// launches the requested real CLI. Returns (status, latencyMs, note).
+func clientExclusiveUptimeProbe(ctx context.Context, baseURL, apiKey, modelName, apiFormat string) (string, float64, string) {
 	flaskURL := os.Getenv("APIMASTER_FLASK_URL")
 	if flaskURL == "" {
 		flaskURL = autoDetectDefaultFlaskURL
 	}
 	reqBody, err := common.Marshal(map[string]string{
-		"base_url": baseURL,
-		"api_key":  apiKey,
-		"model":    modelName,
+		"base_url":   baseURL,
+		"api_key":    apiKey,
+		"model":      modelName,
+		"api_format": apiFormat,
 	})
 	if err != nil {
-		return "notcomplete", 0, fmt.Sprintf("claude-cli probe marshal: %v", err)
+		return "notcomplete", 0, fmt.Sprintf("%s probe marshal: %v", apiFormat, err)
 	}
 	start := time.Now()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, flaskURL+"/internal/uptime-probe", bytes.NewReader(reqBody))
 	if err != nil {
-		return "notcomplete", 0, fmt.Sprintf("claude-cli probe build: %v", err)
+		return "notcomplete", 0, fmt.Sprintf("%s probe build: %v", apiFormat, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	// claude CLI cold-start + inference runs slower than plain HTTP.
-	client := &http.Client{Timeout: 3 * time.Minute}
+	// Real CLI cold-start + inference runs slower than plain HTTP.
+	client := &http.Client{Timeout: 4 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "notcomplete", float64(time.Since(start).Milliseconds()), fmt.Sprintf("claude-cli probe: %v", err)
+		return "notcomplete", float64(time.Since(start).Milliseconds()), fmt.Sprintf("%s probe: %v", apiFormat, err)
 	}
 	defer resp.Body.Close()
 
@@ -529,7 +529,7 @@ func claudeCliUptimeProbe(ctx context.Context, baseURL, apiKey, modelName string
 		Error     string  `json:"error"`
 	}
 	if err := common.DecodeJson(resp.Body, &r); err != nil {
-		return "notcomplete", float64(time.Since(start).Milliseconds()), fmt.Sprintf("claude-cli probe decode: %v", err)
+		return "notcomplete", float64(time.Since(start).Milliseconds()), fmt.Sprintf("%s probe decode: %v", apiFormat, err)
 	}
 	lat := r.LatencyMs
 	if lat <= 0 {
@@ -538,20 +538,38 @@ func claudeCliUptimeProbe(ctx context.Context, baseURL, apiKey, modelName string
 	if r.Ok {
 		return "pass", lat, ""
 	}
-	return "notcomplete", lat, "claude-cli: " + r.Error
+	return "notcomplete", lat, apiFormat + ": " + r.Error
 }
 
-// ChannelRequiresClaudeCodeProbe reports whether automated health checks for a
-// channel must use the real Claude CLI.
-func ChannelRequiresClaudeCodeProbe(ch *model.Channel) bool {
-	return ch != nil && ExtractClientExclusive(ch.Setting) == ClientExclusiveClaudeCode
+// ChannelClientProbeFormat returns the real CLI required by a client-exclusive
+// channel, or an empty string for ordinary channels.
+func ChannelClientProbeFormat(ch *model.Channel) string {
+	if ch == nil {
+		return ""
+	}
+	switch ExtractClientExclusive(ch.Setting) {
+	case ClientExclusiveClaudeCode:
+		return "claude-cli"
+	case ClientExclusiveCodex:
+		return "codex-cli"
+	default:
+		return ""
+	}
 }
 
-// ProbeClaudeCodeChannel is shared by uptime, pre-disable confirmation, and
-// periodic recovery so every CC-only path uses the same real-CLI semantics.
-func ProbeClaudeCodeChannel(ctx context.Context, ch *model.Channel, modelName string) (bool, int64, error) {
+func ChannelRequiresClientExclusiveProbe(ch *model.Channel) bool {
+	return ChannelClientProbeFormat(ch) != ""
+}
+
+// ProbeClientExclusiveChannel is shared by uptime, pre-disable confirmation,
+// and periodic recovery so Claude Code/Codex paths use real-CLI semantics.
+func ProbeClientExclusiveChannel(ctx context.Context, ch *model.Channel, modelName string) (bool, int64, error) {
+	apiFormat := ChannelClientProbeFormat(ch)
+	if apiFormat == "" {
+		return false, 0, errors.New("client-exclusive probe: channel has no supported client_exclusive setting")
+	}
 	if ch == nil || ch.BaseURL == nil {
-		return false, 0, errors.New("claude-cli probe: channel or base URL is missing")
+		return false, 0, errors.New(apiFormat + " probe: channel or base URL is missing")
 	}
 	baseURL := strings.TrimRight(strings.TrimSpace(*ch.BaseURL), "/")
 	apiKey := strings.TrimSpace(ch.Key)
@@ -560,16 +578,16 @@ func ProbeClaudeCodeChannel(ctx context.Context, ch *model.Channel, modelName st
 	}
 	modelName = strings.TrimSpace(modelName)
 	if baseURL == "" || apiKey == "" || modelName == "" {
-		return false, 0, errors.New("claude-cli probe: base URL, API key, or model is missing")
+		return false, 0, errors.New(apiFormat + " probe: base URL, API key, or model is missing")
 	}
 
-	status, latencyMs, note := claudeCliUptimeProbe(ctx, baseURL, apiKey, modelName)
+	status, latencyMs, note := clientExclusiveUptimeProbe(ctx, baseURL, apiKey, modelName, apiFormat)
 	latency := int64(latencyMs)
 	if status == "pass" {
 		return true, latency, nil
 	}
 	if strings.TrimSpace(note) == "" {
-		note = "claude-cli probe did not pass"
+		note = apiFormat + " probe did not pass"
 	}
 	return false, latency, errors.New(note)
 }

@@ -667,17 +667,17 @@ func automaticChannelTestModel(channel *model.Channel, requestedModel string) st
 }
 
 // probeChannelForAutomation chooses the health-check implementation from the
-// structured client_exclusive setting. CC-only channels use the real Claude CLI;
-// all other channels retain the existing internal relay test.
+// structured client_exclusive setting. Claude Code/Codex-only channels use
+// their real CLI; all other channels retain the existing internal relay test.
 func probeChannelForAutomation(channel *model.Channel, requestedModel string) (testResult, int64) {
 	modelName := automaticChannelTestModel(channel, requestedModel)
-	if service.ChannelRequiresClaudeCodeProbe(channel) {
-		ok, latencyMs, err := service.ProbeClaudeCodeChannel(context.Background(), channel, modelName)
+	if service.ChannelRequiresClientExclusiveProbe(channel) {
+		ok, latencyMs, err := service.ProbeClientExclusiveChannel(context.Background(), channel, modelName)
 		if ok {
 			return testResult{}, latencyMs
 		}
 		if err == nil {
-			err = errors.New("claude-cli probe failed")
+			err = errors.New("client-exclusive CLI probe failed")
 		}
 		return testResult{localErr: err}, latencyMs
 	}
