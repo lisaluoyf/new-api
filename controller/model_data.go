@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"sort"
@@ -15,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // DetectPoint is one entry in a per-channel history series for the model-data UI.
@@ -988,10 +990,13 @@ func ToggleChannelStatus(c *gin.Context) {
 	// Expand canonical name → all known aliases so toggle works regardless of
 	// which variant the frontend tab is using.
 	modelCandidates := service.ModelNameCandidates(req.Model)
-	// Update all ability rows for this (channel_id, model) across all groups.
-	if err := model.DB.Table("abilities").
-		Where("channel_id = ? AND model IN ?", req.ChannelID, modelCandidates).
-		Update("enabled", enabled).Error; err != nil {
+	// Persist the operator's choice in channels.other_info as well as abilities.
+	// abilities is a derived table and is rebuilt whenever a channel is edited.
+	if _, err := model.SetChannelModelsManuallyDisabled(req.ChannelID, modelCandidates, !enabled); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "channel model ability not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
 	}

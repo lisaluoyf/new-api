@@ -159,6 +159,7 @@ func GetChannel(group string, model string, retry int, filter ChannelPickFilter)
 func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 	models_ := strings.Split(channel.Models, ",")
 	groups_ := strings.Split(channel.Group, ",")
+	manuallyDisabledModels := channel.GetManuallyDisabledModels()
 	abilitySet := make(map[string]struct{})
 	abilities := make([]Ability, 0, len(models_))
 	for _, model := range models_ {
@@ -168,11 +169,12 @@ func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 				continue
 			}
 			abilitySet[key] = struct{}{}
+			_, manuallyDisabled := manuallyDisabledModels[model]
 			ability := Ability{
 				Group:     group,
 				Model:     model,
 				ChannelId: channel.Id,
-				Enabled:   channel.Status == common.ChannelStatusEnabled,
+				Enabled:   channel.Status == common.ChannelStatusEnabled && !manuallyDisabled,
 				Priority:  channel.Priority,
 				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
@@ -231,6 +233,7 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 	// Then add new abilities
 	models_ := strings.Split(channel.Models, ",")
 	groups_ := strings.Split(channel.Group, ",")
+	manuallyDisabledModels := channel.GetManuallyDisabledModels()
 	abilitySet := make(map[string]struct{})
 	abilities := make([]Ability, 0, len(models_))
 	for _, model := range models_ {
@@ -240,11 +243,12 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 				continue
 			}
 			abilitySet[key] = struct{}{}
+			_, manuallyDisabled := manuallyDisabledModels[model]
 			ability := Ability{
 				Group:     group,
 				Model:     model,
 				ChannelId: channel.Id,
-				Enabled:   channel.Status == common.ChannelStatusEnabled,
+				Enabled:   channel.Status == common.ChannelStatusEnabled && !manuallyDisabled,
 				Priority:  channel.Priority,
 				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
@@ -274,11 +278,53 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 }
 
 func UpdateAbilityStatus(channelId int, status bool) error {
-	return DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", status).Error
+	if !status {
+		return DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", false).Error
+	}
+
+	var channel Channel
+	if err := DB.First(&channel, "id = ?", channelId).Error; err != nil {
+		return err
+	}
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if err := tx.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", true).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	disabled := channel.GetManuallyDisabledModels()
+	if len(disabled) > 0 {
+		modelNames := make([]string, 0, len(disabled))
+		for modelName := range disabled {
+			modelNames = append(modelNames, modelName)
+		}
+		if err := tx.Model(&Ability{}).
+			Where("channel_id = ? AND model IN ?", channelId, modelNames).
+			Select("enabled").
+			Update("enabled", false).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit().Error
 }
 
 func UpdateAbilityStatusByTag(tag string, status bool) error {
-	return DB.Model(&Ability{}).Where("tag = ?", tag).Select("enabled").Update("enabled", status).Error
+	if !status {
+		return DB.Model(&Ability{}).Where("tag = ?", tag).Select("enabled").Update("enabled", false).Error
+	}
+	var channelIDs []int
+	if err := DB.Model(&Channel{}).Where("tag = ?", tag).Pluck("id", &channelIDs).Error; err != nil {
+		return err
+	}
+	for _, channelID := range channelIDs {
+		if err := UpdateAbilityStatus(channelID, true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uint) error {

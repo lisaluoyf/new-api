@@ -325,6 +325,9 @@ func recoverModelForFingerprint(ch *model.Channel, targetModel string, updates m
 	if ch == nil || targetModel == "" {
 		return
 	}
+	if _, manuallyDisabled := ch.GetManuallyDisabledModels()[targetModel]; manuallyDisabled {
+		return
+	}
 
 	info := ch.GetOtherInfo()
 	autoDisabledModels := autoDisabledModelInfo(info)

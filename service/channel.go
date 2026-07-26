@@ -320,6 +320,14 @@ func EnableChannelModel(channelId int, modelName string, channelName string) {
 		return
 	}
 
+	channel, err := model.GetChannelById(channelId, true)
+	if err == nil && channel != nil {
+		if _, manuallyDisabled := channel.GetManuallyDisabledModels()[modelName]; manuallyDisabled {
+			common.SysLog(fmt.Sprintf("通道「%s」（#%d）模型「%s」已被手动禁用，跳过自动恢复", channelName, channelId, modelName))
+			return
+		}
+	}
+
 	result := model.DB.Table("abilities").
 		Where("channel_id = ? AND model = ?", channelId, modelName).
 		Update("enabled", true)
@@ -328,7 +336,7 @@ func EnableChannelModel(channelId int, modelName string, channelName string) {
 		return
 	}
 
-	channel, err := model.GetChannelById(channelId, true)
+	channel, err = model.GetChannelById(channelId, true)
 	if err == nil && channel != nil {
 		info := channel.GetOtherInfo()
 		autoDisabledModels := autoDisabledModelInfo(info)
