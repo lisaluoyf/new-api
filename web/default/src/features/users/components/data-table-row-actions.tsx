@@ -44,7 +44,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { UserSubscriptionsDialog } from '@/features/subscriptions/components/dialogs/user-subscriptions-dialog'
-import { manageUser, resetUserPasskey, resetUserTwoFA } from '../api'
+import {
+  addTrialBlockedEmailDomain,
+  manageUser,
+  removeTrialBlockedEmailDomain,
+  resetUserPasskey,
+  resetUserTwoFA,
+} from '../api'
 import {
   USER_STATUS,
   USER_ROLE,
@@ -66,6 +72,10 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const { setOpen, setCurrentRow, triggerRefresh } = useUsers()
   const [resetPasskeyOpen, setResetPasskeyOpen] = useState(false)
   const [resetTwoFAOpen, setResetTwoFAOpen] = useState(false)
+  const [addTrialBlockedDomainOpen, setAddTrialBlockedDomainOpen] =
+    useState(false)
+  const [removeTrialBlockedDomainOpen, setRemoveTrialBlockedDomainOpen] =
+    useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
 
@@ -127,6 +137,44 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     }
   }
 
+  const emailDomain = user.email?.split('@')[1]?.trim().toLowerCase() ?? ''
+
+  const handleAddTrialBlockedDomain = async () => {
+    try {
+      const result = await addTrialBlockedEmailDomain(user.id)
+      if (result.success) {
+        toast.success(
+          `已将 ${result.data?.domain || emailDomain} 加入 GPT Trial 黑域名`
+        )
+        triggerRefresh()
+      } else {
+        toast.error(result.message || '增加 GPT Trial 黑域名失败')
+      }
+    } catch (_error) {
+      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } finally {
+      setAddTrialBlockedDomainOpen(false)
+    }
+  }
+
+  const handleRemoveTrialBlockedDomain = async () => {
+    try {
+      const result = await removeTrialBlockedEmailDomain(user.id)
+      if (result.success) {
+        toast.success(
+          `已将 ${result.data?.domain || emailDomain} 移出 GPT Trial 黑域名`
+        )
+        triggerRefresh()
+      } else {
+        toast.error(result.message || '移出 GPT Trial 黑域名失败')
+      }
+    } catch (_error) {
+      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } finally {
+      setRemoveTrialBlockedDomainOpen(false)
+    }
+  }
+
   const isDisabled = user.status === USER_STATUS.DISABLED
   const isAdmin = user.role >= USER_ROLE.ADMIN
   const isRoot = user.role === USER_ROLE.ROOT
@@ -150,7 +198,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           <MoreHorizontal className='h-4 w-4' />
           <span className='sr-only'>{t('Open menu')}</span>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align='end' className='w-[180px]'>
+        <DropdownMenuContent align='end' className='w-[220px]'>
           <DropdownMenuItem onClick={handleEdit}>
             {t('Edit')}
             <DropdownMenuShortcut>
@@ -233,6 +281,34 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             </DropdownMenuShortcut>
           </DropdownMenuItem>
 
+          {emailDomain && (
+            <>
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault()
+                  setAddTrialBlockedDomainOpen(true)
+                }}
+              >
+                增加GPTTrial黑域名
+                <DropdownMenuShortcut>
+                  <ShieldAlert size={16} />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault()
+                  setRemoveTrialBlockedDomainOpen(true)
+                }}
+              >
+                移出GPTTrial黑域名
+                <DropdownMenuShortcut>
+                  <Trash2 size={16} />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </>
+          )}
+
           <DropdownMenuSeparator />
 
           <DropdownMenuItem
@@ -292,6 +368,24 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         desc={`Reset 2FA for ${user.username}? The user must set up 2FA again to continue using it.`}
         confirmText='Reset 2FA'
         handleConfirm={handleResetTwoFA}
+      />
+
+      <ConfirmDialog
+        open={addTrialBlockedDomainOpen}
+        onOpenChange={setAddTrialBlockedDomainOpen}
+        title='增加 GPT Trial 黑域名'
+        desc={`将 ${emailDomain || '该域名'} 加入 GPT Trial 黑域名后，这个域名下的账号将无法领取 GPT Trial。`}
+        confirmText='确认增加'
+        handleConfirm={handleAddTrialBlockedDomain}
+      />
+
+      <ConfirmDialog
+        open={removeTrialBlockedDomainOpen}
+        onOpenChange={setRemoveTrialBlockedDomainOpen}
+        title='移出 GPT Trial 黑域名'
+        desc={`将 ${emailDomain || '该域名'} 移出 GPT Trial 黑域名后，这个域名下的账号可重新按现有规则参与领取判定。`}
+        confirmText='确认移出'
+        handleConfirm={handleRemoveTrialBlockedDomain}
       />
 
       <UserBindingDialog
