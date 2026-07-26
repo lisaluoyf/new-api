@@ -83,6 +83,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       ),
       enableSorting: false,
       enableHiding: false,
+      size: 36,
+      minSize: 36,
+      maxSize: 36,
       meta: { label: t('Select') },
     },
     {
@@ -104,6 +107,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
           </button>
         )
       },
+      size: 56,
+      minSize: 56,
+      maxSize: 56,
       meta: { label: t('ID'), mobileHidden: true },
     },
     {
@@ -117,17 +123,17 @@ export function useUsersColumns(): ColumnDef<User>[] {
         const { cleanRemark } = parseTrialBlocked(row.original.remark)
 
         return (
-          <div className='flex min-w-[160px] flex-col gap-1'>
+          <div className='flex w-[170px] min-w-0 flex-col gap-1'>
             <div className='flex items-center gap-2'>
               <button
                 type='button'
-                className='min-w-0 max-w-[140px] text-left font-medium hover:underline'
+                className='min-w-0 max-w-[118px] text-left font-medium hover:underline'
                 onClick={(e) => {
                   e.stopPropagation()
                   openUserInfo(row.original.id)
                 }}
               >
-                <LongText className='max-w-[140px]'>{username}</LongText>
+                <LongText className='max-w-[118px]'>{username}</LongText>
               </button>
               {cleanRemark && (
                 <Tooltip>
@@ -145,19 +151,22 @@ export function useUsersColumns(): ColumnDef<User>[] {
             {email && (
               <button
                 type='button'
-                className='text-muted-foreground max-w-[220px] text-left text-xs hover:underline'
+                className='text-muted-foreground max-w-[170px] text-left text-xs hover:underline'
                 onClick={(e) => {
                   e.stopPropagation()
                   openUserInfo(row.original.id)
                 }}
               >
-                <LongText className='max-w-[220px]'>{email}</LongText>
+                <LongText className='max-w-[170px]'>{email}</LongText>
               </button>
             )}
           </div>
         )
       },
       enableHiding: false,
+      size: 176,
+      minSize: 176,
+      maxSize: 176,
       meta: { label: t('Username'), mobileTitle: true },
     },
     {
@@ -185,6 +194,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       filterFn: () => true,
       enableSorting: false,
+      size: 92,
+      minSize: 92,
+      maxSize: 92,
       meta: { label: t('Registration Method'), mobileHidden: true },
     },
     {
@@ -203,6 +215,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       filterFn: () => true,
       enableSorting: false,
+      size: 68,
+      minSize: 68,
+      maxSize: 68,
       meta: { label: '国家', mobileHidden: true },
     },
     {
@@ -218,6 +233,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       filterFn: () => true,
       enableSorting: false,
+      size: 56,
+      minSize: 56,
+      maxSize: 56,
       meta: { label: '语言', mobileHidden: true },
     },
     {
@@ -259,6 +277,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
         return value.includes(String(row.getValue(id)))
       },
       enableSorting: false,
+      size: 88,
+      minSize: 88,
+      maxSize: 88,
       meta: { label: t('Status'), mobileBadge: true },
     },
     {
@@ -310,6 +331,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       filterFn: () => true,
       enableSorting: false,
+      size: 80,
+      minSize: 80,
+      maxSize: 80,
       meta: { label: 'Trial', mobileHidden: true },
     },
     {
@@ -338,7 +362,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
         return (
           <Tooltip>
             <TooltipTrigger
-              render={<div className='w-[150px] cursor-help space-y-1' />}
+              render={<div className='w-[116px] cursor-help space-y-1' />}
             >
               <div className='flex justify-between text-xs'>
                 <span className='font-medium tabular-nums'>
@@ -372,6 +396,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
           </Tooltip>
         )
       },
+      size: 128,
+      minSize: 128,
+      maxSize: 128,
       meta: { label: t('Quota') },
     },
     {
@@ -388,6 +415,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
         const searchValue = String(value).toLowerCase()
         return group.includes(searchValue)
       },
+      size: 104,
+      minSize: 104,
+      maxSize: 104,
       meta: { label: t('Group') },
     },
     {
@@ -416,6 +446,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
         return value.includes(String(row.getValue(id)))
       },
       enableSorting: false,
+      size: 84,
+      minSize: 84,
+      maxSize: 84,
       meta: { label: t('Role') },
     },
     {
@@ -459,6 +492,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
         )
       },
       enableSorting: false,
+      size: 72,
+      minSize: 72,
+      maxSize: 72,
       meta: { label: t('Invited Count'), mobileHidden: true },
     },
     {
@@ -489,11 +525,11 @@ export function useUsersColumns(): ColumnDef<User>[] {
         return (
           <Tooltip>
             <TooltipTrigger render={<div className='cursor-help' />}>
-              <div className='flex min-w-[140px] flex-col gap-1'>
-                <span className='text-sm font-medium'>
+              <div className='flex w-[132px] min-w-0 flex-col gap-1'>
+                <span className='truncate text-sm font-medium'>
                   {headline}
                 </span>
-                <code className='text-muted-foreground text-xs'>
+                <code className='text-muted-foreground truncate text-xs'>
                   {channelCode}
                 </code>
               </div>
@@ -517,6 +553,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       filterFn: () => true,
       enableSorting: false,
+      size: 144,
+      minSize: 144,
+      maxSize: 144,
       meta: { label: t('Registration Channel'), mobileHidden: true },
     },
     {
@@ -532,6 +571,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
           </span>
         )
       },
+      size: 136,
+      minSize: 136,
+      maxSize: 136,
       meta: { label: t('Created At'), mobileHidden: true },
     },
     {
@@ -547,11 +589,17 @@ export function useUsersColumns(): ColumnDef<User>[] {
           </span>
         )
       },
+      size: 136,
+      minSize: 136,
+      maxSize: 136,
       meta: { label: t('Last Login'), mobileHidden: true },
     },
     {
       id: 'actions',
       cell: ({ row }) => <DataTableRowActions row={row} />,
+      size: 52,
+      minSize: 52,
+      maxSize: 52,
       meta: { label: t('Actions') },
     },
   ]

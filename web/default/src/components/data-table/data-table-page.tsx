@@ -22,6 +22,15 @@ import { TableEmpty } from './table-empty'
 import { TableSkeleton } from './table-skeleton'
 import { DataTableToolbar } from './toolbar'
 
+function getColumnSizeStyle(size: number | undefined) {
+  if (!size || !Number.isFinite(size) || size <= 0) return undefined
+  return {
+    width: size,
+    minWidth: size,
+    maxWidth: size,
+  } as const
+}
+
 /**
  * Pass-through configuration for the default {@link DataTableToolbar}.
  * Pass `toolbar` (ReactNode) instead to fully replace the default toolbar.
@@ -290,7 +299,7 @@ function renderDesktop<TData>(
         props.tableClassName
       )}
     >
-      <Table>
+      <Table className={props.applyHeaderSize ? 'table-fixed' : undefined}>
         <TableHeader className={props.tableHeaderClassName}>
           {props.table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
@@ -300,7 +309,7 @@ function renderDesktop<TData>(
                   colSpan={header.colSpan}
                   style={
                     props.applyHeaderSize
-                      ? { width: header.getSize() }
+                      ? getColumnSizeStyle(header.getSize())
                       : undefined
                   }
                 >
@@ -335,13 +344,14 @@ function renderDesktop<TData>(
               if (props.renderRow) {
                 return props.renderRow(row)
               }
-              return (
-                <DefaultRow
-                  key={row.id}
-                  row={row}
-                  className={props.getRowClassName?.(row, { isMobile: false })}
-                />
-              )
+                return (
+                  <DefaultRow
+                    key={row.id}
+                    row={row}
+                    applyColumnSize={props.applyHeaderSize}
+                    className={props.getRowClassName?.(row, { isMobile: false })}
+                  />
+                )
             })
           )}
         </TableBody>
@@ -352,9 +362,11 @@ function renderDesktop<TData>(
 
 function DefaultRow<TData>({
   row,
+  applyColumnSize,
   className,
 }: {
   row: Row<TData>
+  applyColumnSize?: boolean
   className?: string
 }) {
   return (
@@ -363,7 +375,14 @@ function DefaultRow<TData>({
       className={className}
     >
       {row.getVisibleCells().map((cell) => (
-        <TableCell key={cell.id}>
+        <TableCell
+          key={cell.id}
+          style={
+            applyColumnSize
+              ? getColumnSizeStyle(cell.column.getSize())
+              : undefined
+          }
+        >
           {flexRender(cell.column.columnDef.cell, cell.getContext())}
         </TableCell>
       ))}
