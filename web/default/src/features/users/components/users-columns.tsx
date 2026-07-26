@@ -194,9 +194,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       filterFn: () => true,
       enableSorting: false,
-      size: 92,
-      minSize: 92,
-      maxSize: 92,
+      size: 80,
+      minSize: 80,
+      maxSize: 80,
       meta: { label: t('Registration Method'), mobileHidden: true },
     },
     {
@@ -215,9 +215,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       filterFn: () => true,
       enableSorting: false,
-      size: 68,
-      minSize: 68,
-      maxSize: 68,
+      size: 56,
+      minSize: 56,
+      maxSize: 56,
       meta: { label: '国家', mobileHidden: true },
     },
     {
@@ -233,9 +233,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       filterFn: () => true,
       enableSorting: false,
-      size: 56,
-      minSize: 56,
-      maxSize: 56,
+      size: 48,
+      minSize: 48,
+      maxSize: 48,
       meta: { label: '语言', mobileHidden: true },
     },
     {
@@ -277,9 +277,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
         return value.includes(String(row.getValue(id)))
       },
       enableSorting: false,
-      size: 88,
-      minSize: 88,
-      maxSize: 88,
+      size: 76,
+      minSize: 76,
+      maxSize: 76,
       meta: { label: t('Status'), mobileBadge: true },
     },
     {
@@ -331,9 +331,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       filterFn: () => true,
       enableSorting: false,
-      size: 80,
-      minSize: 80,
-      maxSize: 80,
+      size: 72,
+      minSize: 72,
+      maxSize: 72,
       meta: { label: 'Trial', mobileHidden: true },
     },
     {
@@ -415,9 +415,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
         const searchValue = String(value).toLowerCase()
         return group.includes(searchValue)
       },
-      size: 104,
-      minSize: 104,
-      maxSize: 104,
+      size: 82,
+      minSize: 82,
+      maxSize: 82,
       meta: { label: t('Group') },
     },
     {
