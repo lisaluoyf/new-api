@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -165,6 +166,23 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 		apiKey = strings.TrimSpace(apiKey[:idx])
 	}
 	if apiKey == "" || baseURL == "" {
+		return
+	}
+
+	// Explicit Claude Code-only channels must be probed with the real CLI.
+	// Sending /chat/completions first can produce relay-specific rejection text
+	// that the fallback classifier does not recognize, causing a false outage.
+	if ChannelRequiresClaudeCodeProbe(ch) {
+		ok, latencyMs, err := ProbeClaudeCodeChannel(ctx, ch, targetModel)
+		status := "pass"
+		note := ""
+		if !ok {
+			status = "notcomplete"
+			if err != nil {
+				note = err.Error()
+			}
+		}
+		recordUptimeResult(ch, targetModel, baseURL, status, float64(latencyMs), note)
 		return
 	}
 
@@ -521,6 +539,39 @@ func claudeCliUptimeProbe(ctx context.Context, baseURL, apiKey, modelName string
 		return "pass", lat, ""
 	}
 	return "notcomplete", lat, "claude-cli: " + r.Error
+}
+
+// ChannelRequiresClaudeCodeProbe reports whether automated health checks for a
+// channel must use the real Claude CLI.
+func ChannelRequiresClaudeCodeProbe(ch *model.Channel) bool {
+	return ch != nil && ExtractClientExclusive(ch.Setting) == ClientExclusiveClaudeCode
+}
+
+// ProbeClaudeCodeChannel is shared by uptime, pre-disable confirmation, and
+// periodic recovery so every CC-only path uses the same real-CLI semantics.
+func ProbeClaudeCodeChannel(ctx context.Context, ch *model.Channel, modelName string) (bool, int64, error) {
+	if ch == nil || ch.BaseURL == nil {
+		return false, 0, errors.New("claude-cli probe: channel or base URL is missing")
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(*ch.BaseURL), "/")
+	apiKey := strings.TrimSpace(ch.Key)
+	if idx := strings.IndexByte(apiKey, '\n'); idx >= 0 {
+		apiKey = strings.TrimSpace(apiKey[:idx])
+	}
+	modelName = strings.TrimSpace(modelName)
+	if baseURL == "" || apiKey == "" || modelName == "" {
+		return false, 0, errors.New("claude-cli probe: base URL, API key, or model is missing")
+	}
+
+	status, latencyMs, note := claudeCliUptimeProbe(ctx, baseURL, apiKey, modelName)
+	latency := int64(latencyMs)
+	if status == "pass" {
+		return true, latency, nil
+	}
+	if strings.TrimSpace(note) == "" {
+		note = "claude-cli probe did not pass"
+	}
+	return false, latency, errors.New(note)
 }
 
 func recordUptimeResult(ch *model.Channel, targetModel, baseURL, status string, latencyMs float64, note string) {

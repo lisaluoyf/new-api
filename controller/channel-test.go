@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,20 +78,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 
-	testModel = strings.TrimSpace(testModel)
-	if testModel == "" {
-		if channel.TestModel != nil && *channel.TestModel != "" {
-			testModel = strings.TrimSpace(*channel.TestModel)
-		} else {
-			models := channel.GetModels()
-			if len(models) > 0 {
-				testModel = strings.TrimSpace(models[0])
-			}
-			if testModel == "" {
-				testModel = "gpt-4o-mini"
-			}
-		}
-	}
+	testModel = automaticChannelTestModel(channel, testModel)
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
 
@@ -656,6 +644,47 @@ func validateTestResponseBody(respBody []byte, isStream bool) error {
 
 func shouldUseStreamForAutomaticChannelTest(channel *model.Channel) bool {
 	return channel != nil && channel.Type == constant.ChannelTypeCodex
+}
+
+func automaticChannelTestModel(channel *model.Channel, requestedModel string) string {
+	if modelName := strings.TrimSpace(requestedModel); modelName != "" {
+		return modelName
+	}
+	if channel != nil {
+		if channel.TestModel != nil {
+			if modelName := strings.TrimSpace(*channel.TestModel); modelName != "" {
+				return modelName
+			}
+		}
+		models := channel.GetModels()
+		if len(models) > 0 {
+			if modelName := strings.TrimSpace(models[0]); modelName != "" {
+				return modelName
+			}
+		}
+	}
+	return "gpt-4o-mini"
+}
+
+// probeChannelForAutomation chooses the health-check implementation from the
+// structured client_exclusive setting. CC-only channels use the real Claude CLI;
+// all other channels retain the existing internal relay test.
+func probeChannelForAutomation(channel *model.Channel, requestedModel string) (testResult, int64) {
+	modelName := automaticChannelTestModel(channel, requestedModel)
+	if service.ChannelRequiresClaudeCodeProbe(channel) {
+		ok, latencyMs, err := service.ProbeClaudeCodeChannel(context.Background(), channel, modelName)
+		if ok {
+			return testResult{}, latencyMs
+		}
+		if err == nil {
+			err = errors.New("claude-cli probe failed")
+		}
+		return testResult{localErr: err}, latencyMs
+	}
+
+	tik := time.Now()
+	result := testChannel(channel, modelName, "", shouldUseStreamForAutomaticChannelTest(channel))
+	return result, time.Since(tik).Milliseconds()
 }
 
 func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
@@ -1278,9 +1307,7 @@ func testCommonAutoDisabledChannels() error {
 			if !commonAutoReenableShouldProbe(channel) {
 				continue
 			}
-			tik := time.Now()
-			result := testChannel(channel, "", "", shouldUseStreamForAutomaticChannelTest(channel))
-			milliseconds := time.Since(tik).Milliseconds()
+			result, milliseconds := probeChannelForAutomation(channel, "")
 			recordCommonAutoReenableProbe(channel, result, milliseconds)
 			if result.newAPIError == nil && result.localErr == nil {
 				usingKey := ""
@@ -1298,9 +1325,7 @@ func testCommonAutoDisabledChannels() error {
 				if !commonAutoReenableShouldProbeModel(disabledModel) {
 					continue
 				}
-				tik := time.Now()
-				result := testChannel(channel, disabledModel.Model, "", shouldUseStreamForAutomaticChannelTest(channel))
-				milliseconds := time.Since(tik).Milliseconds()
+				result, milliseconds := probeChannelForAutomation(channel, disabledModel.Model)
 				recordCommonAutoReenableModelProbe(channel, disabledModel.Model, result, milliseconds)
 				if result.newAPIError == nil && result.localErr == nil {
 					service.EnableChannelModel(channel.Id, disabledModel.Model, channel.Name)

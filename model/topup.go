@@ -920,6 +920,18 @@ func IsFirstTopupPromoEligible(userId int) (bool, int64) {
 	return true, expiresAt
 }
 
+// successfulTopupUSDTotal returns the total USD value credited for successful
+// top-ups. Money cannot be used here because it may be denominated in the
+// payment channel's local currency (for example CNY for Alipay).
+func successfulTopupUSDTotal(userId int) (float64, error) {
+	var total float64
+	err := DB.Model(&TopUp{}).
+		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
+		Select("COALESCE(SUM(CASE WHEN credited_amount > 0 THEN credited_amount ELSE amount END), 0)").
+		Scan(&total).Error
+	return total, err
+}
+
 // NotifyPaymentSuccess sends a Feishu card to the ops group on successful payment.
 // quotaAdded is the quota units credited; USD amount is derived via QuotaPerUnit.
 // Runs in a goroutine so it never blocks the caller.
@@ -955,15 +967,17 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 		// 该用户第几次成功付款（含本次）；此时当前 TopUp 行已在事务内落库为 success。
 		var payCount int64
 		DB.Model(&TopUp{}).Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).Count(&payCount)
-		var cumulativePaid float64
-		DB.Model(&TopUp{}).
-			Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
-			Select("COALESCE(SUM(money), 0)").
-			Scan(&cumulativePaid)
+		cumulativePaidUSD, cumulativeErr := successfulTopupUSDTotal(userId)
+		cumulativeLine := "累计到账（USD）：—"
+		if cumulativeErr == nil {
+			cumulativeLine = fmt.Sprintf("累计到账（USD）：$%.2f", cumulativePaidUSD)
+		} else {
+			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
+		}
 		lines := []string{
 			fmt.Sprintf("用户：%s", email),
-			fmt.Sprintf("金额：$%.2f", usdAmount),
-			fmt.Sprintf("累计付款：$%.2f", cumulativePaid),
+			fmt.Sprintf("本次到账（USD）：$%.2f", usdAmount),
+			cumulativeLine,
 			fmt.Sprintf("余额：$%.2f", walletBalance),
 			fmt.Sprintf("国家：%s", country),
 			fmt.Sprintf("方式：%s", methodLabel),

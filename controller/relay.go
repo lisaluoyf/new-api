@@ -984,9 +984,7 @@ func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *t
 	}
 
 	modelName = strings.TrimSpace(modelName)
-	tik := time.Now()
-	result := testChannel(channel, modelName, "", shouldUseStreamForAutomaticChannelTest(channel))
-	latencyMs := time.Since(tik).Milliseconds()
+	result, latencyMs := probeChannelForAutomation(channel, modelName)
 	channel.UpdateResponseTime(latencyMs)
 
 	if result.newAPIError == nil && result.localErr == nil {
@@ -998,17 +996,30 @@ func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *t
 	}
 
 	probeErr := result.newAPIError
-	if probeErr == nil {
+	classificationErr := probeErr
+	if service.ChannelRequiresClaudeCodeProbe(channel) {
+		// The CLI worker returns a plain diagnostic error. The original routed
+		// error remains the source of truth for disable-category classification.
+		classificationErr = originalErr
+	}
+	if classificationErr == nil {
 		common.SysError(fmt.Sprintf("channel #%d disable probe failed locally but produced no channel error: %v", channelError.ChannelId, result.localErr))
 		return
 	}
 
-	reason := fmt.Sprintf("探针确认失败：原始错误 %s；探针错误 %s", originalReason, probeErr.ErrorWithStatusCode())
-	switch service.ClassifyChannelError(probeErr) {
+	probeReason := ""
+	if result.localErr != nil {
+		probeReason = result.localErr.Error()
+	}
+	if probeErr != nil {
+		probeReason = probeErr.ErrorWithStatusCode()
+	}
+	reason := fmt.Sprintf("探针确认失败：原始错误 %s；探针错误 %s", originalReason, probeReason)
+	switch service.ClassifyChannelError(classificationErr) {
 	case service.CategorySkip:
-		common.SysLog(fmt.Sprintf("channel #%d disable probe failed with non-disable error: %s", channelError.ChannelId, probeErr.ErrorWithStatusCode()))
+		common.SysLog(fmt.Sprintf("channel #%d disable probe failed with non-disable error: %s", channelError.ChannelId, classificationErr.ErrorWithStatusCode()))
 	case service.CategoryUpstreamRecharge:
-		service.NotifyUpstreamRecharge(channelError, probeErr)
+		service.NotifyUpstreamRecharge(channelError, classificationErr)
 		service.DisableChannel(channelError, reason)
 	case service.CategoryDisableImmediate, service.CategoryDisableWindow, service.CategoryRateLimitWindow:
 		service.DisableChannelModel(channelError, modelName, reason)
