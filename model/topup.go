@@ -972,15 +972,15 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 		var payCount int64
 		DB.Model(&TopUp{}).Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).Count(&payCount)
 		cumulativePaidUSD, cumulativeErr := successfulTopupUSDTotal(userId)
-		cumulativeLine := "累计到账（USD）：—"
+		cumulativeLine := "累计付款：—"
 		if cumulativeErr == nil {
-			cumulativeLine = fmt.Sprintf("累计到账（USD）：$%.2f", cumulativePaidUSD)
+			cumulativeLine = fmt.Sprintf("累计付款：$%.2f", cumulativePaidUSD)
 		} else {
 			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
 		}
 		lines := []string{
 			fmt.Sprintf("用户：`%s`", email),
-			fmt.Sprintf("本次到账（USD）：$%.2f", usdAmount),
+			fmt.Sprintf("金额：$%.2f", usdAmount),
 			cumulativeLine,
 			fmt.Sprintf("余额：$%.2f", walletBalance),
 			fmt.Sprintf("国家：%s", country),
