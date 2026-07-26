@@ -150,6 +150,20 @@ export async function resetUserTwoFA(id: number): Promise<ApiResponse> {
   return res.data
 }
 
+export async function addTrialBlockedEmailDomain(
+  id: number
+): Promise<ApiResponse<{ domain?: string }>> {
+  const res = await api.post(`/api/user/${id}/trial/blocked_email_domain`)
+  return res.data
+}
+
+export async function removeTrialBlockedEmailDomain(
+  id: number
+): Promise<ApiResponse<{ domain?: string }>> {
+  const res = await api.delete(`/api/user/${id}/trial/blocked_email_domain`)
+  return res.data
+}
+
 /**
  * Get all available groups
  */
