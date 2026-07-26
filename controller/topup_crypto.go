@@ -67,7 +67,7 @@ var cryptoChains = map[string]cryptoChainConfig{
 		usdcAddress:    "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
 		usdtDecimals:   6,
 		usdcDecimals:   6,
-		nativeCGID:     "matic-network",
+		nativeCGID:     "polygon-ecosystem-token",
 		nativeDecimals: 18,
 	},
 	"arbitrum": {
