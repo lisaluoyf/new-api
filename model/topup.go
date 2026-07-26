@@ -930,7 +930,7 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 	}
 	go func() {
 		var user User
-		if err := DB.Select("email, country, created_at").Where("id = ?", userId).First(&user).Error; err != nil {
+		if err := DB.Select("email, country, created_at, quota").Where("id = ?", userId).First(&user).Error; err != nil {
 			user.Email = fmt.Sprintf("user#%d", userId)
 		}
 		email := user.Email
@@ -950,13 +950,21 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 			registeredAt = time.Unix(user.CreatedAt, 0).In(loc).Format("2006-01-02 15:04")
 		}
 		usdAmount := float64(quotaAdded) / common.QuotaPerUnit
+		walletBalance := float64(user.Quota) / common.QuotaPerUnit
 		methodLabel := FormatPaymentMethodLabel(paymentMethod)
 		// 该用户第几次成功付款（含本次）；此时当前 TopUp 行已在事务内落库为 success。
 		var payCount int64
 		DB.Model(&TopUp{}).Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).Count(&payCount)
+		var cumulativePaid float64
+		DB.Model(&TopUp{}).
+			Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
+			Select("COALESCE(SUM(money), 0)").
+			Scan(&cumulativePaid)
 		lines := []string{
 			fmt.Sprintf("用户：%s", email),
 			fmt.Sprintf("金额：$%.2f", usdAmount),
+			fmt.Sprintf("累计付款：$%.2f", cumulativePaid),
+			fmt.Sprintf("余额：$%.2f", walletBalance),
 			fmt.Sprintf("国家：%s", country),
 			fmt.Sprintf("方式：%s", methodLabel),
 			fmt.Sprintf("注册于：%s", registeredAt),
