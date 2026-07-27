@@ -458,6 +458,12 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 			return request, nil
 		}
 
+		normalizeGptImage2Size := shouldNormalizeGptImage2Size(info) &&
+			service.IsGptImage2Family(request.Model)
+		if normalizeGptImage2Size {
+			normalizeSyncGptImage2ImageRequest(&request)
+		}
+
 		var requestBody bytes.Buffer
 		writer := multipart.NewWriter(&requestBody)
 
@@ -477,8 +483,19 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 				if key == "model" {
 					continue
 				}
+				if normalizeGptImage2Size && (key == "size" || key == "resolution") {
+					continue
+				}
 				for _, value := range values {
 					writer.WriteField(key, value)
+				}
+			}
+			if normalizeGptImage2Size {
+				if request.Size != "" {
+					writer.WriteField("size", request.Size)
+				}
+				if request.Resolution != "" {
+					writer.WriteField("resolution", request.Resolution)
 				}
 			}
 		}

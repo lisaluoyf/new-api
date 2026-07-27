@@ -1,11 +1,16 @@
 package openai
 
 import (
+	"bytes"
 	"encoding/json"
+	"mime/multipart"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/gin-gonic/gin"
 )
 
 func TestShouldNormalizeGptImage2SizeUsesCapabilities(t *testing.T) {
@@ -91,6 +96,82 @@ func TestNormalizeSyncGptImage2ImageRequestMapsRatioWithoutResolution(t *testing
 
 	if req.Size != "1024x1024" {
 		t.Fatalf("size = %q, want %q", req.Size, "1024x1024")
+	}
+}
+
+func TestConvertImageEditsMultipartNormalizesGptImage2Size(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var incoming bytes.Buffer
+	incomingWriter := multipart.NewWriter(&incoming)
+	for key, value := range map[string]string{
+		"model":      "gpt-image-2",
+		"prompt":     "edit this image",
+		"size":       "1:1",
+		"resolution": "1k",
+	} {
+		if err := incomingWriter.WriteField(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	imagePart, err := incomingWriter.CreateFormFile("image", "input.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := imagePart.Write([]byte("image-data")); err != nil {
+		t.Fatal(err)
+	}
+	if err := incomingWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	httpRequest := httptest.NewRequest("POST", "/v1/images/edits", &incoming)
+	httpRequest.Header.Set("Content-Type", incomingWriter.FormDataContentType())
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = httpRequest
+	if _, err := context.MultipartForm(); err != nil {
+		t.Fatal(err)
+	}
+
+	info := &relaycommon.RelayInfo{
+		RelayMode: relayconstant.RelayModeImagesEdits,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				GptImage2Capabilities: &dto.GptImage2Capabilities{
+					Version:    1,
+					Enabled:    true,
+					SizeFormat: dto.GptImage2SizeFormatPixelDimensions,
+				},
+			},
+		},
+	}
+	converted, err := (&Adaptor{}).ConvertImageRequest(context, info, dto.ImageRequest{
+		Model:      "gpt-image-2",
+		Prompt:     "edit this image",
+		Size:       "1:1",
+		Resolution: "1k",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	requestBody, ok := converted.(*bytes.Buffer)
+	if !ok {
+		t.Fatalf("converted request type = %T, want *bytes.Buffer", converted)
+	}
+	upstreamRequest := httptest.NewRequest("POST", "/v1/images/edits", requestBody)
+	upstreamRequest.Header.Set("Content-Type", context.Request.Header.Get("Content-Type"))
+	if err := upstreamRequest.ParseMultipartForm(1 << 20); err != nil {
+		t.Fatal(err)
+	}
+	if got := upstreamRequest.FormValue("size"); got != "1024x1024" {
+		t.Fatalf("size = %q, want 1024x1024", got)
+	}
+	if got := upstreamRequest.FormValue("resolution"); got != "" {
+		t.Fatalf("resolution = %q, want omitted", got)
+	}
+	if files := upstreamRequest.MultipartForm.File["image"]; len(files) != 1 {
+		t.Fatalf("image files = %d, want 1", len(files))
 	}
 }
 
