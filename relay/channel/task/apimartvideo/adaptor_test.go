@@ -29,3 +29,9 @@ func TestNormalizeModel(t *testing.T) {
 	require.Equal(t, "sora-2", normalizeModel("sora"))
 	require.True(t, IsVideoModel("sora"))
 }
+
+func TestIsChannel(t *testing.T) {
+	require.True(t, IsChannel("https://api.apimart.ai"))
+	require.True(t, IsChannel("https://api.apib.ai"))
+	require.False(t, IsChannel("https://api.openai.com"))
+}

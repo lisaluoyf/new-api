@@ -35,7 +35,8 @@ func IsMotionControlModel(model string) bool {
 }
 
 func IsChannel(baseURL string) bool {
-	return strings.Contains(strings.ToLower(baseURL), "apimart.ai")
+	baseURL = strings.ToLower(strings.TrimSpace(baseURL))
+	return strings.Contains(baseURL, "apimart.ai") || strings.Contains(baseURL, "apib.ai")
 }
 
 func normalizeModel(model string) string {
