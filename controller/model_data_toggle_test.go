@@ -148,6 +148,59 @@ func TestToggleChannelStatusDisablesOnlyRequestedModel(t *testing.T) {
 	}
 }
 
+func TestUpdateChannelPreservesManualModelDisableWhenOtherInfoIsEmpty(t *testing.T) {
+	db := setupModelDataToggleTestDB(t)
+	channel := model.Channel{
+		Id:        116,
+		Name:      "test-channel",
+		Status:    common.ChannelStatusEnabled,
+		Key:       "test-key",
+		Models:    "claude-opus-5,claude-sonnet-5",
+		Group:     "default",
+		OtherInfo: "{}",
+	}
+	if err := db.Create(&channel).Error; err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+	abilities := []model.Ability{
+		{Group: "default", Model: "claude-opus-5", ChannelId: channel.Id, Enabled: true},
+		{Group: "default", Model: "claude-sonnet-5", ChannelId: channel.Id, Enabled: true},
+	}
+	if err := db.Create(&abilities).Error; err != nil {
+		t.Fatalf("create abilities: %v", err)
+	}
+	if recorder := toggleModelForTest(t, channel.Id, "claude-opus-5", "disable"); recorder.Code != http.StatusOK {
+		t.Fatalf("disable status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodPut,
+		"/api/channel/",
+		strings.NewReader(`{"id":116,"name":"edited-channel","status":1,"key":"test-key","models":"claude-opus-5,claude-sonnet-5","group":"default","other_info":"{}"}`),
+	)
+	UpdateChannel(context)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("update status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	var gotChannel model.Channel
+	if err := db.First(&gotChannel, channel.Id).Error; err != nil {
+		t.Fatalf("load channel: %v", err)
+	}
+	if _, ok := gotChannel.GetManuallyDisabledModels()["claude-opus-5"]; !ok {
+		t.Fatal("channel edit discarded manual model disable metadata")
+	}
+	var disabledAbility model.Ability
+	if err := db.First(&disabledAbility, "channel_id = ? AND model = ?", channel.Id, "claude-opus-5").Error; err != nil {
+		t.Fatalf("load disabled ability: %v", err)
+	}
+	if disabledAbility.Enabled {
+		t.Fatal("channel edit re-enabled manually disabled model")
+	}
+}
+
 func stringPointerForToggleTest(value string) *string {
 	return &value
 }

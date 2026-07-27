@@ -913,6 +913,10 @@ func UpdateChannel(c *gin.Context) {
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
+	// OtherInfo contains server-managed routing state (for example per-model
+	// manual disables and automatic recovery counters). The edit form may send
+	// an empty or stale snapshot, so it must not overwrite the persisted state.
+	channel.OtherInfo = originChannel.OtherInfo
 
 	// If the request explicitly specifies a new MultiKeyMode, apply it on top of the original info.
 	if channel.MultiKeyMode != nil && *channel.MultiKeyMode != "" {
