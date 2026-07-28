@@ -28,6 +28,8 @@ func TestParseTaskResultCompleted(t *testing.T) {
 func TestNormalizeModel(t *testing.T) {
 	require.Equal(t, "sora-2", normalizeModel("sora"))
 	require.True(t, IsVideoModel("sora"))
+	require.Equal(t, ModelDoubaoSeedance20, normalizeModel(ModelDoubaoSeedance20))
+	require.True(t, IsVideoModel(ModelDoubaoSeedance20))
 }
 
 func TestIsChannel(t *testing.T) {

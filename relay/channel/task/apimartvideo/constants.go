@@ -6,6 +6,7 @@ import (
 
 const (
 	ModelKlingV3MotionControl = "kling-v3-motion-control"
+	ModelDoubaoSeedance20    = "doubao-seedance-2.0"
 	// StdUSDPerSecond is APIMart purchase price for mode=std.
 	StdUSDPerSecond = 0.10288
 	// ProUSDPerSecond is APIMart purchase price for mode=pro.
@@ -16,6 +17,7 @@ var ModelList = []string{
 	"sora",
 	"sora-2",
 	"sora-2-pro",
+	ModelDoubaoSeedance20,
 	ModelKlingV3MotionControl,
 }
 
@@ -23,7 +25,7 @@ var ChannelName = "apimart-video"
 
 func IsVideoModel(model string) bool {
 	switch strings.TrimSpace(model) {
-	case "sora", "sora-2", "sora-2-pro", ModelKlingV3MotionControl:
+	case "sora", "sora-2", "sora-2-pro", ModelDoubaoSeedance20, ModelKlingV3MotionControl:
 		return true
 	default:
 		return false

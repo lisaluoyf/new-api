@@ -9,7 +9,9 @@ import (
 func TestIsMotionControlModel(t *testing.T) {
 	require.True(t, IsMotionControlModel("kling-v3-motion-control"))
 	require.True(t, IsVideoModel("kling-v3-motion-control"))
+	require.True(t, IsVideoModel(ModelDoubaoSeedance20))
 	require.False(t, IsMotionControlModel("sora-2"))
+	require.False(t, IsMotionControlModel(ModelDoubaoSeedance20))
 }
 
 func TestModeBillingRatio(t *testing.T) {
