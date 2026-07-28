@@ -978,11 +978,11 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 		} else {
 			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
 		}
-		lines := []string{
-			fmt.Sprintf("用户：`%s`", email),
-			fmt.Sprintf("金额：$%.2f", usdAmount),
-			cumulativeLine,
-			fmt.Sprintf("余额：$%.2f", walletBalance),
+			lines := []string{
+				fmt.Sprintf("用户：%s", email),
+				fmt.Sprintf("金额：$%.2f", usdAmount),
+				cumulativeLine,
+				fmt.Sprintf("余额：$%.2f", walletBalance),
 			fmt.Sprintf("国家：%s", country),
 			fmt.Sprintf("语言：%s", language),
 			fmt.Sprintf("方式：%s", methodLabel),
