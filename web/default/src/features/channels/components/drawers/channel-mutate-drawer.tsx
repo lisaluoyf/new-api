@@ -711,7 +711,7 @@ function ModelPriceRatiosField({
                 ))}
             </select>
             <NumericInput
-              step='0.01'
+              step='0.0001'
               min='0'
               className='w-28'
               placeholder='e.g. 1.5'
