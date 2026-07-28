@@ -239,7 +239,21 @@ const NON_LLM_MODEL_IDS = new Set([
   'gpt-image-2',
   'sora-2',
   'sora-2-pro',
+  'doubao-seedance-2.0',
   'kling-v3-motion-control',
+])
+
+const VIDEO_MODEL_IDS = new Set([
+  'sora-2',
+  'sora-2-pro',
+  'doubao-seedance-2.0',
+  'kling-v3-motion-control',
+])
+
+const IMAGE_MODEL_IDS = new Set([
+  'gemini-3.1-flash-image',
+  'gemini-3.1-flash-image-preview',
+  'gpt-image-2',
 ])
 
 const PROCUREMENT_FIELD_LABEL_KEY: Record<string, string> = {
@@ -255,6 +269,12 @@ function hasPositivePrice(price: number | null | undefined): boolean {
 
 function isLLMModel(modelId: string): boolean {
   return !NON_LLM_MODEL_IDS.has(modelId)
+}
+
+function getPriceUnit(modelId: string): string {
+  if (VIDEO_MODEL_IDS.has(modelId)) return '$/s'
+  if (IMAGE_MODEL_IDS.has(modelId)) return '$/req'
+  return '$/1M'
 }
 
 const CHANNEL_DATA_MODEL_IDS = MODEL_TABS.map((tab) => tab.modelId)
@@ -887,6 +907,9 @@ export function ChannelDataPage() {
     }
   }, [allProcurementAlerts, allProcurementAuditFailed, allProcurementAuditLoaded, t])
 
+  const activePriceUnit = useMemo(() => getPriceUnit(activeModel), [activeModel])
+  const activeModelIsLLM = useMemo(() => isLLMModel(activeModel), [activeModel])
+
   // Manual enable/disable from the row button. Mutates server state then
   // refetches the table so the new status (1 / 2) shows up. We don't update
   // local state optimistically — toggling racing with auto-detect could leave
@@ -1092,27 +1115,27 @@ export function ChannelDataPage() {
                 <th className='text-right px-2 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>gratio</th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16'>
                   <div className='flex flex-col items-end leading-tight gap-0.5'>
-                    <span>{t('Channel Original Price')}</span><span className='normal-case font-normal'>$/1M</span>
+                    <span>{t('Channel Original Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
                   </div>
                 </th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16'>
                   <div className='flex flex-col items-end leading-tight gap-0.5'>
-                    <span>{t('Official Price')}</span><span className='normal-case font-normal'>$/1M</span>
+                    <span>{t('Official Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
                   </div>
                 </th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-20'>
                   <div className='flex flex-col items-end leading-tight gap-0.5'>
-                    <span>{t('Procurement Price')}</span><span className='normal-case font-normal'>$/1M</span>
+                    <span>{t('Procurement Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
                   </div>
                 </th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16'>
                   <div className='flex flex-col items-end leading-tight gap-0.5'>
-                    <span>{t('User Price')}</span><span className='normal-case font-normal'>$/1M</span>
+                    <span>{t('User Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
                   </div>
                 </th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16'>
                   <div className='flex flex-col items-end leading-tight gap-0.5'>
-                    <span>{t('HUB Price')}</span><span className='normal-case font-normal'>$/1M</span>
+                    <span>{t('HUB Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
                   </div>
                 </th>
                 <th className='text-right px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Latency')}</th>
@@ -1298,18 +1321,22 @@ export function ChannelDataPage() {
                                 <span className='opacity-70'>{t('Input')}</span>
                                 <span className='font-mono'>{fmtPrice(item.actual_price)}</span>
                               </div>
-                              <div className='flex justify-between gap-4'>
-                                <span className='opacity-70'>{t('Output')}</span>
-                                <span className='font-mono'>{fmtPrice(item.actual_output_price)}</span>
-                              </div>
-                              <div className='flex justify-between gap-4'>
-                                <span className='opacity-70'>{t('Cache Read')}</span>
-                                <span className='font-mono'>{fmtPrice(item.actual_cache_price)}</span>
-                              </div>
-                              <div className='flex justify-between gap-4'>
-                                <span className='opacity-70'>{t('Cache Write')}</span>
-                                <span className='font-mono'>{fmtPrice(item.actual_cache_creation_price)}</span>
-                              </div>
+                              {activeModelIsLLM && (
+                                <>
+                                  <div className='flex justify-between gap-4'>
+                                    <span className='opacity-70'>{t('Output')}</span>
+                                    <span className='font-mono'>{fmtPrice(item.actual_output_price)}</span>
+                                  </div>
+                                  <div className='flex justify-between gap-4'>
+                                    <span className='opacity-70'>{t('Cache Read')}</span>
+                                    <span className='font-mono'>{fmtPrice(item.actual_cache_price)}</span>
+                                  </div>
+                                  <div className='flex justify-between gap-4'>
+                                    <span className='opacity-70'>{t('Cache Write')}</span>
+                                    <span className='font-mono'>{fmtPrice(item.actual_cache_creation_price)}</span>
+                                  </div>
+                                </>
+                              )}
                               {priceDivergent && (
                                 <div className='border-t border-white/10 pt-1 mt-0.5 text-red-300'>
                                   {t('Deviates from Hub {{pct}}% (Hub input: {{price}})', {
