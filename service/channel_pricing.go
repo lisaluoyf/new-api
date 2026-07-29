@@ -46,7 +46,7 @@ func FetchChannelPricing(channel *model.Channel) {
 	keyGroup := ExtractKeyGroup(channel.Setting)
 
 	baseURL := strings.TrimRight(*channel.BaseURL, "/")
-	url := baseURL + "/api/pricing"
+	url := ResolvePricingRoot(baseURL) + "/api/pricing"
 
 	// Many newapi-compatible relays (e.g. rightcode) gate /api/pricing behind
 	// Bearer auth and return 401 to anonymous requests. Try with the channel's

@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,7 +39,7 @@ func ProxyUpstreamPricing(c *gin.Context) {
 
 	// Resolve the root URL that hosts /api/pricing.
 	// Many channels use base_url = "https://host/v1" but /api/pricing lives at "https://host".
-	rootURL := resolvePricingRoot(baseURL)
+	rootURL := service.ResolvePricingRoot(baseURL)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
@@ -54,17 +57,6 @@ func ProxyUpstreamPricing(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": groupRatio})
-}
-
-// resolvePricingRoot strips common API path suffixes (/v1, /v2, etc.) so that
-// {root}/api/pricing is attempted first, then the original base_url.
-func resolvePricingRoot(baseURL string) string {
-	for _, suffix := range []string{"/v1", "/v2", "/v3", "/api/v1", "/openai/v1"} {
-		if strings.HasSuffix(baseURL, suffix) {
-			return strings.TrimSuffix(baseURL, suffix)
-		}
-	}
-	return baseURL
 }
 
 // fetchGroupRatio tries {rootURL}/api/pricing and returns group_ratio map.
@@ -116,6 +108,12 @@ func fetchGroupRatioOnce(ctx context.Context, client *http.Client, url string, a
 		GroupRatio map[string]float64 `json:"group_ratio"`
 	}
 	if err := common.DecodeJson(resp.Body, &parsed); err != nil {
+		// Some upstreams return HTTP 200 with an empty body for unknown routes.
+		// Treat that the same as an unsupported pricing endpoint instead of
+		// surfacing the low-level "decode failed: EOF" error in channel editing.
+		if errors.Is(err, io.EOF) {
+			return nil, resp.StatusCode, nil
+		}
 		return nil, resp.StatusCode, fmt.Errorf("decode failed: %v", err)
 	}
 	return parsed.GroupRatio, resp.StatusCode, nil
