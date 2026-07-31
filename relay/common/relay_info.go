@@ -123,8 +123,8 @@ type RelayInfo struct {
 	ReceivedResponseCount  int
 	// LastDataTime 记录最后一次从上游收到有效数据的时刻（零值表示从未收到），
 	// 用于 client_gone 快照分析"断开时数据流进行到哪一步"。
-	LastDataTime time.Time
-	FinalPreConsumedQuota  int // 最终预消耗的配额
+	LastDataTime          time.Time
+	FinalPreConsumedQuota int // 最终预消耗的配额
 	// ForcePreConsume 为 true 时禁用 BillingSession 的信任额度旁路，
 	// 强制预扣全额。用于异步任务（视频/音乐生成等），因为请求返回后任务仍在运行，
 	// 必须在提交前锁定全额。
@@ -158,6 +158,21 @@ type RelayInfo struct {
 	ParamOverrideAudit                    []string
 
 	PriceData types.PriceData
+	// WalletPriceData stores the normal user-priced snapshot used by wallet and
+	// standard subscriptions.
+	WalletPriceData *types.PriceData
+	// TrialPriceData stores the official-priced snapshot used by GPT trial.
+	TrialPriceData *types.PriceData
+	// PriceDataSource tracks which snapshot is currently active on PriceData.
+	// "wallet" covers normal wallet/standard-subscription pricing, "gpt_trial"
+	// covers the GPT trial official-price path.
+	PriceDataSource string
+	// HasActiveGPTTrial caches the request-time subscription existence check so
+	// billing selection does not need to re-query or guess.
+	HasActiveGPTTrial bool
+	// GPTTrialChecked marks whether HasActiveGPTTrial was resolved for this
+	// request.
+	GPTTrialChecked bool
 
 	// TieredBillingSnapshot is a frozen snapshot of tiered billing rules
 	// captured at pre-consume time. Non-nil only when billing mode is "tiered_expr".
@@ -239,6 +254,47 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	if info.Request != nil {
 		info.Request.SetModelName(info.OriginModelName)
 	}
+}
+
+func (info *RelayInfo) SetWalletPriceData(priceData types.PriceData) {
+	if info == nil {
+		return
+	}
+	priceCopy := priceData
+	info.WalletPriceData = &priceCopy
+	if info.PriceDataSource == "" || info.PriceDataSource == "wallet" {
+		info.PriceData = priceData
+		info.PriceDataSource = "wallet"
+	}
+}
+
+func (info *RelayInfo) SetTrialPriceData(priceData types.PriceData) {
+	if info == nil {
+		return
+	}
+	priceCopy := priceData
+	info.TrialPriceData = &priceCopy
+	if info.PriceDataSource == "gpt_trial" {
+		info.PriceData = priceData
+	}
+}
+
+func (info *RelayInfo) ActivateWalletPriceData() bool {
+	if info == nil || info.WalletPriceData == nil {
+		return false
+	}
+	info.PriceData = *info.WalletPriceData
+	info.PriceDataSource = "wallet"
+	return true
+}
+
+func (info *RelayInfo) ActivateTrialPriceData() bool {
+	if info == nil || info.TrialPriceData == nil {
+		return false
+	}
+	info.PriceData = *info.TrialPriceData
+	info.PriceDataSource = "gpt_trial"
+	return true
 }
 
 func (info *RelayInfo) ToString() string {

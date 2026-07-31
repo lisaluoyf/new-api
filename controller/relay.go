@@ -174,6 +174,24 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
+	relayInfo.GPTTrialChecked = true
+	relayInfo.HasActiveGPTTrial = false
+	if service.IsFreeTrialEligibleModel(relayInfo.OriginModelName) {
+		hasTrial, trialErr := model.HasActiveUserSubscriptionByPlanMatcher(relayInfo.UserId, model.IsGPTTrialSubscriptionPlan)
+		if trialErr != nil {
+			newAPIError = types.NewError(trialErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+			return
+		}
+		relayInfo.HasActiveGPTTrial = hasTrial
+		if hasTrial {
+			if _, err := helper.BuildGPTTrialPriceData(c, relayInfo, tokens, meta); err != nil {
+				newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
+				return
+			}
+			relayInfo.ActivateWalletPriceData()
+		}
+	}
+
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
 
 	if priceData.FreeModel {
