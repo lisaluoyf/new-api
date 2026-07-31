@@ -3962,6 +3962,8 @@
     "Remove only a leading <think>...</think> block from responses; upstream reasoning tokens are still billed": "仅移除响应开头的 <think>...</think>；上游思考 token 仍会计费",
     "Prefix Think Filter Models": "头部思考过滤模型",
     "Comma-separated model names; leave empty to apply to every model on this channel": "多个模型用英文逗号分隔；留空表示该渠道全部模型",
+    "Cache-exclusive usage models": "缓存独立计数模型",
+    "Comma-separated models whose upstream prompt_tokens excludes cached tokens": "多个模型用英文逗号分隔；这些模型的上游 prompt_tokens 不包含缓存 token",
     "Third-party account bindings (read-only, managed by user in profile settings)": "第三方账户绑定（只读，由用户在个人资料设置中管理）",
     "Third-party Payment Config": "第三方支付配置",
     "This action cannot be undone.": "此操作无法撤消。",

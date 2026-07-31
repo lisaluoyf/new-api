@@ -441,7 +441,95 @@ func TestComposeTieredTextQuotaErrorFallbackUsesPreConsumedQuota(t *testing.T) {
 }
 
 func TestCacheHitRatio(t *testing.T) {
-	require.InDelta(t, 0.986, CacheHitRatio(148, 119419, 1596), 0.001)
-	require.Equal(t, 0.0, CacheHitRatio(189801, 0, 0))
-	require.Equal(t, 0.0, CacheHitRatio(0, 0, 0))
+	require.InDelta(t, 0.986, CacheHitRatio(148, 119419, 1596, false), 0.001)
+	require.InDelta(t, 0.8, CacheHitRatio(1000, 800, 0, true), 0.001)
+	require.Equal(t, 0.0, CacheHitRatio(189801, 0, 0, true))
+	require.Equal(t, 0.0, CacheHitRatio(0, 0, 0, false))
+}
+
+func TestCalculateTextQuotaSummaryCacheSemantics(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newContext := func() *gin.Context {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		return ctx
+	}
+	newRelayInfo := func(modelName string, configuredModels []string) *relaycommon.RelayInfo {
+		return &relaycommon.RelayInfo{
+			OriginModelName: modelName,
+			PriceData: types.PriceData{
+				ModelRatio:      0.0276609375,
+				CompletionRatio: 2,
+				CacheRatio:      0.02,
+				GroupRatioInfo: types.GroupRatioInfo{
+					GroupRatio: 1.05,
+				},
+			},
+			StartTime: time.Now(),
+			ChannelMeta: &relaycommon.ChannelMeta{
+				ChannelId: 131,
+				ChannelSetting: dto.ChannelSettings{
+					CacheExclusiveModels: configuredModels,
+				},
+			},
+		}
+	}
+	newUsage := func(promptTokens, cacheTokens int) *dto.Usage {
+		return &dto.Usage{
+			PromptTokens:     promptTokens,
+			CompletionTokens: 124,
+			PromptTokensDetails: dto.InputTokenDetails{
+				CachedTokens: cacheTokens,
+			},
+		}
+	}
+
+	t.Run("configured exclusive usage matches inclusive equivalent", func(t *testing.T) {
+		exclusive := calculateTextQuotaSummary(
+			newContext(),
+			newRelayInfo("deepseek-v4-flash", []string{"deepseek-v4-flash"}),
+			newUsage(226, 43648),
+		)
+		inclusive := calculateTextQuotaSummary(
+			newContext(),
+			newRelayInfo("deepseek-v4-pro", []string{"deepseek-v4-flash"}),
+			newUsage(43874, 43648),
+		)
+
+		require.False(t, exclusive.InputTokensIncludeCache)
+		require.Equal(t, "channel_model_setting", exclusive.CacheTokenSemanticSource)
+		require.Equal(t, 43998, exclusive.TotalTokens)
+		require.Equal(t, 39, exclusive.Quota)
+
+		require.True(t, inclusive.InputTokensIncludeCache)
+		require.Equal(t, "openai_default", inclusive.CacheTokenSemanticSource)
+		require.Equal(t, 43998, inclusive.TotalTokens)
+		require.Equal(t, exclusive.Quota, inclusive.Quota)
+	})
+
+	t.Run("configured exclusive applies even when cache is below prompt", func(t *testing.T) {
+		exclusive := calculateTextQuotaSummary(
+			newContext(),
+			newRelayInfo("DEEPSEEK-V4-FLASH", []string{"deepseek-v4-flash"}),
+			newUsage(10000, 2000),
+		)
+
+		require.False(t, exclusive.InputTokensIncludeCache)
+		require.Equal(t, "channel_model_setting", exclusive.CacheTokenSemanticSource)
+		require.Equal(t, 12124, exclusive.TotalTokens)
+		require.Equal(t, 299, exclusive.Quota)
+	})
+
+	t.Run("impossible inclusive values trigger safe fallback", func(t *testing.T) {
+		summary := calculateTextQuotaSummary(
+			newContext(),
+			newRelayInfo("deepseek-v4-flash", nil),
+			newUsage(226, 43648),
+		)
+
+		require.False(t, summary.InputTokensIncludeCache)
+		require.Equal(t, "invariant_fallback", summary.CacheTokenSemanticSource)
+		require.Equal(t, 43998, summary.TotalTokens)
+		require.Equal(t, 39, summary.Quota)
+	})
 }

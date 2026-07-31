@@ -59,6 +59,7 @@ export const channelFormSchema = z.object({
   thinking_to_content: z.boolean().optional(),
   strip_prefix_think_block: z.boolean().optional(),
   strip_prefix_think_models: z.string().optional(),
+  cache_exclusive_models: z.string().optional(),
   proxy: z.string().optional(),
   pass_through_body_enabled: z.boolean().optional(),
   system_prompt: z.string().optional(),
@@ -150,6 +151,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   thinking_to_content: false,
   strip_prefix_think_block: false,
   strip_prefix_think_models: '',
+  cache_exclusive_models: '',
   proxy: '',
   pass_through_body_enabled: false,
   system_prompt: '',
@@ -198,6 +200,7 @@ export function transformChannelToFormDefaults(
     thinking_to_content: false,
     strip_prefix_think_block: false,
     strip_prefix_think_models: '',
+    cache_exclusive_models: '',
     proxy: '',
     pass_through_body_enabled: false,
     system_prompt: '',
@@ -205,6 +208,7 @@ export function transformChannelToFormDefaults(
     key_group: '',
     manual_group_ratio: 0,
     model_price_ratio: 0,
+    api_format: 'openai-compatible',
     client_exclusive: '' as '' | 'codex' | 'claude_code',
   }
 
@@ -217,6 +221,9 @@ export function transformChannelToFormDefaults(
         strip_prefix_think_block: parsed.strip_prefix_think_block || false,
         strip_prefix_think_models: Array.isArray(parsed.strip_prefix_think_models)
           ? parsed.strip_prefix_think_models.join(',')
+          : '',
+        cache_exclusive_models: Array.isArray(parsed.cache_exclusive_models)
+          ? parsed.cache_exclusive_models.join(',')
           : '',
         proxy: parsed.proxy || '',
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
@@ -354,6 +361,10 @@ function buildSettingJSON(formData: ChannelFormValues): string {
     thinking_to_content: formData.thinking_to_content || false,
     strip_prefix_think_block: formData.strip_prefix_think_block || false,
     strip_prefix_think_models: (formData.strip_prefix_think_models || '')
+      .split(',')
+      .map((model) => model.trim())
+      .filter(Boolean),
+    cache_exclusive_models: (formData.cache_exclusive_models || '')
       .split(',')
       .map((model) => model.trim())
       .filter(Boolean),

@@ -14,11 +14,11 @@ type TieredResultWrapper = billingexpr.TieredResult
 // expression". Sub-categories (cache, image, audio) are only subtracted
 // when the expression references them via their own variable.
 //
-// GPT-format APIs report prompt_tokens / completion_tokens as totals that
-// include all sub-categories (cache, image, audio). Claude-format APIs
-// report them as text-only. This function normalizes to text-only when
-// sub-categories are separately priced.
-func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVars map[string]bool) billingexpr.TokenParams {
+// inputTokensIncludeCache describes only the cache relationship. Other
+// sub-categories continue to follow the explicit usage semantic: OpenAI
+// usage includes image/audio details in prompt/completion totals, while
+// Anthropic usage reports its sub-categories separately.
+func BuildTieredTokenParams(usage *dto.Usage, inputTokensIncludeCache bool, usedVars map[string]bool) billingexpr.TokenParams {
 	p := float64(usage.PromptTokens)
 	c := float64(usage.CompletionTokens)
 	cr := float64(usage.PromptTokensDetails.CachedTokens)
@@ -36,14 +36,15 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	ao := float64(usage.CompletionTokenDetails.AudioTokens)
 
 	// len = total input context length for tier condition evaluation.
-	// Non-Claude: prompt_tokens already includes everything.
-	// Claude: input_tokens is text-only, so add cache read + cache creation.
+	// Cache-inclusive usage already reports the full input in prompt_tokens.
+	// Cache-exclusive usage reports text input separately, so add cache read
+	// and cache creation to recover the full context length.
 	inputLen := p
-	if isClaudeUsageSemantic {
+	if !inputTokensIncludeCache {
 		inputLen = p + cr + cc5m + cc1h
 	}
 
-	if !isClaudeUsageSemantic {
+	if inputTokensIncludeCache {
 		if usedVars["cr"] {
 			p -= cr
 		}
@@ -53,6 +54,9 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 		if usedVars["cc1h"] {
 			p -= cc1h
 		}
+	}
+
+	if usage.UsageSemantic != "anthropic" {
 		if usedVars["img"] {
 			p -= img
 		}

@@ -508,9 +508,9 @@ func attachTestBillingRequestInput(info *relaycommon.RelayInfo, request dto.Requ
 
 func settleTestQuota(info *relaycommon.RelayInfo, priceData types.PriceData, usage *dto.Usage) (int, *billingexpr.TieredResult) {
 	if usage != nil && info != nil && info.TieredBillingSnapshot != nil {
-		isClaudeUsageSemantic := usage.UsageSemantic == "anthropic" || info.GetFinalRequestRelayFormat() == types.RelayFormatClaude
+		inputTokensIncludeCache, _ := service.ResolveInputTokensIncludeCache(info, info.OriginModelName, usage)
 		usedVars := billingexpr.UsedVars(info.TieredBillingSnapshot.ExprString)
-		if ok, quota, result := service.TryTieredSettle(info, service.BuildTieredTokenParams(usage, isClaudeUsageSemantic, usedVars)); ok {
+		if ok, quota, result := service.TryTieredSettle(info, service.BuildTieredTokenParams(usage, inputTokensIncludeCache, usedVars)); ok {
 			return quota, result
 		}
 	}

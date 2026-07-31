@@ -8,19 +8,20 @@ import (
 )
 
 type ConsumeAccountingInput struct {
-	UserId                  int
-	ChannelId               int
-	ModelName               string
-	InputTokens             int
-	InputTokensIncludeCache bool
-	OutputTokens            int
-	CacheReadTokens         int
-	CacheWriteTokens        int
-	BillingMode             string
-	ImageCount              int
-	DurationSeconds         int
-	GroupRatio              float64
-	Quota                   int
+	UserId                   int
+	ChannelId                int
+	ModelName                string
+	InputTokens              int
+	InputTokensIncludeCache  bool
+	CacheTokenSemanticSource string
+	OutputTokens             int
+	CacheReadTokens          int
+	CacheWriteTokens         int
+	BillingMode              string
+	ImageCount               int
+	DurationSeconds          int
+	GroupRatio               float64
+	Quota                    int
 }
 
 type accountingPriceTuple struct {
@@ -31,25 +32,26 @@ type accountingPriceTuple struct {
 }
 
 type consumeAccountingSnapshot struct {
-	Version                 int                `json:"version"`
-	Currency                string             `json:"currency"`
-	Status                  string             `json:"status"`
-	Error                   string             `json:"error,omitempty"`
-	UserId                  int                `json:"user_id"`
-	ChannelId               int                `json:"channel_id"`
-	ModelName               string             `json:"model_name"`
-	ResellerUserId          int                `json:"reseller_user_id,omitempty"`
-	ResellerRuleId          int                `json:"reseller_rule_id,omitempty"`
-	ResellerDiscountRatio   float64            `json:"reseller_discount_ratio,omitempty"`
-	GroupRatio              float64            `json:"group_ratio"`
-	Quota                   int                `json:"quota"`
-	BillingMode             string             `json:"billing_mode,omitempty"`
-	InputTokensIncludeCache bool               `json:"input_tokens_include_cache"`
-	Tokens                  map[string]int     `json:"tokens"`
-	Units                   map[string]int     `json:"units,omitempty"`
-	Prices                  map[string]any     `json:"prices"`
-	AmountsUSD              map[string]float64 `json:"amounts_usd"`
-	AccountingAmountVersion string             `json:"accounting_amount_version"`
+	Version                  int                `json:"version"`
+	Currency                 string             `json:"currency"`
+	Status                   string             `json:"status"`
+	Error                    string             `json:"error,omitempty"`
+	UserId                   int                `json:"user_id"`
+	ChannelId                int                `json:"channel_id"`
+	ModelName                string             `json:"model_name"`
+	ResellerUserId           int                `json:"reseller_user_id,omitempty"`
+	ResellerRuleId           int                `json:"reseller_rule_id,omitempty"`
+	ResellerDiscountRatio    float64            `json:"reseller_discount_ratio,omitempty"`
+	GroupRatio               float64            `json:"group_ratio"`
+	Quota                    int                `json:"quota"`
+	BillingMode              string             `json:"billing_mode,omitempty"`
+	InputTokensIncludeCache  bool               `json:"input_tokens_include_cache"`
+	CacheTokenSemanticSource string             `json:"cache_token_semantic_source,omitempty"`
+	Tokens                   map[string]int     `json:"tokens"`
+	Units                    map[string]int     `json:"units,omitempty"`
+	Prices                   map[string]any     `json:"prices"`
+	AmountsUSD               map[string]float64 `json:"amounts_usd"`
+	AccountingAmountVersion  string             `json:"accounting_amount_version"`
 }
 
 const (
@@ -75,17 +77,18 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		input.GroupRatio = 1
 	}
 	snap := consumeAccountingSnapshot{
-		Version:                 2,
-		Currency:                "USD",
-		Status:                  "ok",
-		UserId:                  input.UserId,
-		ChannelId:               input.ChannelId,
-		ModelName:               input.ModelName,
-		GroupRatio:              input.GroupRatio,
-		Quota:                   input.Quota,
-		BillingMode:             normalizedAccountingBillingMode(input),
-		InputTokensIncludeCache: input.InputTokensIncludeCache,
-		AccountingAmountVersion: "mixed_billing_v1",
+		Version:                  2,
+		Currency:                 "USD",
+		Status:                   "ok",
+		UserId:                   input.UserId,
+		ChannelId:                input.ChannelId,
+		ModelName:                input.ModelName,
+		GroupRatio:               input.GroupRatio,
+		Quota:                    input.Quota,
+		BillingMode:              normalizedAccountingBillingMode(input),
+		InputTokensIncludeCache:  input.InputTokensIncludeCache,
+		CacheTokenSemanticSource: input.CacheTokenSemanticSource,
+		AccountingAmountVersion:  "mixed_billing_v1",
 		Tokens: map[string]int{
 			"input":       input.InputTokens,
 			"output":      input.OutputTokens,

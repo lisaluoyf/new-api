@@ -994,6 +994,11 @@ func (channel *Channel) ValidateSettings() error {
 			return fmt.Errorf("strip_prefix_think_models cannot contain an empty model name")
 		}
 	}
+	for _, modelName := range channelParams.CacheExclusiveModels {
+		if strings.TrimSpace(modelName) == "" {
+			return fmt.Errorf("cache_exclusive_models cannot contain an empty model name")
+		}
+	}
 	return nil
 }
 

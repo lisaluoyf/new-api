@@ -56,6 +56,7 @@ type textQuotaSummary struct {
 	ImageGenerationCallPrice float64
 	ToolCallSurchargeQuota   decimal.Decimal
 	InputTokensIncludeCache  bool
+	CacheTokenSemanticSource string
 }
 
 func cacheWriteTokensTotal(summary textQuotaSummary) int {
@@ -70,8 +71,11 @@ func cacheWriteTokensTotal(summary textQuotaSummary) int {
 }
 
 // CacheHitRatio returns cache_read / (input + cache_read + cache_creation) for usage logs.
-func CacheHitRatio(promptTokens, cacheReadTokens, cacheCreationTokens int) float64 {
-	denom := promptTokens + cacheReadTokens + cacheCreationTokens
+func CacheHitRatio(promptTokens, cacheReadTokens, cacheCreationTokens int, inputTokensIncludeCache bool) float64 {
+	denom := promptTokens
+	if !inputTokensIncludeCache {
+		denom += cacheReadTokens + cacheCreationTokens
+	}
 	if denom <= 0 {
 		return 0
 	}
@@ -89,6 +93,67 @@ func isLegacyClaudeDerivedOpenAIUsage(relayInfo *relaycommon.RelayInfo, usage *d
 		return false
 	}
 	return usage.ClaudeCacheCreation5mTokens > 0 || usage.ClaudeCacheCreation1hTokens > 0
+}
+
+func channelModelUsesCacheExclusiveUsage(relayInfo *relaycommon.RelayInfo, modelName string) bool {
+	if relayInfo == nil || relayInfo.ChannelMeta == nil {
+		return false
+	}
+	for _, configuredModel := range relayInfo.ChannelMeta.ChannelSetting.CacheExclusiveModels {
+		if strings.EqualFold(strings.TrimSpace(configuredModel), strings.TrimSpace(modelName)) {
+			return true
+		}
+	}
+	return false
+}
+
+// ResolveInputTokensIncludeCache returns whether prompt_tokens already includes
+// cache read/write tokens and records why that semantic was selected.
+func ResolveInputTokensIncludeCache(relayInfo *relaycommon.RelayInfo, modelName string, usage *dto.Usage) (bool, string) {
+	if usageSemanticFromUsage(relayInfo, usage) == "anthropic" {
+		return false, "usage_semantic"
+	}
+	if isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage) {
+		return false, "legacy_claude"
+	}
+	if channelModelUsesCacheExclusiveUsage(relayInfo, modelName) {
+		return false, "channel_model_setting"
+	}
+	if usage != nil {
+		cacheWriteTokens := usage.PromptTokensDetails.CachedCreationTokens
+		splitCacheWriteTokens := usage.ClaudeCacheCreation5mTokens + usage.ClaudeCacheCreation1hTokens
+		if splitCacheWriteTokens > cacheWriteTokens {
+			cacheWriteTokens = splitCacheWriteTokens
+		}
+		if usage.PromptTokensDetails.CachedTokens+cacheWriteTokens > usage.PromptTokens {
+			return false, "invariant_fallback"
+		}
+	}
+	return true, "openai_default"
+}
+
+func resolveInputTokensIncludeCache(
+	ctx *gin.Context,
+	relayInfo *relaycommon.RelayInfo,
+	summary *textQuotaSummary,
+	usage *dto.Usage,
+) {
+	summary.InputTokensIncludeCache, summary.CacheTokenSemanticSource =
+		ResolveInputTokensIncludeCache(relayInfo, summary.ModelName, usage)
+	if summary.CacheTokenSemanticSource == "invariant_fallback" {
+		cacheTokens := summary.CacheTokens + cacheWriteTokensTotal(*summary)
+		channelID := 0
+		if relayInfo != nil {
+			channelID = relayInfo.ChannelId
+		}
+		logger.LogError(ctx, fmt.Sprintf(
+			"billing usage semantic mismatch: channelId=%d model=%s prompt_tokens=%d cache_tokens=%d; treating prompt_tokens as cache-exclusive",
+			channelID,
+			summary.ModelName,
+			summary.PromptTokens,
+			cacheTokens,
+		))
+	}
 }
 
 func calculateTextToolCallSurcharge(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, summary *textQuotaSummary) decimal.Decimal {
@@ -201,11 +266,10 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	summary.CacheCreationTokens1h = usage.ClaudeCacheCreation1hTokens
 	summary.ImageTokens = usage.PromptTokensDetails.ImageTokens
 	summary.AudioTokens = usage.PromptTokensDetails.AudioTokens
-	legacyClaudeDerived := isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage)
 	isOpenRouterClaudeBilling := relayInfo.ChannelMeta != nil &&
 		relayInfo.ChannelType == constant.ChannelTypeOpenRouter &&
 		summary.IsClaudeUsageSemantic
-	summary.InputTokensIncludeCache = !summary.IsClaudeUsageSemantic && !legacyClaudeDerived
+	resolveInputTokensIncludeCache(ctx, relayInfo, &summary, usage)
 
 	if isOpenRouterClaudeBilling {
 		summary.PromptTokens -= summary.CacheTokens
@@ -217,6 +281,9 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 			}
 		}
 		summary.PromptTokens -= summary.CacheCreationTokens
+	}
+	if !summary.InputTokensIncludeCache && !isOpenRouterClaudeBilling {
+		summary.TotalTokens += summary.CacheTokens + cacheWriteTokensTotal(summary)
 	}
 
 	dPromptTokens := decimal.NewFromInt(int64(summary.PromptTokens))
@@ -245,7 +312,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 
 		var cachedTokensWithRatio decimal.Decimal
 		if !dCacheTokens.IsZero() {
-			if !summary.IsClaudeUsageSemantic && !legacyClaudeDerived {
+			if summary.InputTokensIncludeCache {
 				baseTokens = baseTokens.Sub(dCacheTokens)
 			}
 			cachedTokensWithRatio = dCacheTokens.Mul(dCacheRatio)
@@ -254,7 +321,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		var cachedCreationTokensWithRatio decimal.Decimal
 		hasSplitCacheCreationTokens := summary.CacheCreationTokens5m > 0 || summary.CacheCreationTokens1h > 0
 		if !dCachedCreationTokens.IsZero() || hasSplitCacheCreationTokens {
-			if !summary.IsClaudeUsageSemantic && !legacyClaudeDerived {
+			if summary.InputTokensIncludeCache {
 				baseTokens = baseTokens.Sub(dCachedCreationTokens)
 				cachedCreationTokensWithRatio = dCachedCreationTokens.Mul(dCacheCreationRatio)
 			} else {
@@ -353,7 +420,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
 			tieredUsedVars = billingexpr.UsedVars(snap.ExprString)
 		}
-		tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(usage, summary.IsClaudeUsageSemantic, tieredUsedVars))
+		tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(usage, summary.InputTokensIncludeCache, tieredUsedVars))
 		if tieredOk {
 			tieredBillingApplied = true
 			tieredResult = tieredRes
@@ -413,6 +480,12 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	} else {
 		other = GenerateTextOtherInfo(ctx, relayInfo, summary.ModelRatio, summary.GroupRatio, summary.CompletionRatio, summary.CacheTokens, summary.CacheRatio, summary.ModelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	}
+	if summary.InputTokensIncludeCache {
+		other["cache_token_semantic"] = "inclusive"
+	} else {
+		other["cache_token_semantic"] = "exclusive"
+	}
+	other["cache_token_semantic_source"] = summary.CacheTokenSemanticSource
 	if adminRejectReason != "" {
 		other["reject_reason"] = adminRejectReason
 	}
@@ -463,7 +536,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		// to cache_creation_tokens.
 		other["cache_write_tokens"] = cacheWriteTokens
 	}
-	if ratio := CacheHitRatio(summary.PromptTokens, summary.CacheTokens, cacheWriteTokens); ratio > 0 || summary.CacheTokens > 0 || cacheWriteTokens > 0 {
+	if ratio := CacheHitRatio(summary.PromptTokens, summary.CacheTokens, cacheWriteTokens, summary.InputTokensIncludeCache); ratio > 0 || summary.CacheTokens > 0 || cacheWriteTokens > 0 {
 		other["cache_hit_ratio"] = ratio
 	}
 	if relayInfo.GetFinalRequestRelayFormat() != types.RelayFormatClaude && usage != nil && usage.UsageSource != "" && usage.InputTokens > 0 {
@@ -489,16 +562,17 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		other["request_data"] = requestData
 	}
 	accountingInput := ConsumeAccountingInput{
-		UserId:                  relayInfo.UserId,
-		ChannelId:               relayInfo.ChannelId,
-		ModelName:               summary.ModelName,
-		InputTokens:             summary.PromptTokens,
-		InputTokensIncludeCache: summary.InputTokensIncludeCache,
-		OutputTokens:            summary.CompletionTokens,
-		CacheReadTokens:         summary.CacheTokens,
-		CacheWriteTokens:        cacheWriteTokens,
-		GroupRatio:              summary.GroupRatio,
-		Quota:                   summary.Quota,
+		UserId:                   relayInfo.UserId,
+		ChannelId:                relayInfo.ChannelId,
+		ModelName:                summary.ModelName,
+		InputTokens:              summary.PromptTokens,
+		InputTokensIncludeCache:  summary.InputTokensIncludeCache,
+		CacheTokenSemanticSource: summary.CacheTokenSemanticSource,
+		OutputTokens:             summary.CompletionTokens,
+		CacheReadTokens:          summary.CacheTokens,
+		CacheWriteTokens:         cacheWriteTokens,
+		GroupRatio:               summary.GroupRatio,
+		Quota:                    summary.Quota,
 	}
 	if requestData := ImageRequestDataFromContext(ctx); len(requestData) > 0 {
 		if imageCount := coerceRequestInt(requestData["actual_image_count"]); imageCount > 0 {

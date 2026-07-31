@@ -241,6 +241,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.thinking_to_content ||
     values.strip_prefix_think_block ||
     values.strip_prefix_think_models?.trim() ||
+    values.cache_exclusive_models?.trim() ||
     values.pass_through_body_enabled ||
     values.system_prompt_override ||
     values.claude_beta_query ||
@@ -3819,6 +3820,29 @@ export function ChannelMutateDrawer({
                           <FormDescription>
                             {t(
                               'Comma-separated model names; leave empty to apply to every model on this channel'
+                            )}
+                          </FormDescription>
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='cache_exclusive_models'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            {t('Cache-exclusive usage models')}
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder='deepseek-v4-flash,glm-5.2'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t(
+                              'Comma-separated models whose upstream prompt_tokens excludes cached tokens'
                             )}
                           </FormDescription>
                         </FormItem>

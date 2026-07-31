@@ -7,6 +7,10 @@ type ChannelSettings struct {
 	ThinkingToContent      bool     `json:"thinking_to_content,omitempty"`
 	StripPrefixThinkBlock  bool     `json:"strip_prefix_think_block,omitempty"`
 	StripPrefixThinkModels []string `json:"strip_prefix_think_models,omitempty"`
+	// CacheExclusiveModels lists client-facing model names whose upstream
+	// prompt_tokens excludes cache read/write tokens even though the response
+	// uses an OpenAI-compatible JSON shape.
+	CacheExclusiveModels   []string `json:"cache_exclusive_models,omitempty"`
 	Proxy                  string   `json:"proxy"`
 	PassThroughBodyEnabled bool     `json:"pass_through_body_enabled,omitempty"`
 	SystemPrompt           string   `json:"system_prompt,omitempty"`

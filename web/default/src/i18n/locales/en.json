@@ -3959,6 +3959,8 @@
     "Remove only a leading <think>...</think> block from responses; upstream reasoning tokens are still billed": "Remove only a leading <think>...</think> block from responses; upstream reasoning tokens are still billed",
     "Prefix Think Filter Models": "Prefix Think Filter Models",
     "Comma-separated model names; leave empty to apply to every model on this channel": "Comma-separated model names; leave empty to apply to every model on this channel",
+    "Cache-exclusive usage models": "Cache-exclusive usage models",
+    "Comma-separated models whose upstream prompt_tokens excludes cached tokens": "Comma-separated models whose upstream prompt_tokens excludes cached tokens",
     "Third-party account bindings (read-only, managed by user in profile settings)": "Third-party account bindings (read-only, managed by user in profile settings)",
     "Third-party Payment Config": "Third-party Payment Config",
     "This action cannot be undone.": "This action cannot be undone.",
