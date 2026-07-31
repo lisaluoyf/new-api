@@ -116,18 +116,29 @@ func ResolveInputTokensIncludeCache(relayInfo *relaycommon.RelayInfo, modelName 
 	if isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage) {
 		return false, "legacy_claude"
 	}
-	if channelModelUsesCacheExclusiveUsage(relayInfo, modelName) {
-		return false, "channel_model_setting"
-	}
 	if usage != nil {
 		cacheWriteTokens := usage.PromptTokensDetails.CachedCreationTokens
 		splitCacheWriteTokens := usage.ClaudeCacheCreation5mTokens + usage.ClaudeCacheCreation1hTokens
 		if splitCacheWriteTokens > cacheWriteTokens {
 			cacheWriteTokens = splitCacheWriteTokens
 		}
-		if usage.PromptTokensDetails.CachedTokens+cacheWriteTokens > usage.PromptTokens {
+		cacheTokens := usage.PromptTokensDetails.CachedTokens + cacheWriteTokens
+		if cacheTokens > usage.PromptTokens {
 			return false, "invariant_fallback"
 		}
+		if cacheTokens > 0 && usage.TotalTokens > 0 {
+			inclusiveTotal := usage.PromptTokens + usage.CompletionTokens
+			exclusiveTotal := inclusiveTotal + cacheTokens
+			if usage.TotalTokens == inclusiveTotal && usage.TotalTokens != exclusiveTotal {
+				return true, "total_tokens"
+			}
+			if usage.TotalTokens == exclusiveTotal && usage.TotalTokens != inclusiveTotal {
+				return false, "total_tokens"
+			}
+		}
+	}
+	if channelModelUsesCacheExclusiveUsage(relayInfo, modelName) {
+		return false, "channel_model_setting"
 	}
 	return true, "openai_default"
 }

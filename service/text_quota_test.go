@@ -497,7 +497,7 @@ func TestCalculateTextQuotaSummaryCacheSemantics(t *testing.T) {
 		)
 
 		require.False(t, exclusive.InputTokensIncludeCache)
-		require.Equal(t, "channel_model_setting", exclusive.CacheTokenSemanticSource)
+		require.Equal(t, "invariant_fallback", exclusive.CacheTokenSemanticSource)
 		require.Equal(t, 43998, exclusive.TotalTokens)
 		require.Equal(t, 39, exclusive.Quota)
 
@@ -516,6 +516,39 @@ func TestCalculateTextQuotaSummaryCacheSemantics(t *testing.T) {
 
 		require.False(t, exclusive.InputTokensIncludeCache)
 		require.Equal(t, "channel_model_setting", exclusive.CacheTokenSemanticSource)
+		require.Equal(t, 12124, exclusive.TotalTokens)
+		require.Equal(t, 299, exclusive.Quota)
+	})
+
+	t.Run("total tokens overrides configured exclusive for inclusive usage", func(t *testing.T) {
+		usage := newUsage(290442, 288896)
+		usage.CompletionTokens = 688
+		usage.TotalTokens = 291130
+
+		inclusive := calculateTextQuotaSummary(
+			newContext(),
+			newRelayInfo("deepseek-v4-flash", []string{"deepseek-v4-flash"}),
+			usage,
+		)
+
+		require.True(t, inclusive.InputTokensIncludeCache)
+		require.Equal(t, "total_tokens", inclusive.CacheTokenSemanticSource)
+		require.Equal(t, 291130, inclusive.TotalTokens)
+		require.Equal(t, 253, inclusive.Quota)
+	})
+
+	t.Run("total tokens confirms configured exclusive usage", func(t *testing.T) {
+		usage := newUsage(10000, 2000)
+		usage.TotalTokens = 12124
+
+		exclusive := calculateTextQuotaSummary(
+			newContext(),
+			newRelayInfo("deepseek-v4-flash", []string{"deepseek-v4-flash"}),
+			usage,
+		)
+
+		require.False(t, exclusive.InputTokensIncludeCache)
+		require.Equal(t, "total_tokens", exclusive.CacheTokenSemanticSource)
 		require.Equal(t, 12124, exclusive.TotalTokens)
 		require.Equal(t, 299, exclusive.Quota)
 	})

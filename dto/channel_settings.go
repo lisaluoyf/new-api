@@ -9,7 +9,8 @@ type ChannelSettings struct {
 	StripPrefixThinkModels []string `json:"strip_prefix_think_models,omitempty"`
 	// CacheExclusiveModels lists client-facing model names whose upstream
 	// prompt_tokens excludes cache read/write tokens even though the response
-	// uses an OpenAI-compatible JSON shape.
+	// uses an OpenAI-compatible JSON shape. Per-response invariants and
+	// total_tokens evidence take precedence over this fallback setting.
 	CacheExclusiveModels   []string `json:"cache_exclusive_models,omitempty"`
 	Proxy                  string   `json:"proxy"`
 	PassThroughBodyEnabled bool     `json:"pass_through_body_enabled,omitempty"`
