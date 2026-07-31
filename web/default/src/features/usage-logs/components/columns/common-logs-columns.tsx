@@ -43,8 +43,9 @@ import {
   getFirstResponseTimeColor,
   getResponseTimeColor,
   getTieredBillingSummary,
+  getSubscriptionRequestBillingUSD,
   hasAnyCacheTokens,
-  isFreeTrialUsageLog,
+  isSubscriptionUsageLog,
   parseLogOther,
   isViolationFeeLog,
 } from '../../lib/format'
@@ -124,7 +125,7 @@ function buildDetailSegments(
   if (!other) return []
 
   const segments: DetailSegment[] = []
-  const isFreeTrial = isFreeTrialUsageLog(log, other)
+  const isSubscription = isSubscriptionUsageLog(other)
 
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
   const formatPrice = (price: number) =>
@@ -195,11 +196,40 @@ function buildDetailSegments(
       segments.push({
         text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
       })
-    } else if (
-      !isFreeTrial &&
-      other.ch_input_price != null &&
-      other.ch_input_price > 0
-    ) {
+    } else if (isSubscription && other.model_ratio != null) {
+      const inputPriceUSD = other.model_ratio * 2.0
+      const baseEntries = [formatPriceCompact(inputPriceUSD)]
+      if (other.completion_ratio != null) {
+        baseEntries.push(
+          formatPriceCompact(inputPriceUSD * other.completion_ratio)
+        )
+      }
+      segments.push({
+        text: `${t('Official')} · ${formatPriceList(baseEntries, true)}`,
+      })
+
+      if (hasAnyCacheTokens(other)) {
+        const cacheEntries = [
+          other.cache_ratio != null && other.cache_ratio !== 1
+            ? formatPriceCompact(inputPriceUSD * other.cache_ratio)
+            : null,
+          other.cache_creation_ratio != null && other.cache_creation_ratio !== 1
+            ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio)
+            : null,
+          other.cache_creation_ratio_1h != null &&
+          other.cache_creation_ratio_1h !== 0
+            ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio_1h)
+            : null,
+        ].filter(Boolean) as string[]
+
+        if (cacheEntries.length > 0) {
+          segments.push({
+            text: `${t('Cache')} ${formatPriceList(cacheEntries, false)}`,
+            muted: true,
+          })
+        }
+      }
+    } else if (other.ch_input_price != null && other.ch_input_price > 0) {
       // User-facing unit price (采购价 × apimaster_ratio) archived at billing time
       const baseEntries = [formatPriceCompact(other.ch_input_price)]
       if (other.ch_output_price != null && other.ch_output_price > 0) {
@@ -233,7 +263,7 @@ function buildDetailSegments(
         )
       }
       segments.push({
-        text: `${isFreeTrial ? t('Official') : t('Standard')} · ${formatPriceList(baseEntries, true)}`,
+        text: `${t('Standard')} · ${formatPriceList(baseEntries, true)}`,
       })
 
       if (hasAnyCacheTokens(other)) {
@@ -861,26 +891,39 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
 
         const quota = row.getValue('quota') as number
         const other = parseLogOther(log.other)
-        const isSubscription = other?.billing_source === 'subscription'
+        const isSubscription = isSubscriptionUsageLog(other)
 
         if (isSubscription) {
+          const subscriptionBillingUSD = getSubscriptionRequestBillingUSD(
+            log,
+            other
+          )
+          const subscriptionBillingText =
+            subscriptionBillingUSD != null
+              ? formatBillingCurrencyFromUSD(subscriptionBillingUSD, {
+                  digitsLarge: 4,
+                  digitsSmall: 6,
+                  abbreviate: false,
+                })
+              : formatLogQuota(quota)
           return (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <span className='inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' />
+                    <span className='inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-xs font-medium tabular-nums text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' />
                   }
                 >
                   <span
                     className='size-1.5 rounded-full bg-emerald-500'
                     aria-hidden='true'
                   />
-                  {t('Subscription')}
+                  <span className='uppercase'>Sub</span>
+                  <span>{subscriptionBillingText}</span>
                 </TooltipTrigger>
                 <TooltipContent>
                   <span>
-                    {t('Deducted by subscription')}: {formatLogQuota(quota)}
+                    {t('Deducted by subscription')}: {subscriptionBillingText}
                   </span>
                 </TooltipContent>
               </Tooltip>

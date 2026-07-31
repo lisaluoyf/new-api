@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { StatusBadgeProps } from '@/components/status-badge'
+import { getCurrencyDisplay } from '@/lib/currency'
 import {
   BILLING_PRICING_VARS,
   normalizeTierLabel,
@@ -172,6 +173,27 @@ export function formatModelName(log: UsageLog): {
 }
 
 const SUBSCRIPTION_GROUPS = new Set(['subscription', 'free trial'])
+
+export function isSubscriptionUsageLog(
+  other: LogOtherData | null | undefined
+): boolean {
+  return (other?.billing_source || '').trim().toLowerCase() === 'subscription'
+}
+
+export function getSubscriptionRequestBillingUSD(
+  log: Pick<UsageLog, 'quota'>,
+  other: LogOtherData | null | undefined
+): number | null {
+  if (!isSubscriptionUsageLog(other)) return null
+
+  const quota = Number(log.quota)
+  const quotaPerUnit = getCurrencyDisplay().config.quotaPerUnit
+  if (!Number.isFinite(quota) || quota <= 0 || quotaPerUnit <= 0) {
+    return null
+  }
+
+  return quota / quotaPerUnit
+}
 
 export function isFreeTrialUsageLog(
   log: UsageLog,

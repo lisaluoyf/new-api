@@ -50,12 +50,12 @@ import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-p
 import type { UsageLog } from '../../data/schema'
 import {
   parseLogOther,
+  isSubscriptionUsageLog,
   getParamOverrideActionLabel,
   parseAuditLine,
   decodeBillingExprB64,
   getTieredBillingSummary,
   hasAnyCacheTokens,
-  isFreeTrialUsageLog,
   isViolationFeeLog,
   getFirstResponseTimeColor,
   getResponseTimeColor,
@@ -146,7 +146,7 @@ function BillingBreakdown(props: {
   const isPerCall = isPerCallBilling(other.model_price)
   const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
-  const isFreeTrial = isFreeTrialUsageLog(log, other)
+  const isSubscription = isSubscriptionUsageLog(other)
   const tieredSummary = getTieredBillingSummary(other)
 
   const rows: Array<{ label: string; value: string }> = []
@@ -189,7 +189,7 @@ function BillingBreakdown(props: {
   } else {
     rows.push({
       label: t('Billing Mode'),
-      value: isFreeTrial
+      value: isSubscription
         ? `${t('Per-token')} (${t('Official')})`
         : t('Per-token'),
     })
@@ -417,7 +417,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isConsume = props.log.type === 2
   const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
-  const isSubscription = other?.billing_source === 'subscription'
+  const isSubscription = isSubscriptionUsageLog(other)
   const isTieredBilling =
     isConsume &&
     !isViolation &&
