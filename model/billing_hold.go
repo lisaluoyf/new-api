@@ -263,6 +263,30 @@ func ResetBillingHoldProcessing(id int) error {
 		Updates(map[string]interface{}{"status": BillingHoldStatusPending, "resolved_at": 0}).Error
 }
 
+// RescheduleBillingHold releases a claimed hold without deciding the user's
+// money. Unknown upstream charge state must remain pending instead of being
+// converted into a consumption record.
+func RescheduleBillingHold(id int, reconcileAfter int64, verifyDetail string) error {
+	if id <= 0 || reconcileAfter <= 0 {
+		return errors.New("invalid billing hold reschedule")
+	}
+	res := DB.Model(&BillingHold{}).
+		Where("id = ? AND status = ?", id, "processing").
+		Updates(map[string]interface{}{
+			"status":          BillingHoldStatusPending,
+			"verify_detail":   verifyDetail,
+			"reconcile_after": reconcileAfter,
+			"resolved_at":     0,
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		return fmt.Errorf("billing hold %d was not in processing state", id)
+	}
+	return nil
+}
+
 // SumUserOrphanPreconsumeGap is intentionally disabled. A user's funded quota
 // can come from top-ups, redemption codes, check-ins, referrals, subscriptions,
 // reseller adjustments, refunds, and admin operations. Treating top-ups as the

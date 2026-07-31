@@ -17,10 +17,8 @@ func TestVerifyBillingHoldUpstreamCharge_confirmedNotError(t *testing.T) {
 		ErrorCode:    string(types.ErrorCodeConvertRequestFailed),
 		ErrorMessage: "convert failed",
 	}
-	refund, detail := VerifyBillingHoldUpstreamCharge(hold)
-	if !refund {
-		t.Fatalf("expected refund, got confirm: %s", detail)
-	}
+	decision, detail := VerifyBillingHoldUpstreamCharge(hold)
+	require.Equal(t, BillingHoldDecisionRefund, decision, detail)
 }
 
 func TestVerifyBillingHoldUpstreamCharge_receivedResponses(t *testing.T) {
@@ -30,22 +28,18 @@ func TestVerifyBillingHoldUpstreamCharge_receivedResponses(t *testing.T) {
 		ErrorMessage:      "gateway timeout",
 		ReceivedResponses: 12,
 	}
-	refund, detail := VerifyBillingHoldUpstreamCharge(hold)
-	if refund {
-		t.Fatalf("expected confirm, got refund: %s", detail)
-	}
+	decision, detail := VerifyBillingHoldUpstreamCharge(hold)
+	require.Equal(t, BillingHoldDecisionUnknown, decision, detail)
 }
 
-func TestVerifyBillingHoldUpstreamCharge_ambiguousDefaultConfirm(t *testing.T) {
+func TestVerifyBillingHoldUpstreamCharge_ambiguousStaysUnknown(t *testing.T) {
 	hold := &model.BillingHold{
 		ErrorStatus:  502,
 		ErrorCode:    string(types.ErrorCodeBadResponseStatusCode),
 		ErrorMessage: "bad gateway",
 	}
-	refund, detail := VerifyBillingHoldUpstreamCharge(hold)
-	if refund {
-		t.Fatalf("expected confirm when upstream unverified, got refund: %s", detail)
-	}
+	decision, detail := VerifyBillingHoldUpstreamCharge(hold)
+	require.Equal(t, BillingHoldDecisionUnknown, decision)
 	if detail == "" {
 		t.Fatal("expected detail")
 	}
@@ -57,10 +51,89 @@ func TestVerifyBillingHoldUpstreamCharge_moderationErrorRefunds(t *testing.T) {
 		ErrorCode:    "moderation_blocked",
 		ErrorMessage: "Your request was rejected by the safety system",
 	}
-	refund, detail := VerifyBillingHoldUpstreamCharge(hold)
-	if !refund {
-		t.Fatalf("expected refund for moderation_blocked, got confirm: %s", detail)
+	decision, detail := VerifyBillingHoldUpstreamCharge(hold)
+	require.Equal(t, BillingHoldDecisionRefund, decision, detail)
+}
+
+func TestBillingHoldUnknownExpired(t *testing.T) {
+	hold := &model.BillingHold{CreatedAt: 100}
+	require.False(t, billingHoldUnknownExpired(hold, 100+billingHoldUnknownMaxAgeSec-1))
+	require.True(t, billingHoldUnknownExpired(hold, 100+billingHoldUnknownMaxAgeSec))
+}
+
+func TestRunBillingHoldReconcileUnknownReschedulesWithoutCharge(t *testing.T) {
+	truncate(t)
+
+	now := common.GetTimestamp()
+	hold := &model.BillingHold{
+		RequestId:        "req-unknown-reschedule",
+		UserId:           101,
+		PreConsumedQuota: 500,
+		ErrorStatus:      http.StatusBadGateway,
+		ErrorCode:        string(types.ErrorCodeDoRequestFailed),
+		ErrorMessage:     "upstream request state unknown",
+		Status:           model.BillingHoldStatusPending,
+		CreatedAt:        now,
+		ReconcileAfter:   now,
 	}
+	require.NoError(t, model.CreateBillingHold(hold))
+
+	runBillingHoldReconcile(hold.Id)
+
+	updated, err := model.GetBillingHoldById(hold.Id)
+	require.NoError(t, err)
+	require.Equal(t, model.BillingHoldStatusPending, updated.Status)
+	require.GreaterOrEqual(t, updated.ReconcileAfter, now+int64(billingHoldUnknownRetrySec))
+	require.Contains(t, updated.VerifyDetail, "keep pending")
+
+	var count int64
+	require.NoError(t, model.LOG_DB.Model(&model.Log{}).
+		Where("request_id = ?", hold.RequestId).
+		Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestRunBillingHoldReconcileExpiredUnknownRefunds(t *testing.T) {
+	truncate(t)
+
+	user := &model.User{
+		Id:       103,
+		Username: "expired_hold_user",
+		Quota:    1000,
+		Status:   common.UserStatusEnabled,
+	}
+	require.NoError(t, model.DB.Create(user).Error)
+
+	now := common.GetTimestamp()
+	hold := &model.BillingHold{
+		RequestId:        "req-unknown-expired",
+		UserId:           user.Id,
+		PreConsumedQuota: 500,
+		ErrorStatus:      http.StatusBadGateway,
+		ErrorCode:        string(types.ErrorCodeDoRequestFailed),
+		ErrorMessage:     "upstream request state unknown",
+		Status:           model.BillingHoldStatusPending,
+		CreatedAt:        now - billingHoldUnknownMaxAgeSec,
+		ReconcileAfter:   now,
+	}
+	require.NoError(t, model.CreateBillingHold(hold))
+
+	runBillingHoldReconcile(hold.Id)
+
+	updated, err := model.GetBillingHoldById(hold.Id)
+	require.NoError(t, err)
+	require.Equal(t, model.BillingHoldStatusRefunded, updated.Status)
+	require.Contains(t, updated.VerifyDetail, "customer-safe refund")
+
+	var updatedUser model.User
+	require.NoError(t, model.DB.Select("quota").Where("id = ?", user.Id).First(&updatedUser).Error)
+	require.Equal(t, 1500, updatedUser.Quota)
+
+	var refundLog model.Log
+	require.NoError(t, model.LOG_DB.
+		Where("request_id = ? AND type = ?", hold.RequestId, model.LogTypeRefund).
+		First(&refundLog).Error)
+	require.Equal(t, 500, refundLog.Quota)
 }
 
 func TestBillingHoldAPIError(t *testing.T) {

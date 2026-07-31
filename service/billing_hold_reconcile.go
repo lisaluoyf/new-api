@@ -22,9 +22,19 @@ import (
 const (
 	billingHoldReconcileDelaySec = 1200 // 与 image reconcile 一致：20 分钟后对账
 	billingHoldScanIntervalSec   = 60
+	billingHoldUnknownRetrySec   = 1800
+	billingHoldUnknownMaxAgeSec  = 86400
 )
 
 var billingHoldReconcileClaim sync.Map // holdId -> struct{}
+
+type BillingHoldChargeDecision string
+
+const (
+	BillingHoldDecisionRefund  BillingHoldChargeDecision = "refund"
+	BillingHoldDecisionConfirm BillingHoldChargeDecision = "confirm"
+	BillingHoldDecisionUnknown BillingHoldChargeDecision = "unknown"
+)
 
 // RecordBillingHoldAndSchedule 在 HoldRefund 时持久化挂账并预约对账。
 func RecordBillingHoldAndSchedule(c *gin.Context, relayInfo *relaycommon.RelayInfo, apiErr *types.NewAPIError) (*model.BillingHold, error) {
@@ -137,12 +147,34 @@ func runBillingHoldReconcile(holdId int) {
 	}
 	hold = enrichBillingHoldForVerify(hold)
 
-	shouldRefund, detail := VerifyBillingHoldUpstreamCharge(hold)
+	decision, detail := VerifyBillingHoldUpstreamCharge(hold)
 	var resolveErr error
-	if shouldRefund {
+	switch decision {
+	case BillingHoldDecisionRefund:
 		resolveErr = RefundBillingHold(hold, detail)
-	} else {
+	case BillingHoldDecisionConfirm:
 		resolveErr = ConfirmBillingHold(hold, detail)
+	case BillingHoldDecisionUnknown:
+		if billingHoldUnknownExpired(hold, common.GetTimestamp()) {
+			resolveErr = RefundBillingHold(hold, detail+"; customer-safe refund after verification timeout")
+		} else {
+			resolveErr = model.RescheduleBillingHold(
+				hold.Id,
+				common.GetTimestamp()+billingHoldUnknownRetrySec,
+				detail,
+			)
+			if resolveErr == nil {
+				common.SysLog(fmt.Sprintf(
+					"billing hold remains pending id=%d request=%s quota=%d detail=%s",
+					hold.Id,
+					hold.RequestId,
+					hold.PreConsumedQuota,
+					detail,
+				))
+			}
+		}
+	default:
+		resolveErr = fmt.Errorf("unsupported billing hold decision %q", decision)
 	}
 	if resolveErr != nil {
 		common.SysLog(fmt.Sprintf("billing hold reconcile failed id=%d request=%s: %s", hold.Id, hold.RequestId, resolveErr.Error()))
@@ -150,47 +182,54 @@ func runBillingHoldReconcile(holdId int) {
 	}
 }
 
-// VerifyBillingHoldUpstreamCharge 核实上游是否扣款。
-// 返回 shouldRefund=true 表示确认上游未扣款；false 表示应确认扣款（含无法核实）。
-func VerifyBillingHoldUpstreamCharge(hold *model.BillingHold) (shouldRefund bool, detail string) {
+func billingHoldUnknownExpired(hold *model.BillingHold, now int64) bool {
+	return hold != nil && hold.CreatedAt > 0 && now-hold.CreatedAt >= billingHoldUnknownMaxAgeSec
+}
+
+// VerifyBillingHoldUpstreamCharge 核实上游是否扣款。只有明确的正向扣款
+// 证据才能确认消费；无法核实必须保持 unknown，不能把预扣估算值当成实际消费。
+func VerifyBillingHoldUpstreamCharge(hold *model.BillingHold) (decision BillingHoldChargeDecision, detail string) {
 	if hold == nil {
-		return false, "missing hold"
+		return BillingHoldDecisionUnknown, "missing hold"
 	}
 
 	if hold.UpstreamTaskId != "" && hold.ChannelId > 0 {
 		uncharged, poll := upstreamImageTaskConfirmedUnchargedByChannel(hold.ChannelId, hold.UpstreamTaskId)
 		if uncharged {
-			return true, fmt.Sprintf("upstream image task terminal with zero cost (status=%s)", poll.Status)
+			return BillingHoldDecisionRefund, fmt.Sprintf("upstream image task terminal with zero cost (status=%s)", poll.Status)
 		}
 		if poll.Status != "" {
 			if poll.UpstreamCost > 0 || poll.CreditsCost > 0 {
-				return false, fmt.Sprintf("upstream image task charged cost=%.4f credits=%.4f", poll.UpstreamCost, poll.CreditsCost)
+				return BillingHoldDecisionConfirm, fmt.Sprintf("upstream image task charged cost=%.4f credits=%.4f", poll.UpstreamCost, poll.CreditsCost)
 			}
 			if imageTaskTerminalFailure(poll.Status) {
-				return true, fmt.Sprintf("upstream image task terminal with zero cost (status=%s)", poll.Status)
+				return BillingHoldDecisionRefund, fmt.Sprintf("upstream image task terminal with zero cost (status=%s)", poll.Status)
 			}
-			return false, fmt.Sprintf("upstream image task still non-terminal status=%s", poll.Status)
+			return BillingHoldDecisionUnknown, fmt.Sprintf("upstream image task still non-terminal status=%s", poll.Status)
 		}
 	}
 
 	if hold.ReceivedResponses > 0 {
-		return false, fmt.Sprintf("received %d upstream chunks before failure", hold.ReceivedResponses)
+		return BillingHoldDecisionUnknown, fmt.Sprintf(
+			"received %d upstream chunks but no authoritative usage or charge amount",
+			hold.ReceivedResponses,
+		)
 	}
 
 	if apiErr := billingHoldAPIError(hold); apiErr != nil {
 		if ClassifyUpstreamChargeConfidence(apiErr) == UpstreamChargeConfirmedNot {
-			return true, "relay error confirms upstream not charged: " + apiErr.Error()
+			return BillingHoldDecisionRefund, "relay error confirms upstream not charged: " + apiErr.Error()
 		}
 	}
 
 	if charged, msg, ok := queryUpstreamConsumeEvidence(hold); ok {
 		if charged {
-			return false, msg
+			return BillingHoldDecisionConfirm, msg
 		}
-		return true, msg
+		return BillingHoldDecisionRefund, msg
 	}
 
-	return false, "upstream charge unverified; confirm preconsume per policy"
+	return BillingHoldDecisionUnknown, "upstream charge unverified; keep pending"
 }
 
 func enrichBillingHoldForVerify(hold *model.BillingHold) *model.BillingHold {
