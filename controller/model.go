@@ -110,6 +110,60 @@ func init() {
 }
 
 func ListModels(c *gin.Context, modelType int) {
+	userOpenAiModels, err := GetAccessibleOpenAIModels(c)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "get user group failed",
+		})
+		return
+	}
+
+	switch modelType {
+	case constant.ChannelTypeAnthropic:
+		useranthropicModels := make([]dto.AnthropicModel, len(userOpenAiModels))
+		for i, model := range userOpenAiModels {
+			useranthropicModels[i] = dto.AnthropicModel{
+				ID:          model.Id,
+				CreatedAt:   time.Unix(int64(model.Created), 0).UTC().Format(time.RFC3339),
+				DisplayName: model.Id,
+				Type:        "model",
+			}
+		}
+		response := gin.H{
+			"data":     useranthropicModels,
+			"has_more": false,
+		}
+		if len(useranthropicModels) > 0 {
+			response["first_id"] = useranthropicModels[0].ID
+			response["last_id"] = useranthropicModels[len(useranthropicModels)-1].ID
+		}
+		c.JSON(http.StatusOK, response)
+	case constant.ChannelTypeGemini:
+		userGeminiModels := make([]dto.GeminiModel, len(userOpenAiModels))
+		for i, model := range userOpenAiModels {
+			userGeminiModels[i] = dto.GeminiModel{
+				Name:        model.Id,
+				DisplayName: model.Id,
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"models":        userGeminiModels,
+			"nextPageToken": nil,
+		})
+	default:
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data":    userOpenAiModels,
+			"object":  "list",
+		})
+	}
+}
+
+// GetAccessibleOpenAIModels returns the same model set exposed by GET /v1/models.
+// Keeping this logic shared ensures registry consumers and regular API clients
+// observe identical token model limits, user groups, and billing visibility.
+func GetAccessibleOpenAIModels(c *gin.Context) ([]dto.OpenAIModels, error) {
 	userOpenAiModels := make([]dto.OpenAIModels, 0)
 
 	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
@@ -155,11 +209,7 @@ func ListModels(c *gin.Context, modelType int) {
 		userId := c.GetInt("id")
 		userGroup, err := model.GetUserGroup(userId, false)
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "get user group failed",
-			})
-			return
+			return nil, err
 		}
 		group := userGroup
 		tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
@@ -205,42 +255,7 @@ func ListModels(c *gin.Context, modelType int) {
 		}
 	}
 
-	switch modelType {
-	case constant.ChannelTypeAnthropic:
-		useranthropicModels := make([]dto.AnthropicModel, len(userOpenAiModels))
-		for i, model := range userOpenAiModels {
-			useranthropicModels[i] = dto.AnthropicModel{
-				ID:          model.Id,
-				CreatedAt:   time.Unix(int64(model.Created), 0).UTC().Format(time.RFC3339),
-				DisplayName: model.Id,
-				Type:        "model",
-			}
-		}
-		c.JSON(200, gin.H{
-			"data":     useranthropicModels,
-			"first_id": useranthropicModels[0].ID,
-			"has_more": false,
-			"last_id":  useranthropicModels[len(useranthropicModels)-1].ID,
-		})
-	case constant.ChannelTypeGemini:
-		userGeminiModels := make([]dto.GeminiModel, len(userOpenAiModels))
-		for i, model := range userOpenAiModels {
-			userGeminiModels[i] = dto.GeminiModel{
-				Name:        model.Id,
-				DisplayName: model.Id,
-			}
-		}
-		c.JSON(200, gin.H{
-			"models":        userGeminiModels,
-			"nextPageToken": nil,
-		})
-	default:
-		c.JSON(200, gin.H{
-			"success": true,
-			"data":    userOpenAiModels,
-			"object":  "list",
-		})
-	}
+	return userOpenAiModels, nil
 }
 
 func ChannelListModels(c *gin.Context) {

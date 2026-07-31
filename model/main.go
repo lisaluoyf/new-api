@@ -302,6 +302,7 @@ func migrateDB() error {
 		&Redemption{},
 		&Ability{},
 		&Log{},
+		&RegistryAccessLog{},
 		&Midjourney{},
 		&TopUp{},
 		&PlategaOrder{},
@@ -362,6 +363,7 @@ func migrateDBFast() error {
 		{&Redemption{}, "Redemption"},
 		{&Ability{}, "Ability"},
 		{&Log{}, "Log"},
+		{&RegistryAccessLog{}, "RegistryAccessLog"},
 		{&Midjourney{}, "Midjourney"},
 		{&TopUp{}, "TopUp"},
 		{&PlategaOrder{}, "PlategaOrder"},
@@ -424,6 +426,9 @@ func migrateDBFast() error {
 func migrateLOGDB() error {
 	var err error
 	if err = LOG_DB.AutoMigrate(&Log{}); err != nil {
+		return err
+	}
+	if err = LOG_DB.AutoMigrate(&RegistryAccessLog{}); err != nil {
 		return err
 	}
 	if err = LOG_DB.AutoMigrate(&BillingHourlySummary{}); err != nil {

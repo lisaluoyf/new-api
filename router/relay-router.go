@@ -15,6 +15,12 @@ func SetRelayRouter(router *gin.Engine) {
 	router.Use(middleware.DecompressRequestMiddleware())
 	router.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	router.Use(middleware.StatsMiddleware())
+	registryRouter := router.Group("/kimi")
+	registryRouter.Use(middleware.RouteTag("registry"))
+	registryRouter.Use(middleware.TokenAuth())
+	{
+		registryRouter.GET("/registry.json", controller.KimiProviderRegistry)
+	}
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
 	modelsRouter.Use(middleware.RouteTag("relay"))
