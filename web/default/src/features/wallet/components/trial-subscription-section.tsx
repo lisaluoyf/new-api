@@ -101,7 +101,7 @@ export function TrialSubscriptionSection() {
         gptOnly: '仅限 GPT 模型',
         autoConsume: 'GPT 请求会自动优先消费此订阅',
         createKey: '创建 Key',
-        startRequest: '创建普通 Key 后即可开始请求',
+        startRequest: '创建 Key 后即可开始请求',
         daysLeft: (days: number, date: string) => `剩余 ${days} 天 (${date})`,
       }
     : {
@@ -121,7 +121,7 @@ export function TrialSubscriptionSection() {
         gptOnly: 'GPT models only',
         autoConsume: 'GPT requests will consume this subscription first',
         createKey: 'Create Key',
-        startRequest: 'Create a regular key to start sending requests',
+        startRequest: 'Create key to start sending requests',
         daysLeft: (days: number, date: string) => `${days} days left (${date})`,
       }
 
