@@ -42,7 +42,7 @@ const transferEventTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628
 var cryptoChains = map[string]cryptoChainConfig{
 	"eth": {
 		rpcEnvKey:      "CRYPTO_RPC_ETH",
-		defaultRPCs:    []string{"https://eth.llamarpc.com"},
+		defaultRPCs:    []string{"https://ethereum-rpc.publicnode.com", "https://eth.api.onfinality.io/public", "https://eth.drpc.org", "https://eth.blockrazor.xyz"},
 		usdtAddress:    "0xdAC17F958D2ee523a2206206994597C13D831ec7",
 		usdcAddress:    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
 		usdtDecimals:   6,

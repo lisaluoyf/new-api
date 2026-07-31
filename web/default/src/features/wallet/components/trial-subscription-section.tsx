@@ -85,9 +85,9 @@ export function TrialSubscriptionSection() {
 
   const isZh = i18n.language.startsWith('zh')
   const copy = isZh
-    ? {
+      ? {
         sectionTitle: '我的订阅',
-        sectionSubtitle: '查看试用订阅状态和剩余用量',
+        sectionSubtitle: '查看订阅状态和剩余额度',
         statusActive: '有效',
         statusNotClaimed: '未领取',
         statusExpired: '已过期',
@@ -96,18 +96,18 @@ export function TrialSubscriptionSection() {
         validity: '到期时间',
         remaining: '剩余额度',
         scope: '适用范围',
-        group: '使用分组',
+        usage: '使用方式',
         notClaimedValue: '领取后会显示在这里',
         gptOnly: '仅限 GPT 模型',
-        freeTrialGroup: 'Subscription',
-        createKey: '创建Key（选择Subscription分组）',
-        startRequest: '创建后即可开始试用请求',
+        autoConsume: 'GPT 请求会自动优先消费此订阅',
+        createKey: '创建 Key',
+        startRequest: '创建 Key 后即可开始请求',
         daysLeft: (days: number, date: string) => `剩余 ${days} 天 (${date})`,
       }
     : {
         sectionTitle: 'My Subscription',
         sectionSubtitle:
-          'View your trial subscription status and remaining credits',
+          'View your subscription status and remaining credits',
         statusActive: 'Active',
         statusNotClaimed: 'Not claimed',
         statusExpired: 'Expired',
@@ -116,12 +116,12 @@ export function TrialSubscriptionSection() {
         validity: 'Expires',
         remaining: 'Remaining',
         scope: 'Scope',
-        group: 'Group',
+        usage: 'How it works',
         notClaimedValue: 'Your trial will appear here after claim',
         gptOnly: 'GPT models only',
-        freeTrialGroup: 'Subscription',
-        createKey: 'Create Key (Subscription group)',
-        startRequest: 'Create a key to start using the trial',
+        autoConsume: 'GPT requests will consume this subscription first',
+        createKey: 'Create Key',
+        startRequest: 'Create key to start sending requests',
         daysLeft: (days: number, date: string) => `${days} days left (${date})`,
       }
 
@@ -280,8 +280,8 @@ export function TrialSubscriptionSection() {
             </div>
 
             <div className='space-y-1'>
-              <div className='text-muted-foreground text-sm'>{copy.group}</div>
-              <div className='text-base font-medium'>{copy.freeTrialGroup}</div>
+              <div className='text-muted-foreground text-sm'>{copy.usage}</div>
+              <div className='text-base font-medium'>{copy.autoConsume}</div>
             </div>
           </div>
 

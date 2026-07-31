@@ -488,10 +488,12 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
-	isFreeTrial := IsFreeTrialGroup(relayInfo.TokenGroup) || IsFreeTrialGroup(relayInfo.UsingGroup)
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
+		if !relayInfo.ActivateWalletPriceData() && relayInfo.PriceDataSource == "" {
+			relayInfo.PriceDataSource = BillingSourceWallet
+		}
 		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
@@ -520,8 +522,15 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return session, nil
 	}
 
-	trySubscription := func(requiredPlanMatcher model.SubscriptionPlanMatcher, excludedPlanMatcher model.SubscriptionPlanMatcher) (*BillingSession, *types.NewAPIError) {
-		subConsume := int64(preConsumedQuota)
+	trySubscription := func(requiredPlanMatcher model.SubscriptionPlanMatcher, excludedPlanMatcher model.SubscriptionPlanMatcher, quota int, useTrialPricing bool) (*BillingSession, *types.NewAPIError) {
+		if useTrialPricing {
+			if !relayInfo.ActivateTrialPriceData() {
+				return nil, types.NewError(fmt.Errorf("gpt trial price snapshot is missing"), types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry())
+			}
+		} else if !relayInfo.ActivateWalletPriceData() && relayInfo.PriceDataSource == "" {
+			relayInfo.PriceDataSource = BillingSourceWallet
+		}
+		subConsume := int64(quota)
 		if subConsume <= 0 {
 			subConsume = 1
 		}
@@ -536,7 +545,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 				ExcludedPlanMatcher: excludedPlanMatcher,
 			},
 		}
-		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、
+		// 必须传 subConsume 而非 quota，保证 SubscriptionFunding.amount、
 		// preConsume 参数和 FinalPreConsumedQuota 三者一致，避免订阅多扣费。
 		if apiErr := session.preConsume(c, int(subConsume)); apiErr != nil {
 			return nil, apiErr
@@ -544,20 +553,45 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return session, nil
 	}
 
-	if isFreeTrial {
-		return trySubscription(model.IsGPTTrialSubscriptionPlan, nil)
+	tryStandardSubscription := func() (*BillingSession, *types.NewAPIError) {
+		return trySubscription(nil, model.IsGPTTrialSubscriptionPlan, preConsumedQuota, false)
+	}
+
+	tryGPTTrial := func() (*BillingSession, *types.NewAPIError) {
+		if !relayInfo.GPTTrialChecked || !relayInfo.HasActiveGPTTrial || !IsFreeTrialEligibleModel(relayInfo.OriginModelName) {
+			return nil, nil
+		}
+		trialQuota := relayInfo.PriceData.QuotaToPreConsume
+		if relayInfo.TrialPriceData != nil {
+			trialQuota = relayInfo.TrialPriceData.QuotaToPreConsume
+		}
+		session, apiErr := trySubscription(model.IsGPTTrialSubscriptionPlan, nil, trialQuota, true)
+		if apiErr != nil {
+			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+				relayInfo.ActivateWalletPriceData()
+				return nil, nil
+			}
+			return nil, apiErr
+		}
+		return session, nil
+	}
+
+	if session, apiErr := tryGPTTrial(); apiErr != nil {
+		return nil, apiErr
+	} else if session != nil {
+		return session, nil
 	}
 
 	switch pref {
 	case "subscription_only":
-		return trySubscription(nil, model.IsGPTTrialSubscriptionPlan)
+		return tryStandardSubscription()
 	case "wallet_only":
 		return tryWallet()
 	case "wallet_first":
 		session, err := tryWallet()
 		if err != nil {
 			if err.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
-				return trySubscription(nil, model.IsGPTTrialSubscriptionPlan)
+				return tryStandardSubscription()
 			}
 			return nil, err
 		}
@@ -572,7 +606,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if !hasSub {
 			return tryWallet()
 		}
-		session, apiErr := trySubscription(nil, model.IsGPTTrialSubscriptionPlan)
+		session, apiErr := tryStandardSubscription()
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
 				return tryWallet()

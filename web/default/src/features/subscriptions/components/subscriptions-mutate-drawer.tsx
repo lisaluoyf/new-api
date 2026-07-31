@@ -248,7 +248,7 @@ export function SubscriptionsMutateDrawer({
                     </Select>
                     <FormDescription>
                       {t(
-                        'GPT Trial plans are issued through the signup sharing flow and only spend through Subscription keys.'
+                        'GPT Trial plans are issued through the signup sharing flow and GPT requests will consume them automatically first.'
                       )}
                     </FormDescription>
                     <FormMessage />

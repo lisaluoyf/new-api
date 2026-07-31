@@ -21,6 +21,7 @@ import (
 
 func TestRefreshModelPriceForRetryUsesFallbackChannelPricing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
 
 	oldDB := model.DB
 	t.Cleanup(func() { model.DB = oldDB })
@@ -65,6 +66,54 @@ func TestRefreshModelPriceForRetryUsesFallbackChannelPricing(t *testing.T) {
 	require.InDelta(t, 3.0, refreshed.ModelRatio, 0.000001)
 	require.InDelta(t, 4.0, refreshed.CompletionRatio, 0.000001)
 	require.InDelta(t, refreshed.ModelRatio, info.PriceData.ModelRatio, 0.000001)
+}
+
+func TestBuildGPTTrialPriceDataIgnoresChannelPricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
+
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+
+	require.NoError(t, db.Exec(`CREATE TABLE channels (
+		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		apimaster_price_ratio real, model_price_ratios text
+	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
+		id integer primary key, channel_id integer not null, model_name text not null,
+		input_price real, output_price real, cache_price real, cache_creation_price real,
+		group_ratio real, pricing_source text
+	)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channels (id, recharge_rate, model_mapping) VALUES (1, 1, '')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings
+		(channel_id, model_name, input_price, output_price, cache_price, cache_creation_price, group_ratio, pricing_source)
+		VALUES
+		(1, 'gpt-5', 8, 32, 0.3, 7.5, 1, 'api')`).Error)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	ctx.Set("channel_id", 1)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	walletPrice, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	trialPrice, err := BuildGPTTrialPriceData(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	expectedTrialRatio, ok, _ := ratio_setting.GetModelRatio("gpt-5")
+	require.True(t, ok)
+	require.NotEqual(t, walletPrice.ModelRatio, trialPrice.ModelRatio)
+	require.InDelta(t, expectedTrialRatio, trialPrice.ModelRatio, 0.000001)
+	require.InDelta(t, 1.0, trialPrice.GroupRatioInfo.GroupRatio, 0.000001)
+	require.NotNil(t, info.TrialPriceData)
 }
 
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {

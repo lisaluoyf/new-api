@@ -37,6 +37,13 @@ func modelPriceNotConfiguredError(modelName string, userId int) error {
 // https://docs.claude.com/en/docs/build-with-claude/prompt-caching#1-hour-cache-duration
 const claudeCacheCreation1hMultiplier = 6 / 3.75
 
+type priceResolutionMode string
+
+const (
+	priceResolutionModeWallet   priceResolutionMode = "wallet"
+	priceResolutionModeGPTTrial priceResolutionMode = "gpt_trial"
+)
+
 // HandleGroupRatio checks for "auto_group" in the context and updates the group ratio and relayInfo.UsingGroup if present
 func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.GroupRatioInfo {
 	groupRatioInfo := types.GroupRatioInfo{
@@ -66,12 +73,12 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 	return groupRatioInfo
 }
 
-func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
+func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, mode priceResolutionMode) (types.PriceData, error) {
 	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
-	isFreeTrial := service.IsFreeTrialGroup(info.TokenGroup) || service.IsFreeTrialGroup(info.UsingGroup)
+	useTrialPricing := mode == priceResolutionModeGPTTrial
 
 	groupRatioInfo := HandleGroupRatio(c, info)
-	if isFreeTrial {
+	if useTrialPricing {
 		groupRatioInfo = types.GroupRatioInfo{
 			GroupRatio:        1.0,
 			GroupSpecialRatio: -1,
@@ -86,7 +93,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	// configured fixed price / channel-ratio fallback below is unchanged.
 	if info.RelayMode == relayconstant.RelayModeImagesGenerations ||
 		info.RelayMode == relayconstant.RelayModeImagesEdits {
-		if !isFreeTrial {
+		if !useTrialPricing {
 			if channelID := c.GetInt("channel_id"); channelID > 0 {
 				if resolved, err := service.ChannelActualPricesResolved(channelID, info.OriginModelName); err == nil && resolved != nil && resolved.InputPrice > 0 {
 					modelPrice = resolved.InputPrice
@@ -122,7 +129,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		// channel_model_pricings takes priority: actual procurement price × group_ratio (5% markup)
 		// is the billing model. Fall back to global model_ratio only when no channel row exists.
 		ratioFromChannel := false
-		if !isFreeTrial {
+		if !useTrialPricing {
 			if channelID := c.GetInt("channel_id"); channelID > 0 {
 				if channelPrice, ok := service.ChannelModelPriceData(channelID, info.OriginModelName); ok {
 					modelRatio = channelPrice.ModelRatio
@@ -210,7 +217,24 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	if common.DebugEnabled {
 		println(fmt.Sprintf("model_price_helper result: %s", priceData.ToSetting()))
 	}
-	info.PriceData = priceData
+	return priceData, nil
+}
+
+func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
+	priceData, err := resolveModelPriceData(c, info, promptTokens, meta, priceResolutionModeWallet)
+	if err != nil {
+		return types.PriceData{}, err
+	}
+	info.SetWalletPriceData(priceData)
+	return priceData, nil
+}
+
+func BuildGPTTrialPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
+	priceData, err := resolveModelPriceData(c, info, promptTokens, meta, priceResolutionModeGPTTrial)
+	if err != nil {
+		return types.PriceData{}, err
+	}
+	info.SetTrialPriceData(priceData)
 	return priceData, nil
 }
 
@@ -220,6 +244,14 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 func RefreshModelPriceForRetry(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
 		return info.PriceData, nil
+	}
+	if info != nil && info.PriceDataSource == string(priceResolutionModeGPTTrial) {
+		priceData, err := BuildGPTTrialPriceData(c, info, promptTokens, meta)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		info.ActivateTrialPriceData()
+		return priceData, nil
 	}
 	return ModelPriceHelper(c, info, promptTokens, meta)
 }
