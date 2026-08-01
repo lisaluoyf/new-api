@@ -4,9 +4,12 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestFormatWaffoPancakeAmount_UsesDisplayPriceString(t *testing.T) {
@@ -28,6 +31,7 @@ func TestFormatWaffoPancakeAmount_UsesDisplayPriceString(t *testing.T) {
 }
 
 func TestGetWaffoPancakePayMoney(t *testing.T) {
+	originalPromoEnabled := common.FirstTopupPromoEnabled
 	originalUnitPrice := setting.WaffoPancakeUnitPrice
 	originalQuotaDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
 	originalDiscounts := make(map[int]float64, len(operation_setting.GetPaymentSetting().AmountDiscount))
@@ -37,12 +41,14 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 	originalTopupGroupRatio := common.TopupGroupRatio2JSONString()
 
 	t.Cleanup(func() {
+		common.FirstTopupPromoEnabled = originalPromoEnabled
 		setting.WaffoPancakeUnitPrice = originalUnitPrice
 		operation_setting.GetGeneralSetting().QuotaDisplayType = originalQuotaDisplayType
 		operation_setting.GetPaymentSetting().AmountDiscount = originalDiscounts
 		require.NoError(t, common.UpdateTopupGroupRatioByJSONString(originalTopupGroupRatio))
 	})
 
+	common.FirstTopupPromoEnabled = false
 	setting.WaffoPancakeUnitPrice = 2.5
 	operation_setting.GetPaymentSetting().AmountDiscount = map[int]float64{
 		10:                           0.8,
@@ -84,8 +90,49 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			operation_setting.GetGeneralSetting().QuotaDisplayType = tc.quotaDisplayType
-			actual := getWaffoPancakePayMoney(tc.amount, tc.group)
+			actual := getWaffoPancakePayMoney(tc.amount, tc.group, 0)
 			require.InDelta(t, tc.expected, actual, 0.000001)
 		})
 	}
+}
+
+func TestGetWaffoPancakePayMoneyAppliesFirstTopupPromoOnlyOnce(t *testing.T) {
+	oldDB := model.DB
+	oldEnabled := common.FirstTopupPromoEnabled
+	oldDiscount := common.FirstTopupPromoDiscount
+	oldAmount := common.FirstTopupPromoAmount
+	oldWindow := common.FirstTopupPromoWindowDays
+	oldPrice := setting.WaffoPancakeUnitPrice
+	oldDisplay := operation_setting.GetGeneralSetting().QuotaDisplayType
+	oldDiscounts := operation_setting.GetPaymentSetting().AmountDiscount
+	t.Cleanup(func() {
+		model.DB = oldDB
+		common.FirstTopupPromoEnabled = oldEnabled
+		common.FirstTopupPromoDiscount = oldDiscount
+		common.FirstTopupPromoAmount = oldAmount
+		common.FirstTopupPromoWindowDays = oldWindow
+		setting.WaffoPancakeUnitPrice = oldPrice
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldDisplay
+		operation_setting.GetPaymentSetting().AmountDiscount = oldDiscounts
+	})
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
+	model.DB = db
+	common.FirstTopupPromoEnabled = true
+	common.FirstTopupPromoDiscount = 0.75
+	common.FirstTopupPromoAmount = 10
+	common.FirstTopupPromoWindowDays = 3
+	setting.WaffoPancakeUnitPrice = 1
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
+	operation_setting.GetPaymentSetting().AmountDiscount = map[int]float64{}
+	require.NoError(t, db.Create(&model.User{Id: 1, Username: "waffo-promo-user", CreatedAt: common.GetTimestamp() - 3600}).Error)
+
+	require.InDelta(t, 7.5, getWaffoPancakePayMoney(10, "default", 1), 0.000001)
+	require.InDelta(t, 20.0, getWaffoPancakePayMoney(20, "default", 1), 0.000001)
+	require.NoError(t, db.Create(&model.TopUp{
+		UserId: 1, Amount: 10, Money: 7.5, TradeNo: "waffo-promo-success", Status: common.TopUpStatusSuccess,
+	}).Error)
+	require.InDelta(t, 10.0, getWaffoPancakePayMoney(10, "default", 1), 0.000001)
 }
