@@ -16,19 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute } from '@tanstack/react-router'
-import { TrialSubscriptionSection } from '@/features/wallet/components/trial-subscription-section'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_authenticated/my-subscription/')({
-  component: RouteComponent,
+  beforeLoad: () => {
+    throw redirect({ to: '/wallet' })
+  },
 })
-
-function RouteComponent() {
-  return (
-    <div className='w-full min-w-0 bg-gradient-to-br from-violet-50 via-rose-50 to-sky-50 dark:from-zinc-900 dark:via-zinc-950 dark:to-zinc-900'>
-      <div className='p-6'>
-        <TrialSubscriptionSection />
-      </div>
-    </div>
-  )
-}

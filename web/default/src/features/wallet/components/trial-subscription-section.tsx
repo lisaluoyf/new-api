@@ -17,11 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from '@tanstack/react-router'
-import { CheckCircle2, Clock3, KeyRound, Sparkles } from 'lucide-react'
+import { CheckCircle2, Clock3, CreditCard, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getSelfSubscriptionFull } from '@/features/subscriptions/api'
 import type {
@@ -85,43 +82,38 @@ export function TrialSubscriptionSection() {
 
   const isZh = i18n.language.startsWith('zh')
   const copy = isZh
-      ? {
-        sectionTitle: '我的订阅',
-        sectionSubtitle: '查看订阅状态和剩余额度',
+    ? {
+        title: '订阅余额',
+        emptyTitle: '当前没有可用订阅',
         statusActive: '有效',
         statusNotClaimed: '未领取',
         statusExpired: '已过期',
         statusDepleted: '已用完',
-        description: '7 天 GPT 试用，按官方原价计费',
-        validity: '到期时间',
-        remaining: '剩余额度',
-        scope: '适用范围',
-        usage: '使用方式',
-        notClaimedValue: '领取后会显示在这里',
-        gptOnly: '仅限 GPT 模型',
-        autoConsume: 'GPT 请求会自动优先消费此订阅',
-        createKey: '创建 Key',
-        startRequest: '创建 Key 后即可开始请求',
+        modelLabel: '使用模型',
+        billingLabel: '扣费方式',
+        validityLabel: '有效期',
+        statusLabel: '状态',
+        modelValue: 'GPT 模型',
+        billingValue: '官方原价',
+        notClaimedValue: '未领取',
+        noExpiryValue: '-',
         daysLeft: (days: number, date: string) => `剩余 ${days} 天 (${date})`,
       }
     : {
-        sectionTitle: 'My Subscription',
-        sectionSubtitle:
-          'View your subscription status and remaining credits',
+        title: 'Subscription Balance',
+        emptyTitle: 'No active subscription',
         statusActive: 'Active',
         statusNotClaimed: 'Not claimed',
         statusExpired: 'Expired',
         statusDepleted: 'Depleted',
-        description: '7-day GPT trial at official pricing',
-        validity: 'Expires',
-        remaining: 'Remaining',
-        scope: 'Scope',
-        usage: 'How it works',
-        notClaimedValue: 'Your trial will appear here after claim',
-        gptOnly: 'GPT models only',
-        autoConsume: 'GPT requests will consume this subscription first',
-        createKey: 'Create Key',
-        startRequest: 'Create key to start sending requests',
+        modelLabel: 'Models',
+        billingLabel: 'Billing',
+        validityLabel: 'Validity',
+        statusLabel: 'Status',
+        modelValue: 'GPT models',
+        billingValue: 'Official pricing',
+        notClaimedValue: 'Not claimed',
+        noExpiryValue: '-',
         daysLeft: (days: number, date: string) => `${days} days left (${date})`,
       }
 
@@ -157,8 +149,6 @@ export function TrialSubscriptionSection() {
   )
   const usedQuota = Math.max(0, Number(subscription?.amount_used || 0))
   const remainingQuota = Math.max(totalQuota - usedQuota, 0)
-  const usedPercent =
-    totalQuota > 0 ? Math.min(100, (usedQuota / totalQuota) * 100) : 0
   const expiryDate = subscription?.end_time || 0
   const now = Date.now() / 1000
   const remainingDays =
@@ -196,119 +186,100 @@ export function TrialSubscriptionSection() {
       ? copy.daysLeft(remainingDays, formatDateTime(expiryDate))
       : expiryDate > 0
         ? formatDateTime(expiryDate)
-        : copy.notClaimedValue
+        : copy.noExpiryValue
 
-  const description = trial.plan?.plan.subtitle || copy.description
+  const title = trial.plan?.plan.title || copy.emptyTitle
 
   if (loading) {
     return (
-      <section className='space-y-3'>
-        <div>
-          <Skeleton className='h-7 w-28' />
-          <Skeleton className='mt-2 h-4 w-56' />
+      <div className={`${GLASS_CARD_CLS} flex h-full flex-col gap-4 px-5 py-4`}>
+        <div className='flex items-center gap-4'>
+          <Skeleton className='size-11 shrink-0 rounded-xl' />
+          <div>
+            <Skeleton className='h-3.5 w-28' />
+            <Skeleton className='mt-2 h-8 w-40' />
+          </div>
         </div>
-        <div className={`${GLASS_CARD_CLS} space-y-4 p-6`}>
-          <Skeleton className='h-16 w-full' />
-          <Skeleton className='h-20 w-full' />
-          <Skeleton className='h-3 w-full' />
+        <div className='space-y-2'>
+          <Skeleton className='h-4 w-48' />
+          <Skeleton className='h-4 w-40' />
+          <Skeleton className='h-4 w-44' />
         </div>
-      </section>
+      </div>
     )
   }
 
   return (
-    <section className='space-y-4'>
-      <div className='space-y-1'>
-        <h2 className='text-2xl font-semibold tracking-tight'>
-          {copy.sectionTitle}
-        </h2>
-        <p className='text-muted-foreground text-sm'>{copy.sectionSubtitle}</p>
-      </div>
-
-      <div className={`${GLASS_CARD_CLS} overflow-hidden`}>
-        <div className='flex flex-col gap-4 border-b border-zinc-200/70 px-6 py-5 sm:flex-row sm:items-start sm:justify-between dark:border-zinc-700/70'>
-          <div className='min-w-0 space-y-2'>
-            <div className='flex flex-wrap items-center gap-2'>
-              <div className='flex size-8 items-center justify-center rounded-full bg-sky-100 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300'>
-                <Sparkles className='size-4' />
-              </div>
-              <div className='text-xl font-semibold tracking-tight'>
-                {trial.plan?.plan.title || '-'}
-              </div>
-              <span className='rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300'>
-                OpenAI
-              </span>
-            </div>
-            <p className='text-muted-foreground pl-10 text-sm'>{description}</p>
+    <div className={`${GLASS_CARD_CLS} flex h-full flex-col gap-4 px-5 py-4`}>
+      <div className='flex items-start justify-between gap-4'>
+        <div className='flex min-w-0 items-center gap-4'>
+          <div className='flex size-11 shrink-0 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-500/10'>
+            <CreditCard className='size-5 text-sky-600 dark:text-sky-300' />
           </div>
+          <div className='min-w-0'>
+            <div className='text-muted-foreground text-xs font-medium'>
+              {copy.title}
+            </div>
+            <div className='mt-0.5 font-mono text-2xl font-bold tabular-nums tracking-tight'>
+              {formatUsdAmount(remainingQuota)}
+              {totalQuota > 0 ? (
+                <span className='text-muted-foreground ml-2 text-sm font-medium'>
+                  / {formatUsdAmount(totalQuota)}
+                </span>
+              ) : null}
+            </div>
+            <div className='text-muted-foreground mt-1 truncate text-sm'>
+              {title}
+            </div>
+          </div>
+        </div>
 
-          <div
-            className={`inline-flex items-center gap-2 self-start rounded-full px-3 py-1 text-sm font-medium ${statusClassName}`}
-          >
+        <div
+          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${statusClassName}`}
+        >
+          {status === 'active' ? (
             <CheckCircle2 className='size-4' />
-            {statusLabel}
-          </div>
-        </div>
-
-        <div className='space-y-5 px-6 py-5'>
-          <div className='grid gap-4 sm:grid-cols-2'>
-            <div className='space-y-1'>
-              <div className='text-muted-foreground text-sm'>
-                {copy.validity}
-              </div>
-              <div className='flex items-center gap-2 text-base font-medium'>
-                <Clock3 className='text-muted-foreground size-4' />
-                <span>{expiryValue}</span>
-              </div>
-            </div>
-
-            <div className='space-y-1'>
-              <div className='text-muted-foreground text-sm'>
-                {copy.remaining}
-              </div>
-              <div className='text-right text-2xl font-semibold tracking-tight sm:text-left'>
-                {formatUsdAmount(remainingQuota)} /{' '}
-                {formatUsdAmount(totalQuota)}
-              </div>
-            </div>
-          </div>
-
-          <div className='grid gap-4 sm:grid-cols-2'>
-            <div className='space-y-1'>
-              <div className='text-muted-foreground text-sm'>{copy.scope}</div>
-              <div className='text-base font-medium'>{copy.gptOnly}</div>
-            </div>
-
-            <div className='space-y-1'>
-              <div className='text-muted-foreground text-sm'>{copy.usage}</div>
-              <div className='text-base font-medium'>{copy.autoConsume}</div>
-            </div>
-          </div>
-
-          <div className='space-y-2'>
-            <div className='text-muted-foreground flex items-center justify-between text-sm'>
-              <span>{copy.remaining}</span>
-              <span>{Math.max(0, 100 - usedPercent).toFixed(0)}%</span>
-            </div>
-            <Progress
-              value={Math.max(0, 100 - usedPercent)}
-              className='h-2.5'
-            />
-          </div>
-
-          {status === 'active' && (
-            <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-              <div className='text-muted-foreground text-sm'>
-                {copy.startRequest}
-              </div>
-              <Button render={<Link to='/keys' />} className='gap-2 self-start'>
-                <KeyRound className='size-4' />
-                {copy.createKey}
-              </Button>
-            </div>
+          ) : (
+            <Sparkles className='size-4' />
           )}
+          {statusLabel}
         </div>
       </div>
-    </section>
+
+      <div className='space-y-1.5 text-sm'>
+        <div className='flex items-center gap-2'>
+          <span className='text-muted-foreground shrink-0'>
+            {copy.modelLabel}:
+          </span>
+          <span className='font-medium'>{copy.modelValue}</span>
+        </div>
+        <div className='flex items-center gap-2'>
+          <span className='text-muted-foreground shrink-0'>
+            {copy.billingLabel}:
+          </span>
+          <span className='font-medium'>{copy.billingValue}</span>
+        </div>
+        <div className='flex items-center gap-2'>
+          <span className='text-muted-foreground shrink-0'>
+            {copy.validityLabel}:
+          </span>
+          <span className='flex items-center gap-1.5 font-medium'>
+            <Clock3 className='text-muted-foreground size-4' />
+            {expiryValue}
+          </span>
+        </div>
+        <div className='flex items-center gap-2'>
+          <span className='text-muted-foreground shrink-0'>
+            {copy.statusLabel}:
+          </span>
+          <span className='font-medium'>{statusLabel}</span>
+        </div>
+        {status === 'not_claimed' ? (
+          <div className='text-muted-foreground pt-1 text-sm'>
+            {copy.notClaimedValue}
+          </div>
+        ) : null}
+      </div>
+    </div>
   )
 }

@@ -23,6 +23,7 @@ import { RechargePanel } from './components/recharge-panel'
 import { RedemptionCodeCard } from './components/redemption-code-card'
 import { ReferralCard } from './components/referral-card'
 import { TransactionHistory } from './components/transaction-history'
+import { TrialSubscriptionSection } from './components/trial-subscription-section'
 import { WalletStatsCard } from './components/wallet-stats-card'
 import { useAffiliate, usePostTopupInvitePrompt } from './hooks'
 import { useClinkReturnConfirm } from './hooks/use-clink-return-confirm'
@@ -64,7 +65,10 @@ export function Wallet() {
   return (
     <div className='w-full min-w-0 bg-gradient-to-br from-violet-50 via-rose-50 to-sky-50 dark:from-zinc-900 dark:via-zinc-950 dark:to-zinc-900'>
       <div className='space-y-5 p-6'>
-        <WalletStatsCard user={user} loading={userLoading} />
+        <div className='grid gap-5 xl:grid-cols-2'>
+          <WalletStatsCard user={user} loading={userLoading} />
+          <TrialSubscriptionSection />
+        </div>
 
         <div className='grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-start'>
           <RechargePanel
