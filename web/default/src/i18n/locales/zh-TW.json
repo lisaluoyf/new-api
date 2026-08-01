@@ -4508,5 +4508,14 @@
     "pay ${{pay}} → get ${{amount}}": "付 ${{pay}} 到帳 ${{amount}}",
     "🎁 New user exclusive · {{pct}}% off first top-up": "🎁 新用戶專享 · 首儲 {{pct}}% 優惠",
     "Expires in": "剩餘"
-  }
+  },
+  "Wallet Balance": "錢包餘額",
+  "All models": "所有模型",
+  "APIMaster discounted pricing": "APIMaster 折扣價",
+  "Subscription Balance": "訂閱餘額",
+  "No active subscription": "目前沒有可用訂閱",
+  "GPT models": "GPT 模型",
+  "Official pricing": "官方原價",
+  "Not claimed": "未領取",
+  "Days left with date": "剩餘 {{days}} 天 ({{date}})"
 }

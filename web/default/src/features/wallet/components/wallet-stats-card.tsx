@@ -29,23 +29,14 @@ interface WalletStatsCardProps {
 }
 
 export function WalletStatsCard({ user, loading }: WalletStatsCardProps) {
-  const { i18n, t } = useTranslation()
-  const isZh = i18n.language.startsWith('zh')
-  const copy = isZh
-    ? {
-        title: '钱包余额',
-        models: '使用模型',
-        modelsValue: '所有模型',
-        billing: '扣费方式',
-        billingValue: 'APIMaster 折扣价',
-      }
-    : {
-        title: t('Wallet Balance'),
-        models: t('Models'),
-        modelsValue: 'All models',
-        billing: t('Billing'),
-        billingValue: 'APIMaster discounted pricing',
-      }
+  const { t } = useTranslation()
+  const copy = {
+    title: t('Wallet Balance'),
+    models: t('Models'),
+    modelsValue: t('All models'),
+    billing: t('Billing'),
+    billingValue: t('APIMaster discounted pricing'),
+  }
 
   if (loading) {
     return (
@@ -88,7 +79,9 @@ export function WalletStatsCard({ user, loading }: WalletStatsCardProps) {
         </div>
         <div className='flex items-center gap-2'>
           <span className='text-muted-foreground shrink-0'>{copy.billing}:</span>
-          <span className='font-medium'>{copy.billingValue}</span>
+          <span className='inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20'>
+            {copy.billingValue}
+          </span>
         </div>
       </div>
     </div>

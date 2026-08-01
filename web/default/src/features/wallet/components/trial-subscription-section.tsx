@@ -73,49 +73,31 @@ function resolveTrialSubscription(
 }
 
 export function TrialSubscriptionSection() {
-  const { i18n } = useTranslation()
+  const { t } = useTranslation()
   const [loading, setLoading] = useState(true)
   const [plans, setPlans] = useState<PlanRecord[]>([])
   const [subscriptions, setSubscriptions] = useState<UserSubscriptionRecord[]>(
     []
   )
 
-  const isZh = i18n.language.startsWith('zh')
-  const copy = isZh
-    ? {
-        title: '订阅余额',
-        emptyTitle: '当前没有可用订阅',
-        statusActive: '有效',
-        statusNotClaimed: '未领取',
-        statusExpired: '已过期',
-        statusDepleted: '已用完',
-        modelLabel: '使用模型',
-        billingLabel: '扣费方式',
-        validityLabel: '有效期',
-        statusLabel: '状态',
-        modelValue: 'GPT 模型',
-        billingValue: '官方原价',
-        notClaimedValue: '未领取',
-        noExpiryValue: '-',
-        daysLeft: (days: number, date: string) => `剩余 ${days} 天 (${date})`,
-      }
-    : {
-        title: 'Subscription Balance',
-        emptyTitle: 'No active subscription',
-        statusActive: 'Active',
-        statusNotClaimed: 'Not claimed',
-        statusExpired: 'Expired',
-        statusDepleted: 'Depleted',
-        modelLabel: 'Models',
-        billingLabel: 'Billing',
-        validityLabel: 'Validity',
-        statusLabel: 'Status',
-        modelValue: 'GPT models',
-        billingValue: 'Official pricing',
-        notClaimedValue: 'Not claimed',
-        noExpiryValue: '-',
-        daysLeft: (days: number, date: string) => `${days} days left (${date})`,
-      }
+  const copy = {
+    title: t('Subscription Balance'),
+    emptyTitle: t('No active subscription'),
+    statusActive: t('Active'),
+    statusNotClaimed: t('Not claimed'),
+    statusExpired: t('Expired'),
+    statusDepleted: t('Depleted'),
+    modelLabel: t('Models'),
+    billingLabel: t('Billing'),
+    validityLabel: t('Validity'),
+    statusLabel: t('Status'),
+    modelValue: t('GPT models'),
+    billingValue: t('Official pricing'),
+    notClaimedValue: t('Not claimed'),
+    noExpiryValue: '-',
+    daysLeft: (days: number, date: string) =>
+      t('Days left with date', { days, date }),
+  }
 
   useEffect(() => {
     let active = true
@@ -257,7 +239,9 @@ export function TrialSubscriptionSection() {
           <span className='text-muted-foreground shrink-0'>
             {copy.billingLabel}:
           </span>
-          <span className='font-medium'>{copy.billingValue}</span>
+          <span className='inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20'>
+            {copy.billingValue}
+          </span>
         </div>
         <div className='flex items-center gap-2'>
           <span className='text-muted-foreground shrink-0'>

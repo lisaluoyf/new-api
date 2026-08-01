@@ -1,5 +1,8 @@
 {
   "translation": {
+    "360": "360",
+    "1000": "1000",
+    "10000": "10000",
     "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"": "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"",
     "#1 App": "#1 应用",
     "#1 by usage": "使用量第一",
@@ -35,8 +38,6 @@
     "1. Create an application in your Gotify server": "1. 在您的 Gotify 服务器中创建一个应用程序",
     "10 / page": "10 条/页",
     "100 / page": "100 条/页",
-    "1000": "1000",
-    "10000": "10000",
     "14 Days": "14 天",
     "192.168.1.1&#10;10.0.0.0/8": "192.168.1.1&#10;10.0.0.0/8",
     "1M": "1 个月",
@@ -50,7 +51,6 @@
     "30 Days": "30 天",
     "30 days ago": "30 天前",
     "30d change": "30 天变化",
-    "360": "360",
     "5 minutes": "5 分钟",
     "5-Hour Window": "5小时窗口",
     "50 / page": "50 条/页",
@@ -4698,5 +4698,14 @@
   "Per-model markup override. Models not listed fall back to the channel-level User Price Ratio above.": "按模型覆盖加价倍率；未列出的模型回落上方渠道级“用户价格倍率”。",
   "All Payment Methods": "全部付款方式",
   "Download CSV": "下载 CSV",
-  "Failed to download transaction history": "交易历史下载失败"
+  "Failed to download transaction history": "交易历史下载失败",
+  "Wallet Balance": "钱包余额",
+  "All models": "所有模型",
+  "APIMaster discounted pricing": "APIMaster 折扣价",
+  "Subscription Balance": "订阅余额",
+  "No active subscription": "当前没有可用订阅",
+  "GPT models": "GPT 模型",
+  "Official pricing": "官方原价",
+  "Not claimed": "未领取",
+  "Days left with date": "剩余 {{days}} 天 ({{date}})"
 }

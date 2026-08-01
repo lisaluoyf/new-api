@@ -4507,5 +4507,14 @@
     "pay ${{pay}} → get ${{amount}}": "${{pay}} öde → ${{amount}} al",
     "🎁 New user exclusive · {{pct}}% off first top-up": "🎁 Yeni kullanıcılara özel · ilk yüklemede {{pct}}% indirim",
     "Expires in": "Son kullanma"
-  }
+  },
+  "Wallet Balance": "Cüzdan Bakiyesi",
+  "All models": "Tüm modeller",
+  "APIMaster discounted pricing": "APIMaster indirimli fiyatlandırma",
+  "Subscription Balance": "Abonelik Bakiyesi",
+  "No active subscription": "Aktif abonelik yok",
+  "GPT models": "GPT modelleri",
+  "Official pricing": "Resmi fiyatlandırma",
+  "Not claimed": "Talep edilmedi",
+  "Days left with date": "{{days}} gün kaldı ({{date}})"
 }

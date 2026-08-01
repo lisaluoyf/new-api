@@ -4541,5 +4541,14 @@
   "获取分组": "Récupérer les groupes",
   "充值汇率": "Taux de recharge",
   "自定义": "Personnalisé",
-  "当上游无 /api/pricing 时，用 romaapi 公开模型价格 × 此倍率作为回退定价；留空或 0 表示不启用": "Lorsque l'upstream n'a pas de /api/pricing, utilise le prix public du modèle romaapi × ce multiplicateur comme prix de repli ; laissez vide ou 0 pour désactiver."
+  "当上游无 /api/pricing 时，用 romaapi 公开模型价格 × 此倍率作为回退定价；留空或 0 表示不启用": "Lorsque l'upstream n'a pas de /api/pricing, utilise le prix public du modèle romaapi × ce multiplicateur comme prix de repli ; laissez vide ou 0 pour désactiver.",
+  "Wallet Balance": "Solde du portefeuille",
+  "All models": "Tous les modèles",
+  "APIMaster discounted pricing": "Tarification remisée APIMaster",
+  "Subscription Balance": "Solde d’abonnement",
+  "No active subscription": "Aucun abonnement actif",
+  "GPT models": "Modèles GPT",
+  "Official pricing": "Tarification officielle",
+  "Not claimed": "Non réclamé",
+  "Days left with date": "{{days}} jours restants ({{date}})"
 }

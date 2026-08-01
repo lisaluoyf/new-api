@@ -4507,5 +4507,14 @@
     "pay ${{pay}} → get ${{amount}}": "pagar ${{pay}} → receber ${{amount}}",
     "🎁 New user exclusive · {{pct}}% off first top-up": "🎁 Exclusivo novos usuários · {{pct}}% de desconto no 1º depósito",
     "Expires in": "Expira em"
-  }
+  },
+  "Wallet Balance": "Saldo da carteira",
+  "All models": "Todos os modelos",
+  "APIMaster discounted pricing": "Preços com desconto da APIMaster",
+  "Subscription Balance": "Saldo da assinatura",
+  "No active subscription": "Nenhuma assinatura ativa",
+  "GPT models": "Modelos GPT",
+  "Official pricing": "Preços oficiais",
+  "Not claimed": "Não resgatado",
+  "Days left with date": "Faltam {{days}} dias ({{date}})"
 }
