@@ -46,6 +46,22 @@ func markOfficialFallbackChannel(c *gin.Context, channel *model.Channel) {
 	c.Set("official_fallback_channel_name", channel.Name)
 }
 
+func setFingerprintRouteTrace(c *gin.Context, channelID int) {
+	if c == nil || channelID <= 0 || common.ApimasterInternalSyncKey == "" {
+		return
+	}
+	if c.GetHeader("X-Apimaster-Detection-Trace-Key") != common.ApimasterInternalSyncKey {
+		return
+	}
+	// Require the run id as an additional guard against accidentally enabling
+	// this diagnostic header on ordinary customer traffic.
+	runID := c.GetHeader("X-Apimaster-Detection-Run-Id")
+	if runID == "" || len(runID) > 128 {
+		return
+	}
+	c.Header("X-Apimaster-Detection-Channel-Id", fmt.Sprintf("%d", channelID))
+}
+
 func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
 	var err *types.NewAPIError
 	switch info.RelayMode {
@@ -245,6 +261,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 
 		addUsedChannel(c, channel.Id)
+		setFingerprintRouteTrace(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
 			// Ensure consistent 413 for oversized bodies even when error occurs later (e.g., retry path)
