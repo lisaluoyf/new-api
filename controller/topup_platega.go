@@ -48,7 +48,7 @@ func RequestPlategaAmount(c *gin.Context) {
 		return
 	}
 
-	rubAmount := getPlategaPayRubAmount(req.Amount, group)
+	rubAmount := getPlategaPayRubAmount(req.Amount, group, id)
 	if rubAmount <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
@@ -64,7 +64,7 @@ func RequestPlategaAmount(c *gin.Context) {
 	})
 }
 
-func getPlategaPayRubAmount(amount int64, group string) float64 {
+func getPlategaPayRubAmount(amount int64, group string, userId int) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		dAmount = dAmount.Div(decimal.NewFromFloat(common.QuotaPerUnit))
@@ -89,6 +89,12 @@ func getPlategaPayRubAmount(amount int64, group string) float64 {
 		Mul(decimal.NewFromFloat(rate)).
 		Mul(decimal.NewFromFloat(topupGroupRatio)).
 		Mul(decimal.NewFromFloat(discount))
+
+	// Keep SBP consistent with the other card-like payment paths: only an
+	// eligible user's first top-up at the configured promo tier gets the
+	// first-top-up factor. IsFirstTopupPromoEligible checks the registration
+	// window and successful top-up history, so later payments remain full price.
+	payRub = payRub.Mul(decimal.NewFromFloat(firstTopupPromoFactor(userId, amount)))
 
 	return payRub.InexactFloat64()
 }
@@ -145,7 +151,7 @@ func RequestPlategaPay(c *gin.Context) {
 		return
 	}
 
-	payRub := getPlategaPayRubAmount(req.Amount, group)
+	payRub := getPlategaPayRubAmount(req.Amount, group, id)
 	if payRub <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
