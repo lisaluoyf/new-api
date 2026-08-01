@@ -65,7 +65,7 @@ export function Wallet() {
   return (
     <div className='w-full min-w-0 bg-gradient-to-br from-violet-50 via-rose-50 to-sky-50 dark:from-zinc-900 dark:via-zinc-950 dark:to-zinc-900'>
       <div className='space-y-5 p-6'>
-        <div className='grid gap-5 xl:grid-cols-2'>
+        <div className='grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-start'>
           <WalletStatsCard user={user} loading={userLoading} />
           <TrialSubscriptionSection />
         </div>
