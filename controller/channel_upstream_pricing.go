@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -22,9 +24,11 @@ import (
 func ProxyUpstreamPricing(c *gin.Context) {
 	baseURL := strings.TrimRight(c.Query("base_url"), "/")
 	apiKey := ""
+	channelType := constant.ChannelTypeUnknown
 
 	if channelID, err := strconv.Atoi(strings.TrimSpace(c.Query("channel_id"))); err == nil && channelID > 0 {
 		if channel, err := model.GetChannelById(channelID, true); err == nil && channel != nil {
+			channelType = channel.Type
 			apiKey = firstChannelAPIKey(channel.Key)
 			if baseURL == "" && channel.BaseURL != nil {
 				baseURL = strings.TrimRight(*channel.BaseURL, "/")
@@ -34,6 +38,19 @@ func ProxyUpstreamPricing(c *gin.Context) {
 
 	if baseURL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "base_url is required"})
+		return
+	}
+
+	// OpenRouter exposes model prices through /api/v1/models, but it does not
+	// expose the relay-specific /api/pricing group_ratio endpoint used by this
+	// editor. Do not request the OpenRouter website URL and try to decode its
+	// HTML as JSON; the editor can keep the channel's manual group ratio.
+	if channelType == constant.ChannelTypeOpenRouter {
+		c.JSON(http.StatusOK, gin.H{
+			"success":        false,
+			"no_pricing_api": true,
+			"message":        "OpenRouter does not expose the /api/pricing group ratio API; keep the manual group ratio",
+		})
 		return
 	}
 
@@ -104,13 +121,21 @@ func fetchGroupRatioOnce(ctx context.Context, client *http.Client, url string, a
 		return nil, resp.StatusCode, nil
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("read response failed: %v", err)
+	}
+	if len(bytes.TrimSpace(body)) == 0 || strings.HasPrefix(strings.TrimSpace(string(body)), "<") ||
+		strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
+		// Some upstreams return HTTP 200 with an empty body or an HTML landing
+		// page for unknown routes. Treat both as an unsupported pricing API.
+		return nil, resp.StatusCode, nil
+	}
+
 	var parsed struct {
 		GroupRatio map[string]float64 `json:"group_ratio"`
 	}
-	if err := common.DecodeJson(resp.Body, &parsed); err != nil {
-		// Some upstreams return HTTP 200 with an empty body for unknown routes.
-		// Treat that the same as an unsupported pricing endpoint instead of
-		// surfacing the low-level "decode failed: EOF" error in channel editing.
+	if err := common.DecodeJson(bytes.NewReader(body), &parsed); err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, resp.StatusCode, nil
 		}
