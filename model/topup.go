@@ -886,6 +886,15 @@ func RechargeWaffoPancake(tradeNo string, callerIp string) (err error) {
 // only need one call here instead of wiring each individually.
 func OnTopupSucceeded(userId int, quotaAdded int, paymentMethod string, tradeNo string) {
 	ProcessAffCommission(userId, quotaAdded)
+	if reward, err := ProcessReferralGPTReward(userId, quotaAdded, paymentMethod, tradeNo, "realtime"); err != nil {
+		common.SysLog(fmt.Sprintf("ProcessReferralGPTReward failed user_id=%d trade_no=%s: %v", userId, tradeNo, err))
+	} else if reward != nil {
+		go func(logId int) {
+			if notifyErr := NotifyReferralGPTRewardToFeishu(logId); notifyErr != nil {
+				common.SysLog(fmt.Sprintf("referral GPT reward Feishu notify failed log_id=%d: %v", logId, notifyErr))
+			}
+		}(reward.Id)
+	}
 	NotifyPaymentSuccess(userId, quotaAdded, paymentMethod)
 	SendGAPurchase(userId, quotaAdded, tradeNo)
 }
@@ -978,11 +987,11 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 		} else {
 			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
 		}
-			lines := []string{
-				fmt.Sprintf("用户：%s", email),
-				fmt.Sprintf("金额：$%.2f", usdAmount),
-				cumulativeLine,
-				fmt.Sprintf("余额：$%.2f", walletBalance),
+		lines := []string{
+			fmt.Sprintf("用户：%s", email),
+			fmt.Sprintf("金额：$%.2f", usdAmount),
+			cumulativeLine,
+			fmt.Sprintf("余额：$%.2f", walletBalance),
 			fmt.Sprintf("国家：%s", country),
 			fmt.Sprintf("语言：%s", language),
 			fmt.Sprintf("方式：%s", methodLabel),

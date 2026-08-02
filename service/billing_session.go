@@ -522,9 +522,9 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return session, nil
 	}
 
-	trySubscription := func(requiredPlanMatcher model.SubscriptionPlanMatcher, excludedPlanMatcher model.SubscriptionPlanMatcher, quota int, useTrialPricing bool) (*BillingSession, *types.NewAPIError) {
-		if useTrialPricing {
-			if !relayInfo.ActivateTrialPriceData() {
+	trySubscription := func(requiredPlanMatcher model.SubscriptionPlanMatcher, excludedPlanMatcher model.SubscriptionPlanMatcher, quota int, promotionalPriceSource string) (*BillingSession, *types.NewAPIError) {
+		if promotionalPriceSource != "" {
+			if !relayInfo.ActivateGPTPromotionalPriceData(promotionalPriceSource) {
 				return nil, types.NewError(fmt.Errorf("gpt trial price snapshot is missing"), types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry())
 			}
 		} else if !relayInfo.ActivateWalletPriceData() && relayInfo.PriceDataSource == "" {
@@ -554,7 +554,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	tryStandardSubscription := func() (*BillingSession, *types.NewAPIError) {
-		return trySubscription(nil, model.IsGPTTrialSubscriptionPlan, preConsumedQuota, false)
+		return trySubscription(nil, model.IsGPTPromotionalSubscriptionPlan, preConsumedQuota, "")
 	}
 
 	tryGPTTrial := func() (*BillingSession, *types.NewAPIError) {
@@ -565,7 +565,26 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if relayInfo.TrialPriceData != nil {
 			trialQuota = relayInfo.TrialPriceData.QuotaToPreConsume
 		}
-		session, apiErr := trySubscription(model.IsGPTTrialSubscriptionPlan, nil, trialQuota, true)
+		session, apiErr := trySubscription(model.IsGPTTrialSubscriptionPlan, nil, trialQuota, model.SubscriptionPlanTypeGPTTrial)
+		if apiErr != nil {
+			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+				relayInfo.ActivateWalletPriceData()
+				return nil, nil
+			}
+			return nil, apiErr
+		}
+		return session, nil
+	}
+
+	tryGPTReferralReward := func() (*BillingSession, *types.NewAPIError) {
+		if !relayInfo.GPTTrialChecked || !relayInfo.HasActiveGPTReferralReward || !IsFreeTrialEligibleModel(relayInfo.OriginModelName) {
+			return nil, nil
+		}
+		rewardQuota := relayInfo.PriceData.QuotaToPreConsume
+		if relayInfo.TrialPriceData != nil {
+			rewardQuota = relayInfo.TrialPriceData.QuotaToPreConsume
+		}
+		session, apiErr := trySubscription(model.IsGPTReferralRewardSubscriptionPlan, nil, rewardQuota, model.SubscriptionPlanTypeGPTReferralReward)
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
 				relayInfo.ActivateWalletPriceData()
@@ -577,6 +596,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	if session, apiErr := tryGPTTrial(); apiErr != nil {
+		return nil, apiErr
+	} else if session != nil {
+		return session, nil
+	}
+	if session, apiErr := tryGPTReferralReward(); apiErr != nil {
 		return nil, apiErr
 	} else if session != nil {
 		return session, nil
@@ -599,7 +623,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	case "subscription_first":
 		fallthrough
 	default:
-		hasSub, subCheckErr := model.HasActiveUserSubscriptionExcludingPlanMatcher(relayInfo.UserId, model.IsGPTTrialSubscriptionPlan)
+		hasSub, subCheckErr := model.HasActiveUserSubscriptionExcludingPlanMatcher(relayInfo.UserId, model.IsGPTPromotionalSubscriptionPlan)
 		if subCheckErr != nil {
 			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}

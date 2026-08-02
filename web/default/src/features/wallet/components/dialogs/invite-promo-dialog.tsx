@@ -29,13 +29,18 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { getSignupGift, trackInvitePromoEvent } from '../../api'
+import {
+  getSignupGift,
+  trackInvitePromoEvent,
+  type ReferralGPTRewardSummary,
+} from '../../api'
 
 interface InvitePromoDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   affRatio: number
   affiliateLink: string
+  rewardSummary?: ReferralGPTRewardSummary | null
   preview?: boolean
 }
 
@@ -44,6 +49,7 @@ export function InvitePromoDialog({
   onOpenChange,
   affRatio,
   affiliateLink,
+  rewardSummary,
   preview = false,
 }: InvitePromoDialogProps) {
   const { t } = useTranslation()
@@ -113,13 +119,25 @@ export function InvitePromoDialog({
             <Gift className='size-7 text-white' />
           </div>
           <DialogTitle className='text-base'>
-            {t('Invite friends, earn {{pct}}% commission', { pct: affRatio })}
+            {rewardSummary?.enabled
+              ? t('Invite friends and earn GPT credits together')
+              : t('Invite friends, earn {{pct}}% commission', {
+                  pct: affRatio,
+                })}
           </DialogTitle>
           <DialogDescription className='text-sm'>
-            {t(
-              'When a friend tops up through your link, {{pct}}% of their top-up amount is automatically added to your balance',
-              { pct: affRatio }
-            )}
+            {rewardSummary?.enabled
+              ? t(
+                  'Friend first top-up: both get ${{amount}} GPT credits, permanent and stackable; earn {{pct}}% on later top-ups.',
+                  {
+                    amount: rewardSummary.reward_usd,
+                    pct: affRatio,
+                  }
+                )
+              : t(
+                  'When a friend tops up through your link, {{pct}}% of their top-up amount is automatically added to your balance',
+                  { pct: affRatio }
+                )}
           </DialogDescription>
         </DialogHeader>
 

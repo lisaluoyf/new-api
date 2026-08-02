@@ -134,6 +134,7 @@ func main() {
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
+	service.StartReferralGPTRewardReconcileTask()
 
 	// Apimaster detection integration tasks
 	// detection_sync disabled 2026-05-14: auto_detect.go now writes channel_detect_logs

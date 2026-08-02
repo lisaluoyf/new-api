@@ -103,3 +103,61 @@ func TestPreConsumeBillingFallsBackToStandardSubscriptionAfterTrialInsufficient(
 	require.Equal(t, 120, info.Billing.GetPreConsumedQuota())
 	require.Equal(t, 102, info.SubscriptionPlanId)
 }
+
+func TestPreConsumeBillingUsesReferralRewardAfterTrial(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	seedToken(t, 2, 1, "trial-billing-key", 1000)
+	seedSubscriptionPlan(t, 101, "APIMaster $50 GPT Trial", model.SubscriptionPlanTypeGPTTrial)
+	seedSubscriptionPlan(t, 102, "APIMaster Referral GPT Credits", model.SubscriptionPlanTypeGPTReferralReward)
+	seedUserSubscriptionWithPlan(t, 201, 1, 101, 40, 40)
+	seedUserSubscriptionWithPlan(t, 202, 1, 102, 500, 0)
+
+	info := seedGPTTrialBillingInfo("gpt-5", "wallet_first")
+	info.HasActiveGPTReferralReward = true
+	apiErr := PreConsumeBilling(retryBillingContext(), info.WalletPriceData.QuotaToPreConsume, info)
+	require.Nil(t, apiErr)
+	require.Equal(t, BillingSourceSubscription, info.BillingSource)
+	require.Equal(t, model.SubscriptionPlanTypeGPTReferralReward, info.PriceDataSource)
+	require.Equal(t, 40, info.Billing.GetPreConsumedQuota())
+	require.Equal(t, 102, info.SubscriptionPlanId)
+	require.InDelta(t, 0.625, info.PriceData.ModelRatio, 0.000001)
+
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	require.Equal(t, 1000, user.Quota)
+}
+
+func TestPreConsumeBillingPrefersExpiringTrialOverReferralReward(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	seedToken(t, 2, 1, "trial-billing-key", 1000)
+	seedSubscriptionPlan(t, 101, "APIMaster $50 GPT Trial", model.SubscriptionPlanTypeGPTTrial)
+	seedSubscriptionPlan(t, 102, "APIMaster Referral GPT Credits", model.SubscriptionPlanTypeGPTReferralReward)
+	seedUserSubscriptionWithPlan(t, 201, 1, 101, 500, 0)
+	seedUserSubscriptionWithPlan(t, 202, 1, 102, 500, 0)
+
+	info := seedGPTTrialBillingInfo("gpt-5", "wallet_first")
+	info.HasActiveGPTReferralReward = true
+	apiErr := PreConsumeBilling(retryBillingContext(), info.WalletPriceData.QuotaToPreConsume, info)
+	require.Nil(t, apiErr)
+	require.Equal(t, model.SubscriptionPlanTypeGPTTrial, info.PriceDataSource)
+	require.Equal(t, 101, info.SubscriptionPlanId)
+}
+
+func TestPreConsumeBillingIgnoresReferralRewardForNonGPTModel(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	seedToken(t, 2, 1, "trial-billing-key", 1000)
+	seedSubscriptionPlan(t, 102, "APIMaster Referral GPT Credits", model.SubscriptionPlanTypeGPTReferralReward)
+	seedUserSubscriptionWithPlan(t, 202, 1, 102, 500, 0)
+
+	info := seedGPTTrialBillingInfo("claude-sonnet-5", "wallet_first")
+	info.HasActiveGPTTrial = false
+	info.HasActiveGPTReferralReward = true
+	apiErr := PreConsumeBilling(retryBillingContext(), info.WalletPriceData.QuotaToPreConsume, info)
+	require.Nil(t, apiErr)
+	require.Equal(t, BillingSourceWallet, info.BillingSource)
+	require.Equal(t, BillingSourceWallet, info.PriceDataSource)
+	require.Equal(t, 120, info.Billing.GetPreConsumedQuota())
+}

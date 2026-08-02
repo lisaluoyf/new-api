@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -19,6 +20,12 @@ var (
 func FeishuAppID() string     { return os.Getenv("FEISHU_APP_ID") }
 func FeishuAppSecret() string { return os.Getenv("FEISHU_APP_SECRET") }
 func FeishuOpsChatID() string { return os.Getenv("FEISHU_OPS_CHAT_ID") }
+func FeishuRiskChatID() string {
+	if chatID := os.Getenv("FEISHU_RISK_CHAT_ID"); chatID != "" {
+		return chatID
+	}
+	return "oc_76aa27559f749b7b23a00b8694b7c259"
+}
 func FeishuChannelChatID() string {
 	chatID := os.Getenv("FEISHU_CHANNEL_CHAT_ID")
 	if chatID != "" {
@@ -107,5 +114,15 @@ func SendFeishuCard(chatID, title string, lines []string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	var result struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return err
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices || result.Code != 0 {
+		return fmt.Errorf("Feishu API error: status=%d code=%d msg=%s", resp.StatusCode, result.Code, result.Msg)
+	}
 	return nil
 }

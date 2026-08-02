@@ -33,7 +33,7 @@ func GetSubscriptionPlans(c *gin.Context) {
 	for _, p := range plans {
 		// Trial plans are issued exclusively by the signup sharing flow. They
 		// must never appear as a purchasable subscription option.
-		if model.IsGPTTrialSubscriptionPlan(&p) {
+		if model.IsGPTPromotionalSubscriptionPlan(&p) {
 			continue
 		}
 		result = append(result, SubscriptionPlanDTO{
@@ -48,7 +48,8 @@ func GetSubscriptionSelf(c *gin.Context) {
 	settingMap, _ := model.GetUserSetting(userId, false)
 	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
 
-	// Get all subscriptions (including expired)
+	// Get all subscriptions (including expired). Referral GPT rewards are
+	// displayed on the affiliate page, not in the wallet subscription card.
 	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
 	if err != nil {
 		allSubscriptions = []model.SubscriptionSummary{}
@@ -60,12 +61,17 @@ func GetSubscriptionSelf(c *gin.Context) {
 		activeSubscriptions = []model.SubscriptionSummary{}
 	}
 	planByID := make(map[int]model.SubscriptionPlan)
+	hiddenPlanIDs := make(map[int]struct{})
 	for _, summary := range allSubscriptions {
 		if summary.Subscription == nil || summary.Subscription.PlanId <= 0 {
 			continue
 		}
 		plan, err := model.GetSubscriptionPlanById(summary.Subscription.PlanId)
 		if err == nil && plan != nil {
+			if model.IsGPTReferralRewardSubscriptionPlan(plan) {
+				hiddenPlanIDs[plan.Id] = struct{}{}
+				continue
+			}
 			// Historical Trial plans can predate plan_type. Preserve their stable
 			// classification in the self response even when the campaign is disabled.
 			if model.IsGPTTrialSubscriptionPlan(plan) {
@@ -74,6 +80,21 @@ func GetSubscriptionSelf(c *gin.Context) {
 			planByID[plan.Id] = *plan
 		}
 	}
+	filterVisible := func(subscriptions []model.SubscriptionSummary) []model.SubscriptionSummary {
+		visible := make([]model.SubscriptionSummary, 0, len(subscriptions))
+		for _, summary := range subscriptions {
+			if summary.Subscription == nil {
+				continue
+			}
+			if _, hidden := hiddenPlanIDs[summary.Subscription.PlanId]; hidden {
+				continue
+			}
+			visible = append(visible, summary)
+		}
+		return visible
+	}
+	allSubscriptions = filterVisible(allSubscriptions)
+	activeSubscriptions = filterVisible(activeSubscriptions)
 	if trialPlan, err := model.GetActiveGPTTrialPlan(); err == nil && trialPlan != nil {
 		planByID[trialPlan.Id] = *trialPlan
 	}
@@ -124,6 +145,9 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		if model.IsGPTReferralRewardSubscriptionPlan(&p) {
+			continue
+		}
 		// Preserve the legacy campaign's identity in the admin form until its
 		// plan_type has been persisted by the campaign lookup or an edit.
 		if model.IsGPTTrialSubscriptionPlan(&p) {

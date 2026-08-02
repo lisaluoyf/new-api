@@ -1,6 +1,8 @@
 package model
 
 import (
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"gorm.io/gorm"
 )
 
 type Option struct {
@@ -154,6 +157,10 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
 	common.OptionMap["AffRatio"] = strconv.Itoa(common.AffRatio)
+	common.OptionMap["ReferralGPTRewardEnabled"] = strconv.FormatBool(common.ReferralGPTRewardEnabled)
+	common.OptionMap["ReferralGPTMinTopupUSD"] = strconv.FormatFloat(common.ReferralGPTMinTopupUSD, 'f', -1, 64)
+	common.OptionMap["ReferralGPTRewardAmountUSD"] = strconv.FormatFloat(common.ReferralGPTRewardAmountUSD, 'f', -1, 64)
+	common.OptionMap["ReferralGPTRewardStartTime"] = strconv.FormatInt(common.ReferralGPTRewardStartTime, 10)
 	common.OptionMap["FirstTopupPromoEnabled"] = strconv.FormatBool(common.FirstTopupPromoEnabled)
 	common.OptionMap["FirstTopupPromoDiscount"] = strconv.FormatFloat(common.FirstTopupPromoDiscount, 'f', -1, 64)
 	common.OptionMap["FirstTopupPromoAmount"] = strconv.Itoa(common.FirstTopupPromoAmount)
@@ -274,17 +281,43 @@ func UpdateOption(key string, value string) error {
 		}
 		value = normalizedValue
 	}
-	// Save to database first
-	option := Option{
-		Key: key,
+	if key == "ReferralGPTMinTopupUSD" || key == "ReferralGPTRewardAmountUSD" {
+		amount, err := strconv.ParseFloat(value, 64)
+		if err != nil || amount < 0.01 || math.IsNaN(amount) || math.IsInf(amount, 0) {
+			return fmt.Errorf("%s must be at least 0.01 USD", key)
+		}
 	}
-	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
-	option.Value = value
-	// Save is a combination function.
-	// If save value does not contain primary key, it will execute Create,
-	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
+	shouldSetReferralStart := false
+	if key == "ReferralGPTRewardEnabled" {
+		enabled, _ := strconv.ParseBool(value)
+		shouldSetReferralStart = enabled && !common.ReferralGPTRewardEnabled
+	}
+	persistOption := func(tx *gorm.DB, optionKey, optionValue string) error {
+		option := Option{Key: optionKey}
+		if err := tx.FirstOrCreate(&option, Option{Key: optionKey}).Error; err != nil {
+			return err
+		}
+		option.Value = optionValue
+		return tx.Save(&option).Error
+	}
+
+	var startValue string
+	if shouldSetReferralStart {
+		startValue = strconv.FormatInt(common.GetTimestamp(), 10)
+		if err := DB.Transaction(func(tx *gorm.DB) error {
+			if err := persistOption(tx, key, value); err != nil {
+				return err
+			}
+			return persistOption(tx, "ReferralGPTRewardStartTime", startValue)
+		}); err != nil {
+			return err
+		}
+		if err := updateOptionMap("ReferralGPTRewardStartTime", startValue); err != nil {
+			return err
+		}
+	} else if err := persistOption(DB, key, value); err != nil {
+		return err
+	}
 	// Update OptionMap
 	return updateOptionMap(key, value)
 }
@@ -602,6 +635,14 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
 	case "AffRatio":
 		common.AffRatio, _ = strconv.Atoi(value)
+	case "ReferralGPTRewardEnabled":
+		common.ReferralGPTRewardEnabled, _ = strconv.ParseBool(value)
+	case "ReferralGPTMinTopupUSD":
+		common.ReferralGPTMinTopupUSD, _ = strconv.ParseFloat(value, 64)
+	case "ReferralGPTRewardAmountUSD":
+		common.ReferralGPTRewardAmountUSD, _ = strconv.ParseFloat(value, 64)
+	case "ReferralGPTRewardStartTime":
+		common.ReferralGPTRewardStartTime, _ = strconv.ParseInt(value, 10, 64)
 	case "FirstTopupPromoEnabled":
 		common.FirstTopupPromoEnabled, _ = strconv.ParseBool(value)
 	case "FirstTopupPromoDiscount":

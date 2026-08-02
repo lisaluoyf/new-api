@@ -324,6 +324,7 @@ func migrateDB() error {
 		&UserOAuthBinding{},
 		&PerfMetric{},
 		&AffLog{},
+		&ReferralGPTRewardLog{},
 		&ResellerModelRule{},
 		&BillingHold{},
 		&GAPurchaseLog{},

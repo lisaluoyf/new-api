@@ -38,7 +38,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgSubscriptionNotEnabled)
 		return
 	}
-	if model.IsGPTTrialSubscriptionPlan(plan) {
+	if model.IsGPTPromotionalSubscriptionPlan(plan) {
 		common.ApiErrorMsg(c, "试用套餐仅可通过活动领取")
 		return
 	}

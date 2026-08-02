@@ -25,6 +25,26 @@ interface InviteItem {
   username: string
   display_name: string
   created_at: number
+  reward_status: 'pending' | 'rewarded'
+  rewarded_at: number
+}
+
+interface ReferralGPTRewardSummary {
+  enabled: boolean
+  min_topup_usd: number
+  reward_usd: number
+  remaining_quota: number
+  cumulative_quota: number
+  qualified_invitees: number
+}
+
+interface ReferralGPTRewardRecord {
+  id: number
+  role: 'inviter' | 'invitee'
+  counterparty: string
+  topup_quota: number
+  reward_quota: number
+  granted_at: number
 }
 
 interface PagedResult<T> {
@@ -42,6 +62,28 @@ async function getAffLogs(page = 1): Promise<PagedResult<AffLog>> {
 async function getInviteList(page = 1): Promise<PagedResult<InviteItem>> {
   const res = await api.get(`/api/user/invite_list?page=${page}&page_size=20`)
   return res.data.data
+}
+
+async function getReferralRewardSummary(): Promise<ReferralGPTRewardSummary | null> {
+  try {
+    const res = await api.get('/api/user/referral_gpt_reward_summary')
+    return res.data?.data ?? null
+  } catch {
+    return null
+  }
+}
+
+async function getReferralRewardLogs(
+  page = 1
+): Promise<PagedResult<ReferralGPTRewardRecord>> {
+  try {
+    const res = await api.get(
+      `/api/user/referral_gpt_reward_logs?page=${page}&page_size=20`
+    )
+    return res.data.data
+  } catch {
+    return { records: [], total: 0, page, page_size: 20 }
+  }
 }
 
 function formatTime(ts: number): string {
@@ -84,6 +126,9 @@ export function AffiliatePage() {
 
   const [affLogs, setAffLogs] = useState<AffLog[]>([])
   const [inviteList, setInviteList] = useState<InviteItem[]>([])
+  const [rewardSummary, setRewardSummary] =
+    useState<ReferralGPTRewardSummary | null>(null)
+  const [rewardLogs, setRewardLogs] = useState<ReferralGPTRewardRecord[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
 
   const loadData = useCallback(async () => {
@@ -101,9 +146,16 @@ export function AffiliatePage() {
     }
     setLogsLoading(true)
     try {
-      const [logs, invites] = await Promise.all([getAffLogs(), getInviteList()])
+      const [logs, invites, summary, rewards] = await Promise.all([
+        getAffLogs(),
+        getInviteList(),
+        getReferralRewardSummary(),
+        getReferralRewardLogs(),
+      ])
       setAffLogs(logs?.records ?? [])
       setInviteList(invites?.records ?? [])
+      setRewardSummary(summary)
+      setRewardLogs(rewards?.records ?? [])
     } finally {
       setLogsLoading(false)
     }
@@ -141,6 +193,8 @@ export function AffiliatePage() {
   const affHistory = userData?.aff_history_quota ?? 0
   const affCount = userData?.aff_count ?? 0
   const hasRewards = affQuota > 0
+  const referralRewardEnabled = rewardSummary?.enabled === true
+  const referralRewardAmount = rewardSummary?.reward_usd ?? 0
 
   return (
     <div className='min-h-full overflow-x-hidden bg-gradient-to-br from-violet-50 via-rose-50 to-sky-50 dark:from-zinc-900 dark:via-zinc-950 dark:to-zinc-900'>
@@ -152,7 +206,12 @@ export function AffiliatePage() {
             </span>
             <span className='h-4 w-px bg-white/40' />
             <span className='text-sm text-white/85'>
-              {t('Invite friends, referrer earns commission')}: {affRatio}%
+              {referralRewardEnabled
+                ? t(
+                    'Both get ${{amount}} GPT credits on first top-up; then earn {{pct}}% commission',
+                    { amount: referralRewardAmount, pct: affRatio }
+                  )
+                : `${t('Invite friends, referrer earns commission')}: ${affRatio}%`}
             </span>
           </div>
         </div>
@@ -160,14 +219,19 @@ export function AffiliatePage() {
         {/* 返佣规则 + 邀请码/链接 */}
         <div className={`${cardCls} space-y-4 rounded-3xl p-6`}>
           <p className='text-muted-foreground text-sm'>
-            {affRatio > 0
+            {referralRewardEnabled
               ? t(
-                  'When your friend tops up, you earn {{ratio}}% of their amount',
-                  { ratio: affRatio }
+                  'Friend first top-up: both get ${{amount}} GPT credits, permanent and stackable; earn {{pct}}% on later top-ups.',
+                  { amount: referralRewardAmount, pct: affRatio }
                 )
-              : t(
-                  'Invite friends to register and earn rewards when they top up'
-                )}
+              : affRatio > 0
+                ? t(
+                    'When your friend tops up, you earn {{ratio}}% of their amount',
+                    { ratio: affRatio }
+                  )
+                : t(
+                    'Invite friends to register and earn rewards when they top up'
+                  )}
           </p>
           <div className='border-border/50 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center'>
             <div className='flex shrink-0 items-center gap-2.5'>
@@ -205,7 +269,7 @@ export function AffiliatePage() {
         </div>
 
         {/* 统计卡片 */}
-        <div className='grid grid-cols-2 gap-4'>
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4'>
           <div className={`${cardCls} p-5`}>
             <div className='mb-2 flex items-center gap-2'>
               <span className='size-2 rounded-full bg-orange-400' />
@@ -215,6 +279,34 @@ export function AffiliatePage() {
             </div>
             <div className='text-4xl font-bold text-orange-500 tabular-nums'>
               {affCount}
+            </div>
+          </div>
+          <div className={`${cardCls} p-5`}>
+            <div className='mb-2 flex items-center gap-2'>
+              <span className='size-2 rounded-full bg-sky-400' />
+              <span className='text-muted-foreground text-xs'>
+                {t('Qualified First Top-Ups')}
+              </span>
+            </div>
+            <div className='text-4xl font-bold text-sky-500 tabular-nums'>
+              {rewardSummary?.qualified_invitees ?? 0}
+            </div>
+          </div>
+          <div className={`${cardCls} p-5`}>
+            <div className='mb-2 flex items-center gap-2'>
+              <span className='size-2 rounded-full bg-violet-400' />
+              <span className='text-muted-foreground text-xs'>
+                {t('Referral GPT Credits')}
+              </span>
+            </div>
+            <div className='text-3xl font-bold text-violet-500 tabular-nums'>
+              {formatQuota(rewardSummary?.remaining_quota ?? 0)}
+            </div>
+            <div className='text-muted-foreground mt-2 text-xs'>
+              {t('Total earned')}:{' '}
+              {formatQuota(rewardSummary?.cumulative_quota ?? 0)}
+              {' · '}
+              {t('Official pricing')} · {t('Never expires')}
             </div>
           </div>
           <div className={`${cardCls} p-5`}>
@@ -255,6 +347,12 @@ export function AffiliatePage() {
                 {t('Invite Records')}
               </TabsTrigger>
               <TabsTrigger
+                value='gpt-rewards'
+                className='data-active:text-violet-500 data-active:after:bg-violet-500'
+              >
+                {t('GPT Reward Records')}
+              </TabsTrigger>
+              <TabsTrigger
                 value='commission'
                 className='data-active:text-orange-500 data-active:after:bg-orange-500'
               >
@@ -279,6 +377,7 @@ export function AffiliatePage() {
                       <th className='py-2 text-right'>
                         {t('Registration Time')}
                       </th>
+                      <th className='py-2 text-right'>{t('Reward Status')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -289,6 +388,60 @@ export function AffiliatePage() {
                         </td>
                         <td className='text-muted-foreground py-2 text-right'>
                           {formatTime(u.created_at)}
+                        </td>
+                        <td className='py-2 text-right'>
+                          <span
+                            className={
+                              u.reward_status === 'rewarded'
+                                ? 'text-emerald-500'
+                                : 'text-muted-foreground'
+                            }
+                          >
+                            {u.reward_status === 'rewarded'
+                              ? t('Rewarded')
+                              : t('Pending qualification')}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </TabsContent>
+
+            <TabsContent value='gpt-rewards' className='px-1 pb-1'>
+              {logsLoading ? (
+                <p className='text-muted-foreground py-6 text-center text-sm'>
+                  {t('Loading...')}
+                </p>
+              ) : rewardLogs.length === 0 ? (
+                <p className='text-muted-foreground py-6 text-center text-sm'>
+                  {t('No GPT reward records yet')}
+                </p>
+              ) : (
+                <table className='w-full text-sm'>
+                  <thead>
+                    <tr className='text-muted-foreground border-b text-xs'>
+                      <th className='py-2 text-left'>{t('User')}</th>
+                      <th className='py-2 text-left'>{t('Reward Role')}</th>
+                      <th className='py-2 text-right'>{t('Reward Amount')}</th>
+                      <th className='py-2 text-right'>{t('Time')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rewardLogs.map((log) => (
+                      <tr key={log.id} className='border-b last:border-0'>
+                        <td className='py-2'>{log.counterparty || '***'}</td>
+                        <td className='text-muted-foreground py-2'>
+                          {log.role === 'inviter'
+                            ? t('Inviter reward')
+                            : t('Invitee reward')}
+                        </td>
+                        <td className='py-2 text-right text-violet-500'>
+                          +{formatQuota(log.reward_quota)}
+                        </td>
+                        <td className='text-muted-foreground py-2 text-right'>
+                          {formatTime(log.granted_at)}
                         </td>
                       </tr>
                     ))}

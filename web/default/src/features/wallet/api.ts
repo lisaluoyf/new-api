@@ -403,6 +403,26 @@ export interface SignupGiftInfo {
   trial_credit_usd?: number
 }
 
+export interface ReferralGPTRewardSummary {
+  enabled: boolean
+  min_topup_usd: number
+  reward_usd: number
+  remaining_quota: number
+  cumulative_quota: number
+  qualified_invitees: number
+}
+
+export async function getReferralGPTRewardSummary(): Promise<ReferralGPTRewardSummary | null> {
+  try {
+    const res = await api.get('/api/user/referral_gpt_reward_summary')
+    if (res.data?.success && res.data?.data)
+      return res.data.data as ReferralGPTRewardSummary
+  } catch {
+    // Keep the existing referral UI available if reward data is unavailable.
+  }
+  return null
+}
+
 export async function getSignupGift(): Promise<SignupGiftInfo | null> {
   try {
     const res = await api.get('/api/user/signup_gift')

@@ -33,9 +33,10 @@ const (
 )
 
 const (
-	SubscriptionPlanTypeNone     = ""
-	SubscriptionPlanTypeStandard = "standard"
-	SubscriptionPlanTypeGPTTrial = "gpt_trial"
+	SubscriptionPlanTypeNone              = ""
+	SubscriptionPlanTypeStandard          = "standard"
+	SubscriptionPlanTypeGPTTrial          = "gpt_trial"
+	SubscriptionPlanTypeGPTReferralReward = "gpt_referral_reward"
 )
 
 var (
@@ -210,6 +211,8 @@ func NormalizeSubscriptionPlanType(value string) string {
 		return SubscriptionPlanTypeStandard
 	case SubscriptionPlanTypeGPTTrial:
 		return normalized
+	case SubscriptionPlanTypeGPTReferralReward:
+		return normalized
 	default:
 		return SubscriptionPlanTypeNone
 	}
@@ -220,6 +223,14 @@ func IsSupportedSubscriptionPlanType(value string) bool {
 	return normalized == SubscriptionPlanTypeNone ||
 		normalized == SubscriptionPlanTypeStandard ||
 		normalized == SubscriptionPlanTypeGPTTrial
+}
+
+func IsGPTReferralRewardSubscriptionPlan(plan *SubscriptionPlan) bool {
+	return plan != nil && NormalizeSubscriptionPlanType(plan.PlanType) == SubscriptionPlanTypeGPTReferralReward
+}
+
+func IsGPTPromotionalSubscriptionPlan(plan *SubscriptionPlan) bool {
+	return IsGPTTrialSubscriptionPlan(plan) || IsGPTReferralRewardSubscriptionPlan(plan)
 }
 
 func IsGPTTrialSubscriptionPlan(plan *SubscriptionPlan) bool {
@@ -337,7 +348,7 @@ type UserSubscription struct {
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
 	Status    string `json:"status" gorm:"type:varchar(32);index;index:idx_user_sub_active,priority:2"` // active/expired/cancelled
 
-	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin
+	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin/referral
 
 	LastResetTime int64 `json:"last_reset_time" gorm:"type:bigint;default:0"`
 	NextResetTime int64 `json:"next_reset_time" gorm:"type:bigint;default:0;index"`

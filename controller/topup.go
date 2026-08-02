@@ -318,11 +318,15 @@ func GetSignupGift(c *gin.Context) {
 			giftUsd = float64(quotaForNewUser) / common.QuotaPerUnit
 		}
 		common.ApiSuccess(c, gin.H{
-			"enabled":            true,
-			"eligible":           userId == 0,
-			"benefit_type":       "wallet_credit",
-			"quota_for_new_user": quotaForNewUser,
-			"gift_usd":           giftUsd,
+			"enabled":                     true,
+			"eligible":                    userId == 0,
+			"benefit_type":                "wallet_credit",
+			"quota_for_new_user":          quotaForNewUser,
+			"gift_usd":                    giftUsd,
+			"referral_gpt_reward_enabled": common.ReferralGPTRewardEnabled,
+			"referral_gpt_reward_usd":     common.ReferralGPTRewardAmountUSD,
+			"referral_gpt_min_topup_usd":  common.ReferralGPTMinTopupUSD,
+			"aff_ratio":                   common.AffRatio,
 		})
 		return
 	}
@@ -346,16 +350,24 @@ func GetSignupGift(c *gin.Context) {
 			"trial_duration_value":          trialPlan.DurationValue,
 			"trial_duration_custom_seconds": trialPlan.CustomSeconds,
 			"trial_campaign_started_at":     trialPlan.CreatedAt,
+			"referral_gpt_reward_enabled":   common.ReferralGPTRewardEnabled,
+			"referral_gpt_reward_usd":       common.ReferralGPTRewardAmountUSD,
+			"referral_gpt_min_topup_usd":    common.ReferralGPTMinTopupUSD,
+			"aff_ratio":                     common.AffRatio,
 		})
 		return
 	}
 
 	common.ApiSuccess(c, gin.H{
-		"enabled":            false,
-		"eligible":           false,
-		"benefit_type":       "none",
-		"quota_for_new_user": 0,
-		"gift_usd":           0,
+		"enabled":                     false,
+		"eligible":                    false,
+		"referral_gpt_reward_enabled": common.ReferralGPTRewardEnabled,
+		"referral_gpt_reward_usd":     common.ReferralGPTRewardAmountUSD,
+		"referral_gpt_min_topup_usd":  common.ReferralGPTMinTopupUSD,
+		"aff_ratio":                   common.AffRatio,
+		"benefit_type":                "none",
+		"quota_for_new_user":          0,
+		"gift_usd":                    0,
 	})
 }
 

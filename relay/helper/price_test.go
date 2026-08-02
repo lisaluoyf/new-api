@@ -167,3 +167,40 @@ func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	require.Same(t, snapshot, info.TieredBillingSnapshot)
 	require.Equal(t, priceData, refreshed)
 }
+
+func TestTieredPriceSnapshotFollowsSelectedFundingSource(t *testing.T) {
+	walletPrice := types.PriceData{
+		GroupRatioInfo:    types.GroupRatioInfo{GroupRatio: 0.42},
+		QuotaToPreConsume: 420,
+	}
+	trialPrice := types.PriceData{
+		GroupRatioInfo:    types.GroupRatioInfo{GroupRatio: 1},
+		QuotaToPreConsume: 1000,
+	}
+	walletSnapshot := &billingexpr.BillingSnapshot{GroupRatio: 0.42}
+	trialSnapshot := &billingexpr.BillingSnapshot{GroupRatio: 1}
+
+	info := &relaycommon.RelayInfo{TieredBillingSnapshot: walletSnapshot}
+	info.SetWalletPriceData(walletPrice)
+	info.TieredBillingSnapshot = trialSnapshot
+	info.SetTrialPriceData(trialPrice)
+	require.Equal(t, "wallet", info.PriceDataSource)
+	require.Same(t, walletSnapshot, info.TieredBillingSnapshot)
+
+	require.True(t, info.ActivateGPTPromotionalPriceData(model.SubscriptionPlanTypeGPTReferralReward))
+	require.Equal(t, model.SubscriptionPlanTypeGPTReferralReward, info.PriceDataSource)
+	require.Equal(t, trialPrice, info.PriceData)
+	require.Same(t, trialSnapshot, info.TieredBillingSnapshot)
+	require.InDelta(t, 1, info.TieredBillingSnapshot.GroupRatio, 0.000001)
+
+	require.True(t, info.ActivateWalletPriceData())
+	require.Equal(t, "wallet", info.PriceDataSource)
+	require.Equal(t, walletPrice, info.PriceData)
+	require.Same(t, walletSnapshot, info.TieredBillingSnapshot)
+	require.InDelta(t, 0.42, info.TieredBillingSnapshot.GroupRatio, 0.000001)
+
+	require.True(t, info.ActivateTrialPriceData())
+	require.Equal(t, "gpt_trial", info.PriceDataSource)
+	require.Equal(t, trialPrice, info.PriceData)
+	require.Same(t, trialSnapshot, info.TieredBillingSnapshot)
+}

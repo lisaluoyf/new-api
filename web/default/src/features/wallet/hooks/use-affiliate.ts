@@ -21,7 +21,12 @@ import i18next from 'i18next'
 import { toast } from 'sonner'
 import { getSelf } from '@/lib/api'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { getAffiliateCode, transferAffiliateQuota } from '../api'
+import {
+  getAffiliateCode,
+  getReferralGPTRewardSummary,
+  transferAffiliateQuota,
+  type ReferralGPTRewardSummary,
+} from '../api'
 import { generateAffiliateLink } from '../lib'
 
 // ============================================================================
@@ -33,13 +38,20 @@ export function useAffiliate() {
   const [affiliateLink, setAffiliateLink] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [transferring, setTransferring] = useState(false)
+  const [rewardSummary, setRewardSummary] =
+    useState<ReferralGPTRewardSummary | null>(null)
   const { copyToClipboard } = useCopyToClipboard()
 
   // Fetch affiliate code
   const fetchAffiliateCode = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await getAffiliateCode()
+      const [response, summary] = await Promise.all([
+        getAffiliateCode(),
+        getReferralGPTRewardSummary(),
+      ])
+
+      setRewardSummary(summary)
 
       if (response.success && response.data) {
         setAffiliateCode(response.data)
@@ -90,6 +102,7 @@ export function useAffiliate() {
     affiliateLink,
     loading,
     transferring,
+    rewardSummary,
     copyAffiliateLink,
     transferQuota,
     refetch: fetchAffiliateCode,

@@ -46,7 +46,8 @@ export function ReferralCard({ user, onSuccess }: ReferralCardProps) {
   } | null
   const affRatio = statusData?.effective_aff_ratio ?? statusData?.aff_ratio ?? 0
   const [transferOpen, setTransferOpen] = useState(false)
-  const { affiliateLink, loading, transferring, transferQuota } = useAffiliate()
+  const { affiliateLink, loading, transferring, transferQuota, rewardSummary } =
+    useAffiliate()
 
   async function handleTransfer(amount: number) {
     const ok = await transferQuota(amount)
@@ -85,10 +86,17 @@ export function ReferralCard({ user, onSuccess }: ReferralCardProps) {
               {t('View Details')} <ExternalLink className='size-3' />
             </Link>
           </div>
-          {affRatio > 0 && (
+          {(affRatio > 0 || rewardSummary?.enabled) && (
             <p className='text-muted-foreground text-xs'>
-              {t('After friend tops up, you earn')}{' '}
-              <span className='font-medium text-green-500'>{affRatio}%</span>
+              {rewardSummary?.enabled
+                ? t(
+                    'Friend first top-up: both get ${{amount}} GPT credits, permanent and stackable; earn {{pct}}% on later top-ups.',
+                    {
+                      amount: rewardSummary.reward_usd,
+                      pct: affRatio,
+                    }
+                  )
+                : `${t('After friend tops up, you earn')} ${affRatio}%`}
             </p>
           )}
         </CardHeader>

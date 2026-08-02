@@ -45,6 +45,9 @@ const quotaSchema = z.object({
   QuotaForInviter: z.coerce.number().min(0),
   QuotaForInvitee: z.coerce.number().min(0),
   AffRatio: z.coerce.number().min(0).max(100),
+  ReferralGPTRewardEnabled: z.boolean(),
+  ReferralGPTMinTopupUSD: z.coerce.number().min(0.01),
+  ReferralGPTRewardAmountUSD: z.coerce.number().min(0.01),
   FirstTopupPromoEnabled: z.boolean(),
   FirstTopupPromoDiscount: z.coerce.number().min(0).max(1),
   FirstTopupPromoAmount: z.coerce.number().min(1),
@@ -163,7 +166,7 @@ export function QuotaSettingsSection({
             name='QuotaForInviter'
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('Inviter Reward')}</FormLabel>
+                <FormLabel>{t('Registration Inviter Reward')}</FormLabel>
                 <FormControl>
                   <Input
                     type='number'
@@ -175,7 +178,7 @@ export function QuotaSettingsSection({
                   />
                 </FormControl>
                 <FormDescription>
-                  {t('Quota given to users who invite others')}
+                  {t('Registration quota given to users who invite others')}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -187,7 +190,7 @@ export function QuotaSettingsSection({
             name='QuotaForInvitee'
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('Invitee Reward')}</FormLabel>
+                <FormLabel>{t('Registration Invitee Reward')}</FormLabel>
                 <FormControl>
                   <Input
                     type='number'
@@ -199,7 +202,7 @@ export function QuotaSettingsSection({
                   />
                 </FormControl>
                 <FormDescription>
-                  {t('Quota given to invited users')}
+                  {t('Registration quota given to invited users')}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -223,12 +226,98 @@ export function QuotaSettingsSection({
                   />
                 </FormControl>
                 <FormDescription>
-                  {t('Percentage of friend top-up the inviter receives (0 = disabled, max 100)')}
+                  {t(
+                    'Percentage of friend top-up the inviter receives (0 = disabled, max 100)'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
           />
+
+          <div className='space-y-5 border-t pt-6'>
+            <FormField
+              control={form.control}
+              name='ReferralGPTRewardEnabled'
+              render={({ field }) => (
+                <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                  <div className='space-y-0.5'>
+                    <FormLabel className='text-base'>
+                      {t('Referral First Top-Up GPT Reward')}
+                    </FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Reward both users with permanent GPT credits after a qualifying referral top-up'
+                      )}
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={updateOption.isPending}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='ReferralGPTMinTopupUSD'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Minimum Credited Amount (USD)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min='0.01'
+                      step='0.01'
+                      value={field.value ?? ''}
+                      onChange={handleNumberChange(field.onChange)}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Cumulative successful wallet top-ups reaching this amount unlock the reward'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='ReferralGPTRewardAmountUSD'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('GPT Reward for Each User (USD)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min='0.01'
+                      step='0.01'
+                      value={field.value ?? ''}
+                      onChange={handleNumberChange(field.onChange)}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Permanent GPT credits granted to both the inviter and invited user'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
 
           <FormField
             control={form.control}
@@ -236,9 +325,13 @@ export function QuotaSettingsSection({
             render={({ field }) => (
               <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
                 <div className='space-y-0.5'>
-                  <FormLabel className='text-base'>{t('New User First Top-Up Promo')}</FormLabel>
+                  <FormLabel className='text-base'>
+                    {t('New User First Top-Up Promo')}
+                  </FormLabel>
                   <FormDescription>
-                    {t('Enable discount for new users on their first top-up (toggle off = hides popup too)')}
+                    {t(
+                      'Enable discount for new users on their first top-up (toggle off = hides popup too)'
+                    )}
                   </FormDescription>
                 </div>
                 <FormControl>
@@ -272,7 +365,9 @@ export function QuotaSettingsSection({
                   />
                 </FormControl>
                 <FormDescription>
-                  {t('e.g. 0.75 = pay $7.5 get $10 (card), or credit ÷ 0.75 (crypto). Changing this updates badges automatically.')}
+                  {t(
+                    'e.g. 0.75 = pay $7.5 get $10 (card), or credit ÷ 0.75 (crypto). Changing this updates badges automatically.'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -296,7 +391,9 @@ export function QuotaSettingsSection({
                   />
                 </FormControl>
                 <FormDescription>
-                  {t('Card: only this amount tier gets the discount. Crypto: bonus capped at this amount.')}
+                  {t(
+                    'Card: only this amount tier gets the discount. Crypto: bonus capped at this amount.'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -333,9 +430,13 @@ export function QuotaSettingsSection({
             render={({ field }) => (
               <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
                 <div className='space-y-0.5'>
-                  <FormLabel className='text-base'>{t('gpt-image-2 Channel Race Fallback')}</FormLabel>
+                  <FormLabel className='text-base'>
+                    {t('gpt-image-2 Channel Race Fallback')}
+                  </FormLabel>
                   <FormDescription>
-                    {t('When the primary channel has not finished within the timeout below, also submit to a second available channel and use whichever returns first.')}
+                    {t(
+                      'When the primary channel has not finished within the timeout below, also submit to a second available channel and use whichever returns first.'
+                    )}
                   </FormDescription>
                 </div>
                 <FormControl>
@@ -354,7 +455,9 @@ export function QuotaSettingsSection({
             name='GptImage2RaceTimeout1K'
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('Race Fallback Timeout — 1k (seconds)')}</FormLabel>
+                <FormLabel>
+                  {t('Race Fallback Timeout — 1k (seconds)')}
+                </FormLabel>
                 <FormControl>
                   <Input
                     type='number'
@@ -366,7 +469,9 @@ export function QuotaSettingsSection({
                   />
                 </FormControl>
                 <FormDescription>
-                  {t('For 1k images: how long to wait on the primary channel before also trying a second channel.')}
+                  {t(
+                    'For 1k images: how long to wait on the primary channel before also trying a second channel.'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -378,7 +483,9 @@ export function QuotaSettingsSection({
             name='GptImage2RaceTimeout2K'
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('Race Fallback Timeout — 2k (seconds)')}</FormLabel>
+                <FormLabel>
+                  {t('Race Fallback Timeout — 2k (seconds)')}
+                </FormLabel>
                 <FormControl>
                   <Input
                     type='number'
@@ -390,7 +497,9 @@ export function QuotaSettingsSection({
                   />
                 </FormControl>
                 <FormDescription>
-                  {t('For 2k images: how long to wait on the primary channel before also trying a second channel.')}
+                  {t(
+                    'For 2k images: how long to wait on the primary channel before also trying a second channel.'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -402,7 +511,9 @@ export function QuotaSettingsSection({
             name='GptImage2RaceTimeout4K'
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('Race Fallback Timeout — 4k (seconds)')}</FormLabel>
+                <FormLabel>
+                  {t('Race Fallback Timeout — 4k (seconds)')}
+                </FormLabel>
                 <FormControl>
                   <Input
                     type='number'
@@ -414,7 +525,9 @@ export function QuotaSettingsSection({
                   />
                 </FormControl>
                 <FormDescription>
-                  {t('For 4k/hd images: how long to wait on the primary channel before also trying a second channel.')}
+                  {t(
+                    'For 4k/hd images: how long to wait on the primary channel before also trying a second channel.'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>

@@ -467,11 +467,18 @@ func GetInviteList(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	inviteeIds := make([]int, 0, len(users))
+	for _, user := range users {
+		inviteeIds = append(inviteeIds, user.Id)
+	}
+	rewardedAt, _ := model.GetReferralGPTRewardedInvitees(inviteeIds)
 	// 脱敏用户名
 	type inviteItem struct {
-		Username    string `json:"username"`
-		DisplayName string `json:"display_name"`
-		CreatedAt   int64  `json:"created_at"`
+		Username     string `json:"username"`
+		DisplayName  string `json:"display_name"`
+		CreatedAt    int64  `json:"created_at"`
+		RewardStatus string `json:"reward_status"`
+		RewardedAt   int64  `json:"rewarded_at"`
 	}
 	items := make([]inviteItem, 0, len(users))
 	for _, u := range users {
@@ -479,10 +486,17 @@ func GetInviteList(c *gin.Context) {
 		if len(name) > 3 {
 			name = name[:3] + "***"
 		}
+		rewardTime := rewardedAt[u.Id]
+		status := "pending"
+		if rewardTime > 0 {
+			status = "rewarded"
+		}
 		items = append(items, inviteItem{
-			Username:    name,
-			DisplayName: u.DisplayName,
-			CreatedAt:   u.CreatedAt,
+			Username:     name,
+			DisplayName:  u.DisplayName,
+			CreatedAt:    u.CreatedAt,
+			RewardStatus: status,
+			RewardedAt:   rewardTime,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -494,6 +508,31 @@ func GetInviteList(c *gin.Context) {
 			"page":      page,
 			"page_size": pageSize,
 		},
+	})
+}
+
+func GetReferralGPTRewardSummary(c *gin.Context) {
+	summary, err := model.GetReferralGPTRewardSummary(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, summary)
+}
+
+func GetReferralGPTRewardLogs(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	records, total, err := model.GetReferralGPTRewardLogs(c.GetInt("id"), page, pageSize)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"records":   records,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 

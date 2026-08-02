@@ -181,6 +181,9 @@ export type BillingSettings = {
   QuotaForInviter: number
   QuotaForInvitee: number
   AffRatio: number
+  ReferralGPTRewardEnabled: boolean
+  ReferralGPTMinTopupUSD: number
+  ReferralGPTRewardAmountUSD: number
   FirstTopupPromoEnabled: boolean
   FirstTopupPromoDiscount: number
   FirstTopupPromoAmount: number

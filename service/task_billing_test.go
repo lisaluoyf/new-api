@@ -126,6 +126,7 @@ func seedSubscriptionPlan(t *testing.T, id int, title string, planType string) {
 		TotalAmount:   1000,
 	}
 	require.NoError(t, model.DB.Create(plan).Error)
+	model.InvalidateSubscriptionPlanCache(id)
 }
 
 func seedUserSubscriptionWithPlan(t *testing.T, id int, userId int, planId int, amountTotal int64, amountUsed int64) {

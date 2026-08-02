@@ -161,23 +161,28 @@ type RelayInfo struct {
 	// WalletPriceData stores the normal user-priced snapshot used by wallet and
 	// standard subscriptions.
 	WalletPriceData *types.PriceData
-	// TrialPriceData stores the official-priced snapshot used by GPT trial.
+	// TrialPriceData stores the official-priced snapshot shared by GPT
+	// promotional subscriptions (limited trial and permanent referral rewards).
 	TrialPriceData *types.PriceData
 	// PriceDataSource tracks which snapshot is currently active on PriceData.
 	// "wallet" covers normal wallet/standard-subscription pricing, "gpt_trial"
-	// covers the GPT trial official-price path.
+	// and "gpt_referral_reward" cover the GPT promotional official-price paths.
 	PriceDataSource string
 	// HasActiveGPTTrial caches the request-time subscription existence check so
 	// billing selection does not need to re-query or guess.
 	HasActiveGPTTrial bool
+	// HasActiveGPTReferralReward caches the permanent referral-credit lookup.
+	HasActiveGPTReferralReward bool
 	// GPTTrialChecked marks whether HasActiveGPTTrial was resolved for this
 	// request.
 	GPTTrialChecked bool
 
 	// TieredBillingSnapshot is a frozen snapshot of tiered billing rules
 	// captured at pre-consume time. Non-nil only when billing mode is "tiered_expr".
-	TieredBillingSnapshot *billingexpr.BillingSnapshot
-	BillingRequestInput   *billingexpr.RequestInput
+	TieredBillingSnapshot       *billingexpr.BillingSnapshot
+	WalletTieredBillingSnapshot *billingexpr.BillingSnapshot
+	TrialTieredBillingSnapshot  *billingexpr.BillingSnapshot
+	BillingRequestInput         *billingexpr.RequestInput
 
 	Request dto.Request
 
@@ -262,9 +267,13 @@ func (info *RelayInfo) SetWalletPriceData(priceData types.PriceData) {
 	}
 	priceCopy := priceData
 	info.WalletPriceData = &priceCopy
+	info.WalletTieredBillingSnapshot = info.TieredBillingSnapshot
 	if info.PriceDataSource == "" || info.PriceDataSource == "wallet" {
 		info.PriceData = priceData
 		info.PriceDataSource = "wallet"
+		info.TieredBillingSnapshot = info.WalletTieredBillingSnapshot
+	} else {
+		info.TieredBillingSnapshot = info.TrialTieredBillingSnapshot
 	}
 }
 
@@ -274,8 +283,12 @@ func (info *RelayInfo) SetTrialPriceData(priceData types.PriceData) {
 	}
 	priceCopy := priceData
 	info.TrialPriceData = &priceCopy
-	if info.PriceDataSource == "gpt_trial" {
+	info.TrialTieredBillingSnapshot = info.TieredBillingSnapshot
+	if info.PriceDataSource == "gpt_trial" || info.PriceDataSource == "gpt_referral_reward" {
 		info.PriceData = priceData
+		info.TieredBillingSnapshot = info.TrialTieredBillingSnapshot
+	} else {
+		info.TieredBillingSnapshot = info.WalletTieredBillingSnapshot
 	}
 }
 
@@ -285,15 +298,24 @@ func (info *RelayInfo) ActivateWalletPriceData() bool {
 	}
 	info.PriceData = *info.WalletPriceData
 	info.PriceDataSource = "wallet"
+	info.TieredBillingSnapshot = info.WalletTieredBillingSnapshot
 	return true
 }
 
 func (info *RelayInfo) ActivateTrialPriceData() bool {
+	return info.ActivateGPTPromotionalPriceData("gpt_trial")
+}
+
+func (info *RelayInfo) ActivateGPTPromotionalPriceData(source string) bool {
 	if info == nil || info.TrialPriceData == nil {
 		return false
 	}
 	info.PriceData = *info.TrialPriceData
-	info.PriceDataSource = "gpt_trial"
+	if source != "gpt_referral_reward" {
+		source = "gpt_trial"
+	}
+	info.PriceDataSource = source
+	info.TieredBillingSnapshot = info.TrialTieredBillingSnapshot
 	return true
 }
 

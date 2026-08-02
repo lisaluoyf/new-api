@@ -57,7 +57,7 @@ export function Wallet() {
     setHistoryKey((k) => k + 1)
   }
 
-  const { affiliateLink } = useAffiliate()
+  const { affiliateLink, rewardSummary } = useAffiliate()
   const invitePrompt = usePostTopupInvitePrompt()
 
   useClinkReturnConfirm(handleSuccess, invitePrompt.notifyTopupSettled)
@@ -91,6 +91,7 @@ export function Wallet() {
         onOpenChange={invitePrompt.onOpenChange}
         affRatio={invitePrompt.affRatio}
         affiliateLink={affiliateLink}
+        rewardSummary={rewardSummary}
         preview={invitePrompt.isPreview}
       />
     </div>

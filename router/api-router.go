@@ -109,6 +109,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/invite_promo_event", controller.RecordInvitePromoEvent)
 				selfRoute.GET("/aff_logs", controller.GetAffLogs)
 				selfRoute.GET("/invite_list", controller.GetInviteList)
+				selfRoute.GET("/referral_gpt_reward_summary", controller.GetReferralGPTRewardSummary)
+				selfRoute.GET("/referral_gpt_reward_logs", controller.GetReferralGPTRewardLogs)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
 				// first_topup_promo is below in the public userRoute section
