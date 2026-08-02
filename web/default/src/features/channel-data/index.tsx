@@ -242,6 +242,9 @@ const NON_LLM_MODEL_IDS = new Set([
   'doubao-seedance-2.0',
   'kling-v3-motion-control',
   'grok-imagine-video-1.5',
+  'grok-1.5-video-10s',
+  'grok-1.5-video-15s',
+  'grok-1.5-video-6s',
 ])
 
 const VIDEO_MODEL_IDS = new Set([
@@ -250,6 +253,9 @@ const VIDEO_MODEL_IDS = new Set([
   'doubao-seedance-2.0',
   'kling-v3-motion-control',
   'grok-imagine-video-1.5',
+  'grok-1.5-video-10s',
+  'grok-1.5-video-15s',
+  'grok-1.5-video-6s',
 ])
 
 const IMAGE_MODEL_IDS = new Set([
