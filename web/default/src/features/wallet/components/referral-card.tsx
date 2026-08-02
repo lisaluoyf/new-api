@@ -90,7 +90,7 @@ export function ReferralCard({ user, onSuccess }: ReferralCardProps) {
             <p className='text-muted-foreground text-xs'>
               {rewardSummary?.enabled
                 ? t(
-                    'Friend first top-up: both get ${{amount}} GPT credits, permanent and stackable; earn {{pct}}% on later top-ups.',
+                    'Friend first top-up: both get an additional ${{amount}} in GPT credits, permanent and stackable; earn {{pct}}% on later top-ups.',
                     {
                       amount: rewardSummary.reward_usd,
                       pct: affRatio,

@@ -208,7 +208,7 @@ export function AffiliatePage() {
             <span className='text-sm text-white/85'>
               {referralRewardEnabled
                 ? t(
-                    'Both get ${{amount}} GPT credits on first top-up; then earn {{pct}}% commission',
+                    'Both get an additional ${{amount}} in GPT credits on first top-up; then earn {{pct}}% commission',
                     { amount: referralRewardAmount, pct: affRatio }
                   )
                 : `${t('Invite friends, referrer earns commission')}: ${affRatio}%`}
@@ -221,7 +221,7 @@ export function AffiliatePage() {
           <p className='text-muted-foreground text-sm'>
             {referralRewardEnabled
               ? t(
-                  'Friend first top-up: both get ${{amount}} GPT credits, permanent and stackable; earn {{pct}}% on later top-ups.',
+                  'Friend first top-up: both get an additional ${{amount}} in GPT credits, permanent and stackable; earn {{pct}}% on later top-ups.',
                   { amount: referralRewardAmount, pct: affRatio }
                 )
               : affRatio > 0
