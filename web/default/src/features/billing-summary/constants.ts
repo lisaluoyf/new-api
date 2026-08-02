@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 export function formatUSD(value: number): string {
-  return `$${value.toFixed(1)}`
+  return `$${value.toFixed(0)}`
 }
 
 // Backend buckets days by Beijing (UTC+8) midnight; format in local time so
