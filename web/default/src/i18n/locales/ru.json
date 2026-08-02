@@ -4569,6 +4569,7 @@
   "自定义": "Своё",
   "当上游无 /api/pricing 时，用 romaapi 公开模型价格 × 此倍率作为回退定价；留空或 0 表示不启用": "Если у апстрима нет /api/pricing, используется публичная цена модели romaapi × этот множитель как резервная цена; пусто или 0 — отключено.",
   "Wallet Balance": "Баланс кошелька",
+  "User Balance": "Баланс пользователей",
   "All models": "Все модели",
   "APIMaster discounted pricing": "Цены APIMaster со скидкой",
   "Subscription Balance": "Баланс подписки",

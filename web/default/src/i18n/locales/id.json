@@ -4567,6 +4567,7 @@
   "自定义": "Kustom",
   "当上游无 /api/pricing 时，用 romaapi 公开模型价格 × 此倍率作为回退定价；留空或 0 表示不启用": "Jika upstream tidak punya /api/pricing, gunakan harga model publik romaapi × pengali ini sebagai harga cadangan; kosongkan atau 0 untuk menonaktifkan.",
   "Wallet Balance": "Saldo dompet",
+  "User Balance": "Saldo pengguna",
   "All models": "Semua model",
   "APIMaster discounted pricing": "Harga diskon APIMaster",
   "Subscription Balance": "Saldo langganan",

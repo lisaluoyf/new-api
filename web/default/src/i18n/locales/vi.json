@@ -4567,6 +4567,7 @@
   "自定义": "Tùy chỉnh",
   "当上游无 /api/pricing 时，用 romaapi 公开模型价格 × 此倍率作为回退定价；留空或 0 表示不启用": "Khi upstream không có /api/pricing, dùng giá mô hình công khai của romaapi × hệ số này làm giá dự phòng; để trống hoặc 0 để tắt.",
   "Wallet Balance": "Số dư ví",
+  "User Balance": "Số dư người dùng",
   "All models": "Tất cả mô hình",
   "APIMaster discounted pricing": "Giá ưu đãi của APIMaster",
   "Subscription Balance": "Số dư gói đăng ký",

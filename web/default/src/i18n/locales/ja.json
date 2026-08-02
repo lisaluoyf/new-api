@@ -4567,6 +4567,7 @@
   "自定义": "カスタム",
   "当上游无 /api/pricing 时，用 romaapi 公开模型价格 × 此倍率作为回退定价；留空或 0 表示不启用": "アップストリームに /api/pricing がない場合、romaapi の公開モデル価格 × この倍率をフォールバック価格として使用します。空欄または 0 で無効。",
   "Wallet Balance": "ウォレット残高",
+  "User Balance": "ユーザー残高",
   "All models": "すべてのモデル",
   "APIMaster discounted pricing": "APIMaster 割引価格",
   "Subscription Balance": "サブスクリプション残高",
