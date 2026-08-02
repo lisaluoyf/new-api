@@ -611,6 +611,9 @@ export function transformFormDataToUpdatePayload(
   payload.status_code_mapping = formData.status_code_mapping || ''
   payload.param_override = formData.param_override || ''
   payload.header_override = formData.header_override || ''
+  // GORM omits nil pointers in struct updates. Send an explicit empty string
+  // so removing the last per-model ratio clears the persisted JSON column.
+  payload.model_price_ratios = formData.model_price_ratios || ''
 
   return payload
 }
