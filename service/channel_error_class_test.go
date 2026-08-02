@@ -124,6 +124,51 @@ func TestEvaluateChannelHealth_rechargeHighConfidence(t *testing.T) {
 	require.Contains(t, reason, "余额不足")
 }
 
+func TestEvaluateChannelHealth_upstreamBudgetExceeded(t *testing.T) {
+	commonBackup := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = commonBackup
+		resetChannelHealthForTest()
+	})
+
+	messages := []string{
+		"Model-level budget exceeded (virtual key scope): Model:AllModels:virtual_key:507da648 budget exceeded: 200.2732 >= 200.0000 dollars",
+		"Virtual key abc has budget exceeded its configured limit",
+		"virtual_key abc budget exceeded",
+	}
+	for i, message := range messages {
+		t.Run(message, func(t *testing.T) {
+			resetChannelHealthForTest()
+			err := types.NewErrorWithStatusCode(
+				types.NewError(nil, types.ErrorCodeBadResponseStatusCode),
+				types.ErrorCodeBadResponseStatusCode,
+				402,
+			)
+			err.SetMessage(message)
+
+			require.Equal(t, CategoryUpstreamRecharge, ClassifyChannelError(err))
+			require.True(t, IsHighConfidenceRecharge(err))
+			action, reason := EvaluateChannelHealth(types.ChannelError{ChannelId: 100 + i, AutoBan: true}, err)
+			require.Equal(t, HealthNotifyRecharge, action)
+			require.Contains(t, reason, "上游账户欠费/额度不足")
+		})
+	}
+}
+
+func TestClassifyChannelError_genericBudgetExceededDoesNotDisable(t *testing.T) {
+	t.Parallel()
+	err := types.NewErrorWithStatusCode(
+		types.NewError(nil, types.ErrorCodeBadResponseStatusCode),
+		types.ErrorCodeBadResponseStatusCode,
+		402,
+	)
+	err.SetMessage("request budget exceeded")
+
+	require.Equal(t, CategorySkip, ClassifyChannelError(err))
+	require.False(t, IsHighConfidenceRecharge(err))
+}
+
 func TestEvaluateChannelHealth_wrappedPlatformUserQuotaNeverDisables(t *testing.T) {
 	resetChannelHealthForTest()
 	ch := types.ChannelError{ChannelId: 68, ChannelName: "Apimart_原价", AutoBan: true}

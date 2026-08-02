@@ -705,29 +705,37 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 const logSearchCountLimit = 10000
 
 // applyUserErrorLogVisibility collapses fallback attempt errors for the user-facing
-// log view. Admin queries intentionally keep every attempt for diagnostics.
+// log view. Retryable attempts are hidden immediately, even before a later attempt
+// succeeds or fails, so users never observe transient channel errors while fallback
+// is still running. Admin queries intentionally keep every attempt for diagnostics.
 func applyUserErrorLogVisibility(tx *gorm.DB) *gorm.DB {
 	return tx.Where(`(
 		logs.type <> ?
-		OR COALESCE(logs.request_id, '') = ''
 		OR (
-			NOT EXISTS (
-				SELECT 1 FROM logs AS successful_log
-				WHERE successful_log.user_id = logs.user_id
-					AND successful_log.request_id = logs.request_id
-					AND successful_log.type = ?
-					AND COALESCE(successful_log.other, '') NOT LIKE ?
-			)
-			AND NOT EXISTS (
-				SELECT 1 FROM logs AS later_error
-				WHERE later_error.user_id = logs.user_id
-					AND later_error.request_id = logs.request_id
-					AND later_error.type = ?
-					AND later_error.id > logs.id
+			COALESCE(logs.other, '') NOT LIKE ?
+			AND COALESCE(logs.other, '') NOT LIKE ?
+			AND (
+				COALESCE(logs.request_id, '') = ''
+				OR (
+					NOT EXISTS (
+						SELECT 1 FROM logs AS successful_log
+						WHERE successful_log.user_id = logs.user_id
+							AND successful_log.request_id = logs.request_id
+							AND successful_log.type = ?
+							AND COALESCE(successful_log.other, '') NOT LIKE ?
+					)
+					AND NOT EXISTS (
+						SELECT 1 FROM logs AS later_error
+						WHERE later_error.user_id = logs.user_id
+							AND later_error.request_id = logs.request_id
+							AND later_error.type = ?
+							AND later_error.id > logs.id
+					)
+				)
 			)
 		)
 	)
-	`, LogTypeError, LogTypeConsume, `%"violation_fee":true%`, LogTypeError)
+	`, LogTypeError, `%"should_retry":true%`, `%"should_retry": true%`, LogTypeConsume, `%"violation_fee":true%`, LogTypeError)
 }
 
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string) (logs []*Log, total int64, err error) {

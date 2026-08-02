@@ -106,3 +106,91 @@ func TestGetAllLogsKeepsEveryFallbackAttemptForAdmins(t *testing.T) {
 		"recovered error 1",
 	}, logContents(logs))
 }
+
+func TestGetUserLogsHidesRetryableAttemptBeforeOutcome(t *testing.T) {
+	for _, other := range []string{
+		`{"admin_info":{"retry_decision":{"should_retry":true}}}`,
+		`{"admin_info":{"retry_decision":{"should_retry": true}}}`,
+	} {
+		t.Run(other, func(t *testing.T) {
+			setupUserLogVisibilityTestDB(t)
+			retryable := Log{
+				UserId:    1,
+				Type:      LogTypeError,
+				RequestId: "retry-in-progress",
+				Content:   "transient upstream error",
+				Other:     other,
+				CreatedAt: 1,
+			}
+			require.NoError(t, LOG_DB.Create(&retryable).Error)
+
+			logs, total, err := GetUserLogs(1, LogTypeUnknown, 0, 0, "", "", 0, 20, "", retryable.RequestId)
+			require.NoError(t, err)
+			require.Zero(t, total)
+			require.Empty(t, logs)
+		})
+	}
+}
+
+func TestGetUserLogsShowsFinalFailureWithRetryDecision(t *testing.T) {
+	setupUserLogVisibilityTestDB(t)
+	finalFailure := Log{
+		UserId:    1,
+		Type:      LogTypeError,
+		RequestId: "final-failure",
+		Content:   "final upstream error",
+		Other:     `{"admin_info":{"retry_decision":{"should_retry":false}}}`,
+		CreatedAt: 1,
+	}
+	require.NoError(t, LOG_DB.Create(&finalFailure).Error)
+
+	logs, total, err := GetUserLogs(1, LogTypeError, 0, 0, "", "", 0, 20, "", finalFailure.RequestId)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Equal(t, []string{"final upstream error"}, logContents(logs))
+}
+
+func TestGetUserLogsRetryableAttemptStaysHiddenAfterSuccess(t *testing.T) {
+	setupUserLogVisibilityTestDB(t)
+	requestId := "retry-then-success"
+	retryable := Log{
+		UserId:    1,
+		Type:      LogTypeError,
+		RequestId: requestId,
+		Content:   "transient upstream error",
+		Other:     `{"admin_info":{"retry_decision":{"should_retry":true}}}`,
+		CreatedAt: 1,
+	}
+	require.NoError(t, LOG_DB.Create(&retryable).Error)
+
+	logs, total, err := GetUserLogs(1, LogTypeUnknown, 0, 0, "", "", 0, 20, "", requestId)
+	require.NoError(t, err)
+	require.Zero(t, total)
+	require.Empty(t, logs)
+
+	success := Log{UserId: 1, Type: LogTypeConsume, RequestId: requestId, Content: "success", CreatedAt: 2}
+	require.NoError(t, LOG_DB.Create(&success).Error)
+
+	logs, total, err = GetUserLogs(1, LogTypeUnknown, 0, 0, "", "", 0, 20, "", requestId)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Equal(t, []string{"success"}, logContents(logs))
+}
+
+func TestGetAllLogsKeepsRetryableAttemptForAdmins(t *testing.T) {
+	setupUserLogVisibilityTestDB(t)
+	retryable := Log{
+		UserId:    1,
+		Type:      LogTypeError,
+		RequestId: "admin-retry-in-progress",
+		Content:   "transient upstream error",
+		Other:     `{"admin_info":{"retry_decision":{"should_retry":true}}}`,
+		CreatedAt: 1,
+	}
+	require.NoError(t, LOG_DB.Create(&retryable).Error)
+
+	logs, total, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 20, 0, "", retryable.RequestId, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Equal(t, []string{"transient upstream error"}, logContents(logs))
+}

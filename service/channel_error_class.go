@@ -132,10 +132,8 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 func isUpstreamRechargeError(err *types.NewAPIError) bool {
 	msg := err.Error()
 	lower := strings.ToLower(msg)
-	for _, kw := range upstreamRechargeHighConfidence {
-		if strings.Contains(lower, strings.ToLower(kw)) {
-			return true
-		}
+	if isHighConfidenceUpstreamRechargeMessage(lower) {
+		return true
 	}
 	hits := 0
 	for _, kw := range upstreamRechargeMediumConfidence {
@@ -144,6 +142,19 @@ func isUpstreamRechargeError(err *types.NewAPIError) bool {
 		}
 	}
 	return hits >= 1 && (strings.Contains(msg, "剩余额度") || strings.Contains(lower, "403"))
+}
+
+func isHighConfidenceUpstreamRechargeMessage(lowerMessage string) bool {
+	for _, kw := range upstreamRechargeHighConfidence {
+		if strings.Contains(lowerMessage, strings.ToLower(kw)) {
+			return true
+		}
+	}
+	if strings.Contains(lowerMessage, "model-level budget exceeded") {
+		return true
+	}
+	hasVirtualKey := strings.Contains(lowerMessage, "virtual key") || strings.Contains(lowerMessage, "virtual_key")
+	return hasVirtualKey && strings.Contains(lowerMessage, "budget exceeded")
 }
 
 func isPlatformUserQuotaError(err *types.NewAPIError) bool {
@@ -225,11 +236,5 @@ func IsHighConfidenceRecharge(err *types.NewAPIError) bool {
 	if err == nil {
 		return false
 	}
-	lower := strings.ToLower(err.Error())
-	for _, kw := range upstreamRechargeHighConfidence {
-		if strings.Contains(lower, strings.ToLower(kw)) {
-			return true
-		}
-	}
-	return false
+	return isHighConfidenceUpstreamRechargeMessage(strings.ToLower(err.Error()))
 }
