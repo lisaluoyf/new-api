@@ -26,6 +26,7 @@
   { "model_id": "doubao-seedance-2.0", "label": "Seedance 2.0", "accent": "#fb923c" },
   { "model_id": "glm-5.2", "label": "GLM 5.2", "accent": "#10b981" },
   { "model_id": "grok-4.5", "label": "Grok 4.5", "accent": "#94a3b8" },
+  { "model_id": "grok-imagine-video-1.5", "label": "Grok Imagine Video 1.5", "accent": "#94a3b8" },
   { "model_id": "gemini-3.1-pro-preview", "label": "Gemini 3.1 Pro", "accent": "#4285f4" },
   { "model_id": "gemini-3.6-flash", "label": "Gemini 3.6 Flash", "accent": "#4285f4" },
   { "model_id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash", "accent": "#4285f4" },
