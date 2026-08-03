@@ -53,6 +53,7 @@ var ModelIDCandidates = map[string][]string{
 	"mimo-v2.5-pro":                  {"xiaomi/mimo-v2.5-pro", "mimo-v2-5-pro"},
 	"mimo-v2.5":                      {"xiaomi/mimo-v2.5", "mimo-v2-5"},
 	"qwen3.7-max":                    {"qwen3-7-max", "Qwen3.7-Max"},
+	"qwen3.8-max":                    {"qwen3.8-max-preview", "qwen3-8-max", "Qwen3.8-Max"},
 	"qwen3.7-plus":                   {"qwen3-7-plus", "Qwen3.7-Plus"},
 	"doubao-seed-2-1-pro-260628":     {"doubao-seed-2-1-pro"},
 	"doubao-seed-2-1-turbo-260628":   {"doubao-seed-2-1-turbo"},

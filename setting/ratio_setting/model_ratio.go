@@ -24,7 +24,8 @@ const (
 // 1 === ￥0.014 / 1k tokens
 
 var defaultModelRatio = map[string]float64{
-	"kimi-k3": 1.5, // $3 / 1M input tokens
+	"kimi-k3":     1.5,  // $3 / 1M input tokens
+	"qwen3.8-max": 1.25, // $2.5 / 1M input tokens
 	//"midjourney":                50,
 	"gpt-4-gizmo-*":  15,
 	"gpt-4o-gizmo-*": 2.5,
@@ -344,6 +345,7 @@ var completionRatioMap = types.NewRWMap[string, float64]()
 
 var defaultCompletionRatio = map[string]float64{
 	"kimi-k3":        5, // $15 / $3
+	"qwen3.8-max":    3, // $7.5 / $2.5
 	"gpt-4-gizmo-*":  2,
 	"gpt-4o-gizmo-*": 3,
 	"gpt-4-all":      2,
