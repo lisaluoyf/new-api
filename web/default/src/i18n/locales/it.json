@@ -4205,6 +4205,8 @@
     "User created successfully": "Utente creato con successo",
     "User dashboard and quota controls.": "Dashboard utente e controlli quota.",
     "User Exclusive Ratio": "Rapporto Esclusivo Utente",
+    "User group description.default": "Instradamento intelligente (privilegia il canale disponibile più economico, failover automatico in caso di errore, include una commissione di servizio del 5%)",
+    "User group description.subscription": "Questo gruppo è stato dismesso. Si prega di non utilizzarlo.",
     "User group": "Gruppo utente",
     "User Group": "Gruppo Utente",
     "User group name": "Nome gruppo utente",

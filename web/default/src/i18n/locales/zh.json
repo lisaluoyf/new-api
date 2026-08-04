@@ -4332,6 +4332,7 @@
     "User Exclusive Ratio": "专属倍率",
     "User group description.default": "智能路由（最便宜可用渠道优先，失败自动 fallback，含 5% 服务费）",
     "User final price = procurement price × this ratio. Leave blank or 1.0 for no markup. Affects actual billing and marketplace display.": "未单独配置模型倍率时的默认加价：用户最终价格 = 采购价 × 此倍率。留空或填 1.0 表示不加价。影响实际计费与模型广场展示价格。",
+    "User group description.subscription": "该分组已停用，请勿使用",
     "User group": "用户分组",
     "User Group": "用户分组",
     "User group name": "用户分组名称",

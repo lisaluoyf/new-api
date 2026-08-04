@@ -4205,6 +4205,8 @@
     "User created successfully": "User created successfully",
     "User dashboard and quota controls.": "User dashboard and quota controls.",
     "User Exclusive Ratio": "User Exclusive Ratio",
+    "User group description.default": "Enrutamiento inteligente (prioriza el canal disponible más económico, con conmutación automática en caso de fallo, incluye una tarifa de servicio del 5%)",
+    "User group description.subscription": "Este grupo ha sido descontinuado. Por favor, no lo utilice.",
     "User group": "User group",
     "User Group": "User Group",
     "User group name": "User group name",

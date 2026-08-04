@@ -4205,6 +4205,8 @@
     "User created successfully": "Tạo người dùng thành công",
     "User dashboard and quota controls.": "Bảng điều khiển người dùng và kiểm soát hạn ngạch.",
     "User Exclusive Ratio": "Tỷ lệ riêng",
+    "User group description.default": "Định tuyến thông minh (ưu tiên kênh khả dụng rẻ nhất, tự động chuyển sang phương án dự phòng khi lỗi, bao gồm phí dịch vụ 5%)",
+    "User group description.subscription": "Nhóm này đã bị ngừng sử dụng. Vui lòng không sử dụng.",
     "User group": "Nhóm người dùng",
     "User Group": "Nhóm người dùng",
     "User group name": "Tên nhóm người dùng",

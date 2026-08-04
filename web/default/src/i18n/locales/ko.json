@@ -4205,6 +4205,8 @@
     "User created successfully": "User created successfully",
     "User dashboard and quota controls.": "User dashboard and quota controls.",
     "User Exclusive Ratio": "User Exclusive Ratio",
+    "User group description.default": "스마트 라우팅(가장 저렴한 사용 가능 채널을 우선 사용, 실패 시 자동 폴백, 5% 서비스 수수료 포함)",
+    "User group description.subscription": "이 그룹은 더 이상 사용되지 않습니다. 사용하지 마세요.",
     "User group": "User group",
     "User Group": "User Group",
     "User group name": "User group name",

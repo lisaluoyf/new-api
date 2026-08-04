@@ -4205,6 +4205,8 @@
     "User created successfully": "ユーザーの作成に成功しました",
     "User dashboard and quota controls.": "ユーザーダッシュボードとクォータ制御。",
     "User Exclusive Ratio": "専用倍率",
+    "User group description.default": "スマートルーティング（最も安価な利用可能チャネルを優先し、失敗時は自動フォールバック、5%のサービス料を含む）",
+    "User group description.subscription": "このグループは廃止されました。使用しないでください。",
     "User group": "ユーザーグループ",
     "User Group": "ユーザーグループ",
     "User group name": "ユーザーグループ名",

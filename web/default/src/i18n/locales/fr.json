@@ -4205,6 +4205,8 @@
     "User created successfully": "Utilisateur créé avec succès",
     "User dashboard and quota controls.": "Tableau de bord utilisateur et contrôles de quotas.",
     "User Exclusive Ratio": "Ratio exclusif utilisateur",
+    "User group description.default": "Routage intelligent (privilégie le canal disponible le moins cher, bascule automatique en cas d'échec, inclut des frais de service de 5 %)",
+    "User group description.subscription": "Ce groupe a été abandonné. Veuillez ne pas l'utiliser.",
     "User group": "Groupe utilisateur",
     "User Group": "Groupe d'utilisateurs",
     "User group name": "Nom du groupe d'utilisateurs",
