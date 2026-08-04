@@ -29,6 +29,9 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/internal/catalog-export", controller.CatalogExport)
 		// 渠道数据页聚合视图 secret 认证只读别名（Roma 只读渠道数据页按需代理拉取）
 		apiRouter.GET("/internal/channel-data-export", controller.ChannelDataExport)
+		// 平台账单全量只读导出（Roma 定时拉取；优先使用独立账单密钥，
+		// 未配置时兼容 Roma 已有的 catalog export 密钥）
+		apiRouter.GET("/internal/billing-summary-export", controller.BillingSummaryExport)
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
