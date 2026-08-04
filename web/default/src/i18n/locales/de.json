@@ -4532,7 +4532,13 @@
     "Registration Inviter Reward": "Registrierungsprämie für Einladende",
     "Registration Invitee Reward": "Registrierungsprämie für Eingeladene",
     "Registration quota given to users who invite others": "Guthaben für Einladende bei der Registrierung eines Freundes",
-    "Registration quota given to invited users": "Guthaben für eingeladene Nutzer bei der Registrierung"
+    "Registration quota given to invited users": "Guthaben für eingeladene Nutzer bei der Registrierung",
+    "Refunded": "Erstattet",
+    "Payment successful": "Zahlung erfolgreich",
+    "Payment confirmation failed": "Zahlungsbestätigung fehlgeschlagen",
+    "Please check the form and try again.": "Bitte überprüfen Sie das Formular und versuchen Sie es erneut.",
+    "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: primärer Kanal war langsam, ein zweiter Kanal wurde parallel ausprobiert",
+    "Click to view image": "Klicken, um das Bild anzuzeigen"
   },
   "Wallet Balance": "Wallet-Guthaben",
   "User Balance": "Benutzerguthaben",

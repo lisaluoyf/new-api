@@ -4536,7 +4536,13 @@
     "Registration Inviter Reward": "Thưởng đăng ký cho người mời",
     "Registration Invitee Reward": "Thưởng đăng ký cho người được mời",
     "Registration quota given to users who invite others": "Tín dụng cấp cho người mời khi bạn bè đăng ký",
-    "Registration quota given to invited users": "Tín dụng cấp cho người dùng đăng ký qua lời mời"
+    "Registration quota given to invited users": "Tín dụng cấp cho người dùng đăng ký qua lời mời",
+    "Refunded": "Đã hoàn tiền",
+    "Payment successful": "Thanh toán thành công",
+    "Payment confirmation failed": "Xác nhận thanh toán không thành công",
+    "Please check the form and try again.": "Vui lòng kiểm tra biểu mẫu và thử lại.",
+    "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: kênh chính phản hồi chậm, đã thử song song kênh thứ hai",
+    "Click to view image": "Nhấn để xem hình ảnh"
   },
   "在线使用": "Dùng trực tuyến",
   "推广有礼": "Giới thiệu",

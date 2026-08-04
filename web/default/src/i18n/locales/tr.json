@@ -4532,7 +4532,13 @@
     "Registration Inviter Reward": "Kayıt davet eden ödülü",
     "Registration Invitee Reward": "Kayıt davet edilen ödülü",
     "Registration quota given to users who invite others": "Arkadaşı kaydolduğunda davet edene verilen kredi",
-    "Registration quota given to invited users": "Davet bağlantısıyla kaydolan kullanıcıya verilen kredi"
+    "Registration quota given to invited users": "Davet bağlantısıyla kaydolan kullanıcıya verilen kredi",
+    "Refunded": "İade Edildi",
+    "Payment successful": "Ödeme başarılı",
+    "Payment confirmation failed": "Ödeme onayı başarısız oldu",
+    "Please check the form and try again.": "Lütfen formu kontrol edip tekrar deneyin.",
+    "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: birincil kanal yavaştı, ikinci bir kanal paralel olarak denendi",
+    "Click to view image": "Görseli görüntülemek için tıklayın"
   },
   "Wallet Balance": "Cüzdan Bakiyesi",
   "User Balance": "Kullanıcı Bakiyesi",

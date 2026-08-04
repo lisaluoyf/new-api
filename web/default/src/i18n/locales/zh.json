@@ -4715,7 +4715,11 @@
     "Registration Inviter Reward": "注册邀请人奖励",
     "Registration Invitee Reward": "注册受邀人奖励",
     "Registration quota given to users who invite others": "用户成功邀请注册时发放给邀请人的额度",
-    "Registration quota given to invited users": "用户受邀注册时发放给受邀人的额度"
+    "Registration quota given to invited users": "用户受邀注册时发放给受邀人的额度",
+    "Payment successful": "支付成功",
+    "Payment confirmation failed": "支付确认失败",
+    "Please check the form and try again.": "请检查表单后重试。",
+    "Click to view image": "点击查看图片"
   },
   "Model Price Ratios": "模型价格倍率",
   "Select model": "选择模型",

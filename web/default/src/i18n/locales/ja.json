@@ -4536,7 +4536,13 @@
     "Registration Inviter Reward": "登録時の紹介者特典",
     "Registration Invitee Reward": "登録時の招待者特典",
     "Registration quota given to users who invite others": "友達の登録時に紹介者へ付与するクレジット",
-    "Registration quota given to invited users": "招待経由の登録時にユーザーへ付与するクレジット"
+    "Registration quota given to invited users": "招待経由の登録時にユーザーへ付与するクレジット",
+    "Refunded": "返金済み",
+    "Payment successful": "支払いが完了しました",
+    "Payment confirmation failed": "支払いの確認に失敗しました",
+    "Please check the form and try again.": "フォームの内容を確認してもう一度お試しください。",
+    "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2：プライマリチャネルの応答が遅かったため、セカンドチャネルを並行して試行しました",
+    "Click to view image": "クリックして画像を表示"
   },
   "在线使用": "プレイグラウンド",
   "推广有礼": "アフィリエイト",

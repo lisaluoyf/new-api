@@ -4536,7 +4536,13 @@
     "Registration Inviter Reward": "Recompensa de registro para quien invita",
     "Registration Invitee Reward": "Recompensa de registro para el invitado",
     "Registration quota given to users who invite others": "Crédito otorgado a quien invita cuando un amigo se registra",
-    "Registration quota given to invited users": "Crédito otorgado al usuario invitado al registrarse"
+    "Registration quota given to invited users": "Crédito otorgado al usuario invitado al registrarse",
+    "Refunded": "Reembolsado",
+    "Payment successful": "Pago exitoso",
+    "Payment confirmation failed": "Error al confirmar el pago",
+    "Please check the form and try again.": "Revise el formulario e inténtelo de nuevo.",
+    "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: el canal principal fue lento, se probó un segundo canal en paralelo",
+    "Click to view image": "Haz clic para ver la imagen"
   },
   "在线使用": "Playground",
   "推广有礼": "Afiliados",

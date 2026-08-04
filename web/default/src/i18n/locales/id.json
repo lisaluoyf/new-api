@@ -4536,7 +4536,13 @@
     "Registration Inviter Reward": "Hadiah pendaftaran pengundang",
     "Registration Invitee Reward": "Hadiah pendaftaran pengguna yang diundang",
     "Registration quota given to users who invite others": "Kredit untuk pengundang saat teman mendaftar",
-    "Registration quota given to invited users": "Kredit untuk pengguna yang mendaftar melalui undangan"
+    "Registration quota given to invited users": "Kredit untuk pengguna yang mendaftar melalui undangan",
+    "Refunded": "Dikembalikan",
+    "Payment successful": "Pembayaran berhasil",
+    "Payment confirmation failed": "Konfirmasi pembayaran gagal",
+    "Please check the form and try again.": "Silakan periksa formulir dan coba lagi.",
+    "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: saluran utama lambat, saluran kedua dicoba secara paralel",
+    "Click to view image": "Klik untuk melihat gambar"
   },
   "在线使用": "Playground",
   "推广有礼": "Afiliasi",

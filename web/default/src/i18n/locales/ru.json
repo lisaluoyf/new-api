@@ -4538,7 +4538,13 @@
     "Registration Inviter Reward": "Награда пригласившему за регистрацию",
     "Registration Invitee Reward": "Награда приглашённому за регистрацию",
     "Registration quota given to users who invite others": "Кредиты пригласившему после регистрации друга",
-    "Registration quota given to invited users": "Кредиты приглашённому пользователю после регистрации"
+    "Registration quota given to invited users": "Кредиты приглашённому пользователю после регистрации",
+    "Refunded": "Возвращено",
+    "Payment successful": "Оплата прошла успешно",
+    "Payment confirmation failed": "Не удалось подтвердить оплату",
+    "Please check the form and try again.": "Проверьте форму и попробуйте снова.",
+    "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: основной канал работал медленно, параллельно был опробован второй канал",
+    "Click to view image": "Нажмите, чтобы посмотреть изображение"
   },
   "在线使用": "Песочница",
   "推广有礼": "Партнёрам",

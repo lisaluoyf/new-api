@@ -4536,7 +4536,13 @@
     "Registration Inviter Reward": "가입 초대자 보상",
     "Registration Invitee Reward": "가입 초대받은 사용자 보상",
     "Registration quota given to users who invite others": "친구 가입 시 초대자에게 지급하는 크레딧",
-    "Registration quota given to invited users": "초대 링크로 가입한 사용자에게 지급하는 크레딧"
+    "Registration quota given to invited users": "초대 링크로 가입한 사용자에게 지급하는 크레딧",
+    "Refunded": "환불됨",
+    "Payment successful": "결제 성공",
+    "Payment confirmation failed": "결제 확인에 실패했습니다",
+    "Please check the form and try again.": "양식을 확인한 후 다시 시도해 주세요.",
+    "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: 기본 채널 응답이 느려 보조 채널을 동시에 시도했습니다",
+    "Click to view image": "클릭하여 이미지 보기"
   },
   "在线使用": "플레이그라운드",
   "推广有礼": "제휴 추천",

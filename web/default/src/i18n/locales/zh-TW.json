@@ -4532,7 +4532,13 @@
     "Registration Inviter Reward": "註冊邀請人獎勵",
     "Registration Invitee Reward": "註冊受邀人獎勵",
     "Registration quota given to users who invite others": "使用者成功邀請註冊時發放給邀請人的額度",
-    "Registration quota given to invited users": "使用者受邀註冊時發放給受邀人的額度"
+    "Registration quota given to invited users": "使用者受邀註冊時發放給受邀人的額度",
+    "Refunded": "已退款",
+    "Payment successful": "支付成功",
+    "Payment confirmation failed": "支付確認失敗",
+    "Please check the form and try again.": "請檢查表單後重試。",
+    "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2：主渠道回應較慢，已並發嘗試備用渠道",
+    "Click to view image": "點擊查看圖片"
   },
   "Wallet Balance": "錢包餘額",
   "User Balance": "用戶餘額",

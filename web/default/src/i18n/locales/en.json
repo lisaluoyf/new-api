@@ -4696,7 +4696,13 @@
     "Registration Inviter Reward": "Registration Inviter Reward",
     "Registration Invitee Reward": "Registration Invitee Reward",
     "Registration quota given to users who invite others": "Registration quota given to users who invite others",
-    "Registration quota given to invited users": "Registration quota given to invited users"
+    "Registration quota given to invited users": "Registration quota given to invited users",
+    "Refunded": "Refunded",
+    "Payment successful": "Payment successful",
+    "Payment confirmation failed": "Payment confirmation failed",
+    "Please check the form and try again.": "Please check the form and try again.",
+    "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: primary channel was slow, raced in a second channel",
+    "Click to view image": "Click to view image"
   },
   "在线使用": "Playground",
   "推广有礼": "Affiliate",
