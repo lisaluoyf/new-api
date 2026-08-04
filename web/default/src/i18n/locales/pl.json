@@ -4538,16 +4538,16 @@
     "Payment confirmation failed": "Nie udało się potwierdzić płatności",
     "Please check the form and try again.": "Sprawdź formularz i spróbuj ponownie.",
     "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: podstawowy kanał był wolny, równolegle wypróbowano drugi kanał",
-    "Click to view image": "Kliknij, aby wyświetlić obraz"
+    "Click to view image": "Kliknij, aby wyświetlić obraz",
+    "Wallet Balance": "Saldo portfela",
+    "All models": "Wszystkie modele",
+    "APIMaster discounted pricing": "Ceny APIMaster ze zniżką",
+    "Subscription Balance": "Saldo subskrypcji",
+    "GPT models": "Modele GPT",
+    "Official pricing": "Ceny oficjalne"
   },
-  "Wallet Balance": "Saldo portfela",
   "User Balance": "Saldo użytkowników",
-  "All models": "Wszystkie modele",
-  "APIMaster discounted pricing": "Ceny APIMaster ze zniżką",
-  "Subscription Balance": "Saldo subskrypcji",
   "No active subscription": "Brak aktywnej subskrypcji",
-  "GPT models": "Modele GPT",
-  "Official pricing": "Ceny oficjalne",
   "Not claimed": "Nieodebrane",
   "Days left with date": "Pozostało {{days}} dni ({{date}})"
 }

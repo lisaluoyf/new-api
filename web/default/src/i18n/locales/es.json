@@ -4542,7 +4542,13 @@
     "Payment confirmation failed": "Error al confirmar el pago",
     "Please check the form and try again.": "Revise el formulario e inténtelo de nuevo.",
     "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: el canal principal fue lento, se probó un segundo canal en paralelo",
-    "Click to view image": "Haz clic para ver la imagen"
+    "Click to view image": "Haz clic para ver la imagen",
+    "Wallet Balance": "Saldo de la cartera",
+    "All models": "Todos los modelos",
+    "APIMaster discounted pricing": "Precios con descuento de APIMaster",
+    "Subscription Balance": "Saldo de suscripción",
+    "GPT models": "Modelos GPT",
+    "Official pricing": "Precios oficiales"
   },
   "在线使用": "Playground",
   "推广有礼": "Afiliados",
@@ -4574,14 +4580,8 @@
   "充值汇率": "Tasa de recarga",
   "自定义": "Personalizado",
   "当上游无 /api/pricing 时，用 romaapi 公开模型价格 × 此倍率作为回退定价；留空或 0 表示不启用": "Cuando el upstream no tiene /api/pricing, usa el precio público del modelo de romaapi × este multiplicador como precio de respaldo; déjalo vacío o en 0 para desactivar.",
-  "Wallet Balance": "Saldo de la cartera",
   "User Balance": "Saldo de usuarios",
-  "All models": "Todos los modelos",
-  "APIMaster discounted pricing": "Precios con descuento de APIMaster",
-  "Subscription Balance": "Saldo de suscripción",
   "No active subscription": "No hay suscripción activa",
-  "GPT models": "Modelos GPT",
-  "Official pricing": "Precios oficiales",
   "Not claimed": "No reclamado",
   "Days left with date": "Quedan {{days}} días ({{date}})"
 }

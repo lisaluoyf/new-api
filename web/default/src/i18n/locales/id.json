@@ -4542,7 +4542,13 @@
     "Payment confirmation failed": "Konfirmasi pembayaran gagal",
     "Please check the form and try again.": "Silakan periksa formulir dan coba lagi.",
     "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: saluran utama lambat, saluran kedua dicoba secara paralel",
-    "Click to view image": "Klik untuk melihat gambar"
+    "Click to view image": "Klik untuk melihat gambar",
+    "Wallet Balance": "Saldo dompet",
+    "All models": "Semua model",
+    "APIMaster discounted pricing": "Harga diskon APIMaster",
+    "Subscription Balance": "Saldo langganan",
+    "GPT models": "Model GPT",
+    "Official pricing": "Harga resmi"
   },
   "在线使用": "Playground",
   "推广有礼": "Afiliasi",
@@ -4574,14 +4580,8 @@
   "充值汇率": "Kurs top up",
   "自定义": "Kustom",
   "当上游无 /api/pricing 时，用 romaapi 公开模型价格 × 此倍率作为回退定价；留空或 0 表示不启用": "Jika upstream tidak punya /api/pricing, gunakan harga model publik romaapi × pengali ini sebagai harga cadangan; kosongkan atau 0 untuk menonaktifkan.",
-  "Wallet Balance": "Saldo dompet",
   "User Balance": "Saldo pengguna",
-  "All models": "Semua model",
-  "APIMaster discounted pricing": "Harga diskon APIMaster",
-  "Subscription Balance": "Saldo langganan",
   "No active subscription": "Tidak ada langganan aktif",
-  "GPT models": "Model GPT",
-  "Official pricing": "Harga resmi",
   "Not claimed": "Belum diklaim",
   "Days left with date": "Sisa {{days}} hari ({{date}})"
 }

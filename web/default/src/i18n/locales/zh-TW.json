@@ -4538,16 +4538,16 @@
     "Payment confirmation failed": "支付確認失敗",
     "Please check the form and try again.": "請檢查表單後重試。",
     "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2：主渠道回應較慢，已並發嘗試備用渠道",
-    "Click to view image": "點擊查看圖片"
+    "Click to view image": "點擊查看圖片",
+    "Wallet Balance": "錢包餘額",
+    "All models": "所有模型",
+    "APIMaster discounted pricing": "APIMaster 折扣價",
+    "Subscription Balance": "訂閱餘額",
+    "GPT models": "GPT 模型",
+    "Official pricing": "官方原價"
   },
-  "Wallet Balance": "錢包餘額",
   "User Balance": "用戶餘額",
-  "All models": "所有模型",
-  "APIMaster discounted pricing": "APIMaster 折扣價",
-  "Subscription Balance": "訂閱餘額",
   "No active subscription": "目前沒有可用訂閱",
-  "GPT models": "GPT 模型",
-  "Official pricing": "官方原價",
   "Not claimed": "未領取",
   "Days left with date": "剩餘 {{days}} 天 ({{date}})"
 }

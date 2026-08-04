@@ -4542,7 +4542,13 @@
     "Payment confirmation failed": "결제 확인에 실패했습니다",
     "Please check the form and try again.": "양식을 확인한 후 다시 시도해 주세요.",
     "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: 기본 채널 응답이 느려 보조 채널을 동시에 시도했습니다",
-    "Click to view image": "클릭하여 이미지 보기"
+    "Click to view image": "클릭하여 이미지 보기",
+    "Wallet Balance": "지갑 잔액",
+    "All models": "모든 모델",
+    "APIMaster discounted pricing": "APIMaster 할인 요금",
+    "Subscription Balance": "구독 잔액",
+    "GPT models": "GPT 모델",
+    "Official pricing": "공식 요금"
   },
   "在线使用": "플레이그라운드",
   "推广有礼": "제휴 추천",
@@ -4574,14 +4580,8 @@
   "充值汇率": "충전 환율",
   "自定义": "사용자 지정",
   "当上游无 /api/pricing 时，用 romaapi 公开模型价格 × 此倍率作为回退定价；留空或 0 表示不启用": "업스트림에 /api/pricing이 없을 때 romaapi 공개 모델 가격 × 이 배율을 대체 가격으로 사용합니다. 비워두거나 0이면 비활성화됩니다.",
-  "Wallet Balance": "지갑 잔액",
   "User Balance": "사용자 잔액",
-  "All models": "모든 모델",
-  "APIMaster discounted pricing": "APIMaster 할인 요금",
-  "Subscription Balance": "구독 잔액",
   "No active subscription": "활성 구독 없음",
-  "GPT models": "GPT 모델",
-  "Official pricing": "공식 요금",
   "Not claimed": "미수령",
   "Days left with date": "{{days}}일 남음 ({{date}})"
 }

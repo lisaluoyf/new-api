@@ -4702,7 +4702,13 @@
     "Payment confirmation failed": "Payment confirmation failed",
     "Please check the form and try again.": "Please check the form and try again.",
     "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2: primary channel was slow, raced in a second channel",
-    "Click to view image": "Click to view image"
+    "Click to view image": "Click to view image",
+    "Wallet Balance": "Wallet Balance",
+    "All models": "All models",
+    "APIMaster discounted pricing": "APIMaster discounted pricing",
+    "Subscription Balance": "Subscription Balance",
+    "GPT models": "GPT models",
+    "Official pricing": "Official pricing"
   },
   "在线使用": "Playground",
   "推广有礼": "Affiliate",
@@ -4737,14 +4743,8 @@
   "All Payment Methods": "All Payment Methods",
   "Download CSV": "Download CSV",
   "Failed to download transaction history": "Failed to download transaction history",
-  "Wallet Balance": "Wallet Balance",
   "User Balance": "User Balance",
-  "All models": "All models",
-  "APIMaster discounted pricing": "APIMaster discounted pricing",
-  "Subscription Balance": "Subscription Balance",
   "No active subscription": "No active subscription",
-  "GPT models": "GPT models",
-  "Official pricing": "Official pricing",
   "Not claimed": "Not claimed",
   "Days left with date": "{{days}} days left ({{date}})"
 }

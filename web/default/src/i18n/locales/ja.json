@@ -4542,7 +4542,13 @@
     "Payment confirmation failed": "支払いの確認に失敗しました",
     "Please check the form and try again.": "フォームの内容を確認してもう一度お試しください。",
     "gpt-image-2: primary channel was slow, raced in a second channel": "gpt-image-2：プライマリチャネルの応答が遅かったため、セカンドチャネルを並行して試行しました",
-    "Click to view image": "クリックして画像を表示"
+    "Click to view image": "クリックして画像を表示",
+    "Wallet Balance": "ウォレット残高",
+    "All models": "すべてのモデル",
+    "APIMaster discounted pricing": "APIMaster 割引価格",
+    "Subscription Balance": "サブスクリプション残高",
+    "GPT models": "GPT モデル",
+    "Official pricing": "公式価格"
   },
   "在线使用": "プレイグラウンド",
   "推广有礼": "アフィリエイト",
@@ -4574,14 +4580,8 @@
   "充值汇率": "チャージ為替レート",
   "自定义": "カスタム",
   "当上游无 /api/pricing 时，用 romaapi 公开模型价格 × 此倍率作为回退定价；留空或 0 表示不启用": "アップストリームに /api/pricing がない場合、romaapi の公開モデル価格 × この倍率をフォールバック価格として使用します。空欄または 0 で無効。",
-  "Wallet Balance": "ウォレット残高",
   "User Balance": "ユーザー残高",
-  "All models": "すべてのモデル",
-  "APIMaster discounted pricing": "APIMaster 割引価格",
-  "Subscription Balance": "サブスクリプション残高",
   "No active subscription": "有効なサブスクリプションはありません",
-  "GPT models": "GPT モデル",
-  "Official pricing": "公式価格",
   "Not claimed": "未受取",
   "Days left with date": "残り {{days}} 日 ({{date}})"
 }
