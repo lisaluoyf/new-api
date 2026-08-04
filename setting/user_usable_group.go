@@ -11,7 +11,7 @@ import (
 // AutoCheapestGroup constant and the DB GroupRatio / UserUsableGroups keys.
 var userUsableGroups = map[string]string{
 	"default":      "i18n:User group description.default",
-	"Subscription": "APIMaster $50 GPT Trial",
+	"Subscription": "i18n:User group description.subscription",
 }
 var userUsableGroupsMutex sync.RWMutex
 

@@ -24,7 +24,8 @@ const (
 // 1 === ￥0.014 / 1k tokens
 
 var defaultModelRatio = map[string]float64{
-	"kimi-k3": 1.5, // $3 / 1M input tokens
+	"kimi-k3":     1.5,  // $3 / 1M input tokens
+	"qwen3.8-max": 1.25, // $2.5 / 1M input tokens
 	//"midjourney":                50,
 	"gpt-4-gizmo-*":  15,
 	"gpt-4o-gizmo-*": 2.5,
@@ -312,6 +313,7 @@ var defaultModelPrice = map[string]float64{
 	"sora-2":                         0.08,    // USD/s @ 720p (official $0.10/s × 80%)
 	"sora-2-pro":                     0.24,    // USD/s @ 720p (official $0.30/s × 80%)
 	"kling-v3-motion-control":        0.10288, // USD/s std (APIMart purchase)
+	"grok-imagine-video-1.5":         0.08,    // USD/s @ 480p (xAI official list price)
 	"gpt-4o-mini-tts":                0.3,
 	"veo-3.0-generate-001":           0.4,
 	"veo-3.0-fast-generate-001":      0.15,
@@ -343,6 +345,7 @@ var completionRatioMap = types.NewRWMap[string, float64]()
 
 var defaultCompletionRatio = map[string]float64{
 	"kimi-k3":        5, // $15 / $3
+	"qwen3.8-max":    3, // $7.5 / $2.5
 	"gpt-4-gizmo-*":  2,
 	"gpt-4o-gizmo-*": 3,
 	"gpt-4-all":      2,

@@ -4206,6 +4206,7 @@
     "User dashboard and quota controls.": "使用者儀表板和配額控制。",
     "User Exclusive Ratio": "專屬倍率",
     "User group description.default": "智能路由（最便宜可用渠道優先，失敗自動 fallback，含 5% 服務費）",
+    "User group description.subscription": "該分組已停用，請勿使用",
     "User group": "使用者分組",
     "User Group": "使用者分組",
     "User group name": "使用者分組名稱",
@@ -4534,6 +4535,7 @@
     "Registration quota given to invited users": "使用者受邀註冊時發放給受邀人的額度"
   },
   "Wallet Balance": "錢包餘額",
+  "User Balance": "用戶餘額",
   "All models": "所有模型",
   "APIMaster discounted pricing": "APIMaster 折扣價",
   "Subscription Balance": "訂閱餘額",

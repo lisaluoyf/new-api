@@ -151,5 +151,21 @@ export function buildBillingSummaryColumns(
         </span>
       ),
     },
+    {
+      accessorKey: 'wallet_balance_usd',
+      header: () => <span>{t('User Balance')}</span>,
+      cell: ({ row }) => {
+        const balance = row.original.wallet_balance_usd
+        return balance != null ? (
+          <span
+            className={`font-mono text-sm ${row.original.isTotal ? 'font-semibold' : ''}`}
+          >
+            {formatUSD(balance)}
+          </span>
+        ) : (
+          <span className='text-muted-foreground text-sm'>—</span>
+        )
+      },
+    },
   ]
 }

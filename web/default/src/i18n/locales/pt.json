@@ -4205,6 +4205,8 @@
     "User created successfully": "Usuário criado com sucesso",
     "User dashboard and quota controls.": "Painel do usuário e controles de cota.",
     "User Exclusive Ratio": "Proporção Exclusiva do Usuário",
+    "User group description.default": "Roteamento inteligente (prioriza o canal disponível mais barato, com fallback automático em caso de falha, inclui uma taxa de serviço de 5%)",
+    "User group description.subscription": "Este grupo foi descontinuado. Não o utilize.",
     "User group": "Grupo de usuários",
     "User Group": "Grupo de Usuários",
     "User group name": "Nome do grupo de usuários",
@@ -4533,6 +4535,7 @@
     "Registration quota given to invited users": "Crédito para o usuário convidado ao se cadastrar"
   },
   "Wallet Balance": "Saldo da carteira",
+  "User Balance": "Saldo dos usuários",
   "All models": "Todos os modelos",
   "APIMaster discounted pricing": "Preços com desconto da APIMaster",
   "Subscription Balance": "Saldo da assinatura",

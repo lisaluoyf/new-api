@@ -59,6 +59,10 @@ func StartBillingSummaryTask() {
 
 func runBillingSummaryOnce() {
 	ctx := context.Background()
+	now := billingSummaryNow().Unix()
+	if _, err := model.UpsertBillingWalletDailySnapshot(billingDayStart(now), now); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: wallet snapshot failed: %v", err))
+	}
 	// Floor to the hour: the upsert overwrites whole (hour, model, channel)
 	// buckets, so the window boundary must sit exactly on a bucket edge. A
 	// mid-hour boundary re-aggregates the straddled bucket from only part of
@@ -84,7 +88,6 @@ func runBillingSummaryOnce() {
 		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: aggregate failed: %v", err))
 		return
 	}
-	now := billingSummaryNow().Unix()
 	for i := range rows {
 		rows[i].UpdatedAt = now
 	}
@@ -99,10 +102,27 @@ func runBillingSummaryOnce() {
 // filter is set, otherwise falls back to querying raw logs directly (see
 // model.GetBillingDailyFromRawLogs for why no name→id resolution is needed).
 func GetBillingDaily(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string) ([]model.BillingDailyRow, error) {
+	var rows []model.BillingDailyRow
+	var err error
 	if tokenName != "" || username != "" || email != "" {
-		return model.GetBillingDailyFromRawLogs(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
+		rows, err = model.GetBillingDailyFromRawLogs(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
+	} else {
+		rows, err = getBillingDailyHybrid(startTimestamp, endTimestamp, modelName, channel)
 	}
-	return getBillingDailyHybrid(startTimestamp, endTimestamp, modelName, channel)
+	if err != nil {
+		return nil, err
+	}
+	snapshots, err := model.GetBillingWalletDailySnapshots(startTimestamp, endTimestamp)
+	if err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		if balance, ok := snapshots[rows[i].Day]; ok {
+			balanceCopy := balance
+			rows[i].WalletBalanceUSD = &balanceCopy
+		}
+	}
+	return rows, nil
 }
 
 type billingDailyRangePlan struct {

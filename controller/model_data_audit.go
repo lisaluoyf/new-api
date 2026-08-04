@@ -236,7 +236,7 @@ func channelDataAuditShouldAlert(item ChannelDataAuditItem) bool {
 
 func channelDataAuditRequiresFourPiece(modelName string) bool {
 	switch strings.TrimSpace(modelName) {
-	case "gemini-3.1-flash-image", "gemini-3.1-flash-image-preview", "gpt-image-2", "sora-2", "sora-2-pro", "doubao-seedance-2.0", "kling-v3-motion-control":
+	case "gemini-3.1-flash-image", "gemini-3.1-flash-image-preview", "gpt-image-2", "sora-2", "sora-2-pro", "doubao-seedance-2.0", "kling-v3-motion-control", "grok-imagine-video-1.5", "grok-1.5-video-10s", "grok-1.5-video-15s", "grok-1.5-video-6s":
 		return false
 	default:
 		return true

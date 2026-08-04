@@ -17,11 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
-import type { ApiResponse, BillingDailyRow, BillingSummaryFilters } from './types'
+import type {
+  BillingSummaryFilters,
+  BillingSummaryResponse,
+} from './types'
 
 export async function getBillingSummary(
   filters: BillingSummaryFilters
-): Promise<ApiResponse<BillingDailyRow[]>> {
+): Promise<BillingSummaryResponse> {
   const params = new URLSearchParams()
   if (filters.startTime) {
     params.set(

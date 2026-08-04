@@ -41,11 +41,14 @@ export function BillingSummaryPage() {
   })
 
   const rows = useMemo(() => (data?.success ? (data.data ?? []) : []), [data])
+  const walletBalanceUSD =
+    data?.success && data.wallet_balance_usd != null
+      ? Number(data.wallet_balance_usd)
+      : null
 
   // Prepend a synthetic "Total" row so the summed cost/revenue/profit/margin
   // render as a real, always-first table row instead of a separate element.
   const tableRows = useMemo<BillingTableRow[]>(() => {
-    if (rows.length === 0) return []
     const totals = rows.reduce(
       (acc, row) => ({
         cost_usd: acc.cost_usd + row.cost_usd,
@@ -69,8 +72,16 @@ export function BillingSummaryPage() {
         accounting_target_request_count: 0,
       }
     )
-    return [{ day: 0, ...totals, isTotal: true }, ...rows]
-  }, [rows])
+    return [
+      {
+        day: 0,
+        ...totals,
+        wallet_balance_usd: walletBalanceUSD,
+        isTotal: true,
+      },
+      ...rows,
+    ]
+  }, [rows, walletBalanceUSD])
 
   const columns = useMemo(() => buildBillingSummaryColumns(t), [t])
 

@@ -38,6 +38,7 @@ export interface BillingDailyRow {
   subscription_billing_usd: number
   accounting_ok_request_count: number
   accounting_target_request_count: number
+  wallet_balance_usd?: number | null
 }
 
 // Frontend-only row shape: a synthetic "Total" row is prepended to the table
@@ -51,4 +52,9 @@ export interface ApiResponse<T = unknown> {
   success: boolean
   message?: string
   data?: T
+}
+
+export interface BillingSummaryResponse
+  extends ApiResponse<BillingDailyRow[]> {
+  wallet_balance_usd?: number
 }

@@ -26,6 +26,15 @@ type BillingHourlySummary struct {
 	UpdatedAt              int64   `json:"updated_at"`
 }
 
+// BillingWalletDailySnapshot stores the latest non-admin wallet balance seen
+// for each Beijing calendar day. Hourly refreshes overwrite the same day, so
+// the retained value is the day's last available snapshot.
+type BillingWalletDailySnapshot struct {
+	Day              int64   `json:"day" gorm:"primaryKey;not null"`
+	WalletBalanceUSD float64 `json:"wallet_balance_usd" gorm:"type:decimal(20,6);default:0"`
+	SnapshotAt       int64   `json:"snapshot_at" gorm:"not null"`
+}
+
 // UpsertBillingHourlySummaries writes/merges rows keyed by (hour_bucket, model_name, channel_id).
 func UpsertBillingHourlySummaries(rows []BillingHourlySummary) error {
 	if len(rows) == 0 {
@@ -42,13 +51,14 @@ func UpsertBillingHourlySummaries(rows []BillingHourlySummary) error {
 // BillingDailyRow is one day's aggregated cost/revenue, returned to the
 // 平台账单 page. Profit and margin are derived at query time, not stored.
 type BillingDailyRow struct {
-	Day                      int64   `json:"day" gorm:"column:day"` // unix seconds, floored to Beijing (UTC+8) midnight
-	CostUSD                  float64 `json:"cost_usd" gorm:"column:cost_usd"`
-	RevenueUSD               float64 `json:"revenue_usd" gorm:"column:revenue_usd"`
-	SubscriptionCostUSD      float64 `json:"subscription_cost_usd" gorm:"column:subscription_cost_usd"`
-	SubscriptionBillingUSD   float64 `json:"subscription_billing_usd" gorm:"column:subscription_billing_usd"`
-	AccountingOKRequestCount int64   `json:"accounting_ok_request_count" gorm:"column:accounting_ok_request_count"`
-	AccountingTargetReqCount int64   `json:"accounting_target_request_count" gorm:"column:accounting_target_request_count"`
+	Day                      int64    `json:"day" gorm:"column:day"` // unix seconds, floored to Beijing (UTC+8) midnight
+	CostUSD                  float64  `json:"cost_usd" gorm:"column:cost_usd"`
+	RevenueUSD               float64  `json:"revenue_usd" gorm:"column:revenue_usd"`
+	SubscriptionCostUSD      float64  `json:"subscription_cost_usd" gorm:"column:subscription_cost_usd"`
+	SubscriptionBillingUSD   float64  `json:"subscription_billing_usd" gorm:"column:subscription_billing_usd"`
+	AccountingOKRequestCount int64    `json:"accounting_ok_request_count" gorm:"column:accounting_ok_request_count"`
+	AccountingTargetReqCount int64    `json:"accounting_target_request_count" gorm:"column:accounting_target_request_count"`
+	WalletBalanceUSD         *float64 `json:"wallet_balance_usd,omitempty" gorm:"-"`
 }
 
 type billingDailyCountRow struct {
@@ -237,4 +247,60 @@ func mergeBillingDailyTargetRequestCounts(rows *[]BillingDailyRow, counts map[in
 	sort.Slice(*rows, func(i, j int) bool {
 		return (*rows)[i].Day > (*rows)[j].Day
 	})
+}
+
+// GetNonAdminWalletBalanceUSD returns the current wallet liability for regular
+// users. Subscription balances live in user_subscriptions and are deliberately
+// excluded; GORM also excludes soft-deleted users from this query.
+func GetNonAdminWalletBalanceUSD() (float64, error) {
+	var totalQuota int64
+	err := DB.Model(&User{}).
+		Where("role < ?", common.RoleAdminUser).
+		Select("COALESCE(SUM(quota), 0)").
+		Scan(&totalQuota).Error
+	if err != nil {
+		return 0, err
+	}
+	if common.QuotaPerUnit <= 0 {
+		return 0, nil
+	}
+	return float64(totalQuota) / common.QuotaPerUnit, nil
+}
+
+func UpsertBillingWalletDailySnapshot(day, snapshotAt int64) (float64, error) {
+	balanceUSD, err := GetNonAdminWalletBalanceUSD()
+	if err != nil {
+		return 0, err
+	}
+	row := BillingWalletDailySnapshot{
+		Day:              day,
+		WalletBalanceUSD: balanceUSD,
+		SnapshotAt:       snapshotAt,
+	}
+	err = DB.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "day"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"wallet_balance_usd", "snapshot_at",
+		}),
+	}).Create(&row).Error
+	return balanceUSD, err
+}
+
+func GetBillingWalletDailySnapshots(startTimestamp, endTimestamp int64) (map[int64]float64, error) {
+	tx := DB.Model(&BillingWalletDailySnapshot{})
+	if startTimestamp != 0 {
+		tx = tx.Where("day >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("day <= ?", endTimestamp)
+	}
+	var rows []BillingWalletDailySnapshot
+	if err := tx.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[int64]float64, len(rows))
+	for _, row := range rows {
+		result[row.Day] = row.WalletBalanceUSD
+	}
+	return result, nil
 }

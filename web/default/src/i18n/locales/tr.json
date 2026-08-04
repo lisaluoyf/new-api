@@ -4205,6 +4205,8 @@
     "User created successfully": "Kullanıcı başarıyla oluşturuldu",
     "User dashboard and quota controls.": "Kullanıcı panosu ve kota kontrolleri.",
     "User Exclusive Ratio": "Kullanıcıya Özel Oran",
+    "User group description.default": "Akıllı yönlendirme (en ucuz kullanılabilir kanalı önceliklendirir, hata durumunda otomatik yedekleme, %5 hizmet ücreti dahildir)",
+    "User group description.subscription": "Bu grup kullanımdan kaldırılmıştır. Lütfen kullanmayın.",
     "User group": "Kullanıcı grubu",
     "User Group": "Kullanıcı Grubu",
     "User group name": "Kullanıcı grubu adı",
@@ -4533,6 +4535,7 @@
     "Registration quota given to invited users": "Davet bağlantısıyla kaydolan kullanıcıya verilen kredi"
   },
   "Wallet Balance": "Cüzdan Bakiyesi",
+  "User Balance": "Kullanıcı Bakiyesi",
   "All models": "Tüm modeller",
   "APIMaster discounted pricing": "APIMaster indirimli fiyatlandırma",
   "Subscription Balance": "Abonelik Bakiyesi",
