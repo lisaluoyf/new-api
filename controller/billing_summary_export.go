@@ -30,6 +30,7 @@ type billingSummaryExportRow struct {
 	NonSubscriptionMarginPercent *float64 `json:"non_subscription_margin_percent"`
 	SubscriptionCostUSD          float64  `json:"subscription_cost_usd"`
 	SubscriptionBillingUSD       float64  `json:"subscription_billing_usd"`
+	WalletBalanceUSD             *float64 `json:"wallet_balance_usd"`
 	AccountingOKRequestCount     int64    `json:"accounting_ok_request_count"`
 	AccountingTargetRequestCount int64    `json:"accounting_target_request_count"`
 }
@@ -58,6 +59,7 @@ func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummar
 			NonSubscriptionMarginPercent: marginPercent,
 			SubscriptionCostUSD:          row.SubscriptionCostUSD,
 			SubscriptionBillingUSD:       row.SubscriptionBillingUSD,
+			WalletBalanceUSD:             row.WalletBalanceUSD,
 			AccountingOKRequestCount:     row.AccountingOKRequestCount,
 			AccountingTargetRequestCount: row.AccountingTargetReqCount,
 		})
@@ -100,14 +102,20 @@ func BillingSummaryExport(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
 	}
+	walletBalanceUSD, err := model.GetNonAdminWalletBalanceUSD()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"generated_at": time.Now().Unix(),
-			"timezone":     billingExportTimezone,
-			"currency":     "USD",
-			"rows":         buildBillingSummaryExportRows(rows),
+			"generated_at":       time.Now().Unix(),
+			"timezone":           billingExportTimezone,
+			"currency":           "USD",
+			"wallet_balance_usd": walletBalanceUSD,
+			"rows":               buildBillingSummaryExportRows(rows),
 		},
 	})
 }

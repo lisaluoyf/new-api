@@ -12,6 +12,7 @@ import (
 )
 
 func TestBuildBillingSummaryExportRows(t *testing.T) {
+	walletBalance := 42.5
 	rows := buildBillingSummaryExportRows([]model.BillingDailyRow{
 		{
 			Day:                      1_783_785_600, // 2026-07-12 00:00:00 Asia/Shanghai
@@ -21,6 +22,7 @@ func TestBuildBillingSummaryExportRows(t *testing.T) {
 			SubscriptionBillingUSD:   4,
 			AccountingOKRequestCount: 8,
 			AccountingTargetReqCount: 10,
+			WalletBalanceUSD:         &walletBalance,
 		},
 		{
 			Day:                    1_783_699_200,
@@ -40,6 +42,8 @@ func TestBuildBillingSummaryExportRows(t *testing.T) {
 	assert.InDelta(t, 133.333333333, *rows[0].NonSubscriptionMarginPercent, 1e-9)
 	assert.Equal(t, int64(8), rows[0].AccountingOKRequestCount)
 	assert.Equal(t, int64(10), rows[0].AccountingTargetRequestCount)
+	require.NotNil(t, rows[0].WalletBalanceUSD)
+	assert.InDelta(t, 42.5, *rows[0].WalletBalanceUSD, 1e-9)
 	assert.Nil(t, rows[1].NonSubscriptionMarginPercent)
 }
 
