@@ -65,6 +65,22 @@ export function buildBillingSummaryColumns(
       },
     },
     {
+      accessorKey: 'non_subscription_user_count',
+      header: ({ column }) => (
+        <DataTableColumnHeader
+          column={column}
+          title={t('Non-subscription Users')}
+        />
+      ),
+      cell: ({ row }) => (
+        <span
+          className={`font-mono text-sm ${row.original.isTotal ? 'font-semibold' : ''}`}
+        >
+          {row.original.non_subscription_user_count ?? 0}
+        </span>
+      ),
+    },
+    {
       accessorKey: 'cost_usd',
       header: ({ column }) => (
         <DataTableColumnHeader
@@ -127,6 +143,22 @@ export function buildBillingSummaryColumns(
       },
     },
     {
+      accessorKey: 'subscription_user_count',
+      header: ({ column }) => (
+        <DataTableColumnHeader
+          column={column}
+          title={t('Subscription Users')}
+        />
+      ),
+      cell: ({ row }) => (
+        <span
+          className={`font-mono text-sm ${row.original.isTotal ? 'font-semibold' : ''}`}
+        >
+          {row.original.subscription_user_count ?? 0}
+        </span>
+      ),
+    },
+    {
       accessorKey: 'subscription_cost_usd',
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title={t('Subscription Cost')} />
@@ -156,6 +188,22 @@ export function buildBillingSummaryColumns(
       header: () => <span>{t('User Balance')}</span>,
       cell: ({ row }) => {
         const balance = row.original.wallet_balance_usd
+        return balance != null ? (
+          <span
+            className={`font-mono text-sm ${row.original.isTotal ? 'font-semibold' : ''}`}
+          >
+            {formatUSD(balance)}
+          </span>
+        ) : (
+          <span className='text-muted-foreground text-sm'>—</span>
+        )
+      },
+    },
+    {
+      accessorKey: 'subscription_balance_usd',
+      header: () => <span>{t('Subscription Balance')}</span>,
+      cell: ({ row }) => {
+        const balance = row.original.subscription_balance_usd
         return balance != null ? (
           <span
             className={`font-mono text-sm ${row.original.isTotal ? 'font-semibold' : ''}`}

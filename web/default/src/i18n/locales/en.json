@@ -2307,6 +2307,7 @@
     "maxRequests ≥ 0, maxSuccess ≥ 1, both ≤ 2,147,483,647": "maxRequests ≥ 0, maxSuccess ≥ 1, both ≤ 2,147,483,647",
     "May be used for training by upstream provider": "May be used for training by upstream provider",
     "Media pricing": "Media pricing",
+    "Median": "Median",
     "Median time-to-first-token (TTFT) sampled hourly per group": "Median time-to-first-token (TTFT) sampled hourly per group",
     "Medical Q&A, mental health support": "Medical Q&A, mental health support",
     "Memory Hits": "Memory Hits",
@@ -4707,6 +4708,8 @@
     "All models": "All models",
     "APIMaster discounted pricing": "APIMaster discounted pricing",
     "Subscription Balance": "Subscription Balance",
+    "Non-subscription Users": "Non-subscription Users",
+    "Subscription Users": "Subscription Users",
     "GPT models": "GPT models",
     "Official pricing": "Official pricing"
   },

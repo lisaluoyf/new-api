@@ -1146,7 +1146,7 @@ export function ChannelDataPage() {
                     <span>{t('HUB Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
                   </div>
                 </th>
-                <th className='text-right px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Latency')}</th>
+                <th className='text-right px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Median')}</th>
                 <th className='text-right px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>P95</th>
                 <th className='text-right px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Jitter')}</th>
                 <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Detection Result')}</th>

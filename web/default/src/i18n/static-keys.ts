@@ -288,6 +288,8 @@ export const STATIC_I18N_KEYS = [
   'All models',
   'APIMaster discounted pricing',
   'Subscription Balance',
+  'Non-subscription Users',
+  'Subscription Users',
   'No active subscription',
   'GPT models',
   'Official pricing',

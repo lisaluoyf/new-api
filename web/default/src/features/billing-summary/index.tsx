@@ -45,6 +45,18 @@ export function BillingSummaryPage() {
     data?.success && data.wallet_balance_usd != null
       ? Number(data.wallet_balance_usd)
       : null
+  const subscriptionBalanceUSD =
+    data?.success && data.subscription_balance_usd != null
+      ? Number(data.subscription_balance_usd)
+      : null
+  const nonSubscriptionUserCount =
+    data?.success && data.non_subscription_user_count != null
+      ? Number(data.non_subscription_user_count)
+      : 0
+  const subscriptionUserCount =
+    data?.success && data.subscription_user_count != null
+      ? Number(data.subscription_user_count)
+      : 0
 
   // Prepend a synthetic "Total" row so the summed cost/revenue/profit/margin
   // render as a real, always-first table row instead of a separate element.
@@ -76,12 +88,21 @@ export function BillingSummaryPage() {
       {
         day: 0,
         ...totals,
+        non_subscription_user_count: nonSubscriptionUserCount,
+        subscription_user_count: subscriptionUserCount,
         wallet_balance_usd: walletBalanceUSD,
+        subscription_balance_usd: subscriptionBalanceUSD,
         isTotal: true,
       },
       ...rows,
     ]
-  }, [rows, walletBalanceUSD])
+  }, [
+    rows,
+    nonSubscriptionUserCount,
+    subscriptionUserCount,
+    walletBalanceUSD,
+    subscriptionBalanceUSD,
+  ])
 
   const columns = useMemo(() => buildBillingSummaryColumns(t), [t])
 

@@ -2310,6 +2310,7 @@
     "maxRequests ≥ 0, maxSuccess ≥ 1, both ≤ 2,147,483,647": "maxRequests ≥ 0, maxSuccess ≥ 1，两者均 ≤ 2,147,483,647",
     "May be used for training by upstream provider": "可能被上游提供商用于训练",
     "Media pricing": "多模态价格",
+    "Median": "中位数",
     "Median time-to-first-token (TTFT) sampled hourly per group": "按小时采样的各分组首 token 延迟（TTFT）中位数",
     "Medical Q&A, mental health support": "医疗问答与心理健康支持",
     "Memory Hits": "内存命中",
@@ -4724,6 +4725,8 @@
     "All models": "所有模型",
     "APIMaster discounted pricing": "APIMaster 折扣价",
     "Subscription Balance": "订阅余额",
+    "Non-subscription Users": "非订阅用户",
+    "Subscription Users": "订阅用户",
     "GPT models": "GPT 模型",
     "Official pricing": "官方原价"
   },

@@ -51,6 +51,8 @@ func TestMain(m *testing.M) {
 		&model.Option{},
 		&model.BillingHold{},
 		&model.BillingHourlySummary{},
+		&model.BillingWalletDailySnapshot{},
+		&model.BillingSubscriptionDailySnapshot{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -76,6 +78,8 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM subscription_pre_consume_records")
 		model.DB.Exec("DELETE FROM billing_holds")
 		model.DB.Exec("DELETE FROM billing_hourly_summaries")
+		model.DB.Exec("DELETE FROM billing_wallet_daily_snapshots")
+		model.DB.Exec("DELETE FROM billing_subscription_daily_snapshots")
 	})
 }
 

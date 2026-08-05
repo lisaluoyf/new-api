@@ -134,6 +134,93 @@ func TestGetBillingDailyFromRawLogs_SplitsSubscriptionMetrics(t *testing.T) {
 	assert.InDelta(t, 1.231, row.SubscriptionBillingUSD, 1e-9)
 	assert.Equal(t, int64(2), row.AccountingOKRequestCount)
 	assert.Equal(t, int64(3), row.AccountingTargetReqCount)
+	assert.Equal(t, int64(1), row.NonSubscriptionUserCount)
+	assert.Equal(t, int64(1), row.SubscriptionUserCount)
+}
+
+func TestGetBillingUserCountsTotal_DistinctAcrossWholeRange(t *testing.T) {
+	truncate(t)
+
+	const (
+		channelID = 2003
+		modelName = "gpt-5"
+		dayOneTs  = int64(1_783_800_000)
+		dayTwoTs  = dayOneTs + 86_400
+	)
+
+	users := []model.User{
+		{Id: 1003, Username: "wallet-user", AffCode: "wallet-user", Status: common.UserStatusEnabled},
+		{Id: 1004, Username: "subscription-user", AffCode: "subscription-user", Status: common.UserStatusEnabled},
+		{Id: 1005, Username: "hybrid-user", AffCode: "hybrid-user", Status: common.UserStatusEnabled},
+	}
+	require.NoError(t, model.DB.Create(&users).Error)
+	seedChannel(t, channelID)
+
+	seedConsumeLog(t, &model.Log{
+		UserId:                         1003,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      dayOneTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          100,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceWallet}),
+		AccountingChannelCostAmountUSD: 1.0,
+		AccountingUserFinalAmountUSD:   2.0,
+		AccountingStatus:               "ok",
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId:                         1003,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      dayTwoTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          120,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceWallet}),
+		AccountingChannelCostAmountUSD: 1.2,
+		AccountingUserFinalAmountUSD:   2.4,
+		AccountingStatus:               "ok",
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId:                         1004,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      dayOneTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          615500,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
+		AccountingChannelCostAmountUSD: 0.7,
+		AccountingUserFinalAmountUSD:   2.1,
+		AccountingStatus:               "ok",
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId:                         1005,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      dayTwoTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          200,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceWallet}),
+		AccountingChannelCostAmountUSD: 0.5,
+		AccountingUserFinalAmountUSD:   1.0,
+		AccountingStatus:               "ok",
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId:                         1005,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      dayTwoTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          615500,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
+		AccountingChannelCostAmountUSD: 0.6,
+		AccountingUserFinalAmountUSD:   1.8,
+		AccountingStatus:               "ok",
+	})
+
+	totals, err := model.GetBillingUserCountsTotal(dayOneTs-10, dayTwoTs+10, modelName, channelID, "", "", "")
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), totals.NonSubscriptionUserCount)
+	assert.Equal(t, int64(2), totals.SubscriptionUserCount)
 }
 
 func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {

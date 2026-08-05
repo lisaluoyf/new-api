@@ -63,6 +63,9 @@ func runBillingSummaryOnce() {
 	if _, err := model.UpsertBillingWalletDailySnapshot(billingDayStart(now), now); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: wallet snapshot failed: %v", err))
 	}
+	if _, err := model.UpsertBillingSubscriptionDailySnapshot(billingDayStart(now), now); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: subscription snapshot failed: %v", err))
+	}
 	// Floor to the hour: the upsert overwrites whole (hour, model, channel)
 	// buckets, so the window boundary must sit exactly on a bucket edge. A
 	// mid-hour boundary re-aggregates the straddled bucket from only part of
@@ -120,6 +123,16 @@ func GetBillingDaily(startTimestamp, endTimestamp int64, modelName string, chann
 		if balance, ok := snapshots[rows[i].Day]; ok {
 			balanceCopy := balance
 			rows[i].WalletBalanceUSD = &balanceCopy
+		}
+	}
+	subscriptionSnapshots, err := model.GetBillingSubscriptionDailySnapshots(startTimestamp, endTimestamp)
+	if err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		if balance, ok := subscriptionSnapshots[rows[i].Day]; ok {
+			balanceCopy := balance
+			rows[i].SubscriptionBalanceUSD = &balanceCopy
 		}
 	}
 	return rows, nil

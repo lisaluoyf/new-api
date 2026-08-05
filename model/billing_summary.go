@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/QuantumNous/new-api/common"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -35,6 +36,16 @@ type BillingWalletDailySnapshot struct {
 	SnapshotAt       int64   `json:"snapshot_at" gorm:"not null"`
 }
 
+// BillingSubscriptionDailySnapshot stores the latest non-admin subscription
+// balance seen for each Beijing calendar day. Like wallet snapshots, hourly
+// refreshes overwrite the same day so the retained value is the day's latest
+// available snapshot.
+type BillingSubscriptionDailySnapshot struct {
+	Day                    int64   `json:"day" gorm:"primaryKey;not null"`
+	SubscriptionBalanceUSD float64 `json:"subscription_balance_usd" gorm:"type:decimal(20,6);default:0"`
+	SnapshotAt             int64   `json:"snapshot_at" gorm:"not null"`
+}
+
 // UpsertBillingHourlySummaries writes/merges rows keyed by (hour_bucket, model_name, channel_id).
 func UpsertBillingHourlySummaries(rows []BillingHourlySummary) error {
 	if len(rows) == 0 {
@@ -58,12 +69,26 @@ type BillingDailyRow struct {
 	SubscriptionBillingUSD   float64  `json:"subscription_billing_usd" gorm:"column:subscription_billing_usd"`
 	AccountingOKRequestCount int64    `json:"accounting_ok_request_count" gorm:"column:accounting_ok_request_count"`
 	AccountingTargetReqCount int64    `json:"accounting_target_request_count" gorm:"column:accounting_target_request_count"`
+	NonSubscriptionUserCount int64    `json:"non_subscription_user_count" gorm:"-"`
+	SubscriptionUserCount    int64    `json:"subscription_user_count" gorm:"-"`
 	WalletBalanceUSD         *float64 `json:"wallet_balance_usd,omitempty" gorm:"-"`
+	SubscriptionBalanceUSD   *float64 `json:"subscription_balance_usd,omitempty" gorm:"-"`
 }
 
 type billingDailyCountRow struct {
 	Day                      int64 `gorm:"column:day"`
 	AccountingTargetReqCount int64 `gorm:"column:accounting_target_request_count"`
+}
+
+type billingDailyUserCountRow struct {
+	Day                      int64 `gorm:"column:day"`
+	NonSubscriptionUserCount int64 `gorm:"column:non_subscription_user_count"`
+	SubscriptionUserCount    int64 `gorm:"column:subscription_user_count"`
+}
+
+type billingUserCountTotals struct {
+	NonSubscriptionUserCount int64 `json:"non_subscription_user_count"`
+	SubscriptionUserCount    int64 `json:"subscription_user_count"`
 }
 
 // 日分桶按北京时间（UTC+8，无夏令时）切天，使账单页的"每天"与使用日志页
@@ -119,6 +144,11 @@ func GetBillingDailyFromSummary(startTimestamp, endTimestamp int64, modelName st
 		return nil, err
 	}
 	mergeBillingDailyTargetRequestCounts(&rows, counts)
+	userCounts, err := getBillingDailyUserCounts(startTimestamp, endTimestamp, modelName, channel, "", "", "")
+	if err != nil {
+		return nil, err
+	}
+	mergeBillingDailyUserCounts(&rows, userCounts)
 	return rows, nil
 }
 
@@ -175,7 +205,15 @@ func GetBillingDailyFromRawLogs(startTimestamp, endTimestamp int64, modelName st
 
 	var rows []BillingDailyRow
 	err := tx.Group(dayExpr).Order("day desc").Scan(&rows).Error
-	return rows, err
+	if err != nil {
+		return nil, err
+	}
+	userCounts, err := getBillingDailyUserCounts(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
+	if err != nil {
+		return nil, err
+	}
+	mergeBillingDailyUserCounts(&rows, userCounts)
+	return rows, nil
 }
 
 func getBillingDailyTargetRequestCounts(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string) (map[int64]int64, error) {
@@ -249,6 +287,105 @@ func mergeBillingDailyTargetRequestCounts(rows *[]BillingDailyRow, counts map[in
 	})
 }
 
+func getBillingDailyUserCounts(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string) (map[int64]billingDailyUserCountRow, error) {
+	dayExpr := billingDayExpr("created_at")
+	tx, err := buildBillingDailyUserCountsBaseQuery(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
+	if err != nil {
+		return nil, err
+	}
+	var rows []billingDailyUserCountRow
+	if err := tx.
+		Select(dayExpr + ` as day,
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND other NOT LIKE '%"billing_source":"subscription"%' THEN user_id ELSE NULL END) as non_subscription_user_count,
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN user_id ELSE NULL END) as subscription_user_count`).
+		Group(dayExpr).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	counts := make(map[int64]billingDailyUserCountRow, len(rows))
+	for _, row := range rows {
+		counts[row.Day] = row
+	}
+	return counts, nil
+}
+
+func mergeBillingDailyUserCounts(rows *[]BillingDailyRow, counts map[int64]billingDailyUserCountRow) {
+	if rows == nil {
+		return
+	}
+	byDay := make(map[int64]*BillingDailyRow, len(*rows))
+	for i := range *rows {
+		row := &(*rows)[i]
+		if count, ok := counts[row.Day]; ok {
+			row.NonSubscriptionUserCount = count.NonSubscriptionUserCount
+			row.SubscriptionUserCount = count.SubscriptionUserCount
+		}
+		byDay[row.Day] = row
+	}
+	for day, count := range counts {
+		if _, ok := byDay[day]; ok {
+			continue
+		}
+		*rows = append(*rows, BillingDailyRow{
+			Day:                      day,
+			NonSubscriptionUserCount: count.NonSubscriptionUserCount,
+			SubscriptionUserCount:    count.SubscriptionUserCount,
+		})
+	}
+	sort.Slice(*rows, func(i, j int) bool {
+		return (*rows)[i].Day > (*rows)[j].Day
+	})
+}
+
+func GetBillingUserCountsTotal(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string) (billingUserCountTotals, error) {
+	tx, err := buildBillingDailyUserCountsBaseQuery(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
+	if err != nil {
+		return billingUserCountTotals{}, err
+	}
+	var totals billingUserCountTotals
+	if err := tx.
+		Select(`COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND other NOT LIKE '%"billing_source":"subscription"%' THEN user_id ELSE NULL END) as non_subscription_user_count,
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN user_id ELSE NULL END) as subscription_user_count`).
+		Scan(&totals).Error; err != nil {
+		return billingUserCountTotals{}, err
+	}
+	return totals, nil
+}
+
+func buildBillingDailyUserCountsBaseQuery(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string) (*gorm.DB, error) {
+	tx := LOG_DB.Table("logs").Where("type = ?", LogTypeConsume)
+	if startTimestamp != 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+	if modelName != "" {
+		tx = tx.Where("model_name = ?", modelName)
+	}
+	if channel != 0 {
+		tx = tx.Where("channel_id = ?", channel)
+	}
+	if tokenName != "" {
+		tx = tx.Where("token_name = ?", tokenName)
+	}
+	if username != "" {
+		tx = tx.Where("username = ?", username)
+	}
+	if email != "" {
+		var resolvedUsername string
+		err := DB.Table("users").Select("username").Where("email = ?", email).Limit(1).Scan(&resolvedUsername).Error
+		if err != nil {
+			return nil, err
+		}
+		if resolvedUsername == "" {
+			return LOG_DB.Table("logs").Where("1 = 0"), nil
+		}
+		tx = tx.Where("username = ?", resolvedUsername)
+	}
+	return tx, nil
+}
+
 // GetNonAdminWalletBalanceUSD returns the current wallet liability for regular
 // users. Subscription balances live in user_subscriptions and are deliberately
 // excluded; GORM also excludes soft-deleted users from this query.
@@ -257,6 +394,26 @@ func GetNonAdminWalletBalanceUSD() (float64, error) {
 	err := DB.Model(&User{}).
 		Where("role < ?", common.RoleAdminUser).
 		Select("COALESCE(SUM(quota), 0)").
+		Scan(&totalQuota).Error
+	if err != nil {
+		return 0, err
+	}
+	if common.QuotaPerUnit <= 0 {
+		return 0, nil
+	}
+	return float64(totalQuota) / common.QuotaPerUnit, nil
+}
+
+// GetNonAdminSubscriptionBalanceUSD returns the current remaining subscription
+// liability for regular users, counting only active, unexpired subscriptions.
+func GetNonAdminSubscriptionBalanceUSD() (float64, error) {
+	now := common.GetTimestamp()
+	var totalQuota int64
+	err := DB.Model(&UserSubscription{}).
+		Joins("JOIN users ON users.id = user_subscriptions.user_id AND users.deleted_at IS NULL").
+		Where("users.role < ?", common.RoleAdminUser).
+		Where("user_subscriptions.status = ? AND user_subscriptions.end_time > ?", "active", now).
+		Select("COALESCE(SUM(CASE WHEN user_subscriptions.amount_total > user_subscriptions.amount_used THEN user_subscriptions.amount_total - user_subscriptions.amount_used ELSE 0 END), 0)").
 		Scan(&totalQuota).Error
 	if err != nil {
 		return 0, err
@@ -286,6 +443,25 @@ func UpsertBillingWalletDailySnapshot(day, snapshotAt int64) (float64, error) {
 	return balanceUSD, err
 }
 
+func UpsertBillingSubscriptionDailySnapshot(day, snapshotAt int64) (float64, error) {
+	balanceUSD, err := GetNonAdminSubscriptionBalanceUSD()
+	if err != nil {
+		return 0, err
+	}
+	row := BillingSubscriptionDailySnapshot{
+		Day:                    day,
+		SubscriptionBalanceUSD: balanceUSD,
+		SnapshotAt:             snapshotAt,
+	}
+	err = DB.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "day"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"subscription_balance_usd", "snapshot_at",
+		}),
+	}).Create(&row).Error
+	return balanceUSD, err
+}
+
 func GetBillingWalletDailySnapshots(startTimestamp, endTimestamp int64) (map[int64]float64, error) {
 	tx := DB.Model(&BillingWalletDailySnapshot{})
 	if startTimestamp != 0 {
@@ -301,6 +477,25 @@ func GetBillingWalletDailySnapshots(startTimestamp, endTimestamp int64) (map[int
 	result := make(map[int64]float64, len(rows))
 	for _, row := range rows {
 		result[row.Day] = row.WalletBalanceUSD
+	}
+	return result, nil
+}
+
+func GetBillingSubscriptionDailySnapshots(startTimestamp, endTimestamp int64) (map[int64]float64, error) {
+	tx := DB.Model(&BillingSubscriptionDailySnapshot{})
+	if startTimestamp != 0 {
+		tx = tx.Where("day >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("day <= ?", endTimestamp)
+	}
+	var rows []BillingSubscriptionDailySnapshot
+	if err := tx.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[int64]float64, len(rows))
+	for _, row := range rows {
+		result[row.Day] = row.SubscriptionBalanceUSD
 	}
 	return result, nil
 }
