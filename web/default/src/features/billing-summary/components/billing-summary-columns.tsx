@@ -67,10 +67,7 @@ export function buildBillingSummaryColumns(
     {
       accessorKey: 'non_subscription_user_count',
       header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Non-subscription Users')}
-        />
+        <DataTableColumnHeader column={column} title={t('Users')} />
       ),
       cell: ({ row }) => (
         <span
@@ -83,10 +80,7 @@ export function buildBillingSummaryColumns(
     {
       accessorKey: 'cost_usd',
       header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Non-subscription Cost')}
-        />
+        <DataTableColumnHeader column={column} title={t('Cost')} />
       ),
       cell: ({ row }) => (
         <span className='font-mono text-sm'>
@@ -97,10 +91,7 @@ export function buildBillingSummaryColumns(
     {
       accessorKey: 'revenue_usd',
       header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Non-subscription Revenue')}
-        />
+        <DataTableColumnHeader column={column} title={t('Revenue')} />
       ),
       cell: ({ row }) => (
         <span className='font-mono text-sm'>
@@ -110,7 +101,7 @@ export function buildBillingSummaryColumns(
     },
     {
       id: 'profit_usd',
-      header: () => <span>{t('Non-subscription Profit')}</span>,
+      header: () => <span>{t('Profit')}</span>,
       cell: ({ row }) => {
         const profit =
           getNonSubscriptionRevenue(row.original) -
@@ -126,7 +117,7 @@ export function buildBillingSummaryColumns(
     },
     {
       id: 'margin',
-      header: () => <span>{t('Non-subscription Margin')}</span>,
+      header: () => <span>{t('Margin')}</span>,
       cell: ({ row }) => {
         const cost = getNonSubscriptionCost(row.original)
         const revenue = getNonSubscriptionRevenue(row.original)
