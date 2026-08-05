@@ -80,7 +80,7 @@ export function buildBillingSummaryColumns(
     {
       accessorKey: 'cost_usd',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Cost')} />
+        <DataTableColumnHeader column={column} title={t('Platform Cost')} />
       ),
       cell: ({ row }) => (
         <span className='font-mono text-sm'>
@@ -176,7 +176,7 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'wallet_balance_usd',
-      header: () => <span>{t('User Balance')}</span>,
+      header: () => <span>{t('Platform User Balance')}</span>,
       cell: ({ row }) => {
         const balance = row.original.wallet_balance_usd
         return balance != null ? (
