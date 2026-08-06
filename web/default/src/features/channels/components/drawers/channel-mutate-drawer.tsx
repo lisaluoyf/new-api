@@ -476,8 +476,8 @@ function ClientExclusiveField({
   )
 }
 
-// Manual group-ratio fallback: used by FetchChannelPricing when the upstream
-// /api/pricing doesn't expose a group_ratio for this channel's key_group.
+// Manual group-ratio override: when positive, FetchChannelPricing uses this
+// value instead of the upstream group_ratio. Zero/blank keeps upstream pricing.
 function ManualGroupRatioField({
   control,
 }: {
@@ -490,7 +490,7 @@ function ManualGroupRatioField({
       name='manual_group_ratio'
       render={({ field }) => (
         <FormItem>
-          <FormLabel>{t('Group Ratio (manual fallback)')}</FormLabel>
+          <FormLabel>{t('Group Ratio (manual override)')}</FormLabel>
           <FormControl>
             <NumericInput
               step='0.0001'
@@ -501,7 +501,7 @@ function ManualGroupRatioField({
             />
           </FormControl>
           <FormDescription>
-            {t('Used when the upstream /api/pricing does not return a group_ratio for this group. Leave blank or 0 to default to 1.0')}
+            {t('Positive values override the upstream group_ratio. Leave blank or 0 to use the upstream value.')}
           </FormDescription>
           <FormMessage />
         </FormItem>

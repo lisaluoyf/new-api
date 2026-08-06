@@ -122,7 +122,10 @@ func FetchChannelPricing(channel *model.Channel) {
 		fetchModelPriceRatioFallback(ctx, channel)
 		return
 	}
-	groupMul := v
+	// A positive manual_group_ratio is an explicit operator override.  It must
+	// win even when the upstream exposes a group_ratio; zero/omitted means
+	// "use the upstream value".
+	groupMul := resolveChannelGroupRatio(channel.Setting, v)
 
 	now := time.Now().Unix()
 	rows := make([]model.ChannelModelPricing, 0, len(parsed.Data))
@@ -435,6 +438,17 @@ func ExtractManualGroupRatio(setting *string) float64 {
 		return 0
 	}
 	return s.ManualGroupRatio
+}
+
+// resolveChannelGroupRatio applies the channel-level manual override to an
+// upstream group multiplier.  A positive manual value is authoritative;
+// zero/omitted preserves the upstream value.
+func resolveChannelGroupRatio(setting *string, upstream float64) float64 {
+	manual := ExtractManualGroupRatio(setting)
+	if manual > 0 {
+		return manual
+	}
+	return upstream
 }
 
 // effectiveModelPriceRatio returns the multiplier for public_model_prices fallback.

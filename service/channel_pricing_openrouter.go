@@ -62,6 +62,7 @@ func fetchOpenRouterChannelPricing(ctx context.Context, channel *model.Channel) 
 	}
 
 	now := time.Now().Unix()
+	groupMul := resolveChannelGroupRatio(channel.Setting, 1.0)
 	rows := make([]model.ChannelModelPricing, 0, len(channelModels))
 	for _, localModel := range channelModels {
 		upstream := ModelMappingTarget(channel.ModelMapping, localModel)
@@ -97,17 +98,17 @@ func fetchOpenRouterChannelPricing(ctx context.Context, channel *model.Channel) 
 		rows = append(rows, model.ChannelModelPricing{
 			ChannelId:          channel.Id,
 			ModelName:          localModel,
-			InputPrice:         matched.InputPrice,
-			OutputPrice:        matched.OutputPrice,
-			CachePrice:         cachePrice,
-			CacheCreationPrice: cacheCreationPrice,
-			GroupRatio:         1,
+			InputPrice:         matched.InputPrice * groupMul,
+			OutputPrice:        matched.OutputPrice * groupMul,
+			CachePrice:         cachePrice * groupMul,
+			CacheCreationPrice: cacheCreationPrice * groupMul,
+			GroupRatio:         groupMul,
 			Currency:           "USD",
 			PricingSource:      "api",
 			FetchedAt:          now,
 		})
-		logger.LogInfo(ctx, fmt.Sprintf("channel-pricing [%d]: OpenRouter %q ← %q input=%.4f output=%.4f",
-			channel.Id, localModel, matchedID, matched.InputPrice, matched.OutputPrice))
+		logger.LogInfo(ctx, fmt.Sprintf("channel-pricing [%d]: OpenRouter %q ← %q input=%.4f output=%.4f group=%.4f",
+			channel.Id, localModel, matchedID, matched.InputPrice*groupMul, matched.OutputPrice*groupMul, groupMul))
 	}
 
 	if len(rows) == 0 {

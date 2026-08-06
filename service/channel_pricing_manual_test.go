@@ -20,3 +20,15 @@ func TestExtractManualGroupRatioAndKeyGroup(t *testing.T) {
 	require.Equal(t, "Claude Max（仅限CC）", ExtractKeyGroup(&setting))
 	require.Equal(t, 2.0, ExtractManualGroupRatio(&setting))
 }
+
+func TestResolveChannelGroupRatioManualValueOverridesUpstream(t *testing.T) {
+	setting := `{"manual_group_ratio":0.02}`
+	require.InDelta(t, 0.02, resolveChannelGroupRatio(&setting, 1.05), 0.000001)
+}
+
+func TestResolveChannelGroupRatioZeroOrMissingUsesUpstream(t *testing.T) {
+	zero := `{"manual_group_ratio":0}`
+	empty := `{}`
+	require.InDelta(t, 1.05, resolveChannelGroupRatio(&zero, 1.05), 0.000001)
+	require.InDelta(t, 1.05, resolveChannelGroupRatio(&empty, 1.05), 0.000001)
+}
