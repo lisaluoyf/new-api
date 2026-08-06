@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "Klucz API (sandbox)",
     "API Key *": "Klucz API *",
     "API Key created successfully": "Klucz API utworzony pomyślnie",
+    "API key creation success dialog title": "Klucz API utworzony",
+    "API key creation success dialog note 1": "Saldo próbne jest rozliczane według oficjalnych stawek. Po doładowaniu saldo portfela jest rozliczane według stawek promocyjnych (dla GPT około 3% ceny oficjalnej).",
+    "API key creation success dialog note 2": "Jeśli oba salda są dostępne, opłaty są najpierw pobierane z salda próbnego.",
+    "Attention!": "Ważne",
     "API Key deleted successfully": "Klucz API usunięty pomyślnie",
     "API Key disabled successfully": "Klucz API wyłączony pomyślnie",
     "API Key enabled successfully": "Klucz API włączony pomyślnie",
@@ -4542,6 +4546,7 @@
     "Wallet Balance": "Saldo portfela",
     "All models": "Wszystkie modele",
     "APIMaster discounted pricing": "Ceny APIMaster ze zniżką",
+    "Experience Balance": "Saldo próbne",
     "Subscription Balance": "Saldo subskrypcji",
     "GPT models": "Modele GPT",
     "Official pricing": "Ceny oficjalne"

@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "API Key (Sandbox)",
     "API Key *": "API Key *",
     "API Key created successfully": "API Key created successfully",
+    "API key creation success dialog title": "API 키가 생성되었습니다",
+    "API key creation success dialog note 1": "체험 잔액은 공식 요금으로 차감됩니다. 충전 후에는 지갑 잔액이 할인 요금으로 차감됩니다(GPT는 공식 가격의 약 3%).",
+    "API key creation success dialog note 2": "두 잔액이 모두 있으면 요금은 먼저 체험 잔액에서 차감됩니다.",
+    "Attention!": "중요",
     "API Key deleted successfully": "API Key deleted successfully",
     "API Key disabled successfully": "API Key disabled successfully",
     "API Key enabled successfully": "API Key enabled successfully",
@@ -4546,6 +4550,7 @@
     "Wallet Balance": "지갑 잔액",
     "All models": "모든 모델",
     "APIMaster discounted pricing": "APIMaster 할인 요금",
+    "Experience Balance": "체험 잔액",
     "Subscription Balance": "구독 잔액",
     "GPT models": "GPT 모델",
     "Official pricing": "공식 요금"

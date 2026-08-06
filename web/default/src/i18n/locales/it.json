@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "Chiave API (Sandbox)",
     "API Key *": "Chiave API *",
     "API Key created successfully": "Chiave API creata con successo",
+    "API key creation success dialog title": "Chiave API creata",
+    "API key creation success dialog note 1": "Il saldo di prova viene addebitato alle tariffe ufficiali. Dopo la ricarica, il saldo del portafoglio viene addebitato a tariffe scontate (per GPT, circa il 3% del prezzo ufficiale).",
+    "API key creation success dialog note 2": "Se entrambi i saldi sono disponibili, gli addebiti vengono detratti prima dal saldo di prova.",
+    "Attention!": "Importante",
     "API Key deleted successfully": "Chiave API eliminata con successo",
     "API Key disabled successfully": "Chiave API disabilitata con successo",
     "API Key enabled successfully": "Chiave API abilitata con successo",
@@ -4542,6 +4546,7 @@
     "Wallet Balance": "Saldo del portafoglio",
     "All models": "Tutti i modelli",
     "APIMaster discounted pricing": "Prezzi scontati APIMaster",
+    "Experience Balance": "Saldo di prova",
     "Subscription Balance": "Saldo abbonamento",
     "GPT models": "Modelli GPT",
     "Official pricing": "Prezzi ufficiali"

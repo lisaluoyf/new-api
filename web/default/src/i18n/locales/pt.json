@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "Chave de API (Sandbox)",
     "API Key *": "Chave de API *",
     "API Key created successfully": "Chave de API criada com sucesso",
+    "API key creation success dialog title": "Chave de API criada",
+    "API key creation success dialog note 1": "O saldo de teste é cobrado pelas tarifas oficiais. Após a recarga, o saldo da carteira é cobrado com tarifas com desconto (para GPT, cerca de 3% do preço oficial).",
+    "API key creation success dialog note 2": "Se ambos os saldos estiverem disponíveis, as cobranças serão deduzidas primeiro do seu saldo de teste.",
+    "Attention!": "Importante",
     "API Key deleted successfully": "Chave de API excluída com sucesso",
     "API Key disabled successfully": "Chave de API desativada com sucesso",
     "API Key enabled successfully": "Chave de API ativada com sucesso",
@@ -4542,6 +4546,7 @@
     "Wallet Balance": "Saldo da carteira",
     "All models": "Todos os modelos",
     "APIMaster discounted pricing": "Preços com desconto da APIMaster",
+    "Experience Balance": "Saldo de teste",
     "Subscription Balance": "Saldo da assinatura",
     "GPT models": "Modelos GPT",
     "Official pricing": "Preços oficiais"

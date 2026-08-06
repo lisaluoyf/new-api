@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "API Anahtarı (Sandbox)",
     "API Key *": "API Anahtarı *",
     "API Key created successfully": "API Anahtarı başarıyla oluşturuldu",
+    "API key creation success dialog title": "API Anahtarı Oluşturuldu",
+    "API key creation success dialog note 1": "Deneme bakiyesi resmi tarifeler üzerinden ücretlendirilir. Yükleme yaptıktan sonra cüzdan bakiyesi indirimli tarifeler üzerinden ücretlendirilir (GPT için resmi fiyatın yaklaşık %3'ü).",
+    "API key creation success dialog note 2": "Her iki bakiye de mevcutsa ücretler önce deneme bakiyenizden düşülür.",
+    "Attention!": "Önemli",
     "API Key deleted successfully": "API Anahtarı başarıyla silindi",
     "API Key disabled successfully": "API Anahtarı başarıyla devre dışı bırakıldı",
     "API Key enabled successfully": "API Anahtarı başarıyla etkinleştirildi",
@@ -4542,6 +4546,7 @@
     "Wallet Balance": "Cüzdan Bakiyesi",
     "All models": "Tüm modeller",
     "APIMaster discounted pricing": "APIMaster indirimli fiyatlandırma",
+    "Experience Balance": "Deneme Bakiyesi",
     "Subscription Balance": "Abonelik Bakiyesi",
     "GPT models": "GPT modelleri",
     "Official pricing": "Resmi fiyatlandırma"

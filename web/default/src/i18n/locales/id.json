@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "API Key (Sandbox)",
     "API Key *": "API Key *",
     "API Key created successfully": "API Key created successfully",
+    "API key creation success dialog title": "Kunci API dibuat",
+    "API key creation success dialog note 1": "Saldo uji coba dikenakan tarif resmi. Setelah Anda melakukan isi ulang, saldo dompet dikenakan tarif diskon (untuk GPT, sekitar 3% dari harga resmi).",
+    "API key creation success dialog note 2": "Jika kedua saldo tersedia, biaya akan dipotong terlebih dahulu dari saldo uji coba Anda.",
+    "Attention!": "Penting",
     "API Key deleted successfully": "API Key deleted successfully",
     "API Key disabled successfully": "API Key disabled successfully",
     "API Key enabled successfully": "API Key enabled successfully",
@@ -4546,6 +4550,7 @@
     "Wallet Balance": "Saldo dompet",
     "All models": "Semua model",
     "APIMaster discounted pricing": "Harga diskon APIMaster",
+    "Experience Balance": "Saldo uji coba",
     "Subscription Balance": "Saldo langganan",
     "GPT models": "Model GPT",
     "Official pricing": "Harga resmi"

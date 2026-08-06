@@ -287,6 +287,7 @@ export const STATIC_I18N_KEYS = [
   'Wallet Balance',
   'All models',
   'APIMaster discounted pricing',
+  'Experience Balance',
   'Subscription Balance',
   'Platform User Balance',
   'Non-subscription Users',

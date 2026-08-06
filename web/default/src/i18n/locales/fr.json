@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "Clé API (Sandbox)",
     "API Key *": "Clé API *",
     "API Key created successfully": "Clé API créée avec succès",
+    "API key creation success dialog title": "Clé API créée",
+    "API key creation success dialog note 1": "Le solde d'essai est facturé au tarif officiel. Après rechargement, le solde du portefeuille est facturé à tarif réduit (pour GPT, environ 3 % du prix officiel).",
+    "API key creation success dialog note 2": "Si les deux soldes sont disponibles, les frais sont d'abord déduits de votre solde d'essai.",
+    "Attention!": "Important",
     "API Key deleted successfully": "Clé API supprimée avec succès",
     "API Key disabled successfully": "Clé API désactivée avec succès",
     "API Key enabled successfully": "Clé API activée avec succès",
@@ -4546,6 +4550,7 @@
     "Wallet Balance": "Solde du portefeuille",
     "All models": "Tous les modèles",
     "APIMaster discounted pricing": "Tarification remisée APIMaster",
+    "Experience Balance": "Solde d'essai",
     "Subscription Balance": "Solde d’abonnement",
     "GPT models": "Modèles GPT",
     "Official pricing": "Tarification officielle"

@@ -307,6 +307,10 @@
     "API Key (Sandbox)": "API-ключ (Песочница)",
     "API Key *": "Ключ API *",
     "API Key created successfully": "API ключ успешно создан",
+    "API key creation success dialog title": "Ключ API создан",
+    "API key creation success dialog note 1": "Пробный баланс списывается по официальным тарифам. После пополнения баланс кошелька списывается по сниженным тарифам (для GPT примерно 3% от официальной цены).",
+    "API key creation success dialog note 2": "Если доступны оба баланса, списание сначала происходит с пробного баланса.",
+    "Attention!": "Важно",
     "API Key deleted successfully": "API ключ успешно удален",
     "API Key disabled successfully": "API ключ успешно отключен",
     "API Key enabled successfully": "API ключ успешно включен",
@@ -4548,6 +4552,7 @@
     "Wallet Balance": "Баланс кошелька",
     "All models": "Все модели",
     "APIMaster discounted pricing": "Цены APIMaster со скидкой",
+    "Experience Balance": "Пробный баланс",
     "Subscription Balance": "Баланс подписки",
     "GPT models": "Модели GPT",
     "Official pricing": "Официальные цены"

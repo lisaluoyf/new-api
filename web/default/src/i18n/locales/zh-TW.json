@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "API 金鑰（沙盒）",
     "API Key *": "API 金鑰 *",
     "API Key created successfully": "API 金鑰建立成功",
+    "API key creation success dialog title": "API 金鑰建立成功",
+    "API key creation success dialog note 1": "體驗餘額按照官方原價扣費，儲值後錢包餘額按照折扣價扣費（GPT 折扣價約為原價的 3%）。",
+    "API key creation success dialog note 2": "如果兩個帳戶都有餘額，優先從體驗餘額扣費。",
+    "Attention!": "注意！",
     "API Key deleted successfully": "API 金鑰刪除成功",
     "API Key disabled successfully": "API 金鑰停用成功",
     "API Key enabled successfully": "API 金鑰啟用成功",
@@ -4542,6 +4546,7 @@
     "Wallet Balance": "錢包餘額",
     "All models": "所有模型",
     "APIMaster discounted pricing": "APIMaster 折扣價",
+    "Experience Balance": "體驗餘額",
     "Subscription Balance": "訂閱餘額",
     "GPT models": "GPT 模型",
     "Official pricing": "官方原價"

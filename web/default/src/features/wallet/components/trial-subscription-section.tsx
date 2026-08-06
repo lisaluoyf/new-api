@@ -81,7 +81,7 @@ export function TrialSubscriptionSection() {
   )
 
   const copy = {
-    title: t('Subscription Balance'),
+    title: t('Experience Balance'),
     emptyTitle: t('No active subscription'),
     statusActive: t('Active'),
     statusNotClaimed: t('Not claimed'),

@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "APIキー（サンドボックス）",
     "API Key *": "APIキー *",
     "API Key created successfully": "APIキーが正常に作成されました",
+    "API key creation success dialog title": "APIキーを作成しました",
+    "API key creation success dialog note 1": "トライアル残高は公式料金で請求されます。チャージ後は、ウォレット残高に割引料金が適用されます（GPT は公式価格の約 3%）。",
+    "API key creation success dialog note 2": "両方の残高がある場合、料金はまずトライアル残高から差し引かれます。",
+    "Attention!": "重要",
     "API Key deleted successfully": "APIキーが正常に削除されました",
     "API Key disabled successfully": "APIキーが正常に無効化されました",
     "API Key enabled successfully": "APIキーが正常に有効化されました",
@@ -4546,6 +4550,7 @@
     "Wallet Balance": "ウォレット残高",
     "All models": "すべてのモデル",
     "APIMaster discounted pricing": "APIMaster 割引価格",
+    "Experience Balance": "お試し残高",
     "Subscription Balance": "サブスクリプション残高",
     "GPT models": "GPT モデル",
     "Official pricing": "公式価格"

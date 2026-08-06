@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "Khóa API (Sandbox)",
     "API Key *": "Khóa API *",
     "API Key created successfully": "Tạo khóa API thành công",
+    "API key creation success dialog title": "Đã tạo khóa API",
+    "API key creation success dialog note 1": "Số dư dùng thử được tính theo giá chính thức. Sau khi bạn nạp tiền, số dư ví được tính theo giá ưu đãi (với GPT, khoảng 3% giá chính thức).",
+    "API key creation success dialog note 2": "Nếu cả hai số dư đều khả dụng, chi phí sẽ được trừ từ số dư dùng thử trước.",
+    "Attention!": "Quan trọng",
     "API Key deleted successfully": "Xóa khóa API thành công",
     "API Key disabled successfully": "Vô hiệu hóa khóa API thành công",
     "API Key enabled successfully": "Kích hoạt khóa API thành công",
@@ -4546,6 +4550,7 @@
     "Wallet Balance": "Số dư ví",
     "All models": "Tất cả mô hình",
     "APIMaster discounted pricing": "Giá ưu đãi của APIMaster",
+    "Experience Balance": "Số dư dùng thử",
     "Subscription Balance": "Số dư gói đăng ký",
     "GPT models": "Mô hình GPT",
     "Official pricing": "Giá chính thức"

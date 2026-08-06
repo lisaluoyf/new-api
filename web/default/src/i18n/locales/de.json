@@ -336,6 +336,10 @@
     "API Key (Sandbox)": "API-Schlüssel (Sandbox)",
     "API Key *": "API-Schlüssel *",
     "API Key created successfully": "API-Schlüssel erfolgreich erstellt",
+    "API key creation success dialog title": "API-Schlüssel erstellt",
+    "API key creation success dialog note 1": "Das Testguthaben wird zum offiziellen Preis abgerechnet. Nach dem Aufladen wird das Wallet-Guthaben zu reduzierten Preisen abgerechnet (bei GPT etwa 3 % des offiziellen Preises).",
+    "API key creation success dialog note 2": "Wenn beide Guthaben verfügbar sind, werden die Kosten zuerst von Ihrem Testguthaben abgezogen.",
+    "Attention!": "Wichtig",
     "API Key deleted successfully": "API-Schlüssel erfolgreich gelöscht",
     "API Key disabled successfully": "API-Schlüssel erfolgreich deaktiviert",
     "API Key enabled successfully": "API-Schlüssel erfolgreich aktiviert",
@@ -4542,6 +4546,7 @@
     "Wallet Balance": "Wallet-Guthaben",
     "All models": "Alle Modelle",
     "APIMaster discounted pricing": "APIMaster-Rabattpreise",
+    "Experience Balance": "Testguthaben",
     "Subscription Balance": "Abonnementguthaben",
     "GPT models": "GPT-Modelle",
     "Official pricing": "Offizielle Preise"
