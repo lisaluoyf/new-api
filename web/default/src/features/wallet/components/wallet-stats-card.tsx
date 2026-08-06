@@ -16,10 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMemo } from 'react'
+import { Link } from '@tanstack/react-router'
 import { WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatQuota } from '@/lib/format'
 import { Skeleton } from '@/components/ui/skeleton'
+import { QUOTA_TYPE_VALUES } from '@/features/pricing/constants'
+import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
+import { formatPrice } from '@/features/pricing/lib/price'
 import { GLASS_CARD_CLS } from '../constants'
 import type { UserWalletData } from '../types'
 
@@ -28,15 +33,66 @@ interface WalletStatsCardProps {
   loading?: boolean
 }
 
+const FEATURED_MODEL_ID = 'gpt-5.6-sol'
+const FEATURED_MODEL_LABEL = 'GPT 5.6 Sol'
+
 export function WalletStatsCard({ user, loading }: WalletStatsCardProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const { models, priceRate, usdExchangeRate } = usePricingData()
+  const isChinese = (i18n.resolvedLanguage || i18n.language || '')
+    .toLowerCase()
+    .startsWith('zh')
   const copy = {
     title: t('Wallet Balance'),
     models: t('Models'),
     modelsValue: t('All models'),
     billing: t('Billing'),
     billingValue: t('APIMaster discounted pricing'),
+    featuredPriceLabel: isChinese ? '实时折扣价：' : 'live price:',
+    viewAllDiscounts: isChinese ? '查看完整折扣' : 'View all discounts',
   }
+
+  const featuredPricing = useMemo(() => {
+    const model = models.find((item) => item.model_name === FEATURED_MODEL_ID)
+    if (!model || model.quota_type !== QUOTA_TYPE_VALUES.TOKEN) {
+      return null
+    }
+
+    const officialPrice = model.model_ratio * 2
+    const discountedPrice = officialPrice * (priceRate / usdExchangeRate)
+    if (
+      !Number.isFinite(officialPrice) ||
+      !Number.isFinite(discountedPrice) ||
+      officialPrice <= 0 ||
+      discountedPrice <= 0 ||
+      discountedPrice >= officialPrice
+    ) {
+      return null
+    }
+
+    return {
+      modelLabel: FEATURED_MODEL_LABEL,
+      discountPct: Math.round((1 - discountedPrice / officialPrice) * 100),
+      discountedPriceLabel: `${formatPrice(
+        model,
+        'input',
+        'M',
+        true,
+        priceRate,
+        usdExchangeRate,
+        1
+      )}/M`,
+      officialPriceLabel: `${formatPrice(
+        model,
+        'input',
+        'M',
+        false,
+        priceRate,
+        usdExchangeRate,
+        1
+      )}/M`,
+    }
+  }, [models, priceRate, usdExchangeRate])
 
   if (loading) {
     return (
@@ -66,7 +122,7 @@ export function WalletStatsCard({ user, loading }: WalletStatsCardProps) {
           <div className='text-muted-foreground text-xs font-medium'>
             {copy.title}
           </div>
-          <div className='mt-0.5 font-mono text-2xl font-bold tabular-nums tracking-tight'>
+          <div className='mt-0.5 font-mono text-2xl font-bold tracking-tight tabular-nums'>
             {formatQuota(user?.quota ?? 0)}
           </div>
         </div>
@@ -77,11 +133,35 @@ export function WalletStatsCard({ user, loading }: WalletStatsCardProps) {
           <span className='text-muted-foreground shrink-0'>{copy.models}:</span>
           <span className='font-medium'>{copy.modelsValue}</span>
         </div>
-        <div className='flex items-center gap-2'>
-          <span className='text-muted-foreground shrink-0'>{copy.billing}:</span>
+        <div className='flex flex-wrap items-center gap-2'>
+          <span className='text-muted-foreground shrink-0'>
+            {copy.billing}:
+          </span>
           <span className='inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20'>
             {copy.billingValue}
           </span>
+          {featuredPricing ? (
+            <span className='text-muted-foreground flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs sm:text-sm'>
+              <span className='shrink-0'>
+                {featuredPricing.modelLabel} {copy.featuredPriceLabel}
+              </span>
+              <span className='text-foreground font-semibold'>
+                {featuredPricing.discountPct}% off
+              </span>
+              <span className='text-foreground font-mono font-semibold'>
+                {featuredPricing.discountedPriceLabel}
+              </span>
+              <span className='text-muted-foreground/70 font-mono line-through'>
+                {featuredPricing.officialPriceLabel}
+              </span>
+              <Link
+                to='/'
+                className='font-medium text-sky-600 underline underline-offset-4 transition-colors hover:text-sky-500 dark:text-sky-300 dark:hover:text-sky-200'
+              >
+                {copy.viewAllDiscounts}
+              </Link>
+            </span>
+          ) : null}
         </div>
       </div>
     </div>
