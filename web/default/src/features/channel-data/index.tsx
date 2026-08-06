@@ -1188,6 +1188,11 @@ export function ChannelDataPage() {
                   ? Math.abs(item.actual_price! - item.hub_price!) / item.hub_price! * 100
                   : 0
                 const priceDivergent = priceDivergePct > 10
+                const procurementOfficialRatioPct =
+                  item.actual_price != null && item.actual_price > 0 &&
+                  item.official_input_price != null && item.official_input_price > 0
+                    ? Math.round(item.actual_price / item.official_input_price * 100)
+                    : null
                 // Tampered-base-price alert: 渠道原价 vs 统一官方原价, computed server-side.
                 const baseMismatchPct = item.base_price_mismatch_pct ?? null
                 const baseMismatched = baseMismatchPct != null && baseMismatchPct > 5
@@ -1308,6 +1313,18 @@ export function ChannelDataPage() {
                               <span className='inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-red-600'>
                                 <AlertTriangle size={10} />
                                 {t('Missing Price')}
+                              </span>
+                            )}
+                            {procurementOfficialRatioPct != null && (
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-bold leading-none ${
+                                  procurementOfficialRatioPct <= 100
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : 'bg-orange-100 text-orange-700'
+                                }`}
+                                title={t('Procurement / official price')}
+                              >
+                                {procurementOfficialRatioPct}%
                               </span>
                             )}
                             {fmtPrice(item.actual_price)}
