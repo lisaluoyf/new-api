@@ -125,18 +125,7 @@ func ResolveModelPriceRatio(modelPriceRatiosJSON *string, channelRatio *float64,
 
 // GetModelPriceRatio returns the effective user-price markup for one model.
 func (channel *Channel) GetModelPriceRatio(modelName string) float64 {
-	if r, ok := LookupModelPriceRatio(channel.ModelPriceRatios, modelName); ok {
-		return r
-	}
-	if channel.Setting != nil && *channel.Setting != "" {
-		var setting struct {
-			ModelPriceRatio float64 `json:"model_price_ratio"`
-		}
-		if err := common.Unmarshal([]byte(*channel.Setting), &setting); err == nil && setting.ModelPriceRatio > 0 {
-			return setting.ModelPriceRatio
-		}
-	}
-	return channel.GetApimasterPriceRatio()
+	return ResolveModelPriceRatio(channel.ModelPriceRatios, channel.ApimasterPriceRatio, modelName)
 }
 
 type ChannelInfo struct {

@@ -126,6 +126,7 @@ func FetchChannelPricing(channel *model.Channel) {
 	// win even when the upstream exposes a group_ratio; zero/omitted means
 	// "use the upstream value".
 	groupMul := resolveChannelGroupRatio(channel.Setting, v)
+	modelMul := resolveModelPriceRatio(channel.Setting)
 
 	now := time.Now().Unix()
 	rows := make([]model.ChannelModelPricing, 0, len(parsed.Data))
@@ -135,15 +136,15 @@ func FetchChannelPricing(channel *model.Channel) {
 		}
 		var inputPrice, outputPrice, cachePrice, cacheCreationPrice float64
 		if item.QuotaType == 1 {
-			inputPrice = item.ModelPrice * groupMul
+			inputPrice = item.ModelPrice * groupMul * modelMul
 		} else {
-			inputPrice = item.ModelRatio * groupMul * 2
-			outputPrice = item.ModelRatio * item.CompletionRatio * groupMul * 2
+			inputPrice = item.ModelRatio * groupMul * modelMul * 2
+			outputPrice = item.ModelRatio * item.CompletionRatio * groupMul * modelMul * 2
 			if item.CacheRatio > 0 {
-				cachePrice = item.ModelRatio * item.CacheRatio * groupMul * 2
+				cachePrice = item.ModelRatio * item.CacheRatio * groupMul * modelMul * 2
 			}
 			if item.CreateCacheRatio > 0 {
-				cacheCreationPrice = item.ModelRatio * item.CreateCacheRatio * groupMul * 2
+				cacheCreationPrice = item.ModelRatio * item.CreateCacheRatio * groupMul * modelMul * 2
 			}
 			cachePrice, cacheCreationPrice = fillMissingCachePricesFromOfficial(
 				item.ModelName,
@@ -178,8 +179,8 @@ func FetchChannelPricing(channel *model.Channel) {
 		logger.LogWarn(ctx, fmt.Sprintf("channel-pricing [%d]: upsert: %v", channel.Id, err))
 		return
 	}
-	logger.LogInfo(ctx, fmt.Sprintf("channel-pricing [%d] group=%q mul=%.3f: stored %d model prices",
-		channel.Id, keyGroup, groupMul, len(rows)))
+	logger.LogInfo(ctx, fmt.Sprintf("channel-pricing [%d] group=%q group_mul=%.3f model_mul=%.3f: stored %d model prices",
+		channel.Id, keyGroup, groupMul, modelMul, len(rows)))
 }
 
 func fillMissingCachePricesFromOfficial(
@@ -451,6 +452,17 @@ func resolveChannelGroupRatio(setting *string, upstream float64) float64 {
 	return upstream
 }
 
+// resolveModelPriceRatio applies the optional channel-level model price
+// multiplier to both upstream pricing and the public-price fallback. A blank
+// or zero value preserves the historical behavior (multiplier 1.0).
+func resolveModelPriceRatio(setting *string) float64 {
+	ratio := ExtractModelPriceRatio(setting)
+	if ratio > 0 {
+		return ratio
+	}
+	return 1.0
+}
+
 // effectiveModelPriceRatio returns the multiplier for public_model_prices fallback.
 // manual_group_ratio must already be > 0. model_price_ratio 0/absent defaults to 1.0
 // when manual group is configured (operator expects manual fallback, not "disabled").
@@ -484,17 +496,19 @@ func LookupPublicManualPricing(setting *string, modelName string) (PublicManualP
 	if groupMul <= 0 {
 		return PublicManualPricing{}, false
 	}
+	ratio := effectiveModelPriceRatio(setting, groupMul)
+
 	official, ok := lookupOfficialModelPrice(modelName)
 	if !ok {
 		return PublicManualPricing{}, false
 	}
 	return PublicManualPricing{
-		InputPrice:         official.InputPrice * groupMul,
-		OutputPrice:        official.OutputPrice * groupMul,
-		CachePrice:         official.CachePrice * groupMul,
-		CacheCreationPrice: official.CacheCreationPrice * groupMul,
+		InputPrice:         official.InputPrice * ratio * groupMul,
+		OutputPrice:        official.OutputPrice * ratio * groupMul,
+		CachePrice:         official.CachePrice * ratio * groupMul,
+		CacheCreationPrice: official.CacheCreationPrice * ratio * groupMul,
 		GroupRatio:         groupMul,
-		ModelPriceRatio:    1.0,
+		ModelPriceRatio:    ratio,
 	}, true
 }
 
