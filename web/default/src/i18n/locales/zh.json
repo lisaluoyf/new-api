@@ -308,7 +308,7 @@
     "API Key *": "API 密钥 *",
     "API Key created successfully": "API 密钥创建成功",
     "API key creation success dialog title": "创建成功",
-    "API key creation success dialog note 1": "Trial 余额按照厂家原价扣费，钱包余额按照折扣价扣费（GPT 大概是原价 3%）。",
+    "API key creation success dialog note 1": "Trial 余额按照厂家原价扣费，充值后钱包余额按照折扣价扣费（GPT 折扣价大概是原价 3%）。",
     "API key creation success dialog note 2": "如果 2 个账户都有余额，优先从 Trial 余额扣费。",
     "Attention!": "注意！",
     "OK": "OK",

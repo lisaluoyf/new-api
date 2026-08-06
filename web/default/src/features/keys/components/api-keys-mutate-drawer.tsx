@@ -633,8 +633,8 @@ export function ApiKeysMutateDrawer({
           </AlertDialogHeader>
 
           <div className='space-y-3 text-sm'>
-            <p className='text-foreground font-semibold'>{t('Attention!')}</p>
-            <ol className='text-muted-foreground list-decimal space-y-2 pl-5'>
+            <p className='font-semibold text-red-500'>{t('Attention!')}</p>
+            <ol className='list-decimal space-y-2 pl-5 text-red-500'>
               <li>{t('API key creation success dialog note 1')}</li>
               <li>{t('API key creation success dialog note 2')}</li>
             </ol>
