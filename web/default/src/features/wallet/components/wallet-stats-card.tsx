@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import { WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatQuota } from '@/lib/format'
@@ -173,12 +172,12 @@ export function WalletStatsCard({ user, loading }: WalletStatsCardProps) {
               <span className='text-muted-foreground/70 font-mono line-through'>
                 {featuredPricing.officialPriceLabel}
               </span>
-              <Link
-                to='/'
+              <a
+                href='https://apimaster.ai/'
                 className='font-medium text-sky-600 underline underline-offset-4 transition-colors hover:text-sky-500 dark:text-sky-300 dark:hover:text-sky-200'
               >
                 {copy.viewAllDiscounts}
-              </Link>
+              </a>
             </span>
           ) : null}
         </div>
