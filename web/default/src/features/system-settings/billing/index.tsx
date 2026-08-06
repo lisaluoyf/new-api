@@ -31,7 +31,7 @@ const defaultBillingSettings: BillingSettings = {
   AffRatio: 0,
   ReferralGPTRewardEnabled: false,
   ReferralGPTMinTopupUSD: 10,
-  ReferralGPTRewardAmountUSD: 20,
+  ReferralGPTRewardAmountUSD: 50,
   FirstTopupPromoEnabled: false,
   FirstTopupPromoDiscount: 0.75,
   FirstTopupPromoAmount: 10,

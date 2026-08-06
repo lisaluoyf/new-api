@@ -128,7 +128,7 @@ var AffRatio = 0 // 充值返佣比例 (%)，0 = 关闭
 // 邀请好友完成首笔达标充值后，双方获得的永久 GPT 订阅额度。
 var ReferralGPTRewardEnabled = false
 var ReferralGPTMinTopupUSD = 10.0
-var ReferralGPTRewardAmountUSD = 20.0
+var ReferralGPTRewardAmountUSD = 50.0
 var ReferralGPTRewardStartTime int64 = 0
 
 // 新用户首充优惠（参数可在「系统设置」改，支持 ABtest / 一键关）

@@ -70,11 +70,11 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
 
 export const GPT_TRIAL_PRESET: PlanFormValues = {
   title: 'APIMaster $20 GPT Trial',
-  subtitle: '7-day GPT trial at official pricing',
+  subtitle: '5-day GPT trial at official pricing',
   plan_type: 'gpt_trial',
   price_amount: 0,
   duration_unit: 'day',
-  duration_value: 7,
+  duration_value: 5,
   custom_seconds: 0,
   quota_reset_period: 'never',
   quota_reset_custom_seconds: 0,
