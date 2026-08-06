@@ -17,14 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatQuota } from '@/lib/format'
+import { api } from '@/lib/api'
+import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { Skeleton } from '@/components/ui/skeleton'
-import { QUOTA_TYPE_VALUES } from '@/features/pricing/constants'
-import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
-import { formatPrice } from '@/features/pricing/lib/price'
 import { GLASS_CARD_CLS } from '../constants'
 import type { UserWalletData } from '../types'
 
@@ -33,12 +33,17 @@ interface WalletStatsCardProps {
   loading?: boolean
 }
 
+interface MarketplacePricingItem {
+  channel_id: number
+  user_price?: number | null
+  official_input_price?: number | null
+}
+
 const FEATURED_MODEL_ID = 'gpt-5.6-sol'
 const FEATURED_MODEL_LABEL = 'GPT 5.6 Sol'
 
 export function WalletStatsCard({ user, loading }: WalletStatsCardProps) {
   const { t, i18n } = useTranslation()
-  const { models, priceRate, usdExchangeRate } = usePricingData()
   const isChinese = (i18n.resolvedLanguage || i18n.language || '')
     .toLowerCase()
     .startsWith('zh')
@@ -52,47 +57,61 @@ export function WalletStatsCard({ user, loading }: WalletStatsCardProps) {
     viewAllDiscounts: isChinese ? '查看完整折扣' : 'View all discounts',
   }
 
+  const { data: featuredMarketplaceItems = [] } = useQuery({
+    queryKey: ['featured-marketplace-pricing', FEATURED_MODEL_ID],
+    queryFn: async () => {
+      const res = await api.get('/api/public/marketplace', {
+        params: { model: FEATURED_MODEL_ID },
+      })
+      return (res.data?.data ?? []) as MarketplacePricingItem[]
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
   const featuredPricing = useMemo(() => {
-    const model = models.find((item) => item.model_name === FEATURED_MODEL_ID)
-    if (!model || model.quota_type !== QUOTA_TYPE_VALUES.TOKEN) {
+    const bestItem = featuredMarketplaceItems
+      .filter(
+        (item) =>
+          Number.isFinite(item.user_price) &&
+          Number.isFinite(item.official_input_price) &&
+          Number(item.user_price) > 0 &&
+          Number(item.official_input_price) > 0
+      )
+      .sort((a, b) => Number(a.user_price) - Number(b.user_price))[0]
+
+    if (!bestItem) {
       return null
     }
 
-    const officialPrice = model.model_ratio * 2
-    const discountedPrice = officialPrice * (priceRate / usdExchangeRate)
+    const discountedPrice = Number(bestItem.user_price)
+    const officialPrice = Number(bestItem.official_input_price)
     if (
-      !Number.isFinite(officialPrice) ||
       !Number.isFinite(discountedPrice) ||
+      !Number.isFinite(officialPrice) ||
       officialPrice <= 0 ||
-      discountedPrice <= 0 ||
-      discountedPrice >= officialPrice
+      discountedPrice <= 0
     ) {
       return null
     }
 
     return {
       modelLabel: FEATURED_MODEL_LABEL,
-      discountPct: Math.round((1 - discountedPrice / officialPrice) * 100),
-      discountedPriceLabel: `${formatPrice(
-        model,
-        'input',
-        'M',
-        true,
-        priceRate,
-        usdExchangeRate,
-        1
-      )}/M`,
-      officialPriceLabel: `${formatPrice(
-        model,
-        'input',
-        'M',
-        false,
-        priceRate,
-        usdExchangeRate,
-        1
-      )}/M`,
+      discountPct: Math.max(
+        0,
+        Math.round((1 - discountedPrice / officialPrice) * 100)
+      ),
+      discountedPriceLabel: `${formatBillingCurrencyFromUSD(discountedPrice, {
+        digitsLarge: 4,
+        digitsSmall: 6,
+        abbreviate: false,
+      })}/M`,
+      officialPriceLabel: `${formatBillingCurrencyFromUSD(officialPrice, {
+        digitsLarge: 4,
+        digitsSmall: 6,
+        abbreviate: false,
+      })}/M`,
     }
-  }, [models, priceRate, usdExchangeRate])
+  }, [featuredMarketplaceItems])
 
   if (loading) {
     return (
