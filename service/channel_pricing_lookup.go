@@ -25,6 +25,19 @@ func EffectiveModelPriceRatio(modelPriceRatiosJSON *string, channelRatio *float6
 	return *channelRatio
 }
 
+// EffectiveChannelPriceRatio resolves the channel-level user-price ratio.
+// The channel editor's Model Price Ratio (stored in setting JSON) takes
+// precedence over the legacy apimaster_price_ratio column.
+func EffectiveChannelPriceRatio(setting *string, legacyRatio *float64) float64 {
+	if ratio := ExtractModelPriceRatio(setting); ratio > 0 {
+		return ratio
+	}
+	if legacyRatio == nil || *legacyRatio <= 0 {
+		return 1.0
+	}
+	return *legacyRatio
+}
+
 // ChannelModelPriceRatio derives newapi-internal ratio numbers from a specific
 // channel's row in channel_model_pricings. Returns (0, 0, false) when no
 // pricing row exists for the (channel, model) pair.
@@ -91,7 +104,8 @@ func ChannelModelPriceData(channelID int, modelName string) (ChannelModelPriceRa
 	// apimaster markup multiplier (per-model override > channel default > 1.0).
 	// Applied to ModelRatio (input). Output/cache ride along automatically because
 	// their ratios are relative to input_price.
-	apimasterRatio := EffectiveModelPriceRatio(ch.ModelPriceRatios, &ch.ApimasterPriceRatio, modelName)
+	channelRatio := EffectiveChannelPriceRatio(ch.Setting, &ch.ApimasterPriceRatio)
+	apimasterRatio := EffectiveModelPriceRatio(ch.ModelPriceRatios, &channelRatio, modelName)
 	priceData := ChannelModelPriceRatios{
 		ModelRatio:      row.InputPrice * rechargeRate * apimasterRatio / 2.0,
 		CompletionRatio: 1.0,

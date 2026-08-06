@@ -315,7 +315,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		// 401/404 or cookie-only auth). Keep nil all the way to the API
 		// response so the frontend renders "—" rather than misleading "0".
 		// Effective markup for THIS model: per-model override > channel default > 1.0.
-		channelRatio := r.ApimasterPriceRatio
+		channelRatio := service.EffectiveChannelPriceRatio(r.Setting, &r.ApimasterPriceRatio)
 		apimasterRatio := service.EffectiveModelPriceRatio(r.ModelPriceRatios, &channelRatio, modelName)
 
 		var inputPricePtr, outputPricePtr, actualPricePtr, actualOutPricePtr *float64
@@ -897,7 +897,7 @@ func GetPublicMarketplace(c *gin.Context) {
 			latencies = h.Latencies
 		}
 
-		marketChannelRatio := r.ApimasterPriceRatio
+		marketChannelRatio := service.EffectiveChannelPriceRatio(r.Setting, &r.ApimasterPriceRatio)
 		apimasterRatio := service.EffectiveModelPriceRatio(r.ModelPriceRatios, &marketChannelRatio, modelName)
 
 		var inputPricePtr, outputPricePtr, actualPricePtr, actualOutPricePtr *float64

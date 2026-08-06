@@ -104,7 +104,7 @@ export const channelFormSchema = z.object({
   recharge_rate: z.number().min(0).optional(),
   // APIMaster 价格倍率：用户最终价格 = 采购价 × 此倍率；留空/0 = 1.0（不加价），影响实际计费与广场展示价
   apimaster_price_ratio: z.number().min(0).optional(),
-  // Model Price Ratio：上游无 /api/pricing 时，用 romaapi 公开价格 × 此倍率作为回退定价；0 = 不启用
+  // Model Price Ratio：用户最终价格 = 采购价 × 此倍率；0 = 1.0
   model_price_ratio: z.number().min(0).optional(),
   // 模型价格倍率覆盖：JSON 字符串 {"gpt-5.4":2.0}；未配置的模型回落渠道级 apimaster_price_ratio
   model_price_ratios: z.string().optional(),

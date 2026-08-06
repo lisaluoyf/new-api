@@ -614,7 +614,7 @@ function ModelPriceRatioField({ control }: { control: Control<ChannelFormValues>
         />
       </FormControl>
       <FormDescription>
-        {t('When upstream has no /api/pricing, use romaapi public model price × this ratio as fallback; leave blank or 0 to disable')}
+        {t('User Price = Procurement Price × this ratio. This is the channel default user-price multiplier; per-model overrides take precedence. Leave blank or 0 for 1.0')}
       </FormDescription>
       {fieldState.error && <p className='text-destructive text-xs'>{fieldState.error.message}</p>}
     </FormItem>
@@ -627,7 +627,7 @@ function ApimasterPriceRatioField({ control }: { control: Control<ChannelFormVal
 
   return (
     <FormItem>
-      <FormLabel>{t('User Price Ratio')}</FormLabel>
+        <FormLabel>{t('User Price Ratio (legacy)')}</FormLabel>
       <FormControl>
         <NumericInput
           step='0.01'
