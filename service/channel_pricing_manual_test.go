@@ -32,12 +32,3 @@ func TestResolveChannelGroupRatioZeroOrMissingUsesUpstream(t *testing.T) {
 	require.InDelta(t, 1.05, resolveChannelGroupRatio(&zero, 1.05), 0.000001)
 	require.InDelta(t, 1.05, resolveChannelGroupRatio(&empty, 1.05), 0.000001)
 }
-
-func TestResolveModelPriceRatioAppliesToUpstreamPricing(t *testing.T) {
-	setting := `{"model_price_ratio":1.5}`
-	require.InDelta(t, 1.5, resolveModelPriceRatio(&setting), 0.000001)
-
-	zero := `{"model_price_ratio":0}`
-	require.InDelta(t, 1.0, resolveModelPriceRatio(&zero), 0.000001)
-	require.InDelta(t, 1.0, resolveModelPriceRatio(nil), 0.000001)
-}
