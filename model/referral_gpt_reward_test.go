@@ -27,6 +27,8 @@ func setupReferralGPTRewardTestDB(t *testing.T) {
 		&User{},
 		&SubscriptionPlan{},
 		&UserSubscription{},
+		&AffLog{},
+		&GAPurchaseLog{},
 		&ReferralGPTRewardLog{},
 		&TopUp{},
 	))
@@ -208,4 +210,30 @@ func TestReferralGPTRewardsStackInSingleInviterSubscription(t *testing.T) {
 	require.NoError(t, DB.Where("user_id = ? AND plan_id = ?", 1, plan.Id).Find(&inviterSubscriptions).Error)
 	require.Len(t, inviterSubscriptions, 1)
 	require.Equal(t, int64(40*500000), inviterSubscriptions[0].AmountTotal)
+}
+
+func TestOnTopupSucceededBackfillsMissingCompleteTimeForReferralRewards(t *testing.T) {
+	setupReferralGPTRewardTestDB(t)
+	seedReferralUsers(t)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId:          2,
+		CreditedAmount:  10,
+		TradeNo:         "missing-complete-time",
+		PaymentMethod:   PaymentMethodStripe,
+		PaymentProvider: PaymentProviderStripe,
+		CreateTime:      100,
+		CompleteTime:    0,
+		Status:          common.TopUpStatusSuccess,
+	}).Error)
+
+	OnTopupSucceeded(2, 10*500000, PaymentMethodStripe, "missing-complete-time")
+
+	topUp := GetTopUpByTradeNo("missing-complete-time")
+	require.NotNil(t, topUp)
+	require.NotZero(t, topUp.CompleteTime)
+
+	var reward ReferralGPTRewardLog
+	require.NoError(t, DB.Where("trade_no = ?", "missing-complete-time").First(&reward).Error)
+	require.Equal(t, 1, reward.InviterId)
+	require.Equal(t, 2, reward.InviteeId)
 }

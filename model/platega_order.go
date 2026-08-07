@@ -177,8 +177,7 @@ func RechargePlatega(tradeNo string, callerIp string) (err error) {
 			return errors.New("无效的充值额度")
 		}
 
-		topUp.CompleteTime = common.GetTimestamp()
-		topUp.Status = common.TopUpStatusSuccess
+		MarkTopUpSuccess(topUp)
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}

@@ -138,6 +138,38 @@ func topUpCreditQuota(topUp *TopUp) float64 {
 	}
 }
 
+// MarkTopUpSuccess is the single state transition helper for successful
+// wallet top-ups. Keeping complete_time and status in one place avoids reward
+// and reconcile regressions when new payment callbacks are added.
+func MarkTopUpSuccess(topUp *TopUp) {
+	if topUp == nil {
+		return
+	}
+	if topUp.CompleteTime == 0 {
+		topUp.CompleteTime = common.GetTimestamp()
+	}
+	topUp.Status = common.TopUpStatusSuccess
+}
+
+// EnsureSuccessfulTopUpCompleteTime backfills complete_time for successful
+// orders if a payment callback forgot to persist it. This keeps downstream
+// first-topup reward logic from silently skipping eligible users.
+func EnsureSuccessfulTopUpCompleteTime(tradeNo string) {
+	if strings.TrimSpace(tradeNo) == "" {
+		return
+	}
+	topUp := GetTopUpByTradeNo(tradeNo)
+	if topUp == nil || topUp.Status != common.TopUpStatusSuccess || topUp.CompleteTime > 0 {
+		return
+	}
+	topUp.CompleteTime = common.GetTimestamp()
+	if err := topUp.Update(); err != nil {
+		common.SysLog(fmt.Sprintf("failed to backfill topup complete_time trade_no=%s: %v", tradeNo, err))
+		return
+	}
+	common.SysLog(fmt.Sprintf("backfilled missing topup complete_time trade_no=%s user_id=%d", topUp.TradeNo, topUp.UserId))
+}
+
 func (topUp *TopUp) Update() error {
 	var err error
 	err = DB.Save(topUp).Error
@@ -235,8 +267,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return errors.New("充值订单状态错误")
 		}
 
-		topUp.CompleteTime = common.GetTimestamp()
-		topUp.Status = common.TopUpStatusSuccess
+		MarkTopUpSuccess(topUp)
 		err = tx.Save(topUp).Error
 		if err != nil {
 			return err
@@ -289,8 +320,7 @@ func RechargePayPal(referenceId string, callerIp string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		topUp.CompleteTime = common.GetTimestamp()
-		topUp.Status = common.TopUpStatusSuccess
+		MarkTopUpSuccess(topUp)
 		err = tx.Save(topUp).Error
 		if err != nil {
 			return err
@@ -345,8 +375,7 @@ func RechargeClink(referenceId string, callerIp string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		topUp.CompleteTime = common.GetTimestamp()
-		topUp.Status = common.TopUpStatusSuccess
+		MarkTopUpSuccess(topUp)
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
@@ -650,8 +679,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		}
 
 		// 标记完成
-		topUp.CompleteTime = common.GetTimestamp()
-		topUp.Status = common.TopUpStatusSuccess
+		MarkTopUpSuccess(topUp)
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
@@ -706,8 +734,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			return errors.New("充值订单状态错误")
 		}
 
-		topUp.CompleteTime = common.GetTimestamp()
-		topUp.Status = common.TopUpStatusSuccess
+		MarkTopUpSuccess(topUp)
 		err = tx.Save(topUp).Error
 		if err != nil {
 			return err
@@ -793,8 +820,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return errors.New("无效的充值额度")
 		}
 
-		topUp.CompleteTime = common.GetTimestamp()
-		topUp.Status = common.TopUpStatusSuccess
+		MarkTopUpSuccess(topUp)
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
@@ -855,8 +881,7 @@ func RechargeWaffoPancake(tradeNo string, callerIp string) (err error) {
 			return errors.New("无效的充值额度")
 		}
 
-		topUp.CompleteTime = common.GetTimestamp()
-		topUp.Status = common.TopUpStatusSuccess
+		MarkTopUpSuccess(topUp)
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
@@ -885,6 +910,7 @@ func RechargeWaffoPancake(tradeNo string, callerIp string) (err error) {
 // Centralises affiliate commission + Feishu notification so new payment methods
 // only need one call here instead of wiring each individually.
 func OnTopupSucceeded(userId int, quotaAdded int, paymentMethod string, tradeNo string) {
+	EnsureSuccessfulTopUpCompleteTime(tradeNo)
 	ProcessAffCommission(userId, quotaAdded)
 	if reward, err := ProcessReferralGPTReward(userId, quotaAdded, paymentMethod, tradeNo, "realtime"); err != nil {
 		common.SysLog(fmt.Sprintf("ProcessReferralGPTReward failed user_id=%d trade_no=%s: %v", userId, tradeNo, err))
