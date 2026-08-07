@@ -337,6 +337,18 @@ func maskReferralEmail(value string) string {
 	return local + value[at:]
 }
 
+func referralRewardDisplayEmail(user *User, fallbackID int) string {
+	if user != nil {
+		if email := strings.TrimSpace(user.Email); email != "" {
+			return email
+		}
+		if username := strings.TrimSpace(user.Username); username != "" {
+			return username
+		}
+	}
+	return fmt.Sprintf("user#%d", fallbackID)
+}
+
 func NotifyReferralGPTRewardToFeishu(logId int) error {
 	if logId <= 0 {
 		return nil
@@ -358,8 +370,8 @@ func NotifyReferralGPTRewardToFeishu(logId int) error {
 		return err
 	}
 	var inviter, invitee User
-	_ = DB.Select("id", "username").Where("id = ?", reward.InviterId).First(&inviter).Error
-	_ = DB.Select("id", "username").Where("id = ?", reward.InviteeId).First(&invitee).Error
+	_ = DB.Select("id", "email", "username").Where("id = ?", reward.InviterId).First(&inviter).Error
+	_ = DB.Select("id", "email", "username").Where("id = ?", reward.InviteeId).First(&invitee).Error
 
 	formatQuotaUSD := func(quota int64) string {
 		if common.QuotaPerUnit <= 0 {
@@ -369,15 +381,15 @@ func NotifyReferralGPTRewardToFeishu(logId int) error {
 	}
 	lines := []string{
 		fmt.Sprintf("时间：%s (CST)", time.Unix(reward.GrantedAt, 0).In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05")),
-		fmt.Sprintf("被邀请人：%s（ID: %d）", invitee.Username, reward.InviteeId),
-		fmt.Sprintf("邀请人：%s（ID: %d）", inviter.Username, reward.InviterId),
+		fmt.Sprintf("被邀请人：%s（ID: %d）", referralRewardDisplayEmail(&invitee, reward.InviteeId), reward.InviteeId),
+		fmt.Sprintf("邀请人：%s（ID: %d）", referralRewardDisplayEmail(&inviter, reward.InviterId), reward.InviterId),
 		fmt.Sprintf("累计充值到账：%s", formatQuotaUSD(reward.TopupQuota)),
 		fmt.Sprintf("被邀请人奖励：%s GPT 额度", formatQuotaUSD(reward.InviteeRewardQuota)),
 		fmt.Sprintf("邀请人奖励：%s GPT 额度", formatQuotaUSD(reward.InviterRewardQuota)),
 		fmt.Sprintf("交易单号：%s", reward.TradeNo),
 		fmt.Sprintf("触发方式：%s", reward.GrantSource),
 	}
-	if err := common.SendFeishuCard(common.FeishuRiskChatID(), "🎁 邀请首充 GPT 奖励已发放", lines); err != nil {
+	if err := common.SendFeishuCard(common.FeishuChannelChatID(), "🎁 邀请首充 GPT 奖励已发放", lines); err != nil {
 		DB.Model(&ReferralGPTRewardLog{}).Where("id = ?", logId).Update("feishu_notify_locked_at", 0)
 		return err
 	}
