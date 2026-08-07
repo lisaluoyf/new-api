@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/bytedance/gopkg/util/gopool"
@@ -189,6 +190,22 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 			}
 		}
 		recordUptimeResult(ch, targetModel, baseURL, status, float64(latencyMs), note)
+		return
+	}
+
+	// Anthropic-type channels serve real relay traffic over /v1/messages with
+	// x-api-key auth (relay/channel/claude/adaptor.go), not OpenAI's
+	// /chat/completions + Bearer auth. Probing them with the OpenAI shape produces
+	// upstream 400s ("不支持 chat completions 协议") that look like an outage but
+	// aren't — real traffic through the correct adaptor works fine.
+	if ch.Type == constant.ChannelTypeAnthropic {
+		client := &http.Client{Timeout: uptimeRequestTimeout}
+		result, err := sendClaudeUptimeProbe(ctx, client, baseURL, apiKey, targetModel)
+		if err != nil {
+			recordUptimeResult(ch, targetModel, baseURL, "notcomplete", result.LatencyMs, err.msg)
+			return
+		}
+		recordUptimeResult(ch, targetModel, baseURL, "pass", result.LatencyMs, "")
 		return
 	}
 
@@ -416,6 +433,106 @@ func sendUptimeProbe(ctx context.Context, client *http.Client, endpoint, apiKey,
 	// HTML on 2xx means CDN/WAF (e.g. Cloudflare) blocked the request — try next URL candidate.
 	if sawHTML {
 		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrURL, msg: fmt.Sprintf("HTTP 200 returned HTML at %s (CDN block?)", endpoint)}
+	}
+	if !sawData {
+		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: "empty content"}
+	}
+	return probeResult{LatencyMs: latencyMs}, nil
+}
+
+// sendClaudeUptimeProbe mirrors sendUptimeProbe but targets the Claude Messages
+// API (relay/channel/claude/adaptor.go's real request shape: POST
+// {base}/v1/messages, x-api-key + anthropic-version headers) instead of OpenAI's
+// /chat/completions + Bearer auth. Anthropic-type channels only understand the
+// former; probing with the latter produces a false "unsupported protocol" 400.
+func sendClaudeUptimeProbe(ctx context.Context, client *http.Client, baseURL, apiKey, modelName string) (probeResult, *probeError) {
+	endpoint := strings.TrimRight(baseURL, "/") + "/v1/messages"
+	body, err := common.Marshal(map[string]any{
+		"model":      modelName,
+		"messages":   []map[string]string{{"role": "user", "content": uptimeProbePrompt}},
+		"max_tokens": uptimeProbeMaxTokens,
+		"stream":     true,
+	})
+	if err != nil {
+		return probeResult{}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("marshal: %v", err)}
+	}
+
+	start := time.Now()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return probeResult{}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("build request: %v", err)}
+	}
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "python-requests/2.31.0")
+
+	resp, err := client.Do(req)
+	latencyMs := float64(time.Since(start).Milliseconds())
+	if err != nil {
+		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("network: %v", err)}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+		var errBody struct {
+			Error struct {
+				Type    string `json:"type"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		_ = common.Unmarshal(bodyBytes, &errBody)
+		detail := errBody.Error.Message
+		if detail == "" {
+			detail = compactForNote(string(bodyBytes))
+		}
+		if len(detail) > 500 {
+			detail = detail[:500] + "…"
+		}
+		ct := resp.Header.Get("Content-Type")
+		ctTag := ""
+		if ct != "" && !strings.Contains(strings.ToLower(ct), "json") {
+			ctTag = fmt.Sprintf(" [%s]", strings.SplitN(ct, ";", 2)[0])
+		}
+		if detail == "" {
+			return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("HTTP %d%s (empty body)", resp.StatusCode, ctTag)}
+		}
+		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("HTTP %d%s: %s", resp.StatusCode, ctTag, detail)}
+	}
+
+	ct2xx := strings.ToLower(resp.Header.Get("Content-Type"))
+	if strings.Contains(ct2xx, "text/html") {
+		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("HTTP 200 returned HTML at %s (CDN block?)", endpoint)}
+	}
+
+	// Claude SSE frames both "event:" and "data:" lines; scanning for the first
+	// data: line matches the same first-token judgment used for OpenAI-format
+	// channels above and by relay/helper/stream_scanner.go's SetFirstResponseTime.
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, uptimeScannerBufferSize), uptimeScannerBufferSize)
+	sawData := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(line) < 6 {
+			continue
+		}
+		if line[:5] != "data:" && line[:6] != "[DONE]" {
+			continue
+		}
+		data := strings.TrimSpace(line[5:])
+		if data == "" {
+			continue
+		}
+		if strings.HasPrefix(data, "[DONE]") {
+			break
+		}
+		sawData = true
+		latencyMs = float64(time.Since(start).Milliseconds())
+		break
+	}
+	if scanErr := scanner.Err(); scanErr != nil && !sawData {
+		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("stream read: %v", scanErr)}
 	}
 	if !sawData {
 		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: "empty content"}
