@@ -508,10 +508,46 @@ func EnrichUsersRegistrationChannels(users []*User) {
 	}
 }
 
+// EnrichUserRegistrationChannel loads the registration channel display fields
+// for a single user. It reuses the same apimaster-backed enrichment path used
+// by the user list, so notification cards stay consistent with the backend UI.
+func EnrichUserRegistrationChannel(user *User) {
+	if user == nil {
+		return
+	}
+	EnrichUsersRegistrationChannels([]*User{user})
+}
+
+// FormatUserRegistrationChannel returns the same user-list style channel
+// headline used in admin tables: channel name when available, otherwise the
+// raw channel code, and "-" for direct / unattributed users.
+func FormatUserRegistrationChannel(user *User) string {
+	if user == nil {
+		return "-"
+	}
+	channelCode := strings.TrimSpace(user.RegistrationChannelCode)
+	if channelCode == "" || channelCode == "direct" {
+		return "-"
+	}
+	headline := strings.TrimSpace(user.RegistrationChannelName)
+	if channelCode == "referral" {
+		if inviterEmail := strings.TrimSpace(user.RegistrationInviterEmail); inviterEmail != "" {
+			headline = inviterEmail
+		}
+	}
+	if headline == "" {
+		headline = channelCode
+	}
+	if headline == "" {
+		return "-"
+	}
+	return headline
+}
+
 // FindUsernamesByAttribution looks up apimaster usernames matching the given
 // provider (exact) and/or registration channel code (substring), AND'd
 // together when both are set. Returns new-api usernames (the derived
-// LEFT(REPLACE(id,'-',''),20) key used to join against the main users table),
+// LEFT(REPLACE(id,'-',”),20) key used to join against the main users table),
 // suitable for a WHERE username IN (...) filter. Either argument may be empty
 // to skip that condition; calling with both empty is a no-op (returns nil).
 func FindUsernamesByAttribution(provider string, channelLike string) ([]string, error) {

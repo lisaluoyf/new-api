@@ -977,13 +977,15 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 	}
 	go func() {
 		var user User
-		if err := DB.Select("email, country, language, created_at, quota").Where("id = ?", userId).First(&user).Error; err != nil {
+		if err := DB.Select("username, email, country, language, created_at, quota").Where("id = ?", userId).First(&user).Error; err != nil {
 			user.Email = fmt.Sprintf("user#%d", userId)
 		}
+		EnrichUserRegistrationChannel(&user)
 		email := user.Email
 		if email == "" {
 			email = fmt.Sprintf("user#%d", userId)
 		}
+		channel := FormatUserRegistrationChannel(&user)
 		country := user.Country
 		if country == "" {
 			country = "—"
@@ -1018,6 +1020,7 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 			fmt.Sprintf("金额：$%.2f", usdAmount),
 			cumulativeLine,
 			fmt.Sprintf("余额：$%.2f", walletBalance),
+			fmt.Sprintf("渠道：%s", channel),
 			fmt.Sprintf("国家：%s", country),
 			fmt.Sprintf("语言：%s", language),
 			fmt.Sprintf("方式：%s", methodLabel),
