@@ -278,6 +278,7 @@ func SetApiRouter(router *gin.Engine) {
 			adminRoute.POST("/channel-data/backfill-global-ratios", controller.BackfillGlobalRatios)
 			adminRoute.POST("/channel-data/detect-now", controller.DetectChannelNow)
 			adminRoute.POST("/channel-data/ping-now", controller.PingChannelNow)
+			adminRoute.GET("/channel-data/frt-summary", controller.GetFRTSummary)
 			adminRoute.GET("/channel-data/common-auto-reenable", controller.GetCommonAutoReenableConfig)
 			adminRoute.POST("/channel-data/common-auto-reenable", controller.SaveCommonAutoReenableConfig)
 			adminRoute.GET("/model-detect-config/batch", controller.BatchGetModelDetectConfig)

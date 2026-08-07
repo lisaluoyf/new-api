@@ -1071,6 +1071,72 @@ func PingChannelNow(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "uptime check started"})
 }
 
+// FRTModelSummary is one model's aggregated first-response-time stats, computed
+// from the most recent successful uptime probes across all channels currently
+// serving it.
+type FRTModelSummary struct {
+	Model        string  `json:"model"`
+	MedianMs     float64 `json:"median_ms"`
+	P95Ms        float64 `json:"p95_ms"`
+	SampleCount  int     `json:"sample_count"`
+	ChannelCount int     `json:"channel_count"`
+}
+
+// GetFRTSummary aggregates first-response-time (FRT) stats per model from the
+// existing uptime-probe history in channel_detect_logs (source='uptime').
+// Read-only: it does not trigger new probes — probing keeps running on the
+// existing scheduled tick (StartUptimeCheckTask) or the manual "手动ping"
+// trigger (PingChannelNow). Replaces scripts/channel_frt_daily_report.py's
+// standalone probing, which this endpoint's caller can query instead.
+//
+// GET /api/admin/channel-data/frt-summary?model=<model_name optional>
+func GetFRTSummary(c *gin.Context) {
+	modelFilter := strings.TrimSpace(c.Query("model"))
+	var models []string
+	if modelFilter != "" {
+		models = []string{modelFilter}
+	} else {
+		models = service.LoadAllConfiguredModels()
+		sort.Strings(models)
+	}
+
+	summaries := make([]FRTModelSummary, 0, len(models))
+	for _, m := range models {
+		candidates := service.ModelNameCandidates(m)
+		var logs []model.ChannelDetectLog
+		model.DB.
+			Where("claimed_model IN ?", candidates).
+			Where("source = ?", "uptime").
+			Where("status = ?", "pass").
+			Order("detect_time DESC").
+			Limit(modelDataLatencyMax * 20).
+			Find(&logs)
+		if len(logs) == 0 {
+			continue
+		}
+
+		latencies := make([]float64, 0, modelDataLatencyMax)
+		channelSet := map[int]bool{}
+		for _, l := range logs {
+			if len(latencies) >= modelDataLatencyMax {
+				break
+			}
+			latencies = append(latencies, l.LatencyMeanMs)
+			channelSet[l.ChannelId] = true
+		}
+
+		summaries = append(summaries, FRTModelSummary{
+			Model:        m,
+			MedianMs:     medianFloat64(latencies),
+			P95Ms:        percentileFloat64(latencies, 0.95),
+			SampleCount:  len(latencies),
+			ChannelCount: len(channelSet),
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": summaries})
+}
+
 // RefreshModelPricing kicks off a pricing re-fetch for channels.
 // When model is empty or "all", ALL enabled channels are refreshed.
 // When model is a specific name, only channels that serve that model are refreshed.

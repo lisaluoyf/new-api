@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -25,7 +26,11 @@ const (
 	uptimeTickInterval   = 1 * time.Minute
 	uptimeRequestTimeout = 30 * time.Second
 	uptimeProbePrompt    = "hi"
-	uptimeProbeMaxTokens = 1500 // needs headroom for thinking models (DeepSeek, o-series)
+	uptimeProbeMaxTokens = 16 // FRT probe only needs the first token, not a full generation
+
+	// Mirrors relay/helper/stream_scanner.go's InitialScannerBufferSize; can't import
+	// that package here since it already imports this one (would create a cycle).
+	uptimeScannerBufferSize = 64 << 10 // 64KB
 )
 
 // urlSuffixes mirrors Flask's _URL_SUFFIXES — these are appended to the site root
@@ -276,7 +281,7 @@ func sendUptimeProbe(ctx context.Context, client *http.Client, endpoint, apiKey,
 		"model":      modelName,
 		"messages":   []map[string]string{{"role": "user", "content": uptimeProbePrompt}},
 		"max_tokens": uptimeProbeMaxTokens,
-		"stream":     false,
+		"stream":     true,
 	})
 	if err != nil {
 		return probeResult{}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("marshal: %v", err)}
@@ -369,24 +374,50 @@ func sendUptimeProbe(ctx context.Context, client *http.Client, endpoint, apiKey,
 		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("HTTP %d%s: %s", resp.StatusCode, ctTag, detail)}
 	}
 
-	// 2xx — verify content is non-empty.
-	bodyBytes2xx, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-	// HTML on 2xx means CDN/WAF (e.g. Cloudflare) blocked the request — try next URL candidate.
+	// 2xx — response headers are back, but FRT isn't measured yet: scan the SSE
+	// stream line-by-line and stop the clock at the first line that satisfies the
+	// same judgment relay/helper/stream_scanner.go uses to call SetFirstResponseTime
+	// (length check, "data:"/"[DONE]" prefix, trimmed non-empty, not "[DONE]").
 	ct2xx := strings.ToLower(resp.Header.Get("Content-Type"))
-	if strings.Contains(ct2xx, "text/html") || (len(bodyBytes2xx) > 0 && bodyBytes2xx[0] == '<') {
+	if strings.Contains(ct2xx, "text/html") {
 		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrURL, msg: fmt.Sprintf("HTTP 200 returned HTML at %s (CDN block?)", endpoint)}
 	}
-	var parsed struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, uptimeScannerBufferSize), uptimeScannerBufferSize)
+	sawHTML := false
+	sawData := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !sawData && len(line) > 0 && line[0] == '<' {
+			sawHTML = true
+			break
+		}
+		if len(line) < 6 {
+			continue
+		}
+		if line[:5] != "data:" && line[:6] != "[DONE]" {
+			continue
+		}
+		data := strings.TrimSpace(line[5:])
+		if data == "" {
+			continue
+		}
+		if strings.HasPrefix(data, "[DONE]") {
+			break
+		}
+		sawData = true
+		latencyMs = float64(time.Since(start).Milliseconds())
+		break
 	}
-	if err := common.Unmarshal(bodyBytes2xx, &parsed); err != nil {
-		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("decode: %v", err)}
+	if scanErr := scanner.Err(); scanErr != nil && !sawData {
+		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("stream read: %v", scanErr)}
 	}
-	if len(parsed.Choices) == 0 || strings.TrimSpace(parsed.Choices[0].Message.Content) == "" {
+	// HTML on 2xx means CDN/WAF (e.g. Cloudflare) blocked the request — try next URL candidate.
+	if sawHTML {
+		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrURL, msg: fmt.Sprintf("HTTP 200 returned HTML at %s (CDN block?)", endpoint)}
+	}
+	if !sawData {
 		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: "empty content"}
 	}
 	return probeResult{LatencyMs: latencyMs}, nil

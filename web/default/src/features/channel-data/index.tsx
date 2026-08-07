@@ -1191,7 +1191,7 @@ export function ChannelDataPage() {
                 const procurementOfficialRatioPct =
                   item.actual_price != null && item.actual_price > 0 &&
                   item.official_input_price != null && item.official_input_price > 0
-                    ? Math.round(item.actual_price / item.official_input_price * 100)
+                    ? item.actual_price / item.official_input_price * 100
                     : null
                 // Tampered-base-price alert: 渠道原价 vs 统一官方原价, computed server-side.
                 const baseMismatchPct = item.base_price_mismatch_pct ?? null
@@ -1324,7 +1324,7 @@ export function ChannelDataPage() {
                                 }`}
                                 title={t('Procurement / official price')}
                               >
-                                {procurementOfficialRatioPct}%
+                                {procurementOfficialRatioPct.toFixed(1)}%
                               </span>
                             )}
                             {fmtPrice(item.actual_price)}
