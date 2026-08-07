@@ -559,6 +559,32 @@ lib/server/new-api-sync.ts              → syncConsoleSession(session, inviterI
 
 ---
 
+## Fork 进展存档 — 邀请首充 50U 漏发修复（2026-08-07）
+
+### 背景
+
+邀请返佣 10% 已正常发放，但「好友首充双方各得 50U GPT 额度」曾出现漏发，根因不是返佣链路，而是部分 `epay` 成功回调把 `top_ups.status` 改成 `success` 后，**没有同步写入 `complete_time`**。首充奖励的判定依赖 `complete_time >= ReferralGPTRewardStartTime`，因此这些历史订单会被静默跳过。
+
+### 为什么返佣没漏、50U 会漏
+
+- **返佣 10%**：`ProcessAffCommission()` 只看 `quotaAdded` 和 `user.inviter_id`，不依赖 `complete_time`
+- **邀请首充 50U**：`ProcessReferralGPTReward()` 会回查 `top_ups.complete_time`，并按完成时间累积成功充值；`complete_time=0` 会直接导致资格判定失败
+
+### 修复方式
+
+1. 新增统一成功态入口 `MarkTopUpSuccess(topUp)`，把 `status=success` 和 `complete_time` 收口到同一处
+2. `epay / Stripe / PayPal / Clink / Creem / Waffo / Waffo Pancake / Platega / 管理员补单` 全部改为走统一成功态入口
+3. 在 `OnTopupSucceeded()` 开头增加兜底：如果订单已经是 `success` 但 `complete_time=0`，则自动补齐后再发返佣和 GPT 奖励
+4. 补回归测试，覆盖“成功单缺 `complete_time` 时仍能正常发首充奖励”的场景
+
+### 线上处理结果
+
+- 已修复代码并上线
+- 历史漏发单已通过 reconcile 补发
+- 本次补发共覆盖 2 组邀请关系，合计 4 个账号到账 50U，线上已对齐
+
+---
+
 ## 进展存档 — CC CLI & Kiro 指纹检测分类器（2026-05-26）
 
 ### 背景

@@ -559,6 +559,22 @@ If this project is helpful to you, welcome to give us a ⭐️ Star！
 
 #### nginx (`/etc/nginx/sites-enabled/apimaster.ai`)
 
+---
+
+## 邀请首充奖励修复存档（2026-08-07）
+
+这次排查确认了一个和返佣不同的漏发点：
+
+- **返佣 10% 没漏**：只依赖 `quotaAdded` 和 `inviter_id`
+- **首充双方各得 50U 会漏**：依赖 `top_ups.complete_time`，而部分 `epay` 成功回调曾只写 `status=success`，没写 `complete_time`
+
+已做的修复：
+
+1. 统一钱包充值成功态入口，保证 `status=success` 时一定带 `complete_time`
+2. 给 `OnTopupSucceeded()` 增加兜底补写，避免历史或新渠道再次漏写
+3. 补了回归测试，覆盖“成功但缺 `complete_time`”的场景
+4. 历史漏单已通过 reconcile 补发并上线
+
 - `/_panel/` → `proxy_pass http://127.0.0.1:3001/;`（**末尾斜杠**，nginx 会剥离 `/_panel` 前缀再转发给 Go）
 - `/api/user/`、`/api/channel/` 等 → new-api port 3001
 - `/console` → Next.js port 3000
