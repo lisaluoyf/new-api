@@ -67,6 +67,7 @@ export function ReferralCard({ user, onSuccess }: ReferralCardProps) {
   }
 
   const hasRewards = (user?.aff_quota ?? 0) > 0
+  const referralMinTopup = rewardSummary?.min_topup_usd ?? 0
 
   return (
     <>
@@ -93,6 +94,7 @@ export function ReferralCard({ user, onSuccess }: ReferralCardProps) {
                     'Friend first top-up: both get an additional ${{amount}} in GPT credits, permanent and stackable; earn {{pct}}% on later top-ups.',
                     {
                       amount: rewardSummary.reward_usd,
+                      threshold: referralMinTopup,
                       pct: affRatio,
                     }
                   )

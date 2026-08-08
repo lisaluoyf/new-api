@@ -59,6 +59,7 @@ export function InvitePromoDialog({
   const isCopied = copiedText === affiliateLink
   const wasOpenRef = useRef(false)
   const [trialCreditUsd, setTrialCreditUsd] = useState<number | null>(null)
+  const referralMinTopup = rewardSummary?.min_topup_usd ?? 0
 
   useEffect(() => {
     if (open && !wasOpenRef.current) {
@@ -131,6 +132,7 @@ export function InvitePromoDialog({
                   'Friend first top-up: both get an additional ${{amount}} in GPT credits, permanent and stackable; earn {{pct}}% on later top-ups.',
                   {
                     amount: rewardSummary.reward_usd,
+                    threshold: referralMinTopup,
                     pct: affRatio,
                   }
                 )

@@ -401,6 +401,10 @@ export interface SignupGiftInfo {
   enabled: boolean
   benefit_type: 'wallet_credit' | 'trial_subscription' | 'none'
   trial_credit_usd?: number
+  referral_gpt_reward_enabled?: boolean
+  referral_gpt_reward_usd?: number
+  referral_gpt_min_topup_usd?: number
+  aff_ratio?: number
 }
 
 export interface ReferralGPTRewardSummary {

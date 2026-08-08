@@ -195,6 +195,7 @@ export function AffiliatePage() {
   const hasRewards = affQuota > 0
   const referralRewardEnabled = rewardSummary?.enabled === true
   const referralRewardAmount = rewardSummary?.reward_usd ?? 0
+  const referralMinTopup = rewardSummary?.min_topup_usd ?? 0
 
   return (
     <div className='min-h-full overflow-x-hidden bg-gradient-to-br from-violet-50 via-rose-50 to-sky-50 dark:from-zinc-900 dark:via-zinc-950 dark:to-zinc-900'>
@@ -209,7 +210,11 @@ export function AffiliatePage() {
               {referralRewardEnabled
                 ? t(
                     'Both get an additional ${{amount}} in GPT credits on first top-up; then earn {{pct}}% commission',
-                    { amount: referralRewardAmount, pct: affRatio }
+                    {
+                      amount: referralRewardAmount,
+                      threshold: referralMinTopup,
+                      pct: affRatio,
+                    }
                   )
                 : `${t('Invite friends, referrer earns commission')}: ${affRatio}%`}
             </span>
@@ -222,7 +227,11 @@ export function AffiliatePage() {
             {referralRewardEnabled
               ? t(
                   'Friend first top-up: both get an additional ${{amount}} in GPT credits, permanent and stackable; earn {{pct}}% on later top-ups.',
-                  { amount: referralRewardAmount, pct: affRatio }
+                  {
+                    amount: referralRewardAmount,
+                    threshold: referralMinTopup,
+                    pct: affRatio,
+                  }
                 )
               : affRatio > 0
                 ? t(
