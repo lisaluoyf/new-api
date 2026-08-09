@@ -370,6 +370,11 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	if types.IsImageGenerationTimeoutError(err) {
 		return false
 	}
+	if isRateLimitCooldown(err) {
+		// Let the health window and disable probe decide; do not immediately
+		// disable on one provider-side concurrency response.
+		return true
+	}
 	if types.IsChannelError(err) {
 		return true
 	}

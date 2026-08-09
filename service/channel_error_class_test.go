@@ -74,6 +74,51 @@ func TestClassifyChannelError_windowFault502(t *testing.T) {
 	require.Equal(t, CategoryDisableWindow, ClassifyChannelError(err))
 }
 
+func TestClassifyChannelError_providerConcurrency429(t *testing.T) {
+	t.Parallel()
+	for _, message := range []string{
+		"status_code=429, Concurrency limit exceeded for account, please retry later",
+		"status_code=429, Too many pending requests, please retry later",
+		"upstream overload: rate_limit_error",
+	} {
+		err := types.NewErrorWithStatusCode(
+			types.NewError(nil, types.ErrorCodeBadResponseStatusCode),
+			types.ErrorCodeBadResponseStatusCode,
+			429,
+		)
+		err.SetMessage(message)
+		require.Equal(t, CategoryRateLimitWindow, ClassifyChannelError(err), message)
+	}
+}
+
+func TestEvaluateChannelHealth_providerConcurrency429ProbeThreshold(t *testing.T) {
+	resetChannelHealthForTest()
+	ch := types.ChannelError{ChannelId: 199, ChannelName: "test", AutoBan: true}
+	commonBackup := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = commonBackup
+		resetChannelHealthForTest()
+	})
+
+	make429 := func() *types.NewAPIError {
+		err := types.NewErrorWithStatusCode(
+			types.NewError(nil, types.ErrorCodeBadResponseStatusCode),
+			types.ErrorCodeBadResponseStatusCode,
+			429,
+		)
+		err.SetMessage("Concurrency limit exceeded for account, please retry later")
+		return err
+	}
+	for i := 0; i < 7; i++ {
+		action, _ := EvaluateChannelHealth(ch, make429())
+		require.Equal(t, HealthSkip, action, "attempt %d should skip", i+1)
+	}
+	action, reason := EvaluateChannelHealth(ch, make429())
+	require.Equal(t, HealthProbeBeforeDisable, action)
+	require.Contains(t, reason, "429")
+}
+
 func TestEvaluateChannelHealth_consecutive502(t *testing.T) {
 	resetChannelHealthForTest()
 	ch := types.ChannelError{ChannelId: 99, ChannelName: "test", AutoBan: true}

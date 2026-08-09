@@ -57,6 +57,12 @@ var (
 	rateLimitCooldownMarkers = []string{
 		"cooling down",
 		"are cooling down",
+		// Provider-side concurrency/queue saturation. These are distinct from
+		// user quota errors and should enter the channel rate-limit window.
+		"concurrency limit exceeded",
+		"too many pending requests",
+		"upstream overload",
+		"rate_limit_error",
 	}
 )
 
