@@ -79,8 +79,15 @@ func formatUserLogs(logs []*Log, startIdx int) {
 	}
 }
 
+func applyUserConsumeLogVisibility(tx *gorm.DB) *gorm.DB {
+	// Keep billing diagnostics queryable by administrators (including email
+	// searches), but hide them from customer-facing log endpoints.
+	return tx.Where("NOT (logs.type = ? AND logs.other LIKE ?)", LogTypeConsume, `%"billing_diagnostic":"upstream_no_usage"%`)
+}
+
 func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
-	err = LOG_DB.Model(&Log{}).Omit("AccountingSnapshot").Where("token_id = ?", tokenId).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
+	tx := LOG_DB.Model(&Log{}).Omit("AccountingSnapshot").Where("token_id = ?", tokenId)
+	err = applyUserConsumeLogVisibility(tx).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	return logs, err
 }
@@ -746,6 +753,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
 	tx = applyUserErrorLogVisibility(tx)
+	tx = applyUserConsumeLogVisibility(tx)
 
 	if modelName != "" {
 		modelNamePattern, err := sanitizeLikePattern(modelName)

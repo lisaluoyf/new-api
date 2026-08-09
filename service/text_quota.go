@@ -458,6 +458,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if summary.TotalTokens == 0 {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
+		MarkUpstreamNoUsage(ctx, relayInfo)
 	} else {
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
@@ -593,6 +594,19 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	accounting := BuildConsumeAccountingFields(accountingInput)
+	if summary.TotalTokens == 0 {
+		// A zero-quota billing diagnostic is an internal audit event, not a user
+		// consumption record. Keep ownership in admin_info for correlation.
+		adminInfo, _ := other["admin_info"].(map[string]interface{})
+		if adminInfo == nil {
+			adminInfo = make(map[string]interface{})
+		}
+		adminInfo["billing_diagnostic"] = "upstream_no_usage"
+		adminInfo["user_id"] = relayInfo.UserId
+		adminInfo["user_email"] = relayInfo.UserEmail
+		adminInfo["token_id"] = relayInfo.TokenId
+		other["admin_info"] = adminInfo
+	}
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,
