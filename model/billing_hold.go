@@ -104,35 +104,90 @@ func MarkBillingHoldResolved(id int, status, verifyDetail string) error {
 		}).Error
 }
 
-// ResolveBillingHoldRefund applies the wallet/token refund and resolves the
-// claimed hold atomically. A crash can no longer leave money refunded while the
-// hold remains "processing" and is later refunded again.
+// findSubscriptionPreConsumeForHold links a billing hold back to the funding
+// source used by the request. Subscription pre-consumes are keyed by
+// request_id, while BillingHold intentionally remains compatible with older
+// wallet holds that have no subscription record.
+func findSubscriptionPreConsumeForHold(tx *gorm.DB, hold *BillingHold) (*SubscriptionPreConsumeRecord, error) {
+	if tx == nil || hold == nil {
+		return nil, errors.New("invalid billing hold lookup")
+	}
+	var record SubscriptionPreConsumeRecord
+	err := tx.Where("request_id = ? AND user_id = ?", hold.RequestId, hold.UserId).First(&record).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &record, nil
+}
+
+// refundSubscriptionPreConsumeTx refunds the subscription reservation and
+// marks its idempotency record in the same transaction as the billing hold.
+// Calling the public RefundSubscriptionPreConsume here would open a nested
+// transaction and could leave the hold and subscription out of sync.
+func refundSubscriptionPreConsumeTx(tx *gorm.DB, record *SubscriptionPreConsumeRecord) error {
+	if record == nil || record.Status == "refunded" {
+		return nil
+	}
+	if record.UserSubscriptionId <= 0 || record.PreConsumed <= 0 {
+		return errors.New("invalid subscription pre-consume record")
+	}
+	if err := tx.Model(&UserSubscription{}).
+		Where("id = ?", record.UserSubscriptionId).
+		Update("amount_used", gorm.Expr("CASE WHEN amount_used > ? THEN amount_used - ? ELSE 0 END", record.PreConsumed, record.PreConsumed)).Error; err != nil {
+		return err
+	}
+	return tx.Model(&SubscriptionPreConsumeRecord{}).
+		Where("id = ? AND status <> ?", record.Id, "refunded").
+		Updates(map[string]interface{}{"status": "refunded", "updated_at": common.GetTimestamp()}).Error
+}
+
+// ResolveBillingHoldRefund restores the original funding source (wallet or
+// subscription) and resolves the claimed hold atomically. A crash can no
+// longer leave money refunded while the hold remains "processing" and is later
+// refunded again.
 func ResolveBillingHoldRefund(hold *BillingHold, hasConsume bool, verifyDetail, tokenKey string) error {
 	if hold == nil || hold.Id <= 0 || hold.PreConsumedQuota <= 0 {
 		return errors.New("invalid billing hold refund")
 	}
+	subscriptionRefunded := false
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var current BillingHold
 		if err := tx.Where("id = ? AND status = ?", hold.Id, "processing").First(&current).Error; err != nil {
 			return err
 		}
 		quota := current.PreConsumedQuota
-		if res := tx.Model(&User{}).Where("id = ?", current.UserId).
-			Update("quota", gorm.Expr("quota + ?", quota)); res.Error != nil || res.RowsAffected != 1 {
-			if res.Error != nil {
-				return res.Error
-			}
-			return fmt.Errorf("billing hold refund user %d not found", current.UserId)
+		subscriptionRecord, err := findSubscriptionPreConsumeForHold(tx, &current)
+		if err != nil {
+			return err
 		}
-		if hasConsume {
-			if err := tx.Model(&User{}).Where("id = ?", current.UserId).
-				Update("used_quota", gorm.Expr("CASE WHEN used_quota > ? THEN used_quota - ? ELSE 0 END", quota, quota)).Error; err != nil {
+		if subscriptionRecord != nil {
+			// Subscription quota was never deducted from users.quota. Restore
+			// the reservation in the subscription ledger instead.
+			if err := refundSubscriptionPreConsumeTx(tx, subscriptionRecord); err != nil {
 				return err
 			}
-			if current.ChannelId > 0 {
-				if err := tx.Model(&Channel{}).Where("id = ?", current.ChannelId).
-					Update("used_quota", gorm.Expr("used_quota - ?", quota)).Error; err != nil {
+			subscriptionRefunded = true
+		} else {
+			if res := tx.Model(&User{}).Where("id = ?", current.UserId).
+				Update("quota", gorm.Expr("quota + ?", quota)); res.Error != nil || res.RowsAffected != 1 {
+				if res.Error != nil {
+					return res.Error
+				}
+				return fmt.Errorf("billing hold refund user %d not found", current.UserId)
+			}
+			if hasConsume {
+				if err := tx.Model(&User{}).Where("id = ?", current.UserId).
+					Update("used_quota", gorm.Expr("CASE WHEN used_quota > ? THEN used_quota - ? ELSE 0 END", quota, quota)).Error; err != nil {
 					return err
+				}
+				if current.ChannelId > 0 {
+					if err := tx.Model(&Channel{}).Where("id = ?", current.ChannelId).
+						Update("used_quota", gorm.Expr("used_quota - ?", quota)).Error; err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -159,8 +214,10 @@ func ResolveBillingHoldRefund(hold *BillingHold, hasConsume bool, verifyDetail, 
 	}
 	if common.RedisEnabled {
 		gopool.Go(func() {
-			if err := cacheIncrUserQuota(hold.UserId, int64(hold.PreConsumedQuota)); err != nil {
-				common.SysLog("failed to update billing hold wallet refund cache: " + err.Error())
+			if !subscriptionRefunded {
+				if err := cacheIncrUserQuota(hold.UserId, int64(hold.PreConsumedQuota)); err != nil {
+					common.SysLog("failed to update billing hold wallet refund cache: " + err.Error())
+				}
 			}
 			if hold.TokenId > 0 && tokenKey != "" {
 				if err := cacheIncrTokenQuota(tokenKey, int64(hold.PreConsumedQuota)); err != nil {
@@ -183,7 +240,11 @@ func ResolveBillingHoldConfirm(hold *BillingHold, hasConsume bool, verifyDetail 
 		if err := tx.Where("id = ? AND status = ?", hold.Id, "processing").First(&current).Error; err != nil {
 			return err
 		}
-		if !hasConsume {
+		subscriptionRecord, err := findSubscriptionPreConsumeForHold(tx, &current)
+		if err != nil {
+			return err
+		}
+		if subscriptionRecord == nil && !hasConsume {
 			if err := tx.Model(&User{}).Where("id = ?", current.UserId).Updates(map[string]interface{}{
 				"used_quota":    gorm.Expr("used_quota + ?", current.PreConsumedQuota),
 				"request_count": gorm.Expr("request_count + 1"),
