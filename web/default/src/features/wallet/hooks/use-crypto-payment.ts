@@ -295,11 +295,12 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
   const [usdAdded, setUsdAdded] = useState(0)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [nativePrice, setNativePrice] = useState(0)
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const paymentLockRef = useRef(false)
 
   const reset = useCallback(() => {
-    if (pollTimer.current) clearInterval(pollTimer.current)
+    if (pollTimer.current) clearTimeout(pollTimer.current)
+    pollTimer.current = null
     setStep('form')
     setError(null)
     setTxHash(null)
@@ -406,31 +407,54 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           throw new Error(submitRes.error ?? i18next.t('Failed to submit transaction'))
         }
 
-        let attempts = 0
-        const maxAttempts = 40
+        const pollStartedAt = Date.now()
+        const maxWaitMs = 15 * 60 * 1000
+        const pollIntervalMs = 3000
 
         await new Promise<void>((resolve, reject) => {
-          pollTimer.current = setInterval(async () => {
-            attempts++
+          const stopPolling = () => {
+            if (pollTimer.current) {
+              clearTimeout(pollTimer.current)
+              pollTimer.current = null
+            }
+          }
+
+          const scheduleNextPoll = () => {
+            pollTimer.current = setTimeout(() => {
+              void pollOnce()
+            }, pollIntervalMs)
+          }
+
+          const pollOnce = async () => {
+            if (Date.now() - pollStartedAt >= maxWaitMs) {
+              stopPolling()
+              reject(new Error(i18next.t('Timed out waiting for confirmation')))
+              return
+            }
+
             try {
               const status = await getCryptoDepositStatus(depositId)
               if (status.status === 'confirmed') {
-                clearInterval(pollTimer.current!)
+                stopPolling()
                 setUsdAdded(status.usdAdded ?? 0)
                 setStep('done')
                 resolve()
-              } else if (status.status === 'failed') {
-                clearInterval(pollTimer.current!)
+                return
+              }
+              if (status.status === 'failed') {
+                stopPolling()
                 reject(new Error(i18next.t('Transaction verification failed')))
-              } else if (attempts >= maxAttempts) {
-                clearInterval(pollTimer.current!)
-                reject(new Error(i18next.t('Timed out waiting for confirmation')))
+                return
               }
             } catch {
-              clearInterval(pollTimer.current!)
-              reject(new Error(i18next.t('Failed to check deposit status')))
+              // Transient query failures should not turn into a hard fail while
+              // the chain confirmation is still in flight.
             }
-          }, 3000)
+
+            scheduleNextPoll()
+          }
+
+          void pollOnce()
         })
       } catch (err: unknown) {
         const msg = getProviderErrorMessage(err) ?? i18next.t('Payment failed')
