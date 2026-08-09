@@ -19,7 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import i18next from 'i18next'
-import { submitCryptoDeposit, getCryptoDepositStatus } from '../api'
+import {
+  createCryptoDepositIntent,
+  submitCryptoDeposit,
+  getCryptoDepositStatus,
+} from '../api'
 
 // ============================================================================
 // Chain / Token Configuration
@@ -122,6 +126,11 @@ function parseTokenAmount(usdAmount: number, decimals: number): bigint {
   return scaled6 * BigInt(10 ** (decimals - 6))
 }
 
+function utf8ToHex(value: string): string {
+  const bytes = new TextEncoder().encode(value)
+  return '0x' + Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 // For native coins we need real token amount from the user's wallet perspective.
 // Since the user pays in native coin but we price in USD, we calculate the
 // native amount server-side after verifying the tx. On the frontend we just
@@ -158,6 +167,7 @@ export type CryptoStep =
   | 'form'
   | 'connecting'
   | 'switching'
+  | 'signing'
   | 'confirming'
   | 'processing'
   | 'done'
@@ -250,6 +260,34 @@ function isUnsupportedPhantomChain(provider: EthereumProvider, chain: ChainConfi
   return provider.isPhantom === true && chain.id === 'bsc'
 }
 
+async function signWalletChallenge(
+  provider: EthereumProvider,
+  challenge: string,
+  from: string
+): Promise<string> {
+  const payload = utf8ToHex(challenge)
+  try {
+    return (await provider.request({
+      method: 'personal_sign',
+      params: [payload, from],
+    })) as string
+  } catch (error) {
+    const message = getProviderErrorMessage(error)?.toLowerCase() ?? ''
+    if (
+      message.includes('invalid parameters') ||
+      message.includes('invalid param') ||
+      message.includes('expected') ||
+      message.includes('unsupported')
+    ) {
+      return (await provider.request({
+        method: 'personal_sign',
+        params: [from, payload],
+      })) as string
+    }
+    throw error
+  }
+}
+
 export function useCryptoPayment(): UseCryptoPaymentReturn {
   const [step, setStep] = useState<CryptoStep>('form')
   const [error, setError] = useState<string | null>(null)
@@ -321,6 +359,15 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           )
         }
 
+        const intentRes = await createCryptoDepositIntent(chain.id, token.symbol, from)
+        if (!intentRes.success || !intentRes.depositId || !intentRes.challenge) {
+          throw new Error(intentRes.error ?? i18next.t('Failed to create crypto deposit intent'))
+        }
+        const depositId = intentRes.depositId
+        const depositAddress = intentRes.toAddress ?? PLATFORM_WALLET
+        setStep('signing')
+        const walletSignature = await signWalletChallenge(provider, intentRes.challenge, from)
+
         // 3. 构建并发送交易
         setStep('confirming')
         let hash: string
@@ -338,12 +385,12 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
 
           hash = (await provider.request({
             method: 'eth_sendTransaction',
-            params: [{ from, to: PLATFORM_WALLET, value: valueHex, data: '0x' }],
+            params: [{ from, to: depositAddress, value: valueHex, data: '0x' }],
           })) as string
         } else {
           // ERC-20
           const tokenAmount = parseTokenAmount(amount, token.decimals)
-          const data = encodeErc20Transfer(PLATFORM_WALLET, tokenAmount)
+          const data = encodeErc20Transfer(depositAddress, tokenAmount)
           hash = (await provider.request({
             method: 'eth_sendTransaction',
             params: [{ from, to: token.address, data, value: '0x0' }],
@@ -354,12 +401,11 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
 
         // 4. 提交后端轮询
         setStep('processing')
-        const submitRes = await submitCryptoDeposit(hash, chain.id)
+        const submitRes = await submitCryptoDeposit(depositId, hash, walletSignature)
         if (!submitRes.success || !submitRes.depositId) {
           throw new Error(submitRes.error ?? i18next.t('Failed to submit transaction'))
         }
 
-        const depositId = submitRes.depositId
         let attempts = 0
         const maxAttempts = 40
 

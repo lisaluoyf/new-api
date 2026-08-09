@@ -95,7 +95,7 @@ export function CryptoDepositModal({
     ? (amount / displayPrice).toFixed(6)
     : null
 
-  const isProcessing = ['connecting', 'switching', 'confirming', 'processing'].includes(step)
+  const isProcessing = ['connecting', 'switching', 'signing', 'confirming', 'processing'].includes(step)
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
@@ -225,6 +225,7 @@ export function CryptoDepositModal({
               <div className='font-semibold'>
                 {step === 'connecting' && t('Connecting wallet…')}
                 {step === 'switching'  && t('Switching network…')}
+                {step === 'signing'    && t('Authorizing wallet…')}
                 {step === 'confirming' && t('Waiting for wallet confirmation…')}
                 {step === 'processing' && t('Waiting for on-chain confirmation…')}
               </div>

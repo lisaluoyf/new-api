@@ -139,6 +139,10 @@ func cacheIncrUserQuota(userId int, delta int64) error {
 	return common.RedisHIncrBy(getUserCacheKey(userId), "Quota", delta)
 }
 
+func IncrUserQuotaCache(userId int, delta int64) error {
+	return cacheIncrUserQuota(userId, delta)
+}
+
 func cacheDecrUserQuota(userId int, delta int64) error {
 	return cacheIncrUserQuota(userId, -delta)
 }

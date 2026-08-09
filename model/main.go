@@ -328,6 +328,7 @@ func migrateDB() error {
 		&ResellerModelRule{},
 		&BillingHold{},
 		&GAPurchaseLog{},
+		&CryptoDepositIntent{},
 		&FailedRequestSnapshot{},
 		&ShadowBenchmarkLog{},
 		&BillingHourlySummary{},
@@ -387,6 +388,7 @@ func migrateDBFast() error {
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&PerfMetric{}, "PerfMetric"},
+		{&CryptoDepositIntent{}, "CryptoDepositIntent"},
 		{&FailedRequestSnapshot{}, "FailedRequestSnapshot"},
 		{&ShadowBenchmarkLog{}, "ShadowBenchmarkLog"},
 	}

@@ -358,17 +358,50 @@ export async function completeOrder(
   return res.data
 }
 
+export interface CryptoDepositIntentResponse {
+  success: boolean
+  depositId?: string
+  challenge?: string
+  expiresAt?: number
+  toAddress?: string
+  chain?: string
+  token?: string
+  error?: string
+}
+
+export async function createCryptoDepositIntent(
+  chain: string,
+  tokenSymbol: string,
+  walletAddressFrom: string
+): Promise<CryptoDepositIntentResponse> {
+  try {
+    const res = await api.post(
+      '/api/user/crypto/intent',
+      {
+        chain,
+        token_symbol: tokenSymbol,
+        wallet_address_from: walletAddressFrom,
+      },
+      { skipBusinessError: true } as Record<string, unknown>
+    )
+    return res.data
+  } catch {
+    return { success: false, error: 'Request failed' }
+  }
+}
+
 /**
  * Submit a crypto on-chain transaction hash for verification
  */
 export async function submitCryptoDeposit(
+  intentId: string,
   txHash: string,
-  chain: string
+  walletSignature: string
 ): Promise<{ success: boolean; depositId?: string; error?: string }> {
   try {
     const res = await api.post(
       '/api/user/crypto/submit',
-      { tx_hash: txHash, chain },
+      { intent_id: intentId, tx_hash: txHash, wallet_signature: walletSignature },
       { skipBusinessError: true } as Record<string, unknown>
     )
     return res.data

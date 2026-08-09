@@ -2670,6 +2670,8 @@
     "No Users Found": "未找到用户",
     "No vendor data available": "暂无厂商数据",
     "A wallet request is already pending. Please open your wallet extension and finish or cancel it before trying again.": "钱包请求尚未完成。请先打开钱包插件完成或取消当前请求，再重试。",
+    "Authorizing wallet…": "正在授权钱包…",
+    "Failed to create crypto deposit intent": "创建加密充值意图失败",
     "No wallet detected. Please install MetaMask or Binance Wallet.": "未检测到钱包插件，请安装 MetaMask 或币安钱包。",
     "Phantom does not support BNB Smart Chain deposits yet. Please switch to ETH, Polygon, Arbitrum, or Base, or use another EVM wallet.": "Phantom 暂不支持 BNB Smart Chain 充值。请切换到 ETH、Polygon、Arbitrum 或 Base，或改用其他 EVM 钱包。",
     "Node Name": "节点名称",

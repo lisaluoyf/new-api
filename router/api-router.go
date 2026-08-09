@@ -133,6 +133,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/platega/pay", middleware.CriticalRateLimit(), controller.RequestPlategaPay)
 				selfRoute.POST("/clink/pay", middleware.CriticalRateLimit(), controller.RequestClinkPay)
 				selfRoute.POST("/clink/confirm", middleware.CriticalRateLimit(), controller.ConfirmClinkPay)
+				selfRoute.POST("/crypto/intent", middleware.CriticalRateLimit(), controller.CreateCryptoDepositIntent)
 				selfRoute.POST("/crypto/submit", middleware.CriticalRateLimit(), controller.SubmitCryptoDeposit)
 				selfRoute.GET("/crypto/deposit/:id", controller.GetCryptoDeposit)
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
