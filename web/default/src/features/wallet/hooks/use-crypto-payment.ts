@@ -178,13 +178,76 @@ export interface UseCryptoPaymentReturn {
 // Hook
 // ============================================================================
 
+interface EthereumProvider {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
+  isMetaMask?: boolean
+  isBinance?: boolean
+  isPhantom?: boolean
+  providers?: EthereumProvider[]
+}
+
 declare global {
   interface Window {
-    ethereum?: {
-      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
-      isMetaMask?: boolean
+    ethereum?: EthereumProvider
+    phantom?: {
+      ethereum?: EthereumProvider
     }
   }
+}
+
+function getInjectedEvmProvider(): EthereumProvider | null {
+  if (window.phantom?.ethereum) {
+    return window.phantom.ethereum
+  }
+
+  if (window.ethereum?.providers?.length) {
+    return (
+      window.ethereum.providers.find((provider) => (
+        provider.isMetaMask || provider.isBinance || provider.isPhantom
+      )) ?? window.ethereum.providers[0]
+    )
+  }
+
+  return window.ethereum ?? null
+}
+
+function isPendingWalletRequest(error: unknown): boolean {
+  const code = (error as { code?: number })?.code
+  const message = typeof (error as { message?: unknown })?.message === 'string'
+    ? (error as { message: string }).message.toLowerCase()
+    : ''
+
+  return (
+    code === -32002 ||
+    message.includes('already pending') ||
+    message.includes('unlockpopup')
+  )
+}
+
+function getProviderErrorMessage(error: unknown): string | null {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error
+  }
+
+  const message = (error as { message?: unknown })?.message
+  if (typeof message === 'string' && message.trim()) {
+    return message
+  }
+
+  const shortMessage = (error as { shortMessage?: unknown })?.shortMessage
+  if (typeof shortMessage === 'string' && shortMessage.trim()) {
+    return shortMessage
+  }
+
+  return null
+}
+
+function isUnsupportedPhantomChain(provider: EthereumProvider, chain: ChainConfig): boolean {
+  return provider.isPhantom === true && chain.id === 'bsc'
 }
 
 export function useCryptoPayment(): UseCryptoPaymentReturn {
@@ -195,6 +258,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [nativePrice, setNativePrice] = useState(0)
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const paymentLockRef = useRef(false)
 
   const reset = useCallback(() => {
     if (pollTimer.current) clearInterval(pollTimer.current)
@@ -202,20 +266,37 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
     setError(null)
     setTxHash(null)
     setUsdAdded(0)
+    setWalletAddress(null)
+    setNativePrice(0)
+    paymentLockRef.current = false
   }, [])
 
   const startPayment = useCallback(
     async (amount: number, chain: ChainConfig, token: TokenConfig) => {
-      if (!window.ethereum) {
+      if (paymentLockRef.current) {
+        return
+      }
+
+      const provider = getInjectedEvmProvider()
+      if (!provider) {
         setError(i18next.t('No wallet detected. Please install MetaMask or Binance Wallet.'))
         setStep('failed')
         return
       }
 
+      paymentLockRef.current = true
+
       try {
+        if (isUnsupportedPhantomChain(provider, chain)) {
+          throw new Error(
+            i18next.t('Phantom does not support BNB Smart Chain deposits yet. Please switch to ETH, Polygon, Arbitrum, or Base, or use another EVM wallet.')
+          )
+        }
+
         // 1. 连接钱包
+        setError(null)
         setStep('connecting')
-        const accounts = (await window.ethereum.request({
+        const accounts = (await provider.request({
           method: 'eth_requestAccounts',
         })) as string[]
         const from = accounts[0]
@@ -225,7 +306,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
         // 2. 切链
         setStep('switching')
         try {
-          await window.ethereum.request({
+          await provider.request({
             method: 'wallet_switchEthereumChain',
             params: [{ chainId: chain.chainIdHex }],
           })
@@ -235,7 +316,8 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           throw new Error(
             i18next.t('Chain not configured in your wallet. Please add {{chain}} manually.', {
               chain: chain.name,
-            })
+            }),
+            { cause: switchErr }
           )
         }
 
@@ -254,7 +336,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           const weiAmount = BigInt(Math.round(nativeAmount * 1e9)) * BigInt(1e9) // avoid float precision
           const valueHex = '0x' + weiAmount.toString(16)
 
-          hash = (await window.ethereum.request({
+          hash = (await provider.request({
             method: 'eth_sendTransaction',
             params: [{ from, to: PLATFORM_WALLET, value: valueHex, data: '0x' }],
           })) as string
@@ -262,7 +344,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           // ERC-20
           const tokenAmount = parseTokenAmount(amount, token.decimals)
           const data = encodeErc20Transfer(PLATFORM_WALLET, tokenAmount)
-          hash = (await window.ethereum.request({
+          hash = (await provider.request({
             method: 'eth_sendTransaction',
             params: [{ from, to: token.address, data, value: '0x0' }],
           })) as string
@@ -305,14 +387,20 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           }, 3000)
         })
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : i18next.t('Payment failed')
+        const msg = getProviderErrorMessage(err) ?? i18next.t('Payment failed')
         if ((err as { code?: number }).code === 4001) {
           toast.info(i18next.t('Transaction cancelled'))
           setStep('form')
           return
         }
-        setError(msg)
+        setError(
+          isPendingWalletRequest(err)
+            ? i18next.t('A wallet request is already pending. Please open your wallet extension and finish or cancel it before trying again.')
+            : msg
+        )
         setStep('failed')
+      } finally {
+        paymentLockRef.current = false
       }
     },
     []

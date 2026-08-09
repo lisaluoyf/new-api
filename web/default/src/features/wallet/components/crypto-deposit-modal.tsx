@@ -209,6 +209,7 @@ export function CryptoDepositModal({
             <Button
               className='w-full'
               style={{ background: 'linear-gradient(135deg, #22d3ee, #0891b2)' }}
+              disabled={isProcessing}
               onClick={() => startPayment(amount, selectedChain, selectedToken)}
             >
               {walletAddress ? t('Confirm & Pay') : t('Connect Wallet & Pay')}
