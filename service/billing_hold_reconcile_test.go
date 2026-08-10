@@ -57,8 +57,22 @@ func TestVerifyBillingHoldUpstreamCharge_moderationErrorRefunds(t *testing.T) {
 
 func TestBillingHoldUnknownExpired(t *testing.T) {
 	hold := &model.BillingHold{CreatedAt: 100}
-	require.False(t, billingHoldUnknownExpired(hold, 100+billingHoldUnknownMaxAgeSec-1))
-	require.True(t, billingHoldUnknownExpired(hold, 100+billingHoldUnknownMaxAgeSec))
+	require.False(t, billingHoldUnknownExpired(hold, 100+billingHoldSyncUnknownMaxAgeSec-1))
+	require.True(t, billingHoldUnknownExpired(hold, 100+billingHoldSyncUnknownMaxAgeSec))
+
+	asyncHold := &model.BillingHold{CreatedAt: 100, UpstreamTaskId: "task-1"}
+	require.False(t, billingHoldUnknownExpired(asyncHold, 100+billingHoldAsyncUnknownMaxAgeSec-1))
+	require.True(t, billingHoldUnknownExpired(asyncHold, 100+billingHoldAsyncUnknownMaxAgeSec))
+}
+
+func TestBillingHoldReconcilePolicy(t *testing.T) {
+	syncHold := &model.BillingHold{}
+	assert.Equal(t, int64(billingHoldSyncReconcileDelaySec), billingHoldReconcileDelaySecFor(syncHold))
+	assert.Equal(t, int64(billingHoldSyncUnknownMaxAgeSec), billingHoldUnknownMaxAgeFor(syncHold))
+
+	asyncHold := &model.BillingHold{UpstreamTaskId: "task-1"}
+	assert.Equal(t, int64(billingHoldAsyncReconcileDelaySec), billingHoldReconcileDelaySecFor(asyncHold))
+	assert.Equal(t, int64(billingHoldAsyncUnknownMaxAgeSec), billingHoldUnknownMaxAgeFor(asyncHold))
 }
 
 func TestRunBillingHoldReconcileUnknownReschedulesWithoutCharge(t *testing.T) {
@@ -113,7 +127,7 @@ func TestRunBillingHoldReconcileExpiredUnknownRefunds(t *testing.T) {
 		ErrorCode:        string(types.ErrorCodeDoRequestFailed),
 		ErrorMessage:     "upstream request state unknown",
 		Status:           model.BillingHoldStatusPending,
-		CreatedAt:        now - billingHoldUnknownMaxAgeSec,
+		CreatedAt:        now - billingHoldSyncUnknownMaxAgeSec,
 		ReconcileAfter:   now,
 	}
 	require.NoError(t, model.CreateBillingHold(hold))

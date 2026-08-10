@@ -20,10 +20,17 @@ import (
 )
 
 const (
-	billingHoldReconcileDelaySec = 1200 // 与 image reconcile 一致：20 分钟后对账
-	billingHoldScanIntervalSec   = 60
-	billingHoldUnknownRetrySec   = 1800
-	billingHoldUnknownMaxAgeSec  = 86400
+	// Synchronous chat requests have no durable upstream task to poll. Keep
+	// their hold short so a failed request does not freeze the user's wallet.
+	billingHoldSyncReconcileDelaySec = 300  // 5 minutes
+	billingHoldSyncUnknownMaxAgeSec  = 1800 // 30 minutes
+
+	// Async image/video tasks may continue running after the relay request ends.
+	billingHoldAsyncReconcileDelaySec = 1200  // 20 minutes
+	billingHoldAsyncUnknownMaxAgeSec  = 86400 // 24 hours
+
+	billingHoldScanIntervalSec = 60
+	billingHoldUnknownRetrySec = 300 // retry unknown upstream state every 5 minutes
 )
 
 var billingHoldReconcileClaim sync.Map // holdId -> struct{}
@@ -85,8 +92,8 @@ func RecordBillingHoldAndSchedule(c *gin.Context, relayInfo *relaycommon.RelayIn
 		ErrorMessage:      apiErr.Error(),
 		Status:            model.BillingHoldStatusPending,
 		CreatedAt:         now,
-		ReconcileAfter:    now + billingHoldReconcileDelaySec,
 	}
+	hold.ReconcileAfter = now + billingHoldReconcileDelaySecFor(hold)
 	if err := model.CreateBillingHold(hold); err != nil {
 		return nil, err
 	}
@@ -183,7 +190,25 @@ func runBillingHoldReconcile(holdId int) {
 }
 
 func billingHoldUnknownExpired(hold *model.BillingHold, now int64) bool {
-	return hold != nil && hold.CreatedAt > 0 && now-hold.CreatedAt >= billingHoldUnknownMaxAgeSec
+	return hold != nil && hold.CreatedAt > 0 && now-hold.CreatedAt >= billingHoldUnknownMaxAgeFor(hold)
+}
+
+func billingHoldHasAsyncTask(hold *model.BillingHold) bool {
+	return hold != nil && strings.TrimSpace(hold.UpstreamTaskId) != ""
+}
+
+func billingHoldReconcileDelaySecFor(hold *model.BillingHold) int64 {
+	if billingHoldHasAsyncTask(hold) {
+		return billingHoldAsyncReconcileDelaySec
+	}
+	return billingHoldSyncReconcileDelaySec
+}
+
+func billingHoldUnknownMaxAgeFor(hold *model.BillingHold) int64 {
+	if billingHoldHasAsyncTask(hold) {
+		return billingHoldAsyncUnknownMaxAgeSec
+	}
+	return billingHoldSyncUnknownMaxAgeSec
 }
 
 // VerifyBillingHoldUpstreamCharge 核实上游是否扣款。只有明确的正向扣款

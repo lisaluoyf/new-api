@@ -83,8 +83,11 @@ func ListDueBillingHolds(now int64, limit int) ([]*BillingHold, error) {
 	var holds []*BillingHold
 	// A process can die after claiming a hold. Reclaim processing rows whose
 	// lease (stored in resolved_at while processing) expired five minutes ago.
-	err := DB.Where("(status = ? AND reconcile_after <= ?) OR (status = ? AND resolved_at > 0 AND resolved_at <= ?)",
-		BillingHoldStatusPending, now, "processing", now-300).
+	// A process can die before the lease timestamp is written (or leave a
+	// legacy processing row with resolved_at=0). Reclaim both forms so a hold
+	// cannot remain stuck forever.
+	err := DB.Where("(status = ? AND reconcile_after <= ?) OR (status = ? AND ((resolved_at > 0 AND resolved_at <= ?) OR (resolved_at = 0 AND created_at <= ?)))",
+		BillingHoldStatusPending, now, "processing", now-300, now-300).
 		Order("reconcile_after ASC").
 		Limit(limit).
 		Find(&holds).Error
