@@ -2911,6 +2911,7 @@
     "Path Regex (one per line)": "Path Regex (one per line)",
     "Path:": "Path:",
     "Pay": "Pay",
+    "Valid before {{date}}": "Valid before {{date}}",
     "pay ${{pay}} → get ${{amount}}": "pay ${{pay}} → get ${{amount}}",
     "Pay {{amount}} USD using crypto on-chain": "Pay {{amount}} USD using crypto on-chain",
     "Pay-as-you-go with real-time usage monitoring": "Pay-as-you-go with real-time usage monitoring",

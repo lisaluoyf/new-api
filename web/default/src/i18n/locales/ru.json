@@ -2849,6 +2849,7 @@
     "Path Regex (one per line)": "Регулярное выражение пути (по одному на строку)",
     "Path:": "Путь:",
     "Pay": "Pay",
+    "Valid before {{date}}": "Valid before {{date}}",
     "pay ${{pay}} → get ${{amount}}": "платите ${{pay}} → получаете ${{amount}}",
     "Pay {{amount}} USD using crypto on-chain": "Оплатите {{amount}} USD с помощью криптовалюты в сети блокчейн",
     "Pay-as-you-go with real-time usage monitoring": "Оплата по мере использования с мониторингом в реальном времени",

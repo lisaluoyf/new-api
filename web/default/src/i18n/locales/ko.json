@@ -4514,6 +4514,7 @@
     "Our team is ready to help on Telegram": "텔레그램에서 팀이 도움을 드릴 준비가 되어 있습니다",
     "Get help on Telegram": "텔레그램에서 도움 받기",
     "New user": "신규 사용자 전용",
+    "Valid before {{date}}": "Valid before {{date}}",
     "pay ${{pay}} → get ${{amount}}": "${{pay}} 결제 → ${{amount}} 충전",
     "🎁 New user exclusive · {{pct}}% off first top-up": "🎁 신규 전용 · 첫 충전 {{pct}}% 할인",
     "Expires in": "만료까지",

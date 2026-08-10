@@ -2914,6 +2914,7 @@
     "Path Regex (one per line)": "路径正则（每行一个）",
     "Path:": "路径：",
     "Pay": "支付",
+    "Valid before {{date}}": "{{date}} 前有效",
     "pay ${{pay}} → get ${{amount}}": "付 ${{pay}} 到账 ${{amount}}",
     "Pay {{amount}} USD using crypto on-chain": "链上支付 {{amount}} USD",
     "Pay-as-you-go with real-time usage monitoring": "按量付费，实时监控使用情况",
