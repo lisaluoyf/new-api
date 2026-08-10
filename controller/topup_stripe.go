@@ -403,6 +403,18 @@ func GetChargedAmount(count float64, user model.User) float64 {
 	return count * topUpGroupRatio
 }
 
+func getAmountDiscountFactor(amount int64) float64 {
+	discount := 1.0
+	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok && ds > 0 {
+		discount = ds
+	}
+	return discount
+}
+
+func GetChargedAmountWithTierDiscount(amount int64, user model.User) float64 {
+	return GetChargedAmount(float64(amount), user) * getAmountDiscountFactor(amount)
+}
+
 func getStripePayMoney(amount float64, group string) float64 {
 	originalAmount := amount
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
@@ -414,12 +426,7 @@ func getStripePayMoney(amount float64, group string) float64 {
 		topupGroupRatio = 1
 	}
 	// apply optional preset discount by the original request amount (if configured), default 1.0
-	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
-		if ds > 0 {
-			discount = ds
-		}
-	}
+	discount := getAmountDiscountFactor(int64(originalAmount))
 	payMoney := amount * setting.StripeUnitPrice * topupGroupRatio * discount
 	return payMoney
 }

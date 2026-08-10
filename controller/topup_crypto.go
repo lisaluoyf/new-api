@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -499,6 +500,33 @@ func markCryptoIntentFailed(intentId string, err error) {
 	}
 }
 
+func matchCryptoAmountDiscountTier(usdValue float64) (int, float64, bool) {
+	if usdValue <= 0 {
+		return 0, 0, false
+	}
+
+	bestTier := 0
+	bestDiscount := 0.0
+	for amount, discount := range operation_setting.GetPaymentSetting().AmountDiscount {
+		if amount <= 0 || discount <= 0 || discount >= 1 {
+			continue
+		}
+		threshold := float64(amount) * discount
+		if usdValue+1e-9 < threshold {
+			continue
+		}
+		if amount > bestTier {
+			bestTier = amount
+			bestDiscount = discount
+		}
+	}
+
+	if bestTier == 0 {
+		return 0, 0, false
+	}
+	return bestTier, bestDiscount, true
+}
+
 func verifyAndCredit(intentId string) {
 	var intent model.CryptoDepositIntent
 	if err := model.DB.Where("id = ?", intentId).First(&intent).Error; err != nil {
@@ -523,7 +551,10 @@ func verifyAndCredit(intentId string) {
 	}
 
 	creditUsd := usdValue
-	if eligible, _ := model.IsFirstTopupPromoEligible(intent.UserId); eligible {
+	if matchedTier, matchedDiscount, ok := matchCryptoAmountDiscountTier(usdValue); ok {
+		creditUsd = usdValue / matchedDiscount
+		common.SysLog(fmt.Sprintf("crypto: amount-discount promo userId=%d tier=%d paid=%.4f credit=%.4f", intent.UserId, matchedTier, usdValue, creditUsd))
+	} else if eligible, _ := model.IsFirstTopupPromoEligible(intent.UserId); eligible {
 		bonusBase := usdValue
 		if capUsd := float64(common.FirstTopupPromoAmount); bonusBase > capUsd {
 			bonusBase = capUsd
@@ -557,7 +588,7 @@ func verifyAndCredit(intentId string) {
 		if err == nil {
 			return tx.Model(&current).Updates(map[string]interface{}{
 				"status":        model.CryptoDepositIntentStatusConfirmed,
-				"usd_added":     usdValue,
+				"usd_added":     creditUsd,
 				"confirmed_at":  now,
 				"error_message": "",
 			}).Error
@@ -586,7 +617,7 @@ func verifyAndCredit(intentId string) {
 		}
 		if err := tx.Model(&current).Updates(map[string]interface{}{
 			"status":        model.CryptoDepositIntentStatusConfirmed,
-			"usd_added":     usdValue,
+			"usd_added":     creditUsd,
 			"confirmed_at":  now,
 			"error_message": "",
 		}).Error; err != nil {

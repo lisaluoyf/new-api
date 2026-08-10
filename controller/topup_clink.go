@@ -103,7 +103,7 @@ func RequestClinkPay(c *gin.Context) {
 		return
 	}
 
-	chargedMoney := GetChargedAmount(float64(req.Amount), *user) * firstTopupPromoFactor(id, req.Amount)
+	chargedMoney := GetChargedAmountWithTierDiscount(req.Amount, *user) * firstTopupPromoFactor(id, req.Amount)
 	if chargedMoney <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountTooLow)})
 		return

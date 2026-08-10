@@ -41,6 +41,7 @@ import { usePlategaPayment } from '../hooks/use-platega-payment'
 import { useClinkPayment } from '../hooks/use-clink-payment'
 import { WaffoPayMethodHints } from './waffo-pay-method-hints'
 import { ClinkPayMethodHints } from './clink-pay-method-hints'
+import { getDiscountLabel } from '../lib/format'
 import type { TopupInfo } from '../types'
 
 const HINT_LS_KEY = 'payment_hint_shown'
@@ -72,7 +73,14 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
   const [isNewUser, setIsNewUser] = useState(false)
   const [countdown, setCountdown] = useState('')
 
-  const effectiveAmount = customAmount ? parseFloat(customAmount) || 0 : selectedAmount
+  const requestAmount = customAmount ? parseFloat(customAmount) || 0 : selectedAmount
+  const amountDiscount = requestAmount > 0 ? topupInfo?.discount?.[requestAmount] ?? 1 : 1
+  const promoDiscount =
+    promoInfo && requestAmount === promoInfo.amount
+      ? promoInfo.discount
+      : 1
+  const effectiveDiscount = amountDiscount * promoDiscount
+  const effectiveAmount = requestAmount * effectiveDiscount
 
   const checkAndMaybeShowHint = useCallback(async () => {
     const last = localStorage.getItem(HINT_LS_KEY)
@@ -140,11 +148,11 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
   }
 
   async function handleEpayPay(method: string) {
-    if (effectiveAmount <= 0) return
+    if (requestAmount <= 0) return
     setEpayLoading(method)
     try {
       const res = await requestPayment({
-        amount: Math.round(effectiveAmount),
+        amount: Math.round(requestAmount),
         payment_method: method,
       })
       if (isApiSuccess(res) && res.url) {
@@ -177,14 +185,14 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
 
   async function handlePayPalPay() {
     const minTopup = topupInfo?.paypal_min_topup ?? 1
-    if (effectiveAmount < minTopup) {
+    if (requestAmount < minTopup) {
       toast.error(`${t('Minimum top-up')}: $${minTopup}`)
       return
     }
     setPaypalLoading(true)
     try {
       const res = await requestPayPalPayment({
-        amount: Math.round(effectiveAmount),
+        amount: Math.round(requestAmount),
         payment_method: 'paypal',
       })
       if (isApiSuccess(res) && res.data?.pay_link) {
@@ -203,34 +211,34 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
 
   async function handlePancakePay() {
     const minTopup = topupInfo?.waffo_pancake_min_topup ?? 1
-    if (effectiveAmount < minTopup) {
+    if (requestAmount < minTopup) {
       toast.error(`${t('Minimum top-up')}: $${minTopup}`)
       return
     }
     handleMethodSelect('waffo_pancake')
-    const ok = await processWaffoPancakePayment(Math.round(effectiveAmount))
+    const ok = await processWaffoPancakePayment(Math.round(requestAmount))
     if (ok) onPaymentAttempted?.()
   }
 
   async function handlePlategaPay() {
     const minTopup = topupInfo?.platega_min_topup ?? 1
-    if (effectiveAmount < minTopup) {
+    if (requestAmount < minTopup) {
       toast.error(`${t('Minimum top-up')}: $${minTopup}`)
       return
     }
     handleMethodSelect('platega')
-    const ok = await processPlategaPayment(Math.round(effectiveAmount))
+    const ok = await processPlategaPayment(Math.round(requestAmount))
     if (ok) onPaymentAttempted?.()
   }
 
   async function handleClinkPay() {
     const minTopup = topupInfo?.clink_min_topup ?? 1
-    if (effectiveAmount < minTopup) {
+    if (requestAmount < minTopup) {
       toast.error(`${t('Minimum top-up')}: $${minTopup}`)
       return
     }
     handleMethodSelect('clink')
-    const ok = await processClinkPayment(Math.round(effectiveAmount))
+    const ok = await processClinkPayment(Math.round(requestAmount))
     if (ok) onPaymentAttempted?.()
   }
 
@@ -267,6 +275,9 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {(isNewUser ? PRESET_AMOUNTS_NEW_USER : PRESET_AMOUNTS_DEFAULT).map((amount) => {
                 const active = selectedAmount === amount && !customAmount
                 const isPromo = !!promoInfo && amount === promoInfo.amount
+                const amountDiscountRate = topupInfo?.discount?.[amount] ?? 1
+                const hasAmountDiscount = amountDiscountRate > 0 && amountDiscountRate < 1
+                const amountDiscountLabel = getDiscountLabel(amountDiscountRate)
                 return (
                   <button
                     key={amount}
@@ -287,10 +298,20 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
                         <span className='text-[10px] font-extrabold leading-tight'>{Math.round((1 - promoInfo.discount) * 100)}% OFF</span>
                       </span>
                     )}
+                    {!isPromo && hasAmountDiscount && (
+                      <span className='absolute -right-1.5 -top-2 flex items-center rounded-md bg-emerald-500 px-1.5 py-0.5 text-[10px] font-extrabold leading-tight text-white shadow'>
+                        {amountDiscountLabel}
+                      </span>
+                    )}
                     ${amount}
                     {isPromo && (
                       <div className='mt-0.5 text-[10px] font-normal text-amber-600'>
                         {t('pay ${{pay}} → get ${{amount}}', { pay: promoInfo.pay_amount.toFixed(2), amount: promoInfo.amount })}
+                      </div>
+                    )}
+                    {!isPromo && hasAmountDiscount && (
+                      <div className='mt-0.5 text-[10px] font-normal text-emerald-600'>
+                        {t('pay ${{pay}} → get ${{amount}}', { pay: (amount * amountDiscountRate).toFixed(2), amount })}
                       </div>
                     )}
                   </button>
@@ -336,7 +357,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {paypalEnabled && (
                 <button
                   type='button'
-                  disabled={effectiveAmount <= 0 || paypalLoading}
+                  disabled={requestAmount <= 0 || paypalLoading}
                   onClick={() => { handleMethodSelect('paypal'); handlePayPalPay() }}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -364,7 +385,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {pancakeEnabled && (
                 <button
                   type='button'
-                  disabled={effectiveAmount <= 0 || pancakeLoading}
+                  disabled={requestAmount <= 0 || pancakeLoading}
                   onClick={handlePancakePay}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -388,7 +409,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {plategaEnabled && (
                 <button
                   type='button'
-                  disabled={effectiveAmount <= 0 || plategaLoading}
+                  disabled={requestAmount <= 0 || plategaLoading}
                   onClick={handlePlategaPay}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -415,7 +436,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
                     <TooltipTrigger render={
                       <button
                         type='button'
-                        disabled={effectiveAmount <= 0 || clinkLoading}
+                        disabled={requestAmount <= 0 || clinkLoading}
                         onClick={handleClinkPay}
                         className={cn(
                           'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -456,7 +477,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {!topupForbidden && (
                 <button
                   type='button'
-                  disabled={effectiveAmount <= 0}
+                  disabled={requestAmount <= 0}
                   onClick={() => { handleMethodSelect('crypto'); setCryptoOpen(true) }}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -478,7 +499,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {hasAlipay && (
                 <button
                   type='button'
-                  disabled={effectiveAmount <= 0 || epayLoading === 'alipay'}
+                  disabled={requestAmount <= 0 || epayLoading === 'alipay'}
                   onClick={() => { handleMethodSelect('alipay'); handleEpayPay('alipay') }}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -502,7 +523,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {hasWechat && (
                 <button
                   type='button'
-                  disabled={effectiveAmount <= 0 || epayLoading === 'wxpay'}
+                  disabled={requestAmount <= 0 || epayLoading === 'wxpay'}
                   onClick={() => { handleMethodSelect('wxpay'); handleEpayPay('wxpay') }}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -548,13 +569,18 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
             )}
 
             <div className='mt-3 flex items-center justify-between'>
-              {effectiveAmount > 0
+              {requestAmount > 0
                 ? (
                   <p className='text-muted-foreground text-xs'>
                     {t('You will pay')}:{' '}
                     <span className='font-mono font-semibold text-cyan-600'>
                       ${effectiveAmount.toFixed(2)}
                     </span>
+                    {effectiveDiscount < 1 && (
+                      <span className='ml-2 text-[11px] line-through opacity-70'>
+                        ${requestAmount.toFixed(2)}
+                      </span>
+                    )}
                   </p>
                 )
                 : <span />}
