@@ -136,7 +136,7 @@ export function VideoDialog({
               <CopyButton
                 value={taskId}
                 variant='ghost'
-                size='icon-sm'
+                size='icon'
                 tooltip={t('Copy to clipboard')}
               />
             </div>

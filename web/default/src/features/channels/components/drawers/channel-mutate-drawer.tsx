@@ -24,7 +24,7 @@ import {
   useCallback,
   useRef,
 } from 'react'
-import { useController, useForm } from 'react-hook-form'
+import { useController, useForm, type Control } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -448,7 +448,7 @@ function ClientExclusiveField({
               value: opt.value,
               label: t(opt.label),
             }))}
-            value={field.value && field.value !== '' ? field.value : 'none'}
+            value={field.value || 'none'}
             onValueChange={(v) => field.onChange(v === 'none' ? '' : v)}
           >
             <FormControl>
@@ -549,10 +549,11 @@ function RechargeRateField({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [field.value])
 
-  function applyPreset(p: string) {
-    setPreset(p)
-    if (p === RECHARGE_PRESET_USD) field.onChange(1)
-    else if (p === RECHARGE_PRESET_RMB) field.onChange(parseFloat((1 / cnyRate).toFixed(6)))
+  function applyPreset(p: string | null) {
+    const nextPreset = p ?? RECHARGE_PRESET_CUSTOM
+    setPreset(nextPreset)
+    if (nextPreset === RECHARGE_PRESET_USD) field.onChange(1)
+    else if (nextPreset === RECHARGE_PRESET_RMB) field.onChange(parseFloat((1 / cnyRate).toFixed(6)))
     // custom: leave current value, user types in the input
   }
 
@@ -718,8 +719,10 @@ function ModelPriceRatiosField({
               placeholder='e.g. 1.5'
               value={row.ratio === '' ? undefined : row.ratio}
               onValueChange={(v) => {
-                const next = displayRows.map((r, i) =>
-                  i === idx ? { ...r, ratio: v ?? ('' as const) } : r,
+                const next: { model: string; ratio: number | '' }[] = displayRows.map((r, i) =>
+                  i === idx
+                    ? { ...r, ratio: v == null || v === '' ? '' : Number(v) }
+                    : r,
                 )
                 commit(next)
               }}

@@ -25,7 +25,9 @@ import { UserAuthForm } from './components/user-auth-form'
 
 export function SignIn() {
   const { t } = useTranslation()
-  const { redirect } = useSearch({ from: '/(auth)/sign-in' })
+  const { redirect } = useSearch({ from: '/(auth)/sign-in' }) as {
+    redirect?: string
+  }
   const { status } = useStatus()
 
   return (

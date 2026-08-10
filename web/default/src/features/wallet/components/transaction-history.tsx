@@ -403,8 +403,7 @@ export function TransactionHistory() {
                       <td className='px-4 py-3 text-right font-mono font-medium'>
                         {formatPaidAmount(
                           record.money,
-                          record.payment_method,
-                          creditedAmount
+                          record.payment_method
                         )}
                       </td>
                       <td className='px-4 py-3 text-center'>

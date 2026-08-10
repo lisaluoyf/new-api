@@ -38,7 +38,6 @@ import {
   processUserChartData,
 } from '@/features/dashboard/lib'
 import type { ProcessedUserChartData } from '@/features/dashboard/types'
-import { QUOTA_PER_DOLLAR } from '@/features/wallet/constants'
 import { StatCard } from '../ui/stat-card'
 
 let themeManagerPromise: Promise<
@@ -156,6 +155,7 @@ export function UserCharts() {
       {
         key: 'new-users',
         title: t('New Registrations'),
+        description: t('Statistical count'),
         value: String(totalNewUsers),
         icon: UserPlus,
         tone: 'teal' as const,
@@ -164,6 +164,7 @@ export function UserCharts() {
       {
         key: 'topup-count',
         title: t('Top-up Count'),
+        description: t('Statistical count'),
         value: String(totalTopupCount),
         icon: CreditCard,
         tone: 'rose' as const,
@@ -172,6 +173,7 @@ export function UserCharts() {
       {
         key: 'topup-amount',
         title: t('Top-up Amount (USD)'),
+        description: t('Statistical quota'),
         value: `$${totalUsd.toFixed(2)}`,
         icon: DollarSign,
         tone: 'gray' as const,
@@ -270,6 +272,7 @@ export function UserCharts() {
             <StatCard
               title={card.title}
               value={card.value}
+              description={card.description}
               icon={card.icon}
               tone={card.tone}
               sparkline={card.sparkline}

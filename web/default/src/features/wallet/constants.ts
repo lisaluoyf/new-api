@@ -85,6 +85,7 @@ export const GLASS_CARD_CLS =
  * (proper noun, no i18n), `currency` = ISO 4217. Ordered by audience relevance.
  */
 export const CLINK_LOCAL_METHODS = [
+  { code: 'NL', method: 'iDEAL', currency: 'EUR' },
   { code: 'KR', method: 'Kakao', currency: 'KRW' },
   { code: 'IN', method: 'UPI', currency: 'INR' },
   { code: 'ID', method: 'QRIS', currency: 'IDR' },
