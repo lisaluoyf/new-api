@@ -78,6 +78,18 @@ func ModelNameCandidates(canonical string) []string {
 	return out
 }
 
+// ProbeModelCandidates returns the model IDs that may be sent upstream for a
+// channel probe. A channel-level model_mapping is authoritative for relay
+// traffic, so its terminal target must be tried first here as well. Keeping the
+// canonical name in the fallback list preserves the existing alias behavior
+// for channels without a mapping.
+func ProbeModelCandidates(canonical string, modelMapping *string) []string {
+	if target := ModelMappingTarget(modelMapping, canonical); target != "" {
+		return []string{target}
+	}
+	return ModelNameCandidates(canonical)
+}
+
 var uptimeOnce sync.Once
 
 // StartUptimeCheckTask periodically sends a tiny probe ("hi") to each enabled
@@ -211,7 +223,7 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 	}
 
 	urlCandidates := baseURLCandidates(baseURL)
-	modelCandidates := ModelNameCandidates(targetModel)
+	modelCandidates := ProbeModelCandidates(targetModel, ch.ModelMapping)
 
 	client := &http.Client{Timeout: uptimeRequestTimeout}
 	var lastErr string
