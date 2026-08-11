@@ -55,6 +55,7 @@ var ModelIDCandidates = map[string][]string{
 	"claude-opus-4-5":                {"anthropic/claude-opus-4.5"},
 	"gpt-5.4-mini":                   {"openai/gpt-5.4-mini"},
 	"minimax-m3":                     {"MiniMax-M3", "MiniMax-M3-20260301", "minimax/minimax-m3"},
+	"minimax-h3":                     {"MiniMax-H3"},
 	"kimi-k2.7-code":                 {"moonshotai/kimi-k2.7-code", "kimi-k2-7-code"},
 	"mimo-v2.5-pro":                  {"xiaomi/mimo-v2.5-pro", "mimo-v2-5-pro"},
 	"mimo-v2.5":                      {"xiaomi/mimo-v2.5", "mimo-v2-5"},
