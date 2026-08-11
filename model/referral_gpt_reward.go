@@ -389,7 +389,9 @@ func NotifyReferralGPTRewardToFeishu(logId int) error {
 		fmt.Sprintf("交易单号：%s", reward.TradeNo),
 		fmt.Sprintf("触发方式：%s", reward.GrantSource),
 	}
-	if err := common.SendFeishuCard(common.FeishuChannelChatID(), "🎁 邀请首充 GPT 奖励已发放", lines); err != nil {
+	// Referral reward notices are operational/business notifications and should
+	// stay in the main ops Feishu group instead of the channel alert group.
+	if err := common.SendFeishuCard(common.FeishuOpsChatID(), "🎁 邀请首充 GPT 奖励已发放", lines); err != nil {
 		DB.Model(&ReferralGPTRewardLog{}).Where("id = ?", logId).Update("feishu_notify_locked_at", 0)
 		return err
 	}
