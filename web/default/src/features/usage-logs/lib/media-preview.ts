@@ -20,7 +20,13 @@ import type { UsageLog } from '../data/schema'
 import type { LogOtherData } from '../types'
 
 export type LogMediaPreview =
-  | { kind: 'image'; url: string; taskId?: string; errorMessage?: string; errorCode?: string }
+  | {
+      kind: 'image'
+      url: string
+      taskId?: string
+      errorMessage?: string
+      errorCode?: string
+    }
   | { kind: 'video'; url: string; taskId: string }
 
 export function isValidMediaPreviewURL(url: string): boolean {
@@ -96,7 +102,11 @@ export function getLogMediaPreview(
   }
 
   if (isLogMediaVideoModel(modelName)) {
-    if (taskId && (log.use_time ?? 0) > 0) {
+    // Always use the authenticated backend proxy when a task id is available.
+    // Video generation logs are written at submit time and may legitimately
+    // have use_time=0, while the upstream signed URL can be inaccessible to
+    // the dashboard browser or expire independently of the task record.
+    if (taskId) {
       return { kind: 'video', url: buildVideoProxyUrl(taskId), taskId }
     }
     if (resultURL && isValidMediaPreviewURL(resultURL)) {
