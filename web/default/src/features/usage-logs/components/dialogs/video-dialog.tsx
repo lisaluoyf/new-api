@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { CopyButton } from '@/components/copy-button'
 import {
   Dialog,
   DialogContent,
@@ -28,13 +27,18 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { CopyButton } from '@/components/copy-button'
 import { downloadMediaFile } from '../../lib/download-media'
-import { loadAuthenticatedMediaUrl, MediaLoadError } from '../../lib/load-authenticated-media'
+import {
+  loadAuthenticatedMediaUrl,
+  MediaLoadError,
+} from '../../lib/load-authenticated-media'
 import { MediaDialogFooter } from './media-dialog-footer'
 import { RequestDataPanel } from './request-data-panel'
 
 interface VideoDialogProps {
   videoUrl: string
+  fallbackUrl?: string
   taskId?: string
   requestData?: Record<string, unknown> | null
   open: boolean
@@ -43,6 +47,7 @@ interface VideoDialogProps {
 
 export function VideoDialog({
   videoUrl,
+  fallbackUrl,
   taskId,
   requestData,
   open,
@@ -68,21 +73,35 @@ export function VideoDialog({
       setIsLoading(true)
       setHasError(false)
       setErrorMessage('')
-      try {
-        const resolved = await loadAuthenticatedMediaUrl(videoUrl)
-        if (cancelled) return
-        if (resolved.revoke) {
-          objectUrl = resolved.url
+      const candidates = [videoUrl, fallbackUrl].filter(
+        (candidate, index, all): candidate is string =>
+          Boolean(candidate?.trim()) && all.indexOf(candidate) === index
+      )
+      let lastError: unknown
+      for (const candidate of candidates) {
+        try {
+          const resolved = await loadAuthenticatedMediaUrl(candidate)
+          if (cancelled) return
+          if (resolved.revoke) {
+            objectUrl = resolved.url
+          }
+          setPlayableUrl(resolved.url)
+          return
+        } catch (err) {
+          lastError = err
         }
-        setPlayableUrl(resolved.url)
-      } catch (err) {
+      }
+      if (lastError) {
+        const err = lastError
         if (!cancelled) {
           setPlayableUrl('')
           setHasError(true)
           setIsLoading(false)
           if (err instanceof MediaLoadError) {
             if (err.status === 410 || err.status === 404) {
-              setErrorMessage(t('Video has expired or been removed from upstream storage'))
+              setErrorMessage(
+                t('Video has expired or been removed from upstream storage')
+              )
             } else {
               setErrorMessage(err.message)
             }
@@ -101,7 +120,7 @@ export function VideoDialog({
         URL.revokeObjectURL(objectUrl)
       }
     }
-  }, [open, videoUrl])
+  }, [fallbackUrl, open, videoUrl])
 
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen) {
@@ -141,7 +160,9 @@ export function VideoDialog({
               />
             </div>
           ) : (
-            <DialogDescription>{t('View the generated video')}</DialogDescription>
+            <DialogDescription>
+              {t('View the generated video')}
+            </DialogDescription>
           )}
         </DialogHeader>
 
@@ -154,7 +175,9 @@ export function VideoDialog({
             {isLoading && !hasError && (
               <div className='absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4'>
                 <Loader2 className='text-muted-foreground size-6 animate-spin' />
-                <p className='text-muted-foreground text-sm'>{t('Loading video...')}</p>
+                <p className='text-muted-foreground text-sm'>
+                  {t('Loading video...')}
+                </p>
               </div>
             )}
 

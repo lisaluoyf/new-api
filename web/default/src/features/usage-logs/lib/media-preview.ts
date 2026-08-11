@@ -27,7 +27,7 @@ export type LogMediaPreview =
       errorMessage?: string
       errorCode?: string
     }
-  | { kind: 'video'; url: string; taskId: string }
+  | { kind: 'video'; url: string; taskId: string; fallbackUrl?: string }
 
 export function isValidMediaPreviewURL(url: string): boolean {
   const u = url.trim()
@@ -107,7 +107,14 @@ export function getLogMediaPreview(
     // have use_time=0, while the upstream signed URL can be inaccessible to
     // the dashboard browser or expire independently of the task record.
     if (taskId) {
-      return { kind: 'video', url: buildVideoProxyUrl(taskId), taskId }
+      const proxyURL = buildVideoProxyUrl(taskId)
+      return {
+        kind: 'video',
+        url: proxyURL,
+        taskId,
+        fallbackUrl:
+          resultURL && resultURL !== proxyURL ? resultURL : undefined,
+      }
     }
     if (resultURL && isValidMediaPreviewURL(resultURL)) {
       return { kind: 'video', url: resultURL, taskId: taskId || '' }
