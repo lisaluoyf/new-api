@@ -7,6 +7,7 @@ const (
 	TaskPlatformMidjourney                = "mj"
 	TaskPlatformApimartVideo              = "apimart-video"
 	TaskPlatformOpenAIImage               = "openai-image"
+	TaskPlatformMiniMaxH3                 = "minimax-h3"
 )
 
 const (
