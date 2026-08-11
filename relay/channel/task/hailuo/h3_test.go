@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -48,7 +49,7 @@ func TestH3EstimateBillingUsesDurationAndResolution(t *testing.T) {
 		wantSize float64
 	}{
 		{name: "768P", duration: 5, size: "768P", wantSize: 1},
-		{name: "2K", duration: 10, size: "2K", wantSize: h3TwoKPriceRatio},
+		{name: "2K", duration: 10, size: "2K", wantSize: ratio_setting.GetVideoModelResolutionRatio("minimax-h3", "2K")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -71,7 +72,7 @@ func TestH3AdjustBillingOnCompleteUsesActualOutputSeconds(t *testing.T) {
 			BillingContext: &model.TaskBillingContext{
 				OtherRatios: map[string]float64{
 					"seconds": 10,
-					"size":    h3TwoKPriceRatio,
+					"size":    ratio_setting.GetVideoModelResolutionRatio("minimax-h3", "2K"),
 				},
 			},
 		},

@@ -19,6 +19,7 @@ import (
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 )
@@ -30,7 +31,6 @@ const (
 	h3DefaultResolution = "768P"
 	h3DefaultRatio      = "16:9"
 	h3DefaultDuration   = 4
-	h3TwoKPriceRatio    = 0.13 / 0.08
 )
 
 // H3TaskAdaptor implements MiniMax-H3's v2 video API. It is deliberately
@@ -123,7 +123,7 @@ func (a *H3TaskAdaptor) EstimateBilling(c *gin.Context, _ *relaycommon.RelayInfo
 	}
 	ratio := 1.0
 	if strings.Contains(strings.ToUpper(resolution), "2K") {
-		ratio = h3TwoKPriceRatio
+		ratio = ratio_setting.GetVideoModelResolutionRatio("minimax-h3", "2K")
 	}
 	return map[string]float64{"seconds": float64(duration), "size": ratio}
 }

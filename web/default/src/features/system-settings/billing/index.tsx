@@ -59,6 +59,7 @@ const defaultBillingSettings: BillingSettings = {
   ImageRatio: '',
   AudioRatio: '',
   AudioCompletionRatio: '',
+  VideoModelPricing: '{"minimax-h3":{"unit":"second","prices":{"768P":0.08,"2K":0.13}}}',
   ExposeRatioEnabled: false,
   'billing_setting.billing_mode': '{}',
   'billing_setting.billing_expr': '{}',

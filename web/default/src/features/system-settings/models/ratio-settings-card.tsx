@@ -32,6 +32,7 @@ import { GroupRatioForm } from './group-ratio-form'
 import { ModelRatioForm } from './model-ratio-form'
 import { ToolPriceSettings } from './tool-price-settings'
 import { UpstreamRatioSync } from './upstream-ratio-sync'
+import { VideoMediaPricingForm } from './video-media-pricing-form'
 import {
   formatJsonForTextarea,
   normalizeJsonString,
@@ -197,12 +198,13 @@ const groupSchema = z.object({
 
 type ModelFormValues = z.infer<typeof modelSchema>
 type GroupFormValues = z.infer<typeof groupSchema>
-type RatioTabId = 'models' | 'groups' | 'tool-prices' | 'upstream-sync'
+type RatioTabId = 'models' | 'groups' | 'video-media' | 'tool-prices' | 'upstream-sync'
 
 type RatioSettingsCardProps = {
   modelDefaults: ModelFormValues
   groupDefaults: GroupFormValues
   toolPricesDefault: string
+  videoMediaPricingDefault?: string
   titleKey?: string
   descriptionKey?: string
   visibleTabs?: RatioTabId[]
@@ -212,6 +214,7 @@ export function RatioSettingsCard({
   modelDefaults,
   groupDefaults,
   toolPricesDefault,
+  videoMediaPricingDefault = '{}',
   titleKey = 'Pricing Ratios',
   descriptionKey = 'Configure model, caching, and group ratios used for billing',
   visibleTabs = ['models', 'groups', 'tool-prices', 'upstream-sync'],
@@ -442,6 +445,7 @@ export function RatioSettingsCard({
   const tabLabels: Record<RatioTabId, string> = {
     models: 'Model prices',
     groups: 'Group ratios',
+    'video-media': 'Video / media pricing',
     'tool-prices': 'Tool prices',
     'upstream-sync': 'Upstream price sync',
   }
@@ -451,6 +455,7 @@ export function RatioSettingsCard({
       2: 'grid-cols-2',
       3: 'grid-cols-3',
       4: 'grid-cols-4',
+      5: 'grid-cols-5',
     }[visibleTabs.length] ?? 'grid-cols-4'
   const defaultTab = visibleTabs[0] ?? 'models'
 
@@ -477,6 +482,9 @@ export function RatioSettingsCard({
     }
     if (tab === 'tool-prices') {
       return <ToolPriceSettings defaultValue={toolPricesDefault} />
+    }
+    if (tab === 'video-media') {
+      return <VideoMediaPricingForm defaultValue={videoMediaPricingDefault} />
     }
     return (
       <UpstreamRatioSync
