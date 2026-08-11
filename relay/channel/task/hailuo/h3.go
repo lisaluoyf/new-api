@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -29,6 +30,7 @@ const (
 	h3DefaultResolution = "768P"
 	h3DefaultRatio      = "16:9"
 	h3DefaultDuration   = 4
+	h3TwoKPriceRatio    = 0.13 / 0.08
 )
 
 // H3TaskAdaptor implements MiniMax-H3's v2 video API. It is deliberately
@@ -86,6 +88,44 @@ func (a *H3TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 func (a *H3TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
 	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+}
+
+// EstimateBilling applies the official H3 per-second price to the requested
+// duration. 768P is the base price; 2K uses the official $0.13/s ÷ $0.08/s
+// multiplier so the existing quota engine can pre-charge by seconds.
+func (a *H3TaskAdaptor) EstimateBilling(c *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
+	v, ok := c.Get("task_request")
+	if !ok {
+		return nil
+	}
+	req, ok := v.(relaycommon.TaskSubmitReq)
+	if !ok {
+		return nil
+	}
+	duration := req.Duration
+	resolution := strings.TrimSpace(req.Size)
+	var metadata struct {
+		Duration   int    `json:"duration"`
+		Resolution string `json:"resolution"`
+	}
+	if req.Metadata != nil {
+		if err := req.UnmarshalMetadata(&metadata); err == nil {
+			if metadata.Duration > 0 {
+				duration = metadata.Duration
+			}
+			if metadata.Resolution != "" {
+				resolution = metadata.Resolution
+			}
+		}
+	}
+	if duration < 4 || duration > 15 {
+		duration = h3DefaultDuration
+	}
+	ratio := 1.0
+	if strings.Contains(strings.ToUpper(resolution), "2K") {
+		ratio = h3TwoKPriceRatio
+	}
+	return map[string]float64{"seconds": float64(duration), "size": ratio}
 }
 
 func (a *H3TaskAdaptor) BuildRequestURL(_ *relaycommon.RelayInfo) (string, error) {
@@ -236,6 +276,40 @@ func (a *H3TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, err
 		result.Progress = taskcommon.ProgressInProgress
 	}
 	return result, nil
+}
+
+// AdjustBillingOnComplete reconciles the pre-charge with MiniMax's actual
+// output_seconds when the upstream reports a value different from requested.
+func (a *H3TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
+	if task == nil || taskResult == nil || taskResult.BillableSeconds <= 0 {
+		return 0
+	}
+	bc := task.PrivateData.BillingContext
+	if bc == nil || task.Quota <= 0 {
+		return 0
+	}
+	requested := 0
+	if bc.OtherRatios != nil {
+		if seconds, ok := bc.OtherRatios["seconds"]; ok && seconds > 0 {
+			requested = int(math.Round(seconds))
+		}
+	}
+	if requested == taskResult.BillableSeconds {
+		return 0
+	}
+	base := float64(task.Quota)
+	for _, ratio := range bc.OtherRatios {
+		if ratio > 0 && ratio != 1 {
+			base /= ratio
+		}
+	}
+	result := base * float64(taskResult.BillableSeconds)
+	for key, ratio := range bc.OtherRatios {
+		if key != "seconds" && ratio > 0 && ratio != 1 {
+			result *= ratio
+		}
+	}
+	return int(math.Round(result))
 }
 
 func (a *H3TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {

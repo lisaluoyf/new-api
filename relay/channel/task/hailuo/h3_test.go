@@ -38,6 +38,51 @@ func TestH3BuildRequestBody(t *testing.T) {
 	}
 }
 
+func TestH3EstimateBillingUsesDurationAndResolution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	a := &H3TaskAdaptor{}
+	for _, tc := range []struct {
+		name     string
+		duration int
+		size     string
+		wantSize float64
+	}{
+		{name: "768P", duration: 5, size: "768P", wantSize: 1},
+		{name: "2K", duration: 10, size: "2K", wantSize: h3TwoKPriceRatio},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Set("task_request", relaycommon.TaskSubmitReq{
+				Model: "MiniMax-H3", Duration: tc.duration, Size: tc.size,
+			})
+			got := a.EstimateBilling(c, &relaycommon.RelayInfo{})
+			if got["seconds"] != float64(tc.duration) || got["size"] != tc.wantSize {
+				t.Fatalf("billing ratios = %#v, want seconds=%d size=%v", got, tc.duration, tc.wantSize)
+			}
+		})
+	}
+}
+
+func TestH3AdjustBillingOnCompleteUsesActualOutputSeconds(t *testing.T) {
+	a := &H3TaskAdaptor{}
+	task := &model.Task{
+		Quota: 1300,
+		PrivateData: model.TaskPrivateData{
+			BillingContext: &model.TaskBillingContext{
+				OtherRatios: map[string]float64{
+					"seconds": 10,
+					"size":    h3TwoKPriceRatio,
+				},
+			},
+		},
+	}
+	result := &relaycommon.TaskInfo{BillableSeconds: 5}
+	// 1300 / (10 × 1.625) × 5 × 1.625 = 650.
+	if got := a.AdjustBillingOnComplete(task, result); got != 650 {
+		t.Fatalf("final quota = %d, want 650", got)
+	}
+}
+
 func TestH3ParseTaskResult(t *testing.T) {
 	a := &H3TaskAdaptor{}
 	result, err := a.ParseTaskResult([]byte(`{

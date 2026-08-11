@@ -32,7 +32,7 @@ func BuildVideoRequestDataForLog(req *relaycommon.TaskSubmitReq) map[string]inte
 			}
 		}
 	}
-	if duration <= 0 && strings.HasPrefix(strings.TrimSpace(req.Model), "sora-2") {
+	if duration <= 0 && (strings.HasPrefix(strings.TrimSpace(req.Model), "sora-2") || strings.EqualFold(strings.TrimSpace(req.Model), "minimax-h3")) {
 		duration = 4
 	}
 	if duration > 0 {
@@ -46,6 +46,16 @@ func BuildVideoRequestDataForLog(req *relaycommon.TaskSubmitReq) map[string]inte
 	size := normalizedVideoSize(req.Size)
 	if size == "" && strings.HasPrefix(strings.TrimSpace(req.Model), "sora-2") {
 		size = "720x1280"
+	}
+	if strings.EqualFold(strings.TrimSpace(req.Model), "minimax-h3") {
+		resolution := strings.ToUpper(strings.TrimSpace(req.Size))
+		if resolution == "2K" || resolution == "768P" {
+			data["resolution"] = resolution
+			data["effective_resolution"] = resolution
+		} else if _, exists := data["resolution"]; !exists {
+			data["resolution"] = "768P"
+			data["effective_resolution"] = "768P"
+		}
 	}
 	appendVideoDerivedFields(data, size)
 	data["actual_image_count"] = videoActualImageCount(req)
@@ -90,6 +100,9 @@ func EnrichVideoRequestData(data map[string]interface{}) map[string]interface{} 
 		if model := strings.ToLower(stringField(data["model"])); strings.HasPrefix(model, "sora") {
 			data["resolution"] = "720p"
 			data["effective_resolution"] = "720P"
+		} else if model == "minimax-h3" {
+			data["resolution"] = "768P"
+			data["effective_resolution"] = "768P"
 		}
 	}
 
