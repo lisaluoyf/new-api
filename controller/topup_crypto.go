@@ -100,6 +100,44 @@ var (
 	txHashPattern     = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
 )
 
+func cryptoShortValue(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= 18 {
+		return value
+	}
+	return value[:10] + "..." + value[len(value)-6:]
+}
+
+func recordCryptoIntentLog(userId int, content string, intent *model.CryptoDepositIntent, extra map[string]interface{}) {
+	if userId <= 0 || strings.TrimSpace(content) == "" {
+		return
+	}
+	adminInfo := map[string]interface{}{
+		"payment_method":   "crypto",
+		"payment_provider": "crypto",
+	}
+	if intent != nil {
+		adminInfo["intent_id"] = intent.Id
+		adminInfo["chain"] = intent.Chain
+		adminInfo["token_symbol"] = intent.TokenSymbol
+		adminInfo["wallet_address_from"] = intent.WalletAddressFrom
+		adminInfo["expected_to_address"] = intent.ExpectedToAddress
+		if intent.TxHash != nil && strings.TrimSpace(*intent.TxHash) != "" {
+			adminInfo["tx_hash"] = *intent.TxHash
+		}
+		if strings.TrimSpace(intent.Status) != "" {
+			adminInfo["intent_status"] = intent.Status
+		}
+		if strings.TrimSpace(intent.ErrorMessage) != "" {
+			adminInfo["error_message"] = intent.ErrorMessage
+		}
+	}
+	for key, value := range extra {
+		adminInfo[key] = value
+	}
+	model.RecordLogWithAdminInfo(userId, model.LogTypeTopup, content, adminInfo)
+}
+
 func getPlatformWallet() string {
 	wallet := os.Getenv("PLATFORM_WALLET_ADDRESS")
 	if wallet == "" {
@@ -493,11 +531,39 @@ func markCryptoIntentFailed(intentId string, err error) {
 		"status":        model.CryptoDepositIntentStatusFailed,
 		"error_message": message,
 	}
-	if updateErr := model.DB.Model(&model.CryptoDepositIntent{}).
+	result := model.DB.Model(&model.CryptoDepositIntent{}).
 		Where("id = ? AND status = ?", intentId, model.CryptoDepositIntentStatusPending).
-		Updates(updates).Error; updateErr != nil {
+		Updates(updates)
+	if result.Error != nil {
+		updateErr := result.Error
 		common.SysLog(fmt.Sprintf("crypto: mark failed intent=%s err=%v", intentId, updateErr))
+		return
 	}
+	if result.RowsAffected == 0 {
+		return
+	}
+
+	var intent model.CryptoDepositIntent
+	if loadErr := model.DB.Where("id = ?", intentId).First(&intent).Error; loadErr != nil {
+		common.SysLog(fmt.Sprintf("crypto: reload failed intent=%s err=%v", intentId, loadErr))
+		return
+	}
+	txHash := ""
+	if intent.TxHash != nil {
+		txHash = cryptoShortValue(*intent.TxHash)
+	}
+	recordCryptoIntentLog(
+		intent.UserId,
+		fmt.Sprintf(
+			"加密货币充值失败：%s %s，交易 %s，原因：%s",
+			strings.ToUpper(intent.Chain),
+			intent.TokenSymbol,
+			txHash,
+			message,
+		),
+		&intent,
+		map[string]interface{}{"stage": "verify_failed"},
+	)
 }
 
 func matchCryptoAmountDiscountTier(usdValue float64) (int, float64, bool) {
@@ -709,6 +775,17 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to create deposit intent"})
 		return
 	}
+	recordCryptoIntentLog(
+		userId,
+		fmt.Sprintf(
+			"发起加密货币充值：%s %s，钱包 %s，等待转账",
+			strings.ToUpper(intent.Chain),
+			intent.TokenSymbol,
+			cryptoShortValue(intent.WalletAddressFrom),
+		),
+		intent,
+		map[string]interface{}{"stage": "intent_created"},
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":   true,
@@ -767,6 +844,7 @@ func SubmitCryptoDeposit(c *gin.Context) {
 		return
 	}
 
+	submittedNewTxHash := false
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		var current model.CryptoDepositIntent
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -792,6 +870,7 @@ func SubmitCryptoDeposit(c *gin.Context) {
 		current.TxHash = &txHash
 		current.WalletSignature = strings.TrimSpace(req.WalletSignature)
 		current.VerifiedAt = common.GetTimestamp()
+		submittedNewTxHash = true
 		return tx.Save(&current).Error
 	})
 	if err != nil {
@@ -807,6 +886,22 @@ func SubmitCryptoDeposit(c *gin.Context) {
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 		return
+	}
+	if submittedNewTxHash {
+		intent.TxHash = &txHash
+		intent.WalletSignature = strings.TrimSpace(req.WalletSignature)
+		intent.VerifiedAt = common.GetTimestamp()
+		recordCryptoIntentLog(
+			userId,
+			fmt.Sprintf(
+				"提交加密货币交易：%s %s，交易 %s，等待链上确认",
+				strings.ToUpper(intent.Chain),
+				intent.TokenSymbol,
+				cryptoShortValue(txHash),
+			),
+			&intent,
+			map[string]interface{}{"stage": "tx_submitted"},
+		)
 	}
 
 	go verifyAndCredit(intent.Id)
