@@ -593,6 +593,39 @@ func matchCryptoAmountDiscountTier(usdValue float64) (int, float64, bool) {
 	return bestTier, bestDiscount, true
 }
 
+func cryptoFirstTopupPromoMinPaidUSD() float64 {
+	threshold := float64(common.FirstTopupPromoAmount) * common.FirstTopupPromoDiscount
+	if threshold <= 0 {
+		return 0
+	}
+	// Crypto users usually pay round-dollar amounts; floor the nominal threshold
+	// so "$7.5 gets $10" becomes "starting from $7, apply the same uplift rule".
+	floored := math.Floor(threshold + 1e-9)
+	if floored >= 1 {
+		return floored
+	}
+	return threshold
+}
+
+func applyCryptoFirstTopupPromo(usdValue float64) (float64, float64, bool) {
+	if usdValue <= 0 || !common.FirstTopupPromoEnabled {
+		return usdValue, 0, false
+	}
+	if common.FirstTopupPromoDiscount <= 0 || common.FirstTopupPromoDiscount >= 1 {
+		return usdValue, 0, false
+	}
+	if minPaid := cryptoFirstTopupPromoMinPaidUSD(); minPaid > 0 && usdValue+1e-9 < minPaid {
+		return usdValue, 0, false
+	}
+
+	bonusBase := usdValue
+	if capUsd := float64(common.FirstTopupPromoAmount); bonusBase > capUsd {
+		bonusBase = capUsd
+	}
+	bonus := bonusBase * (1/common.FirstTopupPromoDiscount - 1)
+	return usdValue + bonus, bonus, true
+}
+
 func verifyAndCredit(intentId string) {
 	var intent model.CryptoDepositIntent
 	if err := model.DB.Where("id = ?", intentId).First(&intent).Error; err != nil {
@@ -621,13 +654,10 @@ func verifyAndCredit(intentId string) {
 		creditUsd = usdValue / matchedDiscount
 		common.SysLog(fmt.Sprintf("crypto: amount-discount promo userId=%d tier=%d paid=%.4f credit=%.4f", intent.UserId, matchedTier, usdValue, creditUsd))
 	} else if eligible, _ := model.IsFirstTopupPromoEligible(intent.UserId); eligible {
-		bonusBase := usdValue
-		if capUsd := float64(common.FirstTopupPromoAmount); bonusBase > capUsd {
-			bonusBase = capUsd
+		if promoCredit, bonus, applied := applyCryptoFirstTopupPromo(usdValue); applied {
+			creditUsd = promoCredit
+			common.SysLog(fmt.Sprintf("crypto: first-topup promo userId=%d paid=%.4f bonus=%.4f credit=%.4f", intent.UserId, usdValue, bonus, creditUsd))
 		}
-		bonus := bonusBase * (1/common.FirstTopupPromoDiscount - 1)
-		creditUsd = usdValue + bonus
-		common.SysLog(fmt.Sprintf("crypto: first-topup promo userId=%d paid=%.4f bonus=%.4f credit=%.4f", intent.UserId, usdValue, bonus, creditUsd))
 	}
 	quotaToAdd := int(decimal.NewFromFloat(creditUsd).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
 	tradeNo := fmt.Sprintf("CRYPTO:%s:%s", strings.ToUpper(intent.Chain), *intent.TxHash)

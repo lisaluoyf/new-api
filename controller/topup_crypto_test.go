@@ -3,6 +3,7 @@ package controller
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/require"
 )
@@ -78,6 +79,80 @@ func TestMatchCryptoAmountDiscountTier(t *testing.T) {
 			require.Equal(t, tc.applied, applied)
 			require.Equal(t, tc.expectedTier, actualTier)
 			require.InDelta(t, tc.expectedDiscount, actualDiscount, 0.000001)
+		})
+	}
+}
+
+func TestCryptoFirstTopupPromoMinPaidUSD(t *testing.T) {
+	originalAmount := common.FirstTopupPromoAmount
+	originalDiscount := common.FirstTopupPromoDiscount
+	t.Cleanup(func() {
+		common.FirstTopupPromoAmount = originalAmount
+		common.FirstTopupPromoDiscount = originalDiscount
+	})
+
+	common.FirstTopupPromoAmount = 10
+	common.FirstTopupPromoDiscount = 0.75
+	require.InDelta(t, 7.0, cryptoFirstTopupPromoMinPaidUSD(), 0.000001)
+}
+
+func TestApplyCryptoFirstTopupPromoRequiresMinPaidThreshold(t *testing.T) {
+	originalEnabled := common.FirstTopupPromoEnabled
+	originalAmount := common.FirstTopupPromoAmount
+	originalDiscount := common.FirstTopupPromoDiscount
+	t.Cleanup(func() {
+		common.FirstTopupPromoEnabled = originalEnabled
+		common.FirstTopupPromoAmount = originalAmount
+		common.FirstTopupPromoDiscount = originalDiscount
+	})
+
+	common.FirstTopupPromoEnabled = true
+	common.FirstTopupPromoAmount = 10
+	common.FirstTopupPromoDiscount = 0.75
+
+	testCases := []struct {
+		name           string
+		paid           float64
+		expectedCredit float64
+		expectedBonus  float64
+		applied        bool
+	}{
+		{
+			name:           "below threshold does not inflate",
+			paid:           6.99,
+			expectedCredit: 6.99,
+			expectedBonus:  0,
+			applied:        false,
+		},
+		{
+			name:           "seven dollars starts promo",
+			paid:           7,
+			expectedCredit: 7 / 0.75,
+			expectedBonus:  7/0.75 - 7,
+			applied:        true,
+		},
+		{
+			name:           "seven point five still credits ten",
+			paid:           7.5,
+			expectedCredit: 10,
+			expectedBonus:  2.5,
+			applied:        true,
+		},
+		{
+			name:           "bonus remains capped by configured promo amount",
+			paid:           20,
+			expectedCredit: 20 + 10*(1/0.75-1),
+			expectedBonus:  10 * (1/0.75 - 1),
+			applied:        true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actualCredit, actualBonus, applied := applyCryptoFirstTopupPromo(tc.paid)
+			require.Equal(t, tc.applied, applied)
+			require.InDelta(t, tc.expectedCredit, actualCredit, 0.000001)
+			require.InDelta(t, tc.expectedBonus, actualBonus, 0.000001)
 		})
 	}
 }
