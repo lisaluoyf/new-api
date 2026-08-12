@@ -299,7 +299,10 @@ export function CommonLogsFilterBar<TData>(
             <Select
               value={filters.model || ''}
               onValueChange={(value) =>
-                handleChange('model', value === 'all' ? undefined : value)
+                handleChange(
+                  'model',
+                  value ? (value === 'all' ? undefined : value) : undefined
+                )
               }
             >
               <SelectTrigger className={inputClass}>

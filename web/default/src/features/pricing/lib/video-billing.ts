@@ -9,6 +9,12 @@ Runtime billing lives in Go relay/task helpers; this module is for UI labels.
 export const VIDEO_PER_SECOND_DEFAULT_PRICES: Record<string, number> = {
   'sora-2': 0.08,
   'sora-2-pro': 0.24,
+  'minimax-h3': 0.08,
+}
+
+/** Official MiniMax-H3 API price multiplier relative to the 768P base. */
+export const VIDEO_PER_SECOND_RESOLUTION_RATIOS: Record<string, Record<string, number>> = {
+  'minimax-h3': { '768P': 1, '2K': 0.13 / 0.08 },
 }
 
 export function isVideoPerSecondModel(modelName: string): boolean {
@@ -26,7 +32,9 @@ export function getVideoPerSecondDefaultPrice(
 }
 
 export function getVideoPerSecondDetailKey(modelName: string): string {
-  return modelName.toLowerCase() === 'sora-2-pro'
+  const model = modelName.toLowerCase()
+  if (model === 'minimax-h3') return 'Video per-second detail minimax-h3'
+  return model === 'sora-2-pro'
     ? 'Video per-second detail sora-2-pro'
     : 'Video per-second detail sora-2'
 }

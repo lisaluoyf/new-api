@@ -95,7 +95,6 @@ const RUB_METHODS = new Set(['platega'])
 export function formatPaidAmount(
   money: number,
   method: string,
-  amount: number,
 ): string {
   if (CNY_METHODS.has(method)) {
     return money > 0 ? `¥${money.toFixed(2)}` : '—'

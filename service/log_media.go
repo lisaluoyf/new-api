@@ -230,7 +230,7 @@ func formatLogRequestScalar(value interface{}) (string, bool) {
 func isLogMediaVideoModel(modelName string) bool {
 	model := strings.TrimSpace(strings.ToLower(modelName))
 	return model == "sora-2" || model == "sora-2-pro" || strings.HasPrefix(model, "sora-2-") ||
-		model == "kling-v3-motion-control"
+		model == "kling-v3-motion-control" || model == "minimax-h3"
 }
 
 func resolveLogMediaURL(log *model.Log, other map[string]interface{}) string {

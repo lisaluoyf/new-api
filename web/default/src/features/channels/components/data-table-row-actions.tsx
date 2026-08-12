@@ -24,12 +24,9 @@ import {
   Boxes,
   Pencil,
   TestTube,
-  Gauge,
   DollarSign,
   Download,
   Copy,
-  Power,
-  PowerOff,
   Key,
   Trash2,
   RefreshCw,
@@ -45,17 +42,10 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { MODEL_FETCHABLE_TYPES } from '../constants'
 import {
-  channelsQueryKeys,
   handleDeleteChannel,
-  handleTestChannel,
   handleToggleChannelStatus,
   isChannelEnabled,
   isMultiKeyChannel,
@@ -74,7 +64,6 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const { setOpen, setCurrentRow, upstream } = useChannels()
   const queryClient = useQueryClient()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [isTesting, setIsTesting] = useState(false)
   const [isTogglingStatus, setIsTogglingStatus] = useState(false)
 
   const isEnabled = isChannelEnabled(channel)
@@ -88,18 +77,6 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const handleTest = () => {
     setCurrentRow(channel)
     setOpen('test-channel')
-  }
-
-  const handleDirectTest = async (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation()
-    setIsTesting(true)
-    try {
-      await handleTestChannel(channel.id, undefined, () => {
-        queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
-      })
-    } finally {
-      setIsTesting(false)
-    }
   }
 
   const handleQueryBalance = () => {

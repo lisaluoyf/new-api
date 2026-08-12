@@ -55,6 +55,7 @@ var ModelIDCandidates = map[string][]string{
 	"claude-opus-4-5":                {"anthropic/claude-opus-4.5"},
 	"gpt-5.4-mini":                   {"openai/gpt-5.4-mini"},
 	"minimax-m3":                     {"MiniMax-M3", "MiniMax-M3-20260301", "minimax/minimax-m3"},
+	"minimax-h3":                     {"MiniMax-H3"},
 	"kimi-k2.7-code":                 {"moonshotai/kimi-k2.7-code", "kimi-k2-7-code"},
 	"mimo-v2.5-pro":                  {"xiaomi/mimo-v2.5-pro", "mimo-v2-5-pro"},
 	"mimo-v2.5":                      {"xiaomi/mimo-v2.5", "mimo-v2-5"},
@@ -75,6 +76,18 @@ func ModelNameCandidates(canonical string) []string {
 	out := []string{canonical}
 	out = append(out, ModelIDCandidates[canonical]...)
 	return out
+}
+
+// ProbeModelCandidates returns the model IDs that may be sent upstream for a
+// channel probe. A channel-level model_mapping is authoritative for relay
+// traffic, so its terminal target must be tried first here as well. Keeping the
+// canonical name in the fallback list preserves the existing alias behavior
+// for channels without a mapping.
+func ProbeModelCandidates(canonical string, modelMapping *string) []string {
+	if target := ModelMappingTarget(modelMapping, canonical); target != "" {
+		return []string{target}
+	}
+	return ModelNameCandidates(canonical)
 }
 
 var uptimeOnce sync.Once
@@ -210,7 +223,7 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 	}
 
 	urlCandidates := baseURLCandidates(baseURL)
-	modelCandidates := ModelNameCandidates(targetModel)
+	modelCandidates := ProbeModelCandidates(targetModel, ch.ModelMapping)
 
 	client := &http.Client{Timeout: uptimeRequestTimeout}
 	var lastErr string

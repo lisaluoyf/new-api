@@ -51,7 +51,7 @@ export function MediaDialogFooter({
         <CopyButton
           value={displayUrl}
           variant='ghost'
-          size='icon-sm'
+          size='icon'
           tooltip={t('Copy to clipboard')}
         />
       </div>

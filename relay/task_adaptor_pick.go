@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskapimartvideo "github.com/QuantumNous/new-api/relay/channel/task/apimartvideo"
+	"github.com/QuantumNous/new-api/relay/channel/task/hailuo"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,9 @@ func ResolveTaskAdaptor(c *gin.Context, platform constant.TaskPlatform, info *re
 	if taskapimartvideo.IsChannel(info.ChannelBaseUrl) && taskapimartvideo.IsVideoModel(modelName) {
 		return &taskapimartvideo.TaskAdaptor{}
 	}
+	if info.ChannelType == constant.ChannelTypeMiniMax && strings.EqualFold(modelName, "MiniMax-H3") {
+		return &hailuo.H3TaskAdaptor{}
+	}
 	return GetTaskAdaptor(platform)
 }
 
@@ -32,6 +36,9 @@ func ResolveTaskPlatform(c *gin.Context, platform constant.TaskPlatform, info *r
 	}
 	if taskapimartvideo.IsChannel(info.ChannelBaseUrl) && taskapimartvideo.IsVideoModel(modelName) {
 		return constant.TaskPlatformApimartVideo
+	}
+	if info.ChannelType == constant.ChannelTypeMiniMax && strings.EqualFold(modelName, "MiniMax-H3") {
+		return constant.TaskPlatformMiniMaxH3
 	}
 	return platform
 }

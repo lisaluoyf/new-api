@@ -20,8 +20,14 @@ import type { UsageLog } from '../data/schema'
 import type { LogOtherData } from '../types'
 
 export type LogMediaPreview =
-  | { kind: 'image'; url: string; taskId?: string; errorMessage?: string; errorCode?: string }
-  | { kind: 'video'; url: string; taskId: string }
+  | {
+      kind: 'image'
+      url: string
+      taskId?: string
+      errorMessage?: string
+      errorCode?: string
+    }
+  | { kind: 'video'; url: string; taskId: string; fallbackUrl?: string }
 
 export function isValidMediaPreviewURL(url: string): boolean {
   const u = url.trim()
@@ -42,7 +48,8 @@ export function isLogMediaVideoModel(modelName: string): boolean {
     model === 'sora-2' ||
     model === 'sora-2-pro' ||
     model.startsWith('sora-2-') ||
-    model === 'kling-v3-motion-control'
+    model === 'kling-v3-motion-control' ||
+    model === 'minimax-h3'
   )
 }
 
@@ -95,8 +102,19 @@ export function getLogMediaPreview(
   }
 
   if (isLogMediaVideoModel(modelName)) {
-    if (taskId && (log.use_time ?? 0) > 0) {
-      return { kind: 'video', url: buildVideoProxyUrl(taskId), taskId }
+    // Always use the authenticated backend proxy when a task id is available.
+    // Video generation logs are written at submit time and may legitimately
+    // have use_time=0, while the upstream signed URL can be inaccessible to
+    // the dashboard browser or expire independently of the task record.
+    if (taskId) {
+      const proxyURL = buildVideoProxyUrl(taskId)
+      return {
+        kind: 'video',
+        url: proxyURL,
+        taskId,
+        fallbackUrl:
+          resultURL && resultURL !== proxyURL ? resultURL : undefined,
+      }
     }
     if (resultURL && isValidMediaPreviewURL(resultURL)) {
       return { kind: 'video', url: resultURL, taskId: taskId || '' }

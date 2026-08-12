@@ -34,7 +34,7 @@ const VALID_PERIODS: RankingPeriod[] = ['today', 'week', 'month', 'year', 'all']
 
 export function Rankings() {
   const { t } = useTranslation()
-  const search = useSearch({ from: '/rankings/' })
+  const search = useSearch({ from: '/rankings/' }) as { period?: string }
   const navigate = useNavigate()
 
   const period: RankingPeriod = VALID_PERIODS.includes(

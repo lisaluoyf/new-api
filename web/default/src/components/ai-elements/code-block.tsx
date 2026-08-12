@@ -27,7 +27,6 @@ import {
   useEffect,
   useState,
 } from 'react'
-import type { Element } from 'hast'
 import { CheckIcon, CopyIcon } from 'lucide-react'
 import {
   type BundledLanguage,
@@ -50,6 +49,18 @@ type CodeBlockContextType = {
 const CodeBlockContext = createContext<CodeBlockContextType>({
   code: '',
 })
+
+type ElementNode = {
+  type: string
+  tagName?: string
+  properties?: Record<string, unknown>
+  value?: string
+  children?: ElementNode[]
+}
+
+type Element = {
+  children: ElementNode[]
+}
 
 const lineNumberTransformer: ShikiTransformer = {
   name: 'line-numbers',

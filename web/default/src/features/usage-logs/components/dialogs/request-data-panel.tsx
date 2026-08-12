@@ -128,7 +128,7 @@ export function RequestDataPanel({
               <CopyButton
                 value={prompt}
                 variant='ghost'
-                size='icon-sm'
+                size='icon'
                 tooltip={t('Copy to clipboard')}
               />
             </div>
@@ -164,7 +164,7 @@ export function RequestDataPanel({
               <CopyButton
                 value={rawJson}
                 variant='ghost'
-                size='icon-sm'
+                size='icon'
                 className='absolute top-1.5 right-1.5 z-10'
                 tooltip={t('Copy to clipboard')}
               />

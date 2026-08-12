@@ -49,14 +49,15 @@ import {
   parseLogOther,
   isViolationFeeLog,
 } from '../../lib/format'
+import { getLogMediaPreview } from '../../lib/media-preview'
 import {
   isDisplayableLogType,
   isTimingLogType,
   getLogTypeConfig,
   isPerCallBilling,
+  isDurationBilling,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
-import { getLogMediaPreview } from '../../lib/media-preview'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { ImageDialog } from '../dialogs/image-dialog'
 import { VideoDialog } from '../dialogs/video-dialog'
@@ -191,10 +192,15 @@ function buildDetailSegments(
       })
     }
   } else {
-    const isPerCall = isPerCallBilling(other.model_price)
+    const isDuration = isDurationBilling(other.billing_mode)
+    const isPerCall = !isDuration && isPerCallBilling(other.model_price)
     if (isPerCall) {
       segments.push({
         text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
+      })
+    } else if (isDuration) {
+      segments.push({
+        text: `${t('Per-second')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
       })
     } else if (isSubscription && other.model_ratio != null) {
       const inputPriceUSD = other.model_ratio * 2.0
@@ -243,7 +249,8 @@ function buildDetailSegments(
           other.ch_cache_price != null && other.ch_cache_price > 0
             ? formatPriceCompact(other.ch_cache_price)
             : null,
-          other.ch_cache_creation_price != null && other.ch_cache_creation_price > 0
+          other.ch_cache_creation_price != null &&
+          other.ch_cache_creation_price > 0
             ? formatPriceCompact(other.ch_cache_creation_price)
             : null,
         ].filter(Boolean) as string[]
@@ -369,6 +376,7 @@ function MediaPreviewCell({
         <VideoDialog
           videoUrl={preview.url}
           taskId={preview.taskId}
+          fallbackUrl={preview.fallbackUrl}
           requestData={other?.request_data}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
@@ -552,7 +560,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
             useUsageLogsContext()
           const log = row.original
-          const displayName = log.username || (log.user_id ? String(log.user_id) : '')
+          const displayName =
+            log.username || (log.user_id ? String(log.user_id) : '')
 
           if (!displayName) return null
 
@@ -745,7 +754,9 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                               'gpt-image-2 channel fallback triggered — final channel: {{channel}}',
                               { channel: other.fallback_winner_channel_name }
                             )
-                          : t('gpt-image-2: primary channel was slow, raced in a second channel')}
+                          : t(
+                              'gpt-image-2: primary channel was slow, raced in a second channel'
+                            )}
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -911,7 +922,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <span className='inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-xs font-medium tabular-nums text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' />
+                    <span className='inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-xs font-medium text-emerald-700 tabular-nums dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' />
                   }
                 >
                   <span
@@ -966,31 +977,31 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 onClick={() => setDialogOpen(true)}
                 title={t('Click to view full details')}
               >
-              {primary ? (
-                <span
-                  className={cn(
-                    'truncate leading-snug group-hover:underline',
-                    primary.muted
-                      ? 'text-muted-foreground/60'
-                      : primary.danger
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-foreground'
-                  )}
-                >
-                  {primary.text}
-                  {hasMore && (
-                    <span className='text-muted-foreground/40 ml-0.5'>
-                      +{segments.length - 1}
-                    </span>
-                  )}
-                </span>
-              ) : log.content ? (
-                <span className='text-muted-foreground truncate group-hover:underline'>
-                  {log.content}
-                </span>
-              ) : (
-                <span className='text-muted-foreground/40'>—</span>
-              )}
+                {primary ? (
+                  <span
+                    className={cn(
+                      'truncate leading-snug group-hover:underline',
+                      primary.muted
+                        ? 'text-muted-foreground/60'
+                        : primary.danger
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-foreground'
+                    )}
+                  >
+                    {primary.text}
+                    {hasMore && (
+                      <span className='text-muted-foreground/40 ml-0.5'>
+                        +{segments.length - 1}
+                      </span>
+                    )}
+                  </span>
+                ) : log.content ? (
+                  <span className='text-muted-foreground truncate group-hover:underline'>
+                    {log.content}
+                  </span>
+                ) : (
+                  <span className='text-muted-foreground/40'>—</span>
+                )}
               </button>
             </div>
             <DetailsDialog

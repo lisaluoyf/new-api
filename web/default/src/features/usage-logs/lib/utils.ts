@@ -72,6 +72,10 @@ export function isPerCallBilling(modelPrice?: number): boolean {
   return (modelPrice ?? 0) > 0
 }
 
+export function isDurationBilling(billingMode?: string): boolean {
+  return billingMode === 'duration_seconds'
+}
+
 /**
  * Get default time range (today 00:00:00 to now + 1 hour)
  */

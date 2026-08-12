@@ -363,7 +363,7 @@ export function ClientGoneFallbackSettingsSection({
                               min={1}
                               step={1}
                               {...frtField}
-                              value={frtField.value ?? 20}
+                              value={String(frtField.value ?? 20)}
                               onChange={(event) =>
                                 frtField.onChange(event.target.value)
                               }
@@ -394,7 +394,7 @@ export function ClientGoneFallbackSettingsSection({
                               min={0}
                               step={1}
                               {...perMbField}
-                              value={perMbField.value ?? 0}
+                              value={String(perMbField.value ?? 0)}
                               onChange={(event) =>
                                 perMbField.onChange(event.target.value)
                               }

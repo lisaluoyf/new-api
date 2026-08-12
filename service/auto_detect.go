@@ -148,11 +148,12 @@ func detectOneChannel(ctx context.Context, flaskURL string, ch *model.Channel, t
 	// source='auto' tells Flask to flag this row in apimaster.detections so user-facing
 	// pages (history / stats / ranking) can filter background scans out.
 	body, err := common.Marshal(map[string]string{
-		"base_url":      baseURL,
-		"api_key":       apiKey,
-		"claimed_model": targetModel,
-		"api_format":    apiFormat,
-		"source":        "auto",
+		"base_url":       baseURL,
+		"api_key":        apiKey,
+		"claimed_model":  targetModel,
+		"upstream_model": ModelMappingTarget(ch.ModelMapping, targetModel),
+		"api_format":     apiFormat,
+		"source":         "auto",
 	})
 	if err != nil {
 		return
