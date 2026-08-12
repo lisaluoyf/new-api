@@ -2946,6 +2946,7 @@
     "Per request": "每次请求",
     "Per Request": "按请求",
     "Per-call": "每次调用",
+    "Per-second": "每秒",
     "Per-feature metered windows split by model or capability.": "按模型或能力拆分的附加计费能力窗口。",
     "Per-group performance": "各分组性能",
     "Per-request": "按次",

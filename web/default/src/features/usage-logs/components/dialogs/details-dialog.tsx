@@ -63,6 +63,7 @@ import {
 import {
   getLogTypeConfig,
   isPerCallBilling,
+  isDurationBilling,
   isTimingLogType,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
@@ -143,7 +144,8 @@ function BillingBreakdown(props: {
 }) {
   const { t } = useTranslation()
   const { log, other, isAdmin } = props
-  const isPerCall = isPerCallBilling(other.model_price)
+  const isDuration = isDurationBilling(other.billing_mode)
+  const isPerCall = !isDuration && isPerCallBilling(other.model_price)
   const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const isSubscription = isSubscriptionUsageLog(other)
@@ -176,6 +178,14 @@ function BillingBreakdown(props: {
       rows.push({
         label: t('Matched Tier'),
         value: t('No matching results'),
+      })
+    }
+  } else if (isDuration) {
+    rows.push({ label: t('Billing Mode'), value: t('Per-second') })
+    if (other.model_price != null) {
+      rows.push({
+        label: t('Model Price'),
+        value: `${fmtPrice(other.model_price)}/s`,
       })
     }
   } else if (isPerCall) {

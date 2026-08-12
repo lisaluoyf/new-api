@@ -62,7 +62,21 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	other := make(map[string]interface{})
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
-	other["model_price"] = info.PriceData.ModelPrice
+	// Video prices are configured at the base resolution. Persist the
+	// effective per-second price so a 2K request does not show the 768P base.
+	logModelPrice := info.PriceData.ModelPrice
+	if strings.EqualFold(strings.TrimSpace(info.OriginModelName), "minimax-h3") {
+		if ratio, ok := info.PriceData.OtherRatios["size"]; ok && ratio > 0 {
+			logModelPrice *= ratio
+		}
+	}
+	other["model_price"] = logModelPrice
+	if TaskUsesDurationBasedBilling(info.PriceData) {
+		other["billing_mode"] = accountingBillingModeDurationSeconds
+		if info.PriceData.ModelPrice > 0 && logModelPrice != info.PriceData.ModelPrice {
+			other["base_model_price"] = info.PriceData.ModelPrice
+		}
+	}
 	if info.PriceData.ModelRatio > 0 {
 		other["model_ratio"] = info.PriceData.ModelRatio
 	}

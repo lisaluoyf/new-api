@@ -55,6 +55,7 @@ import {
   isTimingLogType,
   getLogTypeConfig,
   isPerCallBilling,
+  isDurationBilling,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
@@ -191,10 +192,15 @@ function buildDetailSegments(
       })
     }
   } else {
-    const isPerCall = isPerCallBilling(other.model_price)
+    const isDuration = isDurationBilling(other.billing_mode)
+    const isPerCall = !isDuration && isPerCallBilling(other.model_price)
     if (isPerCall) {
       segments.push({
         text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
+      })
+    } else if (isDuration) {
+      segments.push({
+        text: `${t('Per-second')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
       })
     } else if (isSubscription && other.model_ratio != null) {
       const inputPriceUSD = other.model_ratio * 2.0

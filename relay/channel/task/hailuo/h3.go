@@ -43,8 +43,16 @@ type H3TaskAdaptor struct {
 }
 
 type h3Content struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type     string      `json:"type"`
+	Text     string      `json:"text,omitempty"`
+	Role     string      `json:"role,omitempty"`
+	ImageURL *h3MediaURL `json:"image_url,omitempty"`
+	VideoURL *h3MediaURL `json:"video_url,omitempty"`
+	AudioURL *h3MediaURL `json:"audio_url,omitempty"`
+}
+
+type h3MediaURL struct {
+	URL string `json:"url"`
 }
 
 type h3CreateRequest struct {
@@ -73,6 +81,7 @@ type h3TaskResponse struct {
 			URL string `json:"url"`
 		} `json:"content"`
 		Usage struct {
+			TotalSeconds  int `json:"total_seconds"`
 			OutputSeconds int `json:"output_seconds"`
 		} `json:"usage"`
 	} `json:"task"`
@@ -159,6 +168,12 @@ func (a *H3TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.Relay
 		Duration:   h3DefaultDuration,
 		Ratio:      h3DefaultRatio,
 	}
+	// The generic task request supports a webhook, while MiniMax calls the
+	// same field callback_url. Metadata remains the escape hatch for clients
+	// that need the complete official content array.
+	if strings.TrimSpace(req.Webhook) != "" {
+		payload.CallbackURL = strings.TrimSpace(req.Webhook)
+	}
 	if req.Duration >= 4 && req.Duration <= 15 {
 		payload.Duration = req.Duration
 	}
@@ -172,7 +187,56 @@ func (a *H3TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.Relay
 	}
 	// Metadata must not be able to change the routed model or omit the prompt.
 	payload.Model = h3Model
-	payload.Content = []h3Content{{Type: "text", Text: req.Prompt}}
+	// Preserve the generic API's explicit fields over metadata aliases.
+	if req.Duration >= 4 && req.Duration <= 15 {
+		payload.Duration = req.Duration
+	}
+	size := strings.ToUpper(strings.TrimSpace(req.Size))
+	if size == "768P" || size == "2K" {
+		payload.Resolution = size
+	}
+	if strings.TrimSpace(req.Webhook) != "" {
+		payload.CallbackURL = strings.TrimSpace(req.Webhook)
+	}
+	if len(payload.Content) == 0 {
+		payload.Content = []h3Content{{Type: "text", Text: req.Prompt}}
+	}
+	// A generic input_reference/images request is converted to the official
+	// content form when the caller did not provide metadata.content. Explicit
+	// metadata.content wins because it can express first/last/reference roles.
+	_, hasMetadataContent := req.Metadata["content"]
+	if !hasMetadataContent && len(payload.Content) == 1 && payload.Content[0].Type == "text" && payload.Content[0].Text == req.Prompt {
+		imageURLs := append([]string{}, req.Images...)
+		if len(imageURLs) == 0 && strings.TrimSpace(req.InputReference) != "" {
+			imageURLs = []string{strings.TrimSpace(req.InputReference)}
+		}
+		for i, imageURL := range imageURLs {
+			if strings.TrimSpace(imageURL) == "" {
+				continue
+			}
+			role := "reference_image"
+			if len(imageURLs) == 1 || i == 0 {
+				role = "first_frame"
+			} else if i == 1 {
+				role = "last_frame"
+			}
+			payload.Content = append(payload.Content, h3Content{
+				Type:     "image_url",
+				Role:     role,
+				ImageURL: &h3MediaURL{URL: strings.TrimSpace(imageURL)},
+			})
+		}
+	}
+	textFound := false
+	for _, item := range payload.Content {
+		if item.Type == "text" && strings.TrimSpace(item.Text) != "" {
+			textFound = true
+			break
+		}
+	}
+	if !textFound {
+		return nil, fmt.Errorf("MiniMax-H3 content must include a non-empty text item")
+	}
 	if payload.Duration < 4 || payload.Duration > 15 {
 		return nil, fmt.Errorf("MiniMax-H3 duration must be between 4 and 15 seconds")
 	}
@@ -255,6 +319,8 @@ func (a *H3TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, err
 	result := &relaycommon.TaskInfo{TaskID: parsed.Task.ID}
 	if parsed.Task.Usage.OutputSeconds > 0 {
 		result.BillableSeconds = parsed.Task.Usage.OutputSeconds
+	} else if parsed.Task.Usage.TotalSeconds > 0 {
+		result.BillableSeconds = parsed.Task.Usage.TotalSeconds
 	}
 	switch strings.ToLower(parsed.Task.Status) {
 	case "queued":

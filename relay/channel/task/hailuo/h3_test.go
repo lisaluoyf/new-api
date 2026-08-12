@@ -39,6 +39,48 @@ func TestH3BuildRequestBody(t *testing.T) {
 	}
 }
 
+func TestH3BuildRequestBodySupportsOfficialMultimodalContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set("task_request", relaycommon.TaskSubmitReq{
+		Model:   "MiniMax-H3",
+		Prompt:  "A person walks through a neon city.",
+		Webhook: "https://example.com/h3-callback",
+		Metadata: map[string]interface{}{
+			"content": []interface{}{
+				map[string]interface{}{"type": "text", "text": "A person walks through a neon city."},
+				map[string]interface{}{"type": "image_url", "role": "first_frame", "image_url": map[string]interface{}{"url": "https://example.com/first.png"}},
+				map[string]interface{}{"type": "video_url", "role": "reference_video", "video_url": map[string]interface{}{"url": "https://example.com/reference.mp4"}},
+				map[string]interface{}{"type": "audio_url", "role": "reference_audio", "audio_url": map[string]interface{}{"url": "https://example.com/reference.mp3"}},
+			},
+			"resolution":     "2K",
+			"duration":       8,
+			"ratio":          "21:9",
+			"aigc_watermark": true,
+		},
+	})
+
+	a := &H3TaskAdaptor{}
+	reader, err := a.BuildRequestBody(c, &relaycommon.RelayInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(body)
+	for _, expected := range []string{
+		`"type":"image_url"`, `"role":"first_frame"`, `"url":"https://example.com/first.png"`,
+		`"type":"video_url"`, `"role":"reference_video"`, `"type":"audio_url"`,
+		`"callback_url":"https://example.com/h3-callback"`, `"resolution":"2K"`, `"duration":8`, `"ratio":"21:9"`,
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("request body missing %s: %s", expected, text)
+		}
+	}
+}
+
 func TestH3EstimateBillingUsesDurationAndResolution(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	a := &H3TaskAdaptor{}
@@ -100,6 +142,17 @@ func TestH3ParseTaskResult(t *testing.T) {
 	}
 	if result.Status != model.TaskStatusSuccess || result.Url != "https://cdn.example/video.mp4" || result.BillableSeconds != 4 {
 		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestH3ParseTaskResultFallsBackToTotalSeconds(t *testing.T) {
+	a := &H3TaskAdaptor{}
+	result, err := a.ParseTaskResult([]byte(`{"task":{"id":"h3-task-2","status":"succeeded","usage":{"total_seconds":7},"content":{"url":"https://cdn.example/video.mp4"}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.BillableSeconds != 7 {
+		t.Fatalf("billable seconds = %d, want 7", result.BillableSeconds)
 	}
 }
 
