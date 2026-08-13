@@ -27,6 +27,7 @@
   { "model_id": "doubao-seedance-2.0", "label": "Seedance 2.0", "accent": "#fb923c" },
   { "model_id": "glm-5.2", "label": "GLM 5.2", "accent": "#10b981" },
   { "model_id": "grok-4.5", "label": "Grok 4.5", "accent": "#94a3b8" },
+  { "model_id": "grok-4.6", "label": "Grok 4.6", "accent": "#94a3b8" },
   { "model_id": "grok-imagine-video-1.5", "label": "Grok Imagine Video 1.5", "accent": "#94a3b8" },
   { "model_id": "grok-1.5-video-10s", "label": "Grok 1.5 Video 10s", "accent": "#94a3b8" },
   { "model_id": "grok-1.5-video-15s", "label": "Grok 1.5 Video 15s", "accent": "#94a3b8" },
