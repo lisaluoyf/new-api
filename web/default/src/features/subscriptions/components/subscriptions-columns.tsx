@@ -26,6 +26,27 @@ import { formatDuration, formatResetPeriod } from '../lib'
 import type { PlanRecord } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
+const QUOTA_PER_USD = 500_000
+const THEORETICAL_PURCHASE_RATE = 0.025
+
+function getPlanDurationDays(plan: PlanRecord['plan']) {
+  const value = Math.max(Number(plan.duration_value || 0), 0)
+  switch (plan.duration_unit) {
+    case 'year':
+      return value * 365
+    case 'month':
+      return value * 30
+    case 'day':
+      return value
+    case 'hour':
+      return value / 24
+    case 'custom':
+      return Math.max(Number(plan.custom_seconds || 0), 0) / 86_400
+    default:
+      return 0
+  }
+}
+
 export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
   const { t } = useTranslation()
 
@@ -114,14 +135,17 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         cell: ({ row }) => {
           const plan = row.original.plan
           if (plan.plan_type !== 'gpt_subscription') return '-'
-          const unit = 500_000
           return (
             <div className='text-muted-foreground text-xs'>
               <div>
-                5 小时 ${(Number(plan.five_hour_amount || 0) / unit).toFixed(0)}
+                {`5 小时 $${(
+                  Number(plan.five_hour_amount || 0) / QUOTA_PER_USD
+                ).toFixed(0)}`}
               </div>
               <div>
-                7 天 ${(Number(plan.seven_day_amount || 0) / unit).toFixed(0)}
+                {`7 天 $${(
+                  Number(plan.seven_day_amount || 0) / QUOTA_PER_USD
+                ).toFixed(0)}`}
               </div>
             </div>
           )
@@ -137,14 +161,31 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         cell: ({ row }) => {
           const plan = row.original.plan
           if (plan.plan_type !== 'gpt_subscription') return '-'
-          const sevenDayUSD = Number(plan.seven_day_amount || 0) / 500_000
+          const durationDays = getPlanDurationDays(plan)
+          const previewDays = durationDays > 0 ? durationDays : 30
+          const sevenDayUSD = Number(plan.seven_day_amount || 0) / QUOTA_PER_USD
+          const fullUseOfficialUSD = sevenDayUSD * (previewDays / 7)
+          const fullUseCostUSD = fullUseOfficialUSD * THEORETICAL_PURCHASE_RATE
+          const priceUSD = Number(plan.price_amount || 0)
+          const grossMargin =
+            priceUSD > 0 ? ((priceUSD - fullUseCostUSD) / priceUSD) * 100 : null
+          const previewDaysLabel = Number.isInteger(previewDays)
+            ? previewDays.toFixed(0)
+            : previewDays.toFixed(1)
           return (
             <div className='text-xs'>
-              <div className='font-medium text-emerald-600'>
-                请求理论毛利率 97.5%
+              <div
+                className={
+                  grossMargin != null && grossMargin < 0
+                    ? 'text-destructive font-medium'
+                    : 'font-medium text-emerald-600'
+                }
+              >
+                {previewDaysLabel} 天满用理论毛利率{' '}
+                {grossMargin == null ? '—' : `${grossMargin.toFixed(1)}%`}
               </div>
               <div className='text-muted-foreground'>
-                7 天额度满用理论成本 ${(sevenDayUSD * 0.025).toFixed(2)}
+                {previewDaysLabel} 天满用理论成本 ${fullUseCostUSD.toFixed(2)}
               </div>
             </div>
           )
