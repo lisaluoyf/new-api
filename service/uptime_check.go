@@ -222,6 +222,32 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 		return
 	}
 
+	// Native Gemini channels serve relay traffic through Google's
+	// streamGenerateContent endpoint with x-goog-api-key auth. The generic
+	// OpenAI probe below targets /v1/chat/completions; after those candidates
+	// fail it may also synthesize an invalid api.<host> fallback. Probe the same
+	// native protocol used by relay/channel/gemini instead.
+	if ch.Type == constant.ChannelTypeGemini {
+		client := &http.Client{Timeout: uptimeRequestTimeout}
+		var lastResult probeResult
+		var lastErr *probeError
+		for _, candidateModel := range ProbeModelCandidates(targetModel, ch.ModelMapping) {
+			lastResult, lastErr = sendGeminiUptimeProbe(ctx, client, baseURL, apiKey, candidateModel)
+			if lastErr == nil {
+				recordUptimeResult(ch, targetModel, baseURL, "pass", lastResult.LatencyMs, "")
+				return
+			}
+			if lastErr.kind != probeErrModel {
+				break
+			}
+		}
+		if lastErr == nil {
+			lastErr = &probeError{kind: probeErrOther, msg: "no Gemini model candidate found"}
+		}
+		recordUptimeResult(ch, targetModel, baseURL, "notcomplete", lastResult.LatencyMs, lastErr.msg)
+		return
+	}
+
 	urlCandidates := baseURLCandidates(baseURL)
 	modelCandidates := ProbeModelCandidates(targetModel, ch.ModelMapping)
 
@@ -553,6 +579,89 @@ func sendClaudeUptimeProbe(ctx context.Context, client *http.Client, baseURL, ap
 	return probeResult{LatencyMs: latencyMs}, nil
 }
 
+// sendGeminiUptimeProbe mirrors the native Gemini relay request: POST
+// /v1beta/models/{model}:streamGenerateContent?alt=sse with x-goog-api-key.
+// A first SSE data frame is enough to mark the channel live and measure FRT.
+func sendGeminiUptimeProbe(ctx context.Context, client *http.Client, baseURL, apiKey, modelName string) (probeResult, *probeError) {
+	endpoint := fmt.Sprintf(
+		"%s/v1beta/models/%s:streamGenerateContent?alt=sse",
+		strings.TrimRight(baseURL, "/"),
+		url.PathEscape(modelName),
+	)
+	body, err := common.Marshal(map[string]any{
+		"contents": []map[string]any{{
+			"role":  "user",
+			"parts": []map[string]string{{"text": uptimeProbePrompt}},
+		}},
+		"generationConfig": map[string]int{"maxOutputTokens": uptimeProbeMaxTokens},
+	})
+	if err != nil {
+		return probeResult{}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("marshal: %v", err)}
+	}
+
+	start := time.Now()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return probeResult{}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("build request: %v", err)}
+	}
+	req.Header.Set("x-goog-api-key", apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "python-requests/2.31.0")
+
+	resp, err := client.Do(req)
+	latencyMs := float64(time.Since(start).Milliseconds())
+	if err != nil {
+		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("network: %v", err)}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+		var errBody struct {
+			Error struct {
+				Status  string `json:"status"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		_ = common.Unmarshal(bodyBytes, &errBody)
+		detail := errBody.Error.Message
+		if detail == "" {
+			detail = compactForNote(string(bodyBytes))
+		}
+		lowerDetail := strings.ToLower(detail)
+		if resp.StatusCode == http.StatusNotFound ||
+			strings.Contains(strings.ToLower(errBody.Error.Status), "not_found") ||
+			strings.Contains(lowerDetail, "model not found") ||
+			strings.Contains(lowerDetail, "not found") {
+			return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrModel, msg: fmt.Sprintf("model not found: %s", modelName)}
+		}
+		if len(detail) > 500 {
+			detail = detail[:500] + "…"
+		}
+		if detail == "" {
+			return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("HTTP %d (empty body)", resp.StatusCode)}
+		}
+		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("HTTP %d: %s", resp.StatusCode, detail)}
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, uptimeScannerBufferSize), uptimeScannerBufferSize)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		if strings.TrimSpace(strings.TrimPrefix(line, "data:")) == "" {
+			continue
+		}
+		return probeResult{LatencyMs: float64(time.Since(start).Milliseconds())}, nil
+	}
+	if scanErr := scanner.Err(); scanErr != nil {
+		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: fmt.Sprintf("stream read: %v", scanErr)}
+	}
+	return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrOther, msg: "empty content"}
+}
+
 // compactForNote turns a raw error body (often an HTML error page) into a
 // single-line snippet readable in the dot-grid tooltip. Strips tags + collapses
 // whitespace; the caller still applies a length cap.
@@ -615,7 +724,8 @@ func baseURLCandidates(baseURL string) []string {
 	root := stripKnownAPIPath(raw)
 
 	roots := []string{root}
-	if u, err := url.Parse(root); err == nil && u.Scheme != "" && u.Host != "" && !strings.HasPrefix(u.Host, "api.") {
+	if u, err := url.Parse(root); err == nil && u.Scheme != "" && u.Host != "" &&
+		!strings.HasPrefix(u.Host, "api.") && !strings.HasSuffix(strings.ToLower(u.Hostname()), ".googleapis.com") {
 		altU := *u
 		altU.Host = "api." + u.Host
 		roots = append(roots, strings.TrimRight(altU.String(), "/"))
