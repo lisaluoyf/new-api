@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -96,6 +95,23 @@ func FormatPaymentMethodLabel(method string) string {
 			return "未知"
 		}
 		return method
+	}
+}
+
+// FormatTopupPaidAmount formats TopUp.Money in the currency actually charged
+// by the payment channel. Do not convert local-currency payments with a fixed
+// exchange rate: Money already stores the original amount paid.
+func FormatTopupPaidAmount(money float64, paymentMethod string) string {
+	if money <= 0 {
+		return "—"
+	}
+	switch strings.ToLower(strings.TrimSpace(paymentMethod)) {
+	case "alipay", "wxpay", "custom1", "custom2", "custom3":
+		return fmt.Sprintf("¥%.2f", money)
+	case PaymentMethodPlatega:
+		return fmt.Sprintf("₽%.2f", money)
+	default:
+		return fmt.Sprintf("$%.2f", money)
 	}
 }
 
@@ -922,7 +938,7 @@ func OnTopupSucceeded(userId int, quotaAdded int, paymentMethod string, tradeNo 
 			}
 		}(reward.Id)
 	}
-	NotifyPaymentSuccess(userId, quotaAdded, paymentMethod)
+	NotifyPaymentSuccess(userId, quotaAdded, paymentMethod, tradeNo)
 	SendGAPurchase(userId, quotaAdded, tradeNo)
 }
 
@@ -971,7 +987,7 @@ func successfulTopupUSDTotal(userId int) (float64, error) {
 // NotifyPaymentSuccess sends a Feishu card to the ops group on successful payment.
 // quotaAdded is the quota units credited; USD amount is derived via QuotaPerUnit.
 // Runs in a goroutine so it never blocks the caller.
-func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
+func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, tradeNo string) {
 	chatID := common.FeishuOpsChatID()
 	if chatID == "" {
 		return
@@ -1010,46 +1026,31 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 		var payCount int64
 		DB.Model(&TopUp{}).Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).Count(&payCount)
 		cumulativePaidUSD, cumulativeErr := successfulTopupUSDTotal(userId)
-		cumulativeLine := "累计付款：—"
+		cumulativeLine := "累计到账：—"
 		if cumulativeErr == nil {
-			cumulativeLine = fmt.Sprintf("累计付款：$%.2f", cumulativePaidUSD)
+			cumulativeLine = fmt.Sprintf("累计到账：$%.2f", cumulativePaidUSD)
 		} else {
 			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
 		}
 
-		// 查询本次充值的实付金额（Money 字段）并折算成美元
-		var actualPaymentUSD float64
+		// Use the exact trade instead of the user's latest row: payment callbacks
+		// can finish close together and must not borrow another order's amount.
+		actualPayment := ""
 		var topUp TopUp
-		if err := DB.Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
-			Order("complete_time DESC").First(&topUp).Error; err == nil {
-			// 根据支付方式推断货币并折算成美元
-			switch topUp.PaymentMethod {
-			case "alipay", "wxpay":
-				// 人民币，按 7.0 汇率折算
-				actualPaymentUSD = topUp.Money / 7.0
-			case "clink":
-				// 卢布，按 90.0 汇率折算
-				actualPaymentUSD = topUp.Money / 90.0
-			case "waffo_pancake", "platega":
-				// 印度卢比，按 83.0 汇率折算
-				actualPaymentUSD = topUp.Money / 83.0
-			case "paypal", "crypto", "admin":
-				// 美元，不需要折算
-				actualPaymentUSD = topUp.Money
-			default:
-				// 未知支付方式，假设美元
-				actualPaymentUSD = topUp.Money
+		if tradeNo != "" {
+			if err := DB.Where("trade_no = ? AND user_id = ? AND status = ?", tradeNo, userId, common.TopUpStatusSuccess).
+				First(&topUp).Error; err == nil && topUp.Money > 0 {
+				actualPayment = FormatTopupPaidAmount(topUp.Money, topUp.PaymentMethod)
 			}
 		}
 
 		lines := []string{
 			fmt.Sprintf("用户：%s", email),
-			fmt.Sprintf("金额：$%.2f", usdAmount),
+			fmt.Sprintf("到账额度：$%.2f", usdAmount),
 		}
 
-		// 仅当实付金额与充值金额不同时才显示"实付"字段（使用 1 美分误差容忍）
-		if actualPaymentUSD > 0 && math.Abs(actualPaymentUSD-usdAmount) > 0.01 {
-			lines = append(lines, fmt.Sprintf("实付：$%.2f", actualPaymentUSD))
+		if actualPayment != "" {
+			lines = append(lines, "实付金额："+actualPayment)
 		}
 
 		lines = append(lines,
