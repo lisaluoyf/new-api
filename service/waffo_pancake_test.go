@@ -29,7 +29,7 @@ func setupWaffoPancakeTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.SubscriptionOrder{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -127,6 +127,34 @@ func TestResolveWaffoPancakeTradeNo_UsesOrderMetadataOrderId(t *testing.T) {
 			OrderMetadata: map[string]string{
 				"orderId": tradeNo,
 				"tradeNo": tradeNo,
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, tradeNo, resolved)
+}
+
+func TestResolveWaffoPancakeTradeNo_UsesSubscriptionOrderMetadata(t *testing.T) {
+	db := setupWaffoPancakeTestDB(t)
+	tradeNo := "SUB_WAFFO_PANCAKE-42-order-meta"
+
+	order := &model.SubscriptionOrder{
+		UserId:          42,
+		PlanId:          7,
+		Money:           10,
+		TradeNo:         tradeNo,
+		PaymentMethod:   model.PaymentMethodWaffoPancake,
+		PaymentProvider: model.PaymentProviderWaffoPancake,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, db.Create(order).Error)
+
+	resolved, err := ResolveWaffoPancakeTradeNo(&waffoPancakeWebhookEvent{
+		Data: waffoPancakeWebhookData{
+			OrderID: "ORD_platform_generated",
+			Metadata: map[string]string{
+				"orderId": tradeNo,
 			},
 		},
 	})

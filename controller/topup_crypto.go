@@ -42,6 +42,11 @@ type cryptoChainConfig struct {
 
 const transferEventTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
+const (
+	cryptoIntentPurposeWalletTopup     = "wallet_topup"
+	cryptoIntentPurposeGPTSubscription = "gpt_subscription"
+)
+
 var cryptoChains = map[string]cryptoChainConfig{
 	"eth": {
 		rpcEnvKey:      "CRYPTO_RPC_ETH",
@@ -344,8 +349,10 @@ func fetchCoinPrice(ctx context.Context, coingeckoID string) (float64, error) {
 
 func buildCryptoIntentChallenge(intent *model.CryptoDepositIntent) string {
 	return fmt.Sprintf(
-		"APIMaster Crypto Deposit Authorization\nIntent ID: %s\nChain: %s\nToken: %s\nWallet: %s\nRecipient: %s\nExpires At: %d",
+		"APIMaster Crypto Deposit Authorization\nIntent ID: %s\nPurpose: %s\nExpected USD: %.6f\nChain: %s\nToken: %s\nWallet: %s\nRecipient: %s\nExpires At: %d",
 		intent.Id,
+		intent.Purpose,
+		intent.ExpectedUsdAmount,
 		strings.ToUpper(intent.Chain),
 		intent.TokenSymbol,
 		intent.WalletAddressFrom,
@@ -548,6 +555,11 @@ func markCryptoIntentFailed(intentId string, err error) {
 		common.SysLog(fmt.Sprintf("crypto: reload failed intent=%s err=%v", intentId, loadErr))
 		return
 	}
+	if intent.Purpose == cryptoIntentPurposeGPTSubscription && strings.TrimSpace(intent.SubscriptionOrderTradeNo) != "" {
+		if _, expireErr := tryExpireSubscriptionPayment(intent.SubscriptionOrderTradeNo, model.PaymentProviderCrypto); expireErr != nil {
+			common.SysLog(fmt.Sprintf("crypto: expire subscription order failed intent=%s tradeNo=%s err=%v", intent.Id, intent.SubscriptionOrderTradeNo, expireErr))
+		}
+	}
 	txHash := ""
 	if intent.TxHash != nil {
 		txHash = cryptoShortValue(*intent.TxHash)
@@ -649,6 +661,60 @@ func verifyAndCredit(intentId string) {
 		return
 	}
 
+	if intent.Purpose == cryptoIntentPurposeGPTSubscription {
+		if strings.TrimSpace(intent.SubscriptionOrderTradeNo) == "" || intent.ExpectedUsdAmount <= 0 {
+			markCryptoIntentFailed(intentId, fmt.Errorf("subscription payment metadata missing"))
+			return
+		}
+		if usdValue+0.005 < intent.ExpectedUsdAmount {
+			markCryptoIntentFailed(intentId, fmt.Errorf("payment amount too low: expected %.2f USD, received %.4f USD", intent.ExpectedUsdAmount, usdValue))
+			return
+		}
+
+		tradeNo := intent.SubscriptionOrderTradeNo
+		LockOrder(tradeNo)
+		handled, completeErr := tryCompleteSubscriptionPayment(
+			tradeNo,
+			fmt.Sprintf("crypto intent=%s tx_hash=%s usd=%.6f", intent.Id, *intent.TxHash, usdValue),
+			model.PaymentProviderCrypto,
+			model.PaymentMethodCrypto,
+		)
+		UnlockOrder(tradeNo)
+		if completeErr != nil || !handled {
+			if completeErr == nil {
+				completeErr = fmt.Errorf("subscription order not found")
+			}
+			common.SysLog(fmt.Sprintf("crypto: subscription completion failed intent=%s tradeNo=%s err=%v", intent.Id, tradeNo, completeErr))
+			markCryptoIntentFailed(intentId, completeErr)
+			return
+		}
+
+		now := common.GetTimestamp()
+		result := model.DB.Model(&model.CryptoDepositIntent{}).
+			Where("id = ? AND status = ?", intent.Id, model.CryptoDepositIntentStatusPending).
+			Updates(map[string]interface{}{
+				"status":        model.CryptoDepositIntentStatusConfirmed,
+				"usd_added":     usdValue,
+				"confirmed_at":  now,
+				"error_message": "",
+			})
+		if result.Error != nil {
+			common.SysLog(fmt.Sprintf("crypto: subscription intent confirmation update failed intent=%s err=%v", intent.Id, result.Error))
+			return
+		}
+		recordCryptoIntentLog(
+			intent.UserId,
+			fmt.Sprintf("使用加密货币购买 GPT 订阅成功，支付金额：%.4f USD", usdValue),
+			&intent,
+			map[string]interface{}{
+				"stage":                       "subscription_confirmed",
+				"subscription_order_trade_no": tradeNo,
+			},
+		)
+		common.SysLog(fmt.Sprintf("crypto: subscription confirmed userId=%d intent=%s tradeNo=%s txHash=%s usd=%.4f", intent.UserId, intent.Id, tradeNo, *intent.TxHash, usdValue))
+		return
+	}
+
 	creditUsd := usdValue
 	if matchedTier, matchedDiscount, ok := matchCryptoAmountDiscountTier(usdValue); ok {
 		creditUsd = usdValue / matchedDiscount
@@ -744,6 +810,7 @@ type createCryptoIntentRequest struct {
 	Chain             string `json:"chain"`
 	TokenSymbol       string `json:"token_symbol"`
 	WalletAddressFrom string `json:"wallet_address_from"`
+	PlanId            int    `json:"plan_id,omitempty"`
 }
 
 type submitCryptoRequest struct {
@@ -788,6 +855,17 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		return
 	}
 
+	var plan *model.SubscriptionPlan
+	var terms subscriptionOrderTerms
+	if req.PlanId > 0 {
+		var err error
+		plan, terms, err = resolveGPTSubscriptionPayment(userId, req.PlanId)
+		if err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+	}
+
 	tokenAddress, _ := getExpectedTokenAddress(cfg, tokenSymbol)
 	intent := &model.CryptoDepositIntent{
 		Id:                common.GetUUID(),
@@ -797,11 +875,32 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		TokenAddress:      tokenAddress,
 		WalletAddressFrom: walletAddress,
 		ExpectedToAddress: getPlatformWallet(),
+		Purpose:           cryptoIntentPurposeWalletTopup,
 		ExpiresAt:         common.GetTimestamp() + 30*60,
+	}
+	if plan != nil {
+		intent.Purpose = cryptoIntentPurposeGPTSubscription
+		intent.ExpectedUsdAmount = terms.Payable
+		intent.SubscriptionOrderTradeNo = fmt.Sprintf("CRYPTO-SUB:%s", intent.Id)
 	}
 	intent.Challenge = buildCryptoIntentChallenge(intent)
 
-	if err := model.DB.Create(intent).Error; err != nil {
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if plan != nil {
+			order := newGPTSubscriptionOrder(
+				userId,
+				plan,
+				terms,
+				intent.SubscriptionOrderTradeNo,
+				model.PaymentMethodCrypto,
+				model.PaymentProviderCrypto,
+			)
+			if err := tx.Create(order).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Create(intent).Error
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to create deposit intent"})
 		return
 	}
@@ -818,13 +917,15 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 	)
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
-		"depositId": intent.Id,
-		"challenge": intent.Challenge,
-		"expiresAt": intent.ExpiresAt,
-		"toAddress": intent.ExpectedToAddress,
-		"chain":     intent.Chain,
-		"token":     intent.TokenSymbol,
+		"success":           true,
+		"depositId":         intent.Id,
+		"challenge":         intent.Challenge,
+		"expiresAt":         intent.ExpiresAt,
+		"toAddress":         intent.ExpectedToAddress,
+		"chain":             intent.Chain,
+		"token":             intent.TokenSymbol,
+		"purpose":           intent.Purpose,
+		"expectedUsdAmount": intent.ExpectedUsdAmount,
 	})
 }
 
@@ -866,6 +967,7 @@ func SubmitCryptoDeposit(c *gin.Context) {
 		return
 	}
 	if intent.ExpiresAt < common.GetTimestamp() {
+		markCryptoIntentFailed(intent.Id, fmt.Errorf("deposit intent expired"))
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "deposit intent expired"})
 		return
 	}
@@ -958,8 +1060,10 @@ func GetCryptoDeposit(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":   intent.Status,
-		"usdAdded": intent.UsdAdded,
-		"error":    intent.ErrorMessage,
+		"status":            intent.Status,
+		"usdAdded":          intent.UsdAdded,
+		"error":             intent.ErrorMessage,
+		"purpose":           intent.Purpose,
+		"expectedUsdAmount": intent.ExpectedUsdAmount,
 	})
 }

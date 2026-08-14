@@ -44,6 +44,7 @@ const (
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodPlatega      = "platega"
 	PaymentMethodClink        = "clink"
+	PaymentMethodCrypto       = "crypto"
 )
 
 const (
@@ -55,6 +56,7 @@ const (
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderPlatega      = "platega"
 	PaymentProviderClink        = "clink"
+	PaymentProviderCrypto       = "crypto"
 )
 
 var (

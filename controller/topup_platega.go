@@ -25,6 +25,7 @@ import (
 
 type PlategaPayRequest struct {
 	Amount int64 `json:"amount"`
+	PlanId int   `json:"plan_id,omitempty"`
 }
 
 func RequestPlategaAmount(c *gin.Context) {
@@ -36,7 +37,7 @@ func RequestPlategaAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgInvalidParams)})
 		return
 	}
-	if req.Amount < int64(setting.PlategaMinTopUp) {
+	if req.PlanId <= 0 && req.Amount < int64(setting.PlategaMinTopUp) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.PlategaMinTopUp)})
 		return
 	}
@@ -134,46 +135,88 @@ func RequestPlategaPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgInvalidParams)})
 		return
 	}
-	if req.Amount < int64(setting.PlategaMinTopUp) {
+	if req.PlanId <= 0 && req.Amount < int64(setting.PlategaMinTopUp) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.PlategaMinTopUp)})
 		return
 	}
 
 	id := c.GetInt("id")
-	user, _ := model.GetUserById(id, false)
-	profileCountry := ""
-	if user != nil {
-		profileCountry = user.Country
-	}
-	group, err := model.GetUserGroup(id, true)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+	user, err := model.GetUserById(id, false)
+	if err != nil || user == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgUserNotExists)})
 		return
 	}
-
-	payRub := getPlategaPayRubAmount(req.Amount, group, id)
+	profileCountry := ""
+	profileCountry = user.Country
+	var plan *model.SubscriptionPlan
+	var terms subscriptionOrderTerms
+	payRub := 0.0
+	if req.PlanId > 0 {
+		plan, terms, err = resolveGPTSubscriptionPayment(id, req.PlanId)
+		if err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+		if terms.Payable+0.005 < float64(setting.PlategaMinTopUp) {
+			common.ApiErrorMsg(c, fmt.Sprintf("SBP 最低支付金额为 $%d", setting.PlategaMinTopUp))
+			return
+		}
+		rate := setting.PlategaUSDRate
+		if rate <= 0 {
+			rate = 90
+		}
+		payRub = decimal.NewFromFloat(terms.Payable).Mul(decimal.NewFromFloat(rate)).InexactFloat64()
+	} else {
+		group, groupErr := model.GetUserGroup(id, true)
+		if groupErr != nil {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+			return
+		}
+		payRub = getPlategaPayRubAmount(req.Amount, group, id)
+	}
 	if payRub <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
 
-	tradeNo := fmt.Sprintf("PLATEGA-%d-%d-%s", id, time.Now().UnixMilli(), randstr.String(6))
+	tradePrefix := "PLATEGA"
+	if plan != nil {
+		tradePrefix = "SUB-PLATEGA"
+	}
+	tradeNo := fmt.Sprintf("%s-%d-%d-%s", tradePrefix, id, time.Now().UnixMilli(), randstr.String(6))
 	normalizedAmount := normalizePlategaTopUpAmount(req.Amount)
 
-	topUp := &model.TopUp{
-		UserId:          id,
-		Amount:          normalizedAmount,
-		Money:           payRub,
-		TradeNo:         tradeNo,
-		PaymentMethod:   model.PaymentMethodPlatega,
-		PaymentProvider: model.PaymentProviderPlatega,
-		CreateTime:      common.GetTimestamp(),
-		Status:          common.TopUpStatusPending,
+	if plan != nil {
+		order := newGPTSubscriptionOrder(id, plan, terms, tradeNo, model.PaymentMethodPlatega, model.PaymentProviderPlatega)
+		if err := order.Insert(); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Platega 创建订阅订单失败 user_id=%d trade_no=%s plan_id=%d error=%q", id, tradeNo, plan.Id, err.Error()))
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
+			return
+		}
+	} else {
+		topUp := &model.TopUp{
+			UserId:          id,
+			Amount:          normalizedAmount,
+			Money:           payRub,
+			TradeNo:         tradeNo,
+			PaymentMethod:   model.PaymentMethodPlatega,
+			PaymentProvider: model.PaymentProviderPlatega,
+			CreateTime:      common.GetTimestamp(),
+			Status:          common.TopUpStatusPending,
+		}
+		if err := topUp.FillCountryFromIP(c.ClientIP(), profileCountry).Insert(); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Platega 创建本地订单失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
+			return
+		}
 	}
-	if err := topUp.FillCountryFromIP(c.ClientIP(), profileCountry).Insert(); err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Platega 创建本地订单失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
-		return
+	description := "APIMaster.ai balance top-up"
+	returnURL := getPlategaReturnURL()
+	failedURL := getPlategaFailedURL()
+	if plan != nil {
+		description = "APIMaster.ai Free Model subscription"
+		returnURL = freeModelPaymentURL("success")
+		failedURL = freeModelPaymentURL("cancelled")
 	}
 
 	createReq := &service.PlategaCreateTransactionRequest{
@@ -181,26 +224,35 @@ func RequestPlategaPay(c *gin.Context) {
 			Amount:   payRub,
 			Currency: "RUB",
 		},
-		Description: "APIMaster.ai balance top-up",
-		Return:      getPlategaReturnURL(),
-		FailedURL:   getPlategaFailedURL(),
+		Description: description,
+		Return:      returnURL,
+		FailedURL:   failedURL,
 		Payload:     tradeNo,
 	}
 
 	resp, reqJSON, err := service.CreatePlategaTransaction(c.Request.Context(), createReq)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Platega 创建支付失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
-		_ = model.UpdatePendingTopUpStatus(tradeNo, model.PaymentProviderPlatega, common.TopUpStatusFailed)
+		if plan != nil {
+			_, _ = tryExpireSubscriptionPayment(tradeNo, model.PaymentProviderPlatega)
+		} else {
+			_ = model.UpdatePendingTopUpStatus(tradeNo, model.PaymentProviderPlatega, common.TopUpStatusFailed)
+		}
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
 
 	respJSON, _ := json.Marshal(resp)
 	plategaOrder := &model.PlategaOrder{
-		TradeNo:              tradeNo,
-		UserId:               id,
-		RubAmount:            payRub,
-		UsdQuotaAmount:       normalizedAmount,
+		TradeNo:   tradeNo,
+		UserId:    id,
+		RubAmount: payRub,
+		UsdQuotaAmount: func() int64 {
+			if plan != nil {
+				return 0
+			}
+			return normalizedAmount
+		}(),
 		PlategaTransactionId: resp.TransactionId,
 		PaymentMethod:        model.PlategaPaymentMethodSBPQR,
 		PlategaStatus:        model.PlategaStatusPending,
@@ -216,7 +268,7 @@ func RequestPlategaPay(c *gin.Context) {
 		return
 	}
 
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Platega 充值订单创建成功 user_id=%d trade_no=%s transaction_id=%s rub=%.2f amount=%d", id, tradeNo, resp.TransactionId, payRub, normalizedAmount))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Platega 支付订单创建成功 user_id=%d trade_no=%s transaction_id=%s plan_id=%d rub=%.2f amount=%d", id, tradeNo, resp.TransactionId, req.PlanId, payRub, normalizedAmount))
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"data": gin.H{
@@ -286,11 +338,17 @@ func handlePlategaCallback(c *gin.Context, bodyBytes []byte, headersJSON string)
 				return err
 			}
 		}
+		if handled, err := tryCompleteSubscriptionPayment(order.TradeNo, string(bodyBytes), model.PaymentProviderPlatega, model.PaymentMethodPlatega); handled {
+			return err
+		}
 		return model.RechargePlatega(order.TradeNo, c.ClientIP())
 	case model.PlategaStatusCanceled:
 		LockOrder(order.TradeNo)
 		defer UnlockOrder(order.TradeNo)
 		if err := order.ApplyPlategaStatus(payload.Status); err != nil {
+			return err
+		}
+		if handled, err := tryExpireSubscriptionPayment(order.TradeNo, model.PaymentProviderPlatega); handled {
 			return err
 		}
 		return model.MarkTopUpCanceledForPlatega(order.TradeNo)
@@ -299,6 +357,11 @@ func handlePlategaCallback(c *gin.Context, bodyBytes []byte, headersJSON string)
 		defer UnlockOrder(order.TradeNo)
 		if err := order.ApplyPlategaStatus(payload.Status); err != nil {
 			return err
+		}
+		if subscriptionOrder := model.GetSubscriptionOrderByTradeNo(order.TradeNo); subscriptionOrder != nil {
+			if handled, err := tryReverseSubscriptionPayment(order.TradeNo, subscriptionOrder.Money, "chargeback", string(bodyBytes)); handled {
+				return err
+			}
 		}
 		// Chargeback = money reversed by Platega. Claw back the credited quota.
 		reversed, userID, err := model.RefundPlategaTopUp(order.TradeNo, order.PlategaTransactionId)

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -25,6 +27,7 @@ import (
 type PayPalPayRequest struct {
 	Amount        int64  `json:"amount"`
 	PaymentMethod string `json:"payment_method"`
+	PlanId        int    `json:"plan_id,omitempty"`
 	SuccessURL    string `json:"success_url,omitempty"`
 	CancelURL     string `json:"cancel_url,omitempty"`
 }
@@ -107,22 +110,28 @@ func RequestPayPalPay(c *gin.Context) {
 	if abortIfTopupForbidden(c) {
 		return
 	}
+	if !isPayPalTopUpEnabled() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "PayPal 支付未启用"})
+		return
+	}
 	var req PayPalPayRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgInvalidParams)})
 		return
 	}
-	if req.PaymentMethod != model.PaymentMethodPayPal {
+	if req.PaymentMethod != "" && req.PaymentMethod != model.PaymentMethodPayPal {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentMethodNotExists)})
 		return
 	}
-	if req.Amount < getPayPalMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMin, map[string]any{"Min": getPayPalMinTopup()})})
-		return
-	}
-	if req.Amount > 10000 {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMax, map[string]any{"Max": 10000})})
-		return
+	if req.PlanId <= 0 {
+		if req.Amount < getPayPalMinTopup() {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMin, map[string]any{"Min": getPayPalMinTopup()})})
+			return
+		}
+		if req.Amount > 10000 {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMax, map[string]any{"Max": 10000})})
+			return
+		}
 	}
 	if req.SuccessURL != "" && common.ValidateRedirectURL(req.SuccessURL) != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": i18n.T(c, i18n.MsgPaymentRedirectUntrusted), "data": ""})
@@ -135,50 +144,96 @@ func RequestPayPalPay(c *gin.Context) {
 
 	id := c.GetInt("id")
 	TouchUserCountry(id, c.ClientIP())
-	user, _ := model.GetUserById(id, false)
-	chargedMoney := GetChargedAmountWithTierDiscount(req.Amount, *user) * firstTopupPromoFactor(id, req.Amount)
+	user, err := model.GetUserById(id, false)
+	if err != nil || user == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgUserNotExists)})
+		return
+	}
 
-	reference := fmt.Sprintf("new-api-paypal-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
+	var plan *model.SubscriptionPlan
+	var terms subscriptionOrderTerms
+	chargedMoney := 0.0
+	if req.PlanId > 0 {
+		plan, terms, err = resolveGPTSubscriptionPayment(id, req.PlanId)
+		if err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+		if terms.Payable+0.005 < float64(setting.PayPalMinTopUp) {
+			common.ApiErrorMsg(c, fmt.Sprintf("PayPal 最低支付金额为 $%d", setting.PayPalMinTopUp))
+			return
+		}
+		chargedMoney = terms.Payable
+	} else {
+		chargedMoney = GetChargedAmountWithTierDiscount(req.Amount, *user) * firstTopupPromoFactor(id, req.Amount)
+	}
+
+	referencePrefix := "new-api-paypal"
+	if plan != nil {
+		referencePrefix = "subscription-paypal"
+	}
+	reference := fmt.Sprintf("%s-%d-%d-%s", referencePrefix, user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceID := "pp_" + common.Sha1([]byte(reference))
 
 	successURL := req.SuccessURL
 	if successURL == "" {
-		successURL = system_setting.ServerAddress + "/console/usage-logs"
+		if plan != nil {
+			successURL = freeModelPaymentURL("success")
+		} else {
+			successURL = system_setting.ServerAddress + "/console/usage-logs"
+		}
 	}
 	cancelURL := req.CancelURL
 	if cancelURL == "" {
-		cancelURL = system_setting.ServerAddress + "/console/topup"
+		if plan != nil {
+			cancelURL = freeModelPaymentURL("cancelled")
+		} else {
+			cancelURL = system_setting.ServerAddress + "/console/topup"
+		}
+	}
+
+	if plan != nil {
+		order := newGPTSubscriptionOrder(id, plan, terms, referenceID, model.PaymentMethodPayPal, model.PaymentProviderPayPal)
+		if err := order.Insert(); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("PayPal 创建订阅订单失败 user_id=%d trade_no=%s plan_id=%d error=%q", id, referenceID, plan.Id, err.Error()))
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentCreateFailed)})
+			return
+		}
 	}
 
 	approveURL, orderID, err := service.CreatePayPalOrder(referenceID, chargedMoney, successURL, cancelURL)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("PayPal 创建订单失败 user_id=%d trade_no=%s amount=%d error=%q", id, referenceID, req.Amount, err.Error()))
+		if plan != nil {
+			_, _ = tryExpireSubscriptionPayment(referenceID, model.PaymentProviderPayPal)
+		}
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentStartFailed)})
 		return
 	}
 
-	amount := req.Amount
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		amount = amount / int64(common.QuotaPerUnit)
+	if plan == nil {
+		amount := req.Amount
+		if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+			amount = amount / int64(common.QuotaPerUnit)
+		}
+		topUp := &model.TopUp{
+			UserId:          id,
+			Amount:          amount,
+			Money:           chargedMoney,
+			TradeNo:         referenceID,
+			PaymentMethod:   model.PaymentMethodPayPal,
+			PaymentProvider: model.PaymentProviderPayPal,
+			CreateTime:      time.Now().Unix(),
+			Status:          common.TopUpStatusPending,
+		}
+		if err := topUp.FillCountryFromIP(c.ClientIP(), user.Country).Insert(); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("PayPal 创建充值订单失败 user_id=%d trade_no=%s amount=%d error=%q", id, referenceID, req.Amount, err.Error()))
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentCreateFailed)})
+			return
+		}
 	}
 
-	topUp := &model.TopUp{
-		UserId:          id,
-		Amount:          amount,
-		Money:           chargedMoney,
-		TradeNo:         referenceID,
-		PaymentMethod:   model.PaymentMethodPayPal,
-		PaymentProvider: model.PaymentProviderPayPal,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
-	}
-	if err := topUp.FillCountryFromIP(c.ClientIP(), user.Country).Insert(); err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("PayPal 创建充值订单失败 user_id=%d trade_no=%s amount=%d error=%q", id, referenceID, req.Amount, err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentCreateFailed)})
-		return
-	}
-
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("PayPal 充值订单创建成功 user_id=%d trade_no=%s order_id=%s amount=%d money=%.2f", id, referenceID, orderID, req.Amount, chargedMoney))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("PayPal 支付订单创建成功 user_id=%d trade_no=%s order_id=%s plan_id=%d amount=%d money=%.2f", id, referenceID, orderID, req.PlanId, req.Amount, chargedMoney))
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"data": gin.H{
@@ -265,6 +320,22 @@ func handlePayPalCaptureCompleted(ctx context.Context, resource json.RawMessage,
 	LockOrder(referenceID)
 	defer UnlockOrder(referenceID)
 
+	if order := model.GetSubscriptionOrderByTradeNo(referenceID); order != nil {
+		paidAmount, parseErr := strconv.ParseFloat(capture.Amount.Value, 64)
+		if parseErr != nil || !strings.EqualFold(strings.TrimSpace(capture.Amount.CurrencyCode), "USD") || math.Abs(paidAmount-order.Money) > 0.005 {
+			logger.LogError(ctx, fmt.Sprintf("PayPal 订阅金额校验失败 trade_no=%s expected=%.2f actual=%q currency=%q client_ip=%s", referenceID, order.Money, capture.Amount.Value, capture.Amount.CurrencyCode, callerIP))
+			return
+		}
+	}
+	if handled, err := tryCompleteSubscriptionPayment(referenceID, common.GetJsonString(capture), model.PaymentProviderPayPal, model.PaymentMethodPayPal); handled {
+		if err != nil {
+			logger.LogError(ctx, fmt.Sprintf("PayPal 订阅入账失败 trade_no=%s client_ip=%s error=%q", referenceID, callerIP, err.Error()))
+			return
+		}
+		logger.LogInfo(ctx, fmt.Sprintf("PayPal 订阅支付成功 trade_no=%s amount=%s %s client_ip=%s", referenceID, capture.Amount.Value, capture.Amount.CurrencyCode, callerIP))
+		return
+	}
+
 	if err := model.RechargePayPal(referenceID, callerIP); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("PayPal 充值处理失败 trade_no=%s client_ip=%s error=%q", referenceID, callerIP, err.Error()))
 		return
@@ -295,6 +366,21 @@ func handlePayPalRefund(ctx context.Context, resource json.RawMessage, callerIP 
 
 	LockOrder(referenceID)
 	defer UnlockOrder(referenceID)
+	if order := model.GetSubscriptionOrderByTradeNo(referenceID); order != nil {
+		if refundUSD+0.001 < order.Money {
+			logger.LogError(ctx, fmt.Sprintf("PayPal 订阅部分退款需人工处理 trade_no=%s refund=$%.2f order=$%.2f refund_id=%s client_ip=%s",
+				referenceID, refundUSD, order.Money, refund.ID, callerIP))
+			return
+		}
+		if handled, err := tryReverseSubscriptionPayment(referenceID, refundUSD, "refund", common.GetJsonString(refund)); handled {
+			if err != nil {
+				logger.LogError(ctx, fmt.Sprintf("PayPal 订阅退款处理失败 trade_no=%s refund_id=%s error=%q", referenceID, refund.ID, err.Error()))
+			} else {
+				logger.LogInfo(ctx, fmt.Sprintf("PayPal 订阅退款处理成功 trade_no=%s refund_id=%s", referenceID, refund.ID))
+			}
+			return
+		}
+	}
 
 	// Partial-refund guard: only full refunds are reversed automatically.
 	topUp := model.GetTopUpByTradeNo(referenceID)
@@ -331,6 +417,12 @@ func handlePayPalOrderCancelled(ctx context.Context, resource json.RawMessage) {
 
 	LockOrder(referenceID)
 	defer UnlockOrder(referenceID)
+	if handled, err := tryExpireSubscriptionPayment(referenceID, model.PaymentProviderPayPal); handled {
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("PayPal 订阅订单过期处理失败 trade_no=%s error=%q", referenceID, err.Error()))
+		}
+		return
+	}
 
 	if err := model.UpdatePendingTopUpStatus(referenceID, model.PaymentProviderPayPal, common.TopUpStatusExpired); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("PayPal 订单过期处理失败 trade_no=%s error=%q", referenceID, err.Error()))

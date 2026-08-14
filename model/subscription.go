@@ -608,7 +608,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			return nil, errors.New("已达到该套餐购买上限")
 		}
 	}
-	nowUnix := GetDBTimestamp()
+	nowUnix := GetDBTimestampTx(tx)
 	now := time.Unix(nowUnix, 0)
 	endUnix, err := calcPlanEndTime(now, plan)
 	if err != nil {
@@ -696,7 +696,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
 		}
-		plan, err := GetSubscriptionPlanById(order.PlanId)
+		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
 		if err != nil {
 			return err
 		}
@@ -856,7 +856,7 @@ func ReverseSubscriptionOrder(tradeNo string, amount float64, reversalType strin
 			return tx.Save(&order).Error
 		}
 
-		now := GetDBTimestamp()
+		now := GetDBTimestampTx(tx)
 		var current UserSubscription
 		currentQuery := tx.Set("gorm:query_option", "FOR UPDATE").
 			Where("user_id = ? AND current_cycle_id = ?", order.UserId, order.Id).
@@ -943,7 +943,7 @@ func ReinstateSubscriptionOrder(tradeNo string, amount float64, providerPayload 
 			return tx.Save(&order).Error
 		}
 
-		now := GetDBTimestamp()
+		now := GetDBTimestampTx(tx)
 		var entitlement UserSubscription
 		if order.OrderType == "renewal" {
 			if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&entitlement).Error; err != nil {
