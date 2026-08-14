@@ -492,7 +492,8 @@ export function SubscriptionPlansCard({
                         )}
                         {pendingAmount > 0 && (
                           <span className='ml-2 inline-flex rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'>
-                            {t('Pending')}: {formatQuota(pendingAmount)}
+                            {t('Pre-consumed')} ({t('Pending')}):{' '}
+                            {formatQuota(pendingAmount)}
                           </span>
                         )}
                       </div>

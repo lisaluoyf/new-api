@@ -216,7 +216,8 @@ export function TrialSubscriptionSection() {
               </span>
               {pendingQuota > 0 ? (
                 <span className='inline-flex rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20'>
-                  {t('Pending')}: {formatUsdAmount(pendingQuota)}
+                  {t('Pre-consumed')} ({t('Pending')}):{' '}
+                  {formatUsdAmount(pendingQuota)}
                 </span>
               ) : null}
             </div>
