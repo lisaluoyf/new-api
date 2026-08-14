@@ -296,7 +296,7 @@ func activeGPTPaidSubscriptionTx(tx *gorm.DB, userId int) (*UserSubscription, *S
 	if tx == nil {
 		tx = DB
 	}
-	now := GetDBTimestamp()
+	now := GetDBTimestampTx(tx)
 	var subs []UserSubscription
 	if err := tx.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
 		Order("end_time desc, id desc").Find(&subs).Error; err != nil {
@@ -361,7 +361,7 @@ func completeGPTSubscriptionOrderTx(tx *gorm.DB, order *SubscriptionOrder, plan 
 	if tx == nil || order == nil || plan == nil {
 		return nil, errors.New("invalid GPT subscription completion")
 	}
-	now := GetDBTimestamp()
+	now := GetDBTimestampTx(tx)
 	switch order.OrderType {
 	case "renewal":
 		var current UserSubscription

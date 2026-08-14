@@ -24,6 +24,7 @@ import (
 type ClinkPayRequest struct {
 	Amount        int64  `json:"amount"`
 	PaymentMethod string `json:"payment_method"`
+	PlanId        int    `json:"plan_id,omitempty"`
 	SuccessURL    string `json:"success_url,omitempty"`
 	CancelURL     string `json:"cancel_url,omitempty"`
 }
@@ -78,13 +79,15 @@ func RequestClinkPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentMethodNotExists)})
 		return
 	}
-	if req.Amount < getClinkMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMin, map[string]any{"Min": getClinkMinTopup()})})
-		return
-	}
-	if req.Amount > 10000 {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMax, map[string]any{"Max": 10000})})
-		return
+	if req.PlanId <= 0 {
+		if req.Amount < getClinkMinTopup() {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMin, map[string]any{"Min": getClinkMinTopup()})})
+			return
+		}
+		if req.Amount > 10000 {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMax, map[string]any{"Max": 10000})})
+			return
+		}
 	}
 	if req.SuccessURL != "" && common.ValidateRedirectURL(req.SuccessURL) != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": i18n.T(c, i18n.MsgPaymentRedirectUntrusted), "data": ""})
@@ -103,32 +106,60 @@ func RequestClinkPay(c *gin.Context) {
 		return
 	}
 
-	chargedMoney := GetChargedAmountWithTierDiscount(req.Amount, *user) * firstTopupPromoFactor(id, req.Amount)
+	var plan *model.SubscriptionPlan
+	var terms subscriptionOrderTerms
+	chargedMoney := 0.0
+	if req.PlanId > 0 {
+		plan, terms, err = resolveGPTSubscriptionPayment(id, req.PlanId)
+		if err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+		if terms.Payable+0.005 < float64(setting.ClinkMinTopUp) {
+			common.ApiErrorMsg(c, fmt.Sprintf("Clink 最低支付金额为 $%d", setting.ClinkMinTopUp))
+			return
+		}
+		chargedMoney = terms.Payable
+	} else {
+		chargedMoney = GetChargedAmountWithTierDiscount(req.Amount, *user) * firstTopupPromoFactor(id, req.Amount)
+	}
 	if chargedMoney <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountTooLow)})
 		return
 	}
 
-	tradeNo := fmt.Sprintf("CLINK-%d-%d-%s", id, time.Now().UnixMilli(), randstr.String(6))
-	amount := req.Amount
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		amount = amount / int64(common.QuotaPerUnit)
+	tradePrefix := "CLINK"
+	if plan != nil {
+		tradePrefix = "SUB-CLINK"
 	}
-
-	topUp := &model.TopUp{
-		UserId:          id,
-		Amount:          amount,
-		Money:           chargedMoney,
-		TradeNo:         tradeNo,
-		PaymentMethod:   model.PaymentMethodClink,
-		PaymentProvider: model.PaymentProviderClink,
-		CreateTime:      common.GetTimestamp(),
-		Status:          common.TopUpStatusPending,
-	}
-	if err := topUp.FillCountryFromIP(c.ClientIP(), user.Country).Insert(); err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 创建本地订单失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentCreateFailed)})
-		return
+	tradeNo := fmt.Sprintf("%s-%d-%d-%s", tradePrefix, id, time.Now().UnixMilli(), randstr.String(6))
+	if plan != nil {
+		order := newGPTSubscriptionOrder(id, plan, terms, tradeNo, model.PaymentMethodClink, model.PaymentProviderClink)
+		if err := order.Insert(); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 创建订阅订单失败 user_id=%d trade_no=%s plan_id=%d error=%q", id, tradeNo, plan.Id, err.Error()))
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentCreateFailed)})
+			return
+		}
+	} else {
+		amount := req.Amount
+		if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+			amount = amount / int64(common.QuotaPerUnit)
+		}
+		topUp := &model.TopUp{
+			UserId:          id,
+			Amount:          amount,
+			Money:           chargedMoney,
+			TradeNo:         tradeNo,
+			PaymentMethod:   model.PaymentMethodClink,
+			PaymentProvider: model.PaymentProviderClink,
+			CreateTime:      common.GetTimestamp(),
+			Status:          common.TopUpStatusPending,
+		}
+		if err := topUp.FillCountryFromIP(c.ClientIP(), user.Country).Insert(); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 创建本地订单失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentCreateFailed)})
+			return
+		}
 	}
 
 	currency := strings.TrimSpace(setting.ClinkCurrency)
@@ -142,16 +173,36 @@ func RequestClinkPay(c *gin.Context) {
 		OriginalCurrency:    currency,
 		MerchantReferenceID: tradeNo,
 		UIMode:              "hostedPage",
-		SuccessURL:          getClinkSuccessURL(req.SuccessURL),
-		CancelURL:           getClinkCancelURL(req.CancelURL),
+		SuccessURL: func() string {
+			if plan != nil {
+				return freeModelPaymentURL("success")
+			}
+			return getClinkSuccessURL(req.SuccessURL)
+		}(),
+		CancelURL: func() string {
+			if plan != nil {
+				return freeModelPaymentURL("cancelled")
+			}
+			return getClinkCancelURL(req.CancelURL)
+		}(),
 		Metadata: map[string]string{
 			"trade_no": tradeNo,
 			"user_id":  strconv.Itoa(user.Id),
+			"purpose": func() string {
+				if plan != nil {
+					return "gpt_subscription"
+				}
+				return "wallet_topup"
+			}(),
 		},
 	})
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 创建 Checkout Session 失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
-		_ = model.UpdatePendingTopUpStatus(tradeNo, model.PaymentProviderClink, common.TopUpStatusFailed)
+		if plan != nil {
+			_, _ = tryExpireSubscriptionPayment(tradeNo, model.PaymentProviderClink)
+		} else {
+			_ = model.UpdatePendingTopUpStatus(tradeNo, model.PaymentProviderClink, common.TopUpStatusFailed)
+		}
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentStartFailed)})
 		return
 	}
@@ -201,30 +252,46 @@ func ConfirmClinkPay(c *gin.Context) {
 		return
 	}
 
-	topUp := model.GetTopUpByTradeNo(tradeNo)
-	if topUp == nil {
+	expectedMoney := 0.0
+	if order := model.GetSubscriptionOrderByTradeNo(tradeNo); order != nil {
+		if order.UserId != userID {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentStartFailed)})
+			return
+		}
+		if order.Status == common.TopUpStatusSuccess {
+			c.JSON(http.StatusOK, gin.H{"message": "success", "data": gin.H{"order_id": tradeNo, "status": "success"}})
+			return
+		}
+		expectedMoney = order.Money
+	} else if topUp := model.GetTopUpByTradeNo(tradeNo); topUp != nil {
+		if topUp.UserId != userID {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentStartFailed)})
+			return
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			c.JSON(http.StatusOK, gin.H{"message": "success", "data": gin.H{"order_id": tradeNo, "status": "success"}})
+			return
+		}
+		expectedMoney = topUp.Money
+	} else {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentStartFailed)})
-		return
-	}
-	if topUp.UserId != userID {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentStartFailed)})
-		return
-	}
-	if topUp.Status == common.TopUpStatusSuccess {
-		c.JSON(http.StatusOK, gin.H{"message": "success", "data": gin.H{"order_id": tradeNo, "status": "success"}})
 		return
 	}
 
 	paidAmount := service.ClinkAmountForValidation(session.AmountSubtotal, session.AmountTotal, session.OriginalCurrency, session.PaymentCurrency)
-	if !service.ClinkAmountsMatch(topUp.Money, paidAmount) {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Clink confirm amount mismatch user_id=%d trade_no=%s expected=%.2f actual=%.2f original_currency=%s payment_currency=%s", userID, tradeNo, topUp.Money, paidAmount, session.OriginalCurrency, session.PaymentCurrency))
+	if !service.ClinkAmountsMatch(expectedMoney, paidAmount) {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Clink confirm amount mismatch user_id=%d trade_no=%s expected=%.2f actual=%.2f original_currency=%s payment_currency=%s", userID, tradeNo, expectedMoney, paidAmount, session.OriginalCurrency, session.PaymentCurrency))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentStartFailed)})
 		return
 	}
 
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
-	if err := model.RechargeClink(tradeNo, c.ClientIP()); err != nil {
+	handled, err := tryCompleteSubscriptionPayment(tradeNo, common.GetJsonString(session), model.PaymentProviderClink, model.PaymentMethodClink)
+	if !handled && err == nil {
+		err = model.RechargeClink(tradeNo, c.ClientIP())
+	}
+	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Clink confirm 入账失败 user_id=%d trade_no=%s error=%q", userID, tradeNo, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentStartFailed)})
 		return
@@ -337,6 +404,21 @@ func handleClinkRefund(c *gin.Context, refund *service.ClinkRefundWebhookData) e
 		return nil
 	}
 
+	if order := model.GetSubscriptionOrderByTradeNo(tradeNo); order != nil {
+		if refund.RefundAmount+0.001 < order.Money {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 订阅部分退款需人工处理 trade_no=%s refund=$%.2f order=$%.2f refund_id=%s client_ip=%s",
+				tradeNo, refund.RefundAmount, order.Money, refund.RefundID, c.ClientIP()))
+			return nil
+		}
+		LockOrder(tradeNo)
+		defer UnlockOrder(tradeNo)
+		_, err := tryReverseSubscriptionPayment(tradeNo, refund.RefundAmount, "refund", common.GetJsonString(refund))
+		if err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 订阅退款处理失败 trade_no=%s refund_id=%s client_ip=%s error=%q", tradeNo, refund.RefundID, c.ClientIP(), err.Error()))
+		}
+		return err
+	}
+
 	topUp := model.GetTopUpByTradeNo(tradeNo)
 	if topUp == nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 退款订单不存在 trade_no=%s refund_id=%s client_ip=%s", tradeNo, refund.RefundID, c.ClientIP()))
@@ -371,16 +453,24 @@ func completeClinkTopUp(c *gin.Context, tradeNo string, paidAmount float64) erro
 		return fmt.Errorf("missing merchantReferenceId")
 	}
 
-	topUp := model.GetTopUpByTradeNo(tradeNo)
-	if topUp == nil {
-		return fmt.Errorf("topup not found trade_no=%s", tradeNo)
+	expectedMoney := 0.0
+	if order := model.GetSubscriptionOrderByTradeNo(tradeNo); order != nil {
+		expectedMoney = order.Money
+	} else if topUp := model.GetTopUpByTradeNo(tradeNo); topUp != nil {
+		expectedMoney = topUp.Money
+	} else {
+		return fmt.Errorf("payment order not found trade_no=%s", tradeNo)
 	}
-	if !service.ClinkAmountsMatch(topUp.Money, paidAmount) {
-		return fmt.Errorf("amount mismatch expected=%.2f actual=%.2f trade_no=%s", topUp.Money, paidAmount, tradeNo)
+	if !service.ClinkAmountsMatch(expectedMoney, paidAmount) {
+		return fmt.Errorf("amount mismatch expected=%.2f actual=%.2f trade_no=%s", expectedMoney, paidAmount, tradeNo)
 	}
 
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
+	handled, err := tryCompleteSubscriptionPayment(tradeNo, "", model.PaymentProviderClink, model.PaymentMethodClink)
+	if handled || err != nil {
+		return err
+	}
 	return model.RechargeClink(tradeNo, c.ClientIP())
 }
 
@@ -391,5 +481,9 @@ func markClinkTopUpFailed(tradeNo string) error {
 	}
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
+	handled, err := tryExpireSubscriptionPayment(tradeNo, model.PaymentProviderClink)
+	if handled || err != nil {
+		return err
+	}
 	return model.UpdatePendingTopUpStatus(tradeNo, model.PaymentProviderClink, common.TopUpStatusFailed)
 }

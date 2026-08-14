@@ -8,8 +8,84 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 )
+
+type gptSubscriptionPaymentMethod struct {
+	Provider      string `json:"provider"`
+	PaymentMethod string `json:"payment_method"`
+	Name          string `json:"name"`
+	Description   string `json:"description,omitempty"`
+}
+
+func availableGPTSubscriptionPaymentMethods(userID int, payable float64) []gptSubscriptionPaymentMethod {
+	if payable < 0.01 {
+		return nil
+	}
+	if forbidden, err := model.IsUserTopupForbidden(userID); err == nil && forbidden {
+		return nil
+	}
+
+	methods := make([]gptSubscriptionPaymentMethod, 0, 8)
+	if isPayPalTopUpEnabled() && payable+0.005 >= float64(setting.PayPalMinTopUp) {
+		methods = append(methods, gptSubscriptionPaymentMethod{
+			Provider: model.PaymentProviderPayPal, PaymentMethod: model.PaymentMethodPayPal,
+			Name: "PayPal", Description: "Credit / Debit",
+		})
+	}
+	if isWaffoPancakeTopUpEnabled() &&
+		strings.EqualFold(strings.TrimSpace(setting.WaffoPancakeCurrency), "USD") &&
+		payable+0.005 >= float64(setting.WaffoPancakeMinTopUp) {
+		methods = append(methods, gptSubscriptionPaymentMethod{
+			Provider: model.PaymentProviderWaffoPancake, PaymentMethod: model.PaymentMethodWaffoPancake,
+			Name: "Waffo 支付", Description: "Card · Apple Pay · Google Pay",
+		})
+	}
+	if isPlategaTopUpEnabled() && payable+0.005 >= float64(setting.PlategaMinTopUp) {
+		methods = append(methods, gptSubscriptionPaymentMethod{
+			Provider: model.PaymentProviderPlatega, PaymentMethod: model.PaymentMethodPlatega,
+			Name: "俄罗斯 SBP 扫码支付", Description: "СБП / QR",
+		})
+	}
+	if isClinkTopUpEnabled() &&
+		strings.EqualFold(strings.TrimSpace(setting.ClinkCurrency), "USD") &&
+		payable+0.005 >= float64(setting.ClinkMinTopUp) {
+		methods = append(methods, gptSubscriptionPaymentMethod{
+			Provider: model.PaymentProviderClink, PaymentMethod: model.PaymentMethodClink,
+			Name: "Clink", Description: "Global cards and local methods",
+		})
+	}
+
+	// Crypto is intentionally governed by the same account-level top-up guard
+	// as the wallet page and has no separate provider switch there.
+	methods = append(methods, gptSubscriptionPaymentMethod{
+		Provider: model.PaymentProviderCrypto, PaymentMethod: model.PaymentMethodCrypto,
+		Name: "Crypto", Description: "USDT / USDC",
+	})
+
+	if isEpayTopUpEnabled() {
+		for _, method := range operation_setting.PayMethods {
+			paymentType := strings.TrimSpace(method["type"])
+			if paymentType != "alipay" && paymentType != "wxpay" {
+				continue
+			}
+			name := strings.TrimSpace(method["name"])
+			if name == "" {
+				if paymentType == "alipay" {
+					name = "支付宝"
+				} else {
+					name = "微信支付"
+				}
+			}
+			methods = append(methods, gptSubscriptionPaymentMethod{
+				Provider: model.PaymentProviderEpay, PaymentMethod: paymentType, Name: name,
+			})
+		}
+	}
+	return methods
+}
 
 type subscriptionOrderTerms struct {
 	OrderType              string
@@ -139,6 +215,7 @@ func GetGPTSubscriptionQuote(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"order_type": orderType, "previous_subscription_id": previousId,
 		"list_price": plan.PriceAmount, "credit_amount": credit, "payable": payable,
+		"payment_methods": availableGPTSubscriptionPaymentMethods(c.GetInt("id"), payable),
 	})
 }
 

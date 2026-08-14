@@ -27,6 +27,8 @@ import type { BillingTableRow } from '../types'
 export function buildBillingSummaryColumns(
   t: (key: string) => string
 ): ColumnDef<BillingTableRow, unknown>[] {
+  const compactHeaderClass =
+    'space-x-0 [&_button]:-ms-1! [&_button]:h-7! [&_button]:px-1! [&_svg]:ms-1! [&_svg]:size-3!'
   const getNonSubscriptionCost = (row: BillingTableRow) =>
     row.cost_usd - row.subscription_cost_usd
   const getNonSubscriptionRevenue = (row: BillingTableRow) =>
@@ -35,29 +37,35 @@ export function buildBillingSummaryColumns(
   return [
     {
       accessorKey: 'day',
+      size: 90,
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Date')} />
+        <DataTableColumnHeader
+          column={column}
+          title={t('Date')}
+          className={compactHeaderClass}
+        />
       ),
       cell: ({ row }) =>
         row.original.isTotal ? (
-          <span className='text-sm font-semibold'>{t('Total')}</span>
+          <span className='text-xs font-semibold'>{t('Total')}</span>
         ) : (
-          <span className='font-mono text-sm'>
+          <span className='font-mono text-xs'>
             {formatDay(row.original.day)}
           </span>
         ),
     },
     {
       id: 'accounting_requests',
+      size: 170,
       header: () => <span>{t('Accounting OK / Requests (%)')}</span>,
       cell: ({ row }) => {
         const okCount = row.original.accounting_ok_request_count ?? 0
         const targetCount = row.original.accounting_target_request_count ?? 0
         const ratio = targetCount > 0 ? (okCount / targetCount) * 100 : null
         return (
-          <span className='font-mono text-sm whitespace-nowrap'>
-            {okCount} / {targetCount}
-            <span className='text-xs text-muted-foreground'>
+          <span className='text-xs whitespace-nowrap tabular-nums'>
+            {okCount}/{targetCount}
+            <span className='text-muted-foreground text-xs'>
               {ratio == null ? '' : ` (${ratio.toFixed(1)}%)`}
             </span>
           </span>
@@ -66,12 +74,17 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'non_subscription_user_count',
+      size: 50,
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Users')} />
+        <DataTableColumnHeader
+          column={column}
+          title={t('Users')}
+          className={compactHeaderClass}
+        />
       ),
       cell: ({ row }) => (
         <span
-          className={`font-mono text-sm ${row.original.isTotal ? 'font-semibold' : ''}`}
+          className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
         >
           {row.original.non_subscription_user_count ?? 0}
         </span>
@@ -79,28 +92,39 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'cost_usd',
+      size: 56,
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Platform Cost')} />
+        <DataTableColumnHeader
+          column={column}
+          title={t('Platform Cost')}
+          className={compactHeaderClass}
+        />
       ),
       cell: ({ row }) => (
-        <span className='font-mono text-sm'>
+        <span className='text-xs tabular-nums'>
           {formatUSD(getNonSubscriptionCost(row.original))}
         </span>
       ),
     },
     {
       accessorKey: 'revenue_usd',
+      size: 56,
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Revenue')} />
+        <DataTableColumnHeader
+          column={column}
+          title={t('Revenue')}
+          className={compactHeaderClass}
+        />
       ),
       cell: ({ row }) => (
-        <span className='font-mono text-sm'>
+        <span className='text-xs tabular-nums'>
           {formatUSD(getNonSubscriptionRevenue(row.original))}
         </span>
       ),
     },
     {
       id: 'profit_usd',
+      size: 54,
       header: () => <span>{t('Profit')}</span>,
       cell: ({ row }) => {
         const profit =
@@ -108,7 +132,7 @@ export function buildBillingSummaryColumns(
           getNonSubscriptionCost(row.original)
         return (
           <span
-            className={`font-mono text-sm ${profit < 0 ? 'text-destructive' : ''}`}
+            className={`text-xs tabular-nums ${profit < 0 ? 'text-destructive' : ''}`}
           >
             {formatUSD(profit)}
           </span>
@@ -117,16 +141,17 @@ export function buildBillingSummaryColumns(
     },
     {
       id: 'margin',
+      size: 56,
       header: () => <span>{t('Margin')}</span>,
       cell: ({ row }) => {
         const cost = getNonSubscriptionCost(row.original)
         const revenue = getNonSubscriptionRevenue(row.original)
         if (cost <= 0)
-          return <span className='text-muted-foreground text-sm'>—</span>
+          return <span className='text-muted-foreground text-xs'>—</span>
         const margin = ((revenue - cost) / cost) * 100
         return (
           <span
-            className={`font-mono text-sm ${margin < 0 ? 'text-destructive' : ''}`}
+            className={`text-xs tabular-nums ${margin < 0 ? 'text-destructive' : ''}`}
           >
             {margin.toFixed(1)}%
           </span>
@@ -135,15 +160,17 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'subscription_user_count',
+      size: 74,
       header: ({ column }) => (
         <DataTableColumnHeader
           column={column}
           title={t('Subscription Users')}
+          className={compactHeaderClass}
         />
       ),
       cell: ({ row }) => (
         <span
-          className={`font-mono text-sm ${row.original.isTotal ? 'font-semibold' : ''}`}
+          className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
         >
           {row.original.subscription_user_count ?? 0}
         </span>
@@ -151,80 +178,99 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'subscription_cost_usd',
+      size: 74,
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Subscription Cost')} />
+        <DataTableColumnHeader
+          column={column}
+          title={t('Subscription Cost')}
+          className={compactHeaderClass}
+        />
       ),
       cell: ({ row }) => (
-        <span className='font-mono text-sm'>
+        <span className='text-xs tabular-nums'>
           {formatUSD(row.original.subscription_cost_usd)}
         </span>
       ),
     },
     {
       accessorKey: 'subscription_billing_usd',
+      size: 76,
       header: ({ column }) => (
         <DataTableColumnHeader
           column={column}
           title={t('Subscription Billing')}
+          className={compactHeaderClass}
         />
       ),
       cell: ({ row }) => (
-        <span className='font-mono text-sm'>
+        <span className='text-xs tabular-nums'>
           {formatUSD(row.original.subscription_billing_usd)}
         </span>
       ),
     },
     {
       accessorKey: 'paid_subscription_cost_usd',
+      size: 84,
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title='付费订阅成本' />
+        <DataTableColumnHeader
+          column={column}
+          title='付费订阅成本'
+          className={compactHeaderClass}
+        />
       ),
       cell: ({ row }) => (
-        <span className='font-mono text-sm'>
+        <span className='text-xs tabular-nums'>
           {formatUSD(row.original.paid_subscription_cost_usd)}
         </span>
       ),
     },
     {
       accessorKey: 'paid_subscription_revenue_usd',
+      size: 84,
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title='付费订阅收入' />
+        <DataTableColumnHeader
+          column={column}
+          title='付费订阅收入'
+          className={compactHeaderClass}
+        />
       ),
       cell: ({ row }) => (
-        <span className='font-mono text-sm'>
+        <span className='text-xs tabular-nums'>
           {formatUSD(row.original.paid_subscription_revenue_usd)}
         </span>
       ),
     },
     {
       accessorKey: 'wallet_balance_usd',
+      size: 84,
       header: () => <span>{t('Platform User Balance')}</span>,
       cell: ({ row }) => {
         const balance = row.original.wallet_balance_usd
         return balance != null ? (
           <span
-            className={`font-mono text-sm ${row.original.isTotal ? 'font-semibold' : ''}`}
+            className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
           >
             {formatUSD(balance)}
           </span>
         ) : (
-          <span className='text-muted-foreground text-sm'>—</span>
+          <span className='text-muted-foreground text-xs'>—</span>
         )
       },
     },
     {
       accessorKey: 'subscription_balance_usd',
+      size: 84,
       header: () => <span>{t('Subscription Balance')}</span>,
       cell: ({ row }) => {
         const balance = row.original.subscription_balance_usd
         return balance != null ? (
           <span
-            className={`font-mono text-sm ${row.original.isTotal ? 'font-semibold' : ''}`}
+            className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
           >
             {formatUSD(balance)}
           </span>
         ) : (
-          <span className='text-muted-foreground text-sm'>—</span>
+          <span className='text-muted-foreground text-xs'>—</span>
         )
       },
     },

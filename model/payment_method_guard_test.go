@@ -158,6 +158,39 @@ func TestCompleteSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T
 	assert.Nil(t, topUp)
 }
 
+func TestCompleteSubscriptionOrder_CreatesZeroAmountLedgerEntryWithoutWalletCredit(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 252, 1234)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 351)
+	plan.PlanType = SubscriptionPlanTypeGPTSubscription
+	require.NoError(t, DB.Save(plan).Error)
+	insertSubscriptionOrderForPaymentGuardTest(t, "crypto-subscription-order", 252, plan.Id, PaymentProviderCrypto)
+
+	require.NoError(t, CompleteSubscriptionOrder(
+		"crypto-subscription-order",
+		`{"provider":"crypto"}`,
+		PaymentProviderCrypto,
+		PaymentMethodCrypto,
+	))
+	require.NoError(t, CompleteSubscriptionOrder(
+		"crypto-subscription-order",
+		`{"provider":"crypto","duplicate":true}`,
+		PaymentProviderCrypto,
+		PaymentMethodCrypto,
+	))
+
+	topUp := GetTopUpByTradeNo("crypto-subscription-order")
+	require.NotNil(t, topUp)
+	assert.Zero(t, topUp.Amount)
+	assert.Equal(t, 9.99, topUp.Money)
+	assert.Equal(t, PaymentProviderCrypto, topUp.PaymentProvider)
+	assert.Equal(t, PaymentMethodCrypto, topUp.PaymentMethod)
+	assert.Equal(t, common.TopUpStatusSuccess, topUp.Status)
+	assert.Equal(t, 1234, getUserQuotaForPaymentGuardTest(t, 252))
+	assert.EqualValues(t, 1, countUserSubscriptionsForPaymentGuardTest(t, 252))
+}
+
 func TestExpireSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T) {
 	truncateTables(t)
 

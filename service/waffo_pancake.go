@@ -199,6 +199,12 @@ func ResolveWaffoPancakeTradeNo(event *waffoPancakeWebhookEvent) (string, error)
 		if topUp != nil && topUp.PaymentMethod == model.PaymentMethodWaffoPancake {
 			return candidate, nil
 		}
+		subscriptionOrder := model.GetSubscriptionOrderByTradeNo(candidate)
+		if subscriptionOrder != nil &&
+			subscriptionOrder.PaymentProvider == model.PaymentProviderWaffoPancake &&
+			subscriptionOrder.PaymentMethod == model.PaymentMethodWaffoPancake {
+			return candidate, nil
+		}
 	}
 
 	if first := strings.TrimSpace(event.Data.OrderID); first != "" {
