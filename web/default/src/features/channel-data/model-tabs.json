@@ -33,6 +33,7 @@
   { "model_id": "grok-1.5-video-15s", "label": "Grok 1.5 Video 15s", "accent": "#94a3b8" },
   { "model_id": "grok-1.5-video-6s", "label": "Grok 1.5 Video 6s", "accent": "#94a3b8" },
   { "model_id": "gemini-3.1-pro-preview", "label": "Gemini 3.1 Pro", "accent": "#4285f4" },
+  { "model_id": "gemini-3.7-flash", "label": "Gemini 3.7 Flash", "accent": "#4285f4" },
   { "model_id": "gemini-3.6-flash", "label": "Gemini 3.6 Flash", "accent": "#4285f4" },
   { "model_id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash", "accent": "#4285f4" },
   { "model_id": "gemini-3.1-flash-image", "label": "Nano Banana 2", "accent": "#4285f4" },

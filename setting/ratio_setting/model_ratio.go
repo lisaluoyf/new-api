@@ -196,6 +196,7 @@ var defaultModelRatio = map[string]float64{
 	"gemini-2.5-flash-lite-preview-06-17":       0.05,
 	"gemini-2.5-flash":                          0.15,
 	"gemini-robotics-er-1.5-preview":            0.15,
+	"gemini-3.7-flash":                          0.375,
 	"gemini-3.6-flash":                          1.5,
 	"gemini-3.5-flash":                          1.5,
 	"gemini-3.1-flash-lite":                     0.25,
@@ -619,6 +620,8 @@ func getHardcodedCompletionModelRatio(name string) (float64, bool) {
 			return 2.5 / 0.3, false
 		} else if strings.HasPrefix(name, "gemini-robotics-er-1.5") {
 			return 2.5 / 0.3, false
+		} else if strings.HasPrefix(name, "gemini-3.7-flash") {
+			return 5, false
 		} else if strings.HasPrefix(name, "gemini-3.6-flash") {
 			return 5, false
 		} else if strings.HasPrefix(name, "gemini-3.5-flash") {
