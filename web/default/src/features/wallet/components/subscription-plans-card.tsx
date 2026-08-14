@@ -105,6 +105,7 @@ export function SubscriptionPlansCard({
     useState('subscription_first')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [currentTimestamp] = useState(() => Date.now() / 1000)
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
@@ -217,8 +218,7 @@ export function SubscriptionPlansCard({
   const getRemainingDays = (sub: UserSubscriptionRecord) => {
     const endTime = sub?.subscription?.end_time || 0
     if (!endTime) return 0
-    const now = Date.now() / 1000
-    return Math.max(0, Math.ceil((endTime - now) / 86400))
+    return Math.max(0, Math.ceil((endTime - currentTimestamp) / 86400))
   }
 
   const getUsagePercent = (sub: UserSubscriptionRecord) => {
@@ -392,14 +392,18 @@ export function SubscriptionPlansCard({
                   const subscription = sub.subscription
                   const totalAmount = Number(subscription?.amount_total || 0)
                   const usedAmount = Number(subscription?.amount_used || 0)
+                  const pendingAmount = Math.max(
+                    0,
+                    Number(subscription?.pending_amount || 0)
+                  )
                   const remainAmount =
                     totalAmount > 0 ? Math.max(0, totalAmount - usedAmount) : 0
                   const planTitle =
                     planTitleMap.get(subscription?.plan_id) || ''
                   const remainDays = getRemainingDays(sub)
                   const usagePercent = getUsagePercent(sub)
-                  const now = Date.now() / 1000
-                  const isExpired = (subscription?.end_time || 0) < now
+                  const isExpired =
+                    (subscription?.end_time || 0) < currentTimestamp
                   const isCancelled = subscription?.status === 'cancelled'
                   const isActive =
                     subscription?.status === 'active' && !isExpired
@@ -484,6 +488,11 @@ export function SubscriptionPlansCard({
                         {totalAmount > 0 && (
                           <span className='ml-2'>
                             {t('Used')} {usagePercent}%
+                          </span>
+                        )}
+                        {pendingAmount > 0 && (
+                          <span className='ml-2 inline-flex rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'>
+                            {t('Pending')}: {formatQuota(pendingAmount)}
                           </span>
                         )}
                       </div>

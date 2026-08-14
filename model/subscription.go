@@ -401,6 +401,10 @@ type UserSubscription struct {
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+
+	// PendingAmount is the unresolved subscription reservation currently included
+	// in AmountUsed. It is populated for API responses and is never persisted.
+	PendingAmount int64 `json:"pending_amount" gorm:"-:all"`
 }
 
 func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
@@ -1059,6 +1063,9 @@ func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := enrichSubscriptionPendingAmounts(subs); err != nil {
+		return nil, err
+	}
 	return buildSubscriptionSummaries(subs), nil
 }
 
@@ -1163,7 +1170,54 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := enrichSubscriptionPendingAmounts(subs); err != nil {
+		return nil, err
+	}
 	return buildSubscriptionSummaries(subs), nil
+}
+
+// enrichSubscriptionPendingAmounts reports unresolved billing holds per
+// subscription. These reservations are already included in amount_used, so the
+// value is informational and must not be subtracted from the remaining balance
+// a second time.
+func enrichSubscriptionPendingAmounts(subs []UserSubscription) error {
+	if len(subs) == 0 {
+		return nil
+	}
+
+	ids := make([]int, 0, len(subs))
+	for i := range subs {
+		if subs[i].Id > 0 {
+			ids = append(ids, subs[i].Id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	type pendingSubscriptionAmount struct {
+		UserSubscriptionId int
+		PendingAmount      int64
+	}
+	var rows []pendingSubscriptionAmount
+	err := DB.Table("billing_holds AS bh").
+		Select("spr.user_subscription_id, COALESCE(SUM(bh.pre_consumed_quota), 0) AS pending_amount").
+		Joins("JOIN subscription_pre_consume_records AS spr ON spr.request_id = bh.request_id AND spr.user_id = bh.user_id").
+		Where("spr.user_subscription_id IN ? AND bh.status IN ?", ids, []string{BillingHoldStatusPending, "processing"}).
+		Group("spr.user_subscription_id").
+		Scan(&rows).Error
+	if err != nil {
+		return err
+	}
+
+	pendingBySubscription := make(map[int]int64, len(rows))
+	for _, row := range rows {
+		pendingBySubscription[row.UserSubscriptionId] = row.PendingAmount
+	}
+	for i := range subs {
+		subs[i].PendingAmount = pendingBySubscription[subs[i].Id]
+	}
+	return nil
 }
 
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {

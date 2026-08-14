@@ -74,6 +74,7 @@ function resolveTrialSubscription(
 
 export function TrialSubscriptionSection() {
   const { t } = useTranslation()
+  const [currentTimestamp] = useState(() => Date.now() / 1000)
   const [loading, setLoading] = useState(true)
   const [plans, setPlans] = useState<PlanRecord[]>([])
   const [subscriptions, setSubscriptions] = useState<UserSubscriptionRecord[]>(
@@ -130,15 +131,17 @@ export function TrialSubscriptionSection() {
     subscription?.amount_total || trial.plan?.plan.total_amount || 0
   )
   const usedQuota = Math.max(0, Number(subscription?.amount_used || 0))
+  const pendingQuota = Math.max(0, Number(subscription?.pending_amount || 0))
   const remainingQuota = Math.max(totalQuota - usedQuota, 0)
   const expiryDate = subscription?.end_time || 0
-  const now = Date.now() / 1000
   const remainingDays =
-    expiryDate > now ? Math.max(0, Math.ceil((expiryDate - now) / 86400)) : 0
+    expiryDate > currentTimestamp
+      ? Math.max(0, Math.ceil((expiryDate - currentTimestamp) / 86400))
+      : 0
 
   let status: TrialStatus = 'not_claimed'
   if (subscription) {
-    if (expiryDate > 0 && expiryDate <= now) {
+    if (expiryDate > 0 && expiryDate <= currentTimestamp) {
       status = 'expired'
     } else if (totalQuota > 0 && remainingQuota <= 0) {
       status = 'depleted'
@@ -202,11 +205,18 @@ export function TrialSubscriptionSection() {
             <div className='text-muted-foreground text-xs font-medium'>
               {copy.title}
             </div>
-            <div className='mt-0.5 font-mono text-2xl font-bold tabular-nums tracking-tight'>
-              {formatUsdAmount(remainingQuota)}
-              {totalQuota > 0 ? (
-                <span className='text-muted-foreground ml-2 text-sm font-medium'>
-                  / {formatUsdAmount(totalQuota)}
+            <div className='mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-1'>
+              <span className='font-mono text-2xl font-bold tracking-tight tabular-nums'>
+                {formatUsdAmount(remainingQuota)}
+                {totalQuota > 0 ? (
+                  <span className='text-muted-foreground ml-2 text-sm font-medium'>
+                    / {formatUsdAmount(totalQuota)}
+                  </span>
+                ) : null}
+              </span>
+              {pendingQuota > 0 ? (
+                <span className='inline-flex rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20'>
+                  {t('Pending')}: {formatUsdAmount(pendingQuota)}
                 </span>
               ) : null}
             </div>
