@@ -1017,12 +1017,29 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
 		}
 
-		// 查询本次充值的实付金额（Money 字段）
-		var actualPayment float64
+		// 查询本次充值的实付金额（Money 字段）并折算成美元
+		var actualPaymentUSD float64
 		var topUp TopUp
 		if err := DB.Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
 			Order("complete_time DESC").First(&topUp).Error; err == nil {
-			actualPayment = topUp.Money
+			// 根据支付方式推断货币并折算成美元
+			switch topUp.PaymentMethod {
+			case "alipay", "wxpay":
+				// 人民币，按 7.0 汇率折算
+				actualPaymentUSD = topUp.Money / 7.0
+			case "clink":
+				// 卢布，按 90.0 汇率折算
+				actualPaymentUSD = topUp.Money / 90.0
+			case "waffo_pancake", "platega":
+				// 印度卢比，按 83.0 汇率折算
+				actualPaymentUSD = topUp.Money / 83.0
+			case "paypal", "crypto", "admin":
+				// 美元，不需要折算
+				actualPaymentUSD = topUp.Money
+			default:
+				// 未知支付方式，假设美元
+				actualPaymentUSD = topUp.Money
+			}
 		}
 
 		lines := []string{
@@ -1031,8 +1048,8 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 		}
 
 		// 仅当实付金额与充值金额不同时才显示"实付"字段（使用 1 美分误差容忍）
-		if actualPayment > 0 && math.Abs(actualPayment-usdAmount) > 0.01 {
-			lines = append(lines, fmt.Sprintf("实付：$%.2f", actualPayment))
+		if actualPaymentUSD > 0 && math.Abs(actualPaymentUSD-usdAmount) > 0.01 {
+			lines = append(lines, fmt.Sprintf("实付：$%.2f", actualPaymentUSD))
 		}
 
 		lines = append(lines,

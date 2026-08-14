@@ -144,11 +144,17 @@ type RelayInfo struct {
 	// SubscriptionPlanId / SubscriptionPlanTitle are used for logging/UI display.
 	SubscriptionPlanId    int
 	SubscriptionPlanTitle string
+	SubscriptionPlanType  string
 	// RequestId is used for idempotent pre-consume/refund
 	RequestId string
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
 	SubscriptionAmountTotal               int64
 	SubscriptionAmountUsedAfterPreConsume int64
+	SubscriptionFiveHourLimit             int64
+	SubscriptionSevenDayLimit             int64
+	SubscriptionFiveHourUsedAfter         int64
+	SubscriptionSevenDayUsedAfter         int64
+	SubscriptionCycleId                   int
 	IsClaudeBetaQuery                     bool // /v1/messages?beta=true
 	IsChannelTest                         bool // channel test request
 	RetryIndex                            int
@@ -173,6 +179,7 @@ type RelayInfo struct {
 	HasActiveGPTTrial bool
 	// HasActiveGPTReferralReward caches the permanent referral-credit lookup.
 	HasActiveGPTReferralReward bool
+	HasActiveGPTSubscription   bool
 	// GPTTrialChecked marks whether HasActiveGPTTrial was resolved for this
 	// request.
 	GPTTrialChecked bool
@@ -284,7 +291,7 @@ func (info *RelayInfo) SetTrialPriceData(priceData types.PriceData) {
 	priceCopy := priceData
 	info.TrialPriceData = &priceCopy
 	info.TrialTieredBillingSnapshot = info.TieredBillingSnapshot
-	if info.PriceDataSource == "gpt_trial" || info.PriceDataSource == "gpt_referral_reward" {
+	if info.PriceDataSource == "gpt_trial" || info.PriceDataSource == "gpt_referral_reward" || info.PriceDataSource == "gpt_subscription" {
 		info.PriceData = priceData
 		info.TieredBillingSnapshot = info.TrialTieredBillingSnapshot
 	} else {
@@ -311,7 +318,7 @@ func (info *RelayInfo) ActivateGPTPromotionalPriceData(source string) bool {
 		return false
 	}
 	info.PriceData = *info.TrialPriceData
-	if source != "gpt_referral_reward" {
+	if source != "gpt_referral_reward" && source != "gpt_subscription" {
 		source = "gpt_trial"
 	}
 	info.PriceDataSource = source

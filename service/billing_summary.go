@@ -83,6 +83,8 @@ func runBillingSummaryOnce() {
 		         SUM(CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE accounting_user_final_amount_usd END) as revenue_usd,
 		         SUM(CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as subscription_cost_usd,
 		         SUM(CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as subscription_billing_usd,
+		         SUM(CASE WHEN other LIKE '%"subscription_type":"gpt_subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
+		         SUM(CASE WHEN other LIKE '%"subscription_type":"gpt_subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
 		         COUNT(*) as request_count`).
 		Where("type = ? AND quota > 0 AND accounting_status = ? AND created_at >= ?", model.LogTypeConsume, "ok", since).
 		Group(hourExpr + ", model_name, channel_id").

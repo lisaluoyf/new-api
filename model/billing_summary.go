@@ -15,16 +15,18 @@ import (
 // view (no token/username/email filter). Lives in LOG_DB since it's built
 // from the logs table, which itself may live in a separate LOG_SQL_DSN db.
 type BillingHourlySummary struct {
-	Id                     int64   `json:"id" gorm:"primaryKey;autoIncrement"`
-	HourBucket             int64   `json:"hour_bucket" gorm:"uniqueIndex:idx_bill_hour_model_ch;index;not null"` // unix seconds, floored to the hour
-	ModelName              string  `json:"model_name" gorm:"size:256;uniqueIndex:idx_bill_hour_model_ch;default:''"`
-	ChannelId              int     `json:"channel_id" gorm:"uniqueIndex:idx_bill_hour_model_ch;default:0"`
-	CostUSD                float64 `json:"cost_usd" gorm:"type:decimal(20,10);default:0"`                 // SUM(accounting_channel_cost_amount_usd)
-	RevenueUSD             float64 `json:"revenue_usd" gorm:"type:decimal(20,10);default:0"`              // SUM(accounting_user_final_amount_usd) + subscription official billing
-	SubscriptionCostUSD    float64 `json:"subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`    // SUM(accounting_channel_cost_amount_usd) where billing_source=subscription
-	SubscriptionBillingUSD float64 `json:"subscription_billing_usd" gorm:"type:decimal(20,10);default:0"` // SUM(subscription official price, quota / QuotaPerUnit) where billing_source=subscription
-	RequestCount           int64   `json:"request_count" gorm:"default:0"`
-	UpdatedAt              int64   `json:"updated_at"`
+	Id                         int64   `json:"id" gorm:"primaryKey;autoIncrement"`
+	HourBucket                 int64   `json:"hour_bucket" gorm:"uniqueIndex:idx_bill_hour_model_ch;index;not null"` // unix seconds, floored to the hour
+	ModelName                  string  `json:"model_name" gorm:"size:256;uniqueIndex:idx_bill_hour_model_ch;default:''"`
+	ChannelId                  int     `json:"channel_id" gorm:"uniqueIndex:idx_bill_hour_model_ch;default:0"`
+	CostUSD                    float64 `json:"cost_usd" gorm:"type:decimal(20,10);default:0"`                 // SUM(accounting_channel_cost_amount_usd)
+	RevenueUSD                 float64 `json:"revenue_usd" gorm:"type:decimal(20,10);default:0"`              // SUM(accounting_user_final_amount_usd) + subscription official billing
+	SubscriptionCostUSD        float64 `json:"subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`    // SUM(accounting_channel_cost_amount_usd) where billing_source=subscription
+	SubscriptionBillingUSD     float64 `json:"subscription_billing_usd" gorm:"type:decimal(20,10);default:0"` // SUM(subscription official price, quota / QuotaPerUnit) where billing_source=subscription
+	PaidSubscriptionCostUSD    float64 `json:"paid_subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`
+	PaidSubscriptionRevenueUSD float64 `json:"paid_subscription_revenue_usd" gorm:"type:decimal(20,10);default:0"`
+	RequestCount               int64   `json:"request_count" gorm:"default:0"`
+	UpdatedAt                  int64   `json:"updated_at"`
 }
 
 // BillingWalletDailySnapshot stores the latest non-admin wallet balance seen
@@ -54,7 +56,7 @@ func UpsertBillingHourlySummaries(rows []BillingHourlySummary) error {
 	return LOG_DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "hour_bucket"}, {Name: "model_name"}, {Name: "channel_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"cost_usd", "revenue_usd", "subscription_cost_usd", "subscription_billing_usd", "request_count", "updated_at",
+			"cost_usd", "revenue_usd", "subscription_cost_usd", "subscription_billing_usd", "paid_subscription_cost_usd", "paid_subscription_revenue_usd", "request_count", "updated_at",
 		}),
 	}).Create(&rows).Error
 }
@@ -62,17 +64,19 @@ func UpsertBillingHourlySummaries(rows []BillingHourlySummary) error {
 // BillingDailyRow is one day's aggregated cost/revenue, returned to the
 // 平台账单 page. Profit and margin are derived at query time, not stored.
 type BillingDailyRow struct {
-	Day                      int64    `json:"day" gorm:"column:day"` // unix seconds, floored to Beijing (UTC+8) midnight
-	CostUSD                  float64  `json:"cost_usd" gorm:"column:cost_usd"`
-	RevenueUSD               float64  `json:"revenue_usd" gorm:"column:revenue_usd"`
-	SubscriptionCostUSD      float64  `json:"subscription_cost_usd" gorm:"column:subscription_cost_usd"`
-	SubscriptionBillingUSD   float64  `json:"subscription_billing_usd" gorm:"column:subscription_billing_usd"`
-	AccountingOKRequestCount int64    `json:"accounting_ok_request_count" gorm:"column:accounting_ok_request_count"`
-	AccountingTargetReqCount int64    `json:"accounting_target_request_count" gorm:"column:accounting_target_request_count"`
-	NonSubscriptionUserCount int64    `json:"non_subscription_user_count" gorm:"-"`
-	SubscriptionUserCount    int64    `json:"subscription_user_count" gorm:"-"`
-	WalletBalanceUSD         *float64 `json:"wallet_balance_usd,omitempty" gorm:"-"`
-	SubscriptionBalanceUSD   *float64 `json:"subscription_balance_usd,omitempty" gorm:"-"`
+	Day                        int64    `json:"day" gorm:"column:day"` // unix seconds, floored to Beijing (UTC+8) midnight
+	CostUSD                    float64  `json:"cost_usd" gorm:"column:cost_usd"`
+	RevenueUSD                 float64  `json:"revenue_usd" gorm:"column:revenue_usd"`
+	SubscriptionCostUSD        float64  `json:"subscription_cost_usd" gorm:"column:subscription_cost_usd"`
+	SubscriptionBillingUSD     float64  `json:"subscription_billing_usd" gorm:"column:subscription_billing_usd"`
+	PaidSubscriptionCostUSD    float64  `json:"paid_subscription_cost_usd" gorm:"column:paid_subscription_cost_usd"`
+	PaidSubscriptionRevenueUSD float64  `json:"paid_subscription_revenue_usd" gorm:"column:paid_subscription_revenue_usd"`
+	AccountingOKRequestCount   int64    `json:"accounting_ok_request_count" gorm:"column:accounting_ok_request_count"`
+	AccountingTargetReqCount   int64    `json:"accounting_target_request_count" gorm:"column:accounting_target_request_count"`
+	NonSubscriptionUserCount   int64    `json:"non_subscription_user_count" gorm:"-"`
+	SubscriptionUserCount      int64    `json:"subscription_user_count" gorm:"-"`
+	WalletBalanceUSD           *float64 `json:"wallet_balance_usd,omitempty" gorm:"-"`
+	SubscriptionBalanceUSD     *float64 `json:"subscription_balance_usd,omitempty" gorm:"-"`
 }
 
 type billingDailyCountRow struct {
@@ -121,6 +125,8 @@ func GetBillingDailyFromSummary(startTimestamp, endTimestamp int64, modelName st
 			SUM(revenue_usd) as revenue_usd,
 			COALESCE(SUM(subscription_cost_usd), 0) as subscription_cost_usd,
 			COALESCE(SUM(subscription_billing_usd), 0) as subscription_billing_usd,
+			COALESCE(SUM(paid_subscription_cost_usd), 0) as paid_subscription_cost_usd,
+			COALESCE(SUM(paid_subscription_revenue_usd), 0) as paid_subscription_revenue_usd,
 			SUM(request_count) as accounting_ok_request_count`)
 	if startTimestamp != 0 {
 		tx = tx.Where("hour_bucket >= ?", startTimestamp)
@@ -167,6 +173,8 @@ func GetBillingDailyFromRawLogs(startTimestamp, endTimestamp int64, modelName st
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE accounting_user_final_amount_usd END ELSE 0 END) as revenue_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as subscription_cost_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as subscription_billing_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"subscription_type":"gpt_subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND other LIKE '%"subscription_type":"gpt_subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN 1 ELSE 0 END) as accounting_ok_request_count,
 			SUM(`+billingTargetRequestCountExpr()+`) as accounting_target_request_count`).
 		Where("type = ?", LogTypeConsume)

@@ -62,6 +62,30 @@ export async function patchPlanStatus(
   return res.data
 }
 
+export async function deletePlan(id: number): Promise<ApiResponse> {
+  const res = await api.delete(`/api/subscription/admin/plans/${id}`)
+  return res.data
+}
+
+export interface GPTSubscriptionAccessConfig {
+  public_enabled: boolean
+  whitelist: string[]
+}
+
+export async function getGPTSubscriptionAccessConfig(): Promise<
+  ApiResponse<GPTSubscriptionAccessConfig>
+> {
+  const res = await api.get('/api/subscription/admin/gpt/access')
+  return res.data
+}
+
+export async function updateGPTSubscriptionAccessConfig(
+  data: GPTSubscriptionAccessConfig
+): Promise<ApiResponse<GPTSubscriptionAccessConfig>> {
+  const res = await api.put('/api/subscription/admin/gpt/access', data)
+  return res.data
+}
+
 // ============================================================================
 // Admin User Subscription Management
 // ============================================================================
@@ -72,6 +96,38 @@ export async function getUserSubscriptions(
   const res = await api.get(
     `/api/subscription/admin/users/${userId}/subscriptions`
   )
+  return res.data
+}
+
+export interface GPTUserSubscriptionDetails {
+  state: {
+    subscription?: UserSubscriptionRecord['subscription'] | null
+    five_hour_used: number
+    seven_day_used: number
+  }
+  orders: Array<{
+    id: number
+    trade_no: string
+    money: number
+    list_price: number
+    credit_amount: number
+    refund_amount: number
+    chargeback_amount: number
+    fee_amount: number
+    commission_amount: number
+    order_type: string
+    payment_method: string
+    status: string
+    create_time: number
+    complete_time: number
+  }>
+  usage: { official_revenue_usd: number; channel_cost_usd: number }
+}
+
+export async function getUserGPTSubscriptionDetails(
+  userId: number
+): Promise<ApiResponse<GPTUserSubscriptionDetails>> {
+  const res = await api.get(`/api/subscription/admin/users/${userId}/gpt`)
   return res.data
 }
 

@@ -175,6 +175,28 @@ export function buildBillingSummaryColumns(
       ),
     },
     {
+      accessorKey: 'paid_subscription_cost_usd',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Paid Subscription Cost')} />
+      ),
+      cell: ({ row }) => (
+        <span className='font-mono text-sm'>
+          {formatUSD(row.original.paid_subscription_cost_usd)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'paid_subscription_revenue_usd',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Paid Subscription Revenue')} />
+      ),
+      cell: ({ row }) => (
+        <span className='font-mono text-sm'>
+          {formatUSD(row.original.paid_subscription_revenue_usd)}
+        </span>
+      ),
+    },
+    {
       accessorKey: 'wallet_balance_usd',
       header: () => <span>{t('Platform User Balance')}</span>,
       cell: ({ row }) => {

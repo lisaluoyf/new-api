@@ -193,6 +193,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.GPTTrialChecked = true
 	relayInfo.HasActiveGPTTrial = false
 	relayInfo.HasActiveGPTReferralReward = false
+	relayInfo.HasActiveGPTSubscription = false
 	if service.IsFreeTrialEligibleModel(relayInfo.OriginModelName) {
 		hasTrial, trialErr := model.HasActiveUserSubscriptionByPlanMatcher(relayInfo.UserId, model.IsGPTTrialSubscriptionPlan)
 		if trialErr != nil {
@@ -206,7 +207,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			return
 		}
 		relayInfo.HasActiveGPTReferralReward = hasReferralReward
-		if hasTrial || hasReferralReward {
+		hasPaidSubscription, paidErr := model.HasActiveUserSubscriptionByPlanMatcher(relayInfo.UserId, model.IsGPTPaidSubscriptionPlan)
+		if paidErr != nil {
+			newAPIError = types.NewError(paidErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+			return
+		}
+		relayInfo.HasActiveGPTSubscription = hasPaidSubscription
+		if hasTrial || hasReferralReward || hasPaidSubscription {
 			if _, err := helper.BuildGPTTrialPriceData(c, relayInfo, tokens, meta); err != nil {
 				newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 				return

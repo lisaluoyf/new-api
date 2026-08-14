@@ -180,6 +180,24 @@ export function isSubscriptionUsageLog(
   return (other?.billing_source || '').trim().toLowerCase() === 'subscription'
 }
 
+export function getSubscriptionSourceLabel(
+  other: LogOtherData | null | undefined,
+  t: (key: string) => string
+): string {
+  switch (other?.subscription_type) {
+    case 'gpt_trial':
+      return t('GPT Trial')
+    case 'gpt_referral_reward':
+      return t('Referral GPT Reward')
+    case 'gpt_subscription':
+      return other.subscription_plan_title
+        ? `${t('GPT Subscription')} · ${other.subscription_plan_title}`
+        : t('GPT Subscription')
+    default:
+      return t('Subscription')
+  }
+}
+
 export function getSubscriptionRequestBillingUSD(
   log: Pick<UsageLog, 'quota'>,
   other: LogOtherData | null | undefined

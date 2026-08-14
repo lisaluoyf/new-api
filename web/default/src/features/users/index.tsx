@@ -24,6 +24,7 @@ import { UsersPrimaryButtons } from './components/users-primary-buttons'
 import { UsersProvider, useUsers } from './components/users-provider'
 import { UsersTable } from './components/users-table'
 import { UserInfoDialog } from './components/user-info-dialog'
+import { UserSubscriptionsDialog } from '@/features/subscriptions/components/dialogs/user-subscriptions-dialog'
 
 function UsersContent() {
   const { t } = useTranslation()
@@ -34,6 +35,9 @@ function UsersContent() {
     selectedUserId,
     userInfoDialogOpen,
     setUserInfoDialogOpen,
+    subscriptionDialogUser,
+    setSubscriptionDialogUser,
+    triggerRefresh,
   } = useUsers()
 
   return (
@@ -60,6 +64,12 @@ function UsersContent() {
         userId={selectedUserId}
         open={userInfoDialogOpen}
         onOpenChange={setUserInfoDialogOpen}
+      />
+      <UserSubscriptionsDialog
+        user={subscriptionDialogUser}
+        open={Boolean(subscriptionDialogUser)}
+        onOpenChange={(isOpen) => !isOpen && setSubscriptionDialogUser(null)}
+        onSuccess={triggerRefresh}
       />
       <UsersDeleteDialog />
     </>

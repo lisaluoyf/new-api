@@ -53,6 +53,15 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
+	terms, err := resolveSubscriptionOrderTerms(userId, plan)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	if terms.Payable < 0.01 {
+		common.ApiErrorMsg(c, "应付金额过低")
+		return
+	}
 	if plan.MaxPurchasePerUser > 0 {
 		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
 		if err != nil {
@@ -87,14 +96,20 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	}
 
 	order := &model.SubscriptionOrder{
-		UserId:          userId,
-		PlanId:          plan.Id,
-		Money:           plan.PriceAmount,
-		TradeNo:         tradeNo,
-		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: model.PaymentProviderEpay,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+		UserId:                 userId,
+		PlanId:                 plan.Id,
+		Money:                  terms.Payable,
+		ListPrice:              terms.ListPrice,
+		CreditAmount:           terms.CreditAmount,
+		OrderType:              terms.OrderType,
+		PreviousSubscriptionId: terms.PreviousSubscriptionId,
+		PreviousEndTime:        terms.PreviousEndTime,
+		PreviousCycleId:        terms.PreviousCycleId,
+		TradeNo:                tradeNo,
+		PaymentMethod:          req.PaymentMethod,
+		PaymentProvider:        model.PaymentProviderEpay,
+		CreateTime:             time.Now().Unix(),
+		Status:                 common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
 		common.ApiErrorMsg(c, "创建订单失败")
@@ -104,7 +119,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Money:          strconv.FormatFloat(terms.Payable, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,
@@ -178,7 +193,7 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	if c.Request.Method == "POST" {
 		// POST 请求：从 POST body 解析参数
 		if err := c.Request.ParseForm(); err != nil {
-			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
+			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
 			return
 		}
 		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
@@ -194,29 +209,29 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	}
 
 	if len(params) == 0 {
-		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
+		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
 		return
 	}
 
 	client := GetEpayClient()
 	if client == nil {
-		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
+		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
 		return
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
-		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
+		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
 		return
 	}
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
 		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
-			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
+			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
 			return
 		}
-		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=success")
+		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=success")
 		return
 	}
-	c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=pending")
+	c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=pending")
 }

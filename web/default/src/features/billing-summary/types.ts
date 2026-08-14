@@ -36,6 +36,8 @@ export interface BillingDailyRow {
   revenue_usd: number
   subscription_cost_usd: number
   subscription_billing_usd: number
+  paid_subscription_cost_usd: number
+  paid_subscription_revenue_usd: number
   accounting_ok_request_count: number
   accounting_target_request_count: number
   non_subscription_user_count: number

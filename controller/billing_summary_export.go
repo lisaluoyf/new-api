@@ -30,6 +30,8 @@ type billingSummaryExportRow struct {
 	NonSubscriptionMarginPercent *float64 `json:"non_subscription_margin_percent"`
 	SubscriptionCostUSD          float64  `json:"subscription_cost_usd"`
 	SubscriptionBillingUSD       float64  `json:"subscription_billing_usd"`
+	PaidSubscriptionCostUSD      float64  `json:"paid_subscription_cost_usd"`
+	PaidSubscriptionRevenueUSD   float64  `json:"paid_subscription_revenue_usd"`
 	NonSubscriptionUserCount     int64    `json:"non_subscription_user_count"`
 	SubscriptionUserCount        int64    `json:"subscription_user_count"`
 	WalletBalanceUSD             *float64 `json:"wallet_balance_usd"`
@@ -62,6 +64,8 @@ func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummar
 			NonSubscriptionMarginPercent: marginPercent,
 			SubscriptionCostUSD:          row.SubscriptionCostUSD,
 			SubscriptionBillingUSD:       row.SubscriptionBillingUSD,
+			PaidSubscriptionCostUSD:      row.PaidSubscriptionCostUSD,
+			PaidSubscriptionRevenueUSD:   row.PaidSubscriptionRevenueUSD,
 			NonSubscriptionUserCount:     row.NonSubscriptionUserCount,
 			SubscriptionUserCount:        row.SubscriptionUserCount,
 			WalletBalanceUSD:             row.WalletBalanceUSD,

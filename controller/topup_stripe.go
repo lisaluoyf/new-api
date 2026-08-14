@@ -20,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stripe/stripe-go/v81"
+	stripecharge "github.com/stripe/stripe-go/v81/charge"
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/stripe/stripe-go/v81/webhook"
 	"github.com/thanhpk/randstr"
@@ -191,11 +192,83 @@ func StripeWebhook(c *gin.Context) {
 		sessionAsyncPaymentSucceeded(ctx, event, callerIp)
 	case stripe.EventTypeCheckoutSessionAsyncPaymentFailed:
 		sessionAsyncPaymentFailed(ctx, event, callerIp)
+	case stripe.EventTypeChargeRefunded:
+		handleSubscriptionStripeReversal(ctx, event, "refund", callerIp)
+	case stripe.EventTypeChargeDisputeCreated, stripe.EventTypeChargeDisputeFundsWithdrawn:
+		handleSubscriptionStripeReversal(ctx, event, "chargeback", callerIp)
+	case stripe.EventTypeChargeDisputeFundsReinstated:
+		handleSubscriptionStripeReinstatement(ctx, event, callerIp)
 	default:
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 忽略事件 event_type=%s client_ip=%s", string(event.Type), callerIp))
 	}
 
 	c.Status(http.StatusOK)
+}
+
+func resolveStripeSubscriptionReference(event stripe.Event) string {
+	referenceID := event.GetObjectValue("metadata", "trade_no")
+	if referenceID != "" {
+		return referenceID
+	}
+	chargeID := event.GetObjectValue("charge")
+	if chargeID == "" {
+		return ""
+	}
+	stripe.Key = setting.StripeApiSecret
+	chargeObject, err := stripecharge.Get(chargeID, nil)
+	if err != nil || chargeObject == nil {
+		return ""
+	}
+	return chargeObject.Metadata["trade_no"]
+}
+
+func handleSubscriptionStripeReversal(ctx context.Context, event stripe.Event, reversalType string, callerIp string) {
+	referenceID := resolveStripeSubscriptionReference(event)
+	amountRaw := event.GetObjectValue("amount_refunded")
+	if reversalType == "chargeback" {
+		amountRaw = event.GetObjectValue("amount")
+	}
+	if referenceID == "" {
+		logger.LogInfo(ctx, fmt.Sprintf("Stripe reversal is not a subscription order event_type=%s client_ip=%s", event.Type, callerIp))
+		return
+	}
+	amountCents, err := strconv.ParseFloat(amountRaw, 64)
+	if err != nil || amountCents <= 0 {
+		logger.LogWarn(ctx, fmt.Sprintf("Stripe subscription reversal has invalid amount trade_no=%s event_type=%s amount=%q", referenceID, event.Type, amountRaw))
+		return
+	}
+	LockOrder(referenceID)
+	defer UnlockOrder(referenceID)
+	if err := model.ReverseSubscriptionOrder(referenceID, amountCents/100, reversalType, common.GetJsonString(event)); err != nil {
+		if !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
+			logger.LogError(ctx, fmt.Sprintf("Stripe subscription reversal failed trade_no=%s type=%s error=%q", referenceID, reversalType, err.Error()))
+		}
+		return
+	}
+	logger.LogInfo(ctx, fmt.Sprintf("Stripe subscription reversal completed trade_no=%s type=%s amount=%.2f", referenceID, reversalType, amountCents/100))
+}
+
+func handleSubscriptionStripeReinstatement(ctx context.Context, event stripe.Event, callerIp string) {
+	referenceID := resolveStripeSubscriptionReference(event)
+	if referenceID == "" {
+		logger.LogInfo(ctx, fmt.Sprintf("Stripe dispute reinstatement is not a subscription order event_type=%s client_ip=%s", event.Type, callerIp))
+		return
+	}
+	amountRaw := event.GetObjectValue("amount")
+	amountCents, err := strconv.ParseFloat(amountRaw, 64)
+	if err != nil || amountCents <= 0 {
+		logger.LogWarn(ctx, fmt.Sprintf("Stripe subscription reinstatement has invalid amount trade_no=%s amount=%q", referenceID, amountRaw))
+		return
+	}
+	LockOrder(referenceID)
+	defer UnlockOrder(referenceID)
+	if err := model.ReinstateSubscriptionOrder(referenceID, amountCents/100, common.GetJsonString(event)); err != nil {
+		if !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
+			logger.LogError(ctx, fmt.Sprintf("Stripe subscription reinstatement failed trade_no=%s error=%q", referenceID, err.Error()))
+		}
+		return
+	}
+	logger.LogInfo(ctx, fmt.Sprintf("Stripe subscription reinstatement completed trade_no=%s amount=%.2f", referenceID, amountCents/100))
 }
 
 func sessionCompleted(ctx context.Context, event stripe.Event, callerIp string) {

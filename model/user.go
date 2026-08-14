@@ -71,7 +71,11 @@ type User struct {
 	// TrialClaimStatus mirrors apimaster's trial_claims.claim_status
 	// (not_claimed / shared / claiming / granted / failed). "granted" means the
 	// user successfully claimed the GPT trial subscription card.
-	TrialClaimStatus string `json:"trial_claim_status,omitempty" gorm:"-:all"`
+	TrialClaimStatus         string `json:"trial_claim_status,omitempty" gorm:"-:all"`
+	GPTSubscriptionStatus    string `json:"gpt_subscription_status,omitempty" gorm:"-:all"`
+	GPTSubscriptionPlanId    int    `json:"gpt_subscription_plan_id,omitempty" gorm:"-:all"`
+	GPTSubscriptionPlanTitle string `json:"gpt_subscription_plan_title,omitempty" gorm:"-:all"`
+	GPTSubscriptionEndTime   int64  `json:"gpt_subscription_end_time,omitempty" gorm:"-:all"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -234,11 +238,13 @@ func GetMaxUserId() int {
 // them requires a pre-query against APIMASTER_PG_DB to resolve a set of
 // usernames/ids to filter the main query by.
 type UserListFilters struct {
-	Language            string
-	Country             string
-	Provider            string
-	RegistrationChannel string
-	TrialStatus         string // not_claimed | claiming | shared | granted | failed | blocked
+	Language              string
+	Country               string
+	Provider              string
+	RegistrationChannel   string
+	TrialStatus           string // not_claimed | claiming | shared | granted | failed | blocked
+	GPTSubscriptionStatus string // active | expired | cancelled | none
+	GPTSubscriptionPlan   string // plan id or exact title
 }
 
 // applyUserListFilters adds WHERE conditions for the given filters to query.
@@ -278,6 +284,40 @@ func applyUserListFilters(query *gorm.DB, filters UserListFilters) (*gorm.DB, er
 				return nil, err
 			}
 			query = query.Where("id IN (?)", ids)
+		}
+	}
+
+	if filters.GPTSubscriptionStatus != "" || filters.GPTSubscriptionPlan != "" {
+		now := GetDBTimestamp()
+		base := DB.Table("user_subscriptions AS us").
+			Select("us.user_id").
+			Joins("JOIN subscription_plans AS sp ON sp.id = us.plan_id").
+			Where("sp.plan_type = ?", SubscriptionPlanTypeGPTSubscription)
+		if filters.GPTSubscriptionPlan != "" {
+			if planID, err := strconv.Atoi(filters.GPTSubscriptionPlan); err == nil && planID > 0 {
+				base = base.Where("sp.id = ?", planID)
+			} else {
+				base = base.Where("sp.title = ?", filters.GPTSubscriptionPlan)
+			}
+		}
+		switch filters.GPTSubscriptionStatus {
+		case "active":
+			base = base.Where("us.status = ? AND us.end_time > ?", "active", now)
+			query = query.Where("id IN (?)", base)
+		case "cancelled":
+			base = base.Where("us.status = ?", "cancelled")
+			query = query.Where("id IN (?)", base)
+		case "expired":
+			historical := base.Where("us.end_time <= ?", now)
+			active := DB.Table("user_subscriptions AS aus").
+				Select("aus.user_id").
+				Joins("JOIN subscription_plans AS asp ON asp.id = aus.plan_id").
+				Where("asp.plan_type = ? AND aus.status = ? AND aus.end_time > ?", SubscriptionPlanTypeGPTSubscription, "active", now)
+			query = query.Where("id IN (?) AND id NOT IN (?)", historical, active)
+		case "none":
+			query = query.Where("id NOT IN (?)", base)
+		default:
+			query = query.Where("id IN (?)", base)
 		}
 	}
 
@@ -324,6 +364,7 @@ func GetAllUsers(pageInfo *common.PageInfo, filters UserListFilters) (users []*U
 
 	EnrichUsersRegistrationChannels(users)
 	EnrichUsersTrialClaimStatus(users)
+	EnrichUsersGPTSubscriptionStatus(users)
 	for _, user := range users {
 		user.ApplyDerivedFlags()
 	}
@@ -403,6 +444,7 @@ func SearchUsers(keyword string, group string, filters UserListFilters, startIdx
 
 	EnrichUsersRegistrationChannels(users)
 	EnrichUsersTrialClaimStatus(users)
+	EnrichUsersGPTSubscriptionStatus(users)
 	for _, user := range users {
 		user.ApplyDerivedFlags()
 	}

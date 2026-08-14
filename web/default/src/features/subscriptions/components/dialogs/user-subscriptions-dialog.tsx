@@ -52,9 +52,11 @@ import {
   createUserSubscription,
   invalidateUserSubscription,
   deleteUserSubscription,
+  getUserGPTSubscriptionDetails,
 } from '../../api'
 import { formatTimestamp } from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
+import type { GPTUserSubscriptionDetails } from '../../api'
 
 interface Props {
   open: boolean
@@ -107,6 +109,8 @@ export function UserSubscriptionsDialog(props: Props) {
     type: 'invalidate' | 'delete'
     subId: number
   } | null>(null)
+  const [gptDetails, setGPTDetails] =
+    useState<GPTUserSubscriptionDetails | null>(null)
 
   const planTitleMap = useMemo(() => {
     const map = new Map<number, string>()
@@ -120,12 +124,14 @@ export function UserSubscriptionsDialog(props: Props) {
     if (!props.user?.id) return
     setLoading(true)
     try {
-      const [plansRes, subsRes] = await Promise.all([
+      const [plansRes, subsRes, gptRes] = await Promise.all([
         getAdminPlans(),
         getUserSubscriptions(props.user.id),
+        getUserGPTSubscriptionDetails(props.user.id),
       ])
       if (plansRes.success) setPlans(plansRes.data || [])
       if (subsRes.success) setSubs(subsRes.data || [])
+      if (gptRes.success) setGPTDetails(gptRes.data || null)
     } catch {
       toast.error(t('Loading failed'))
     } finally {
@@ -200,6 +206,40 @@ export function UserSubscriptionsDialog(props: Props) {
           </SheetHeader>
 
           <div className='mt-4 space-y-4'>
+            {gptDetails?.state.subscription ? (
+              <div className='grid gap-3 rounded-md border border-fuchsia-500/20 bg-fuchsia-500/5 p-4 sm:grid-cols-2'>
+                <div>
+                  <div className='text-muted-foreground text-xs'>GPT subscription</div>
+                  <div className='mt-1 font-semibold'>
+                    {gptDetails.state.subscription.plan_title_snapshot ||
+                      `Plan #${gptDetails.state.subscription.plan_id}`}
+                  </div>
+                  <div className='text-muted-foreground mt-1 text-xs'>
+                    Cycle #{gptDetails.state.subscription.current_cycle_id || '-'} ·
+                    ends {formatTimestamp(gptDetails.state.subscription.end_time)}
+                  </div>
+                </div>
+                <div className='grid grid-cols-2 gap-2 text-xs'>
+                  <div><span className='text-muted-foreground'>5h usage</span><div className='font-mono'>${(Number(gptDetails.state.five_hour_used || 0) / 500_000).toFixed(4)}</div></div>
+                  <div><span className='text-muted-foreground'>7d usage</span><div className='font-mono'>${(Number(gptDetails.state.seven_day_used || 0) / 500_000).toFixed(4)}</div></div>
+                  <div><span className='text-muted-foreground'>Official usage</span><div className='font-mono'>${Number(gptDetails.usage?.official_revenue_usd || 0).toFixed(4)}</div></div>
+                  <div><span className='text-muted-foreground'>Channel cost</span><div className='font-mono'>${Number(gptDetails.usage?.channel_cost_usd || 0).toFixed(4)}</div></div>
+                </div>
+                {gptDetails.orders.length > 0 ? (
+                  <div className='sm:col-span-2'>
+                    <div className='text-muted-foreground mb-2 text-xs'>Recent GPT subscription payments</div>
+                    <div className='space-y-1 text-xs'>
+                      {gptDetails.orders.slice(0, 5).map((order) => (
+                        <div key={order.id} className='flex flex-wrap justify-between gap-2 rounded border bg-background/60 px-2 py-1.5'>
+                          <span>#{order.id} · {order.order_type} · {order.payment_method}</span>
+                          <span>list ${Number(order.list_price).toFixed(2)} · credit ${Number(order.credit_amount).toFixed(2)} · paid ${Number(order.money).toFixed(2)} · commission ${Number(order.commission_amount || 0).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div className='flex gap-2'>
               <Select
                 items={[

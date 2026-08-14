@@ -40,6 +40,8 @@ const usersSearchSchema = z.object({
   provider: z.array(z.string()).optional().catch([]),
   channel: z.string().optional().catch(''),
   trial: z.array(z.string()).optional().catch([]),
+  gpt_subscription: z.array(z.string()).optional().catch([]),
+  gpt_plan: z.array(z.string()).optional().catch([]),
 })
 
 export const Route = createFileRoute('/_authenticated/users/')({

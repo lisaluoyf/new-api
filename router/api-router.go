@@ -196,6 +196,9 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			subscriptionRoute.GET("/plans", controller.GetSubscriptionPlans)
 			subscriptionRoute.GET("/self", controller.GetSubscriptionSelf)
+			subscriptionRoute.GET("/gpt/access", controller.GetGPTSubscriptionAccess)
+			subscriptionRoute.GET("/gpt/plans", controller.GetGPTSubscriptionPlans)
+			subscriptionRoute.POST("/gpt/quote", controller.GetGPTSubscriptionQuote)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
@@ -205,13 +208,18 @@ func SetApiRouter(router *gin.Engine) {
 		subscriptionAdminRoute.Use(middleware.AdminAuth())
 		{
 			subscriptionAdminRoute.GET("/plans", controller.AdminListSubscriptionPlans)
+			subscriptionAdminRoute.GET("/gpt/access", controller.AdminGetGPTSubscriptionAccess)
+			subscriptionAdminRoute.PUT("/gpt/access", controller.AdminUpdateGPTSubscriptionAccess)
 			subscriptionAdminRoute.POST("/plans", controller.AdminCreateSubscriptionPlan)
 			subscriptionAdminRoute.PUT("/plans/:id", controller.AdminUpdateSubscriptionPlan)
 			subscriptionAdminRoute.PATCH("/plans/:id", controller.AdminUpdateSubscriptionPlanStatus)
+			subscriptionAdminRoute.DELETE("/plans/:id", controller.AdminDeleteSubscriptionPlan)
 			subscriptionAdminRoute.POST("/bind", controller.AdminBindSubscription)
 
 			// User subscription management (admin)
 			subscriptionAdminRoute.GET("/users/:id/subscriptions", controller.AdminListUserSubscriptions)
+			subscriptionAdminRoute.GET("/users/:id/gpt", controller.AdminGetUserGPTSubscriptionDetails)
+			subscriptionAdminRoute.POST("/orders/:trade_no/reverse", controller.AdminReverseGPTSubscriptionOrder)
 			subscriptionAdminRoute.POST("/users/:id/subscriptions", controller.AdminCreateUserSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)

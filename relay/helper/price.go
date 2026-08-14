@@ -245,7 +245,7 @@ func RefreshModelPriceForRetry(c *gin.Context, info *relaycommon.RelayInfo, prom
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
 		return info.PriceData, nil
 	}
-	if info != nil && (info.PriceDataSource == string(priceResolutionModeGPTTrial) || info.PriceDataSource == model.SubscriptionPlanTypeGPTReferralReward) {
+	if info != nil && (info.PriceDataSource == string(priceResolutionModeGPTTrial) || info.PriceDataSource == model.SubscriptionPlanTypeGPTReferralReward || info.PriceDataSource == model.SubscriptionPlanTypeGPTSubscription) {
 		priceSource := info.PriceDataSource
 		priceData, err := BuildGPTTrialPriceData(c, info, promptTokens, meta)
 		if err != nil {

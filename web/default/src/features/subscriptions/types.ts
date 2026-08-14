@@ -26,7 +26,7 @@ export const subscriptionPlanSchema = z.object({
   id: z.number(),
   title: z.string(),
   subtitle: z.string().optional(),
-  plan_type: z.string().optional(),
+  plan_type: z.enum(['standard', 'gpt_trial', 'gpt_subscription']).optional(),
   price_amount: z.number(),
   currency: z.string().default('USD'),
   duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
@@ -41,6 +41,12 @@ export const subscriptionPlanSchema = z.object({
   upgrade_group: z.string().optional(),
   stripe_price_id: z.string().optional(),
   creem_product_id: z.string().optional(),
+  tier_level: z.number().optional(),
+  five_hour_amount: z.number().optional(),
+  seven_day_amount: z.number().optional(),
+  model_allowlist: z.string().optional(),
+  recommended: z.boolean().optional(),
+  card_description: z.string().optional(),
 })
 
 export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
@@ -64,6 +70,16 @@ export const userSubscriptionSchema = z.object({
   amount_total: z.number(),
   amount_used: z.number(),
   next_reset_time: z.number().optional(),
+  plan_title_snapshot: z.string().optional(),
+  plan_subtitle_snapshot: z.string().optional(),
+  card_description_snapshot: z.string().optional(),
+  price_amount_snapshot: z.number().optional(),
+  duration_seconds_snapshot: z.number().optional(),
+  tier_level_snapshot: z.number().optional(),
+  five_hour_amount: z.number().optional(),
+  seven_day_amount: z.number().optional(),
+  model_allowlist_snapshot: z.string().optional(),
+  current_cycle_id: z.number().optional(),
 })
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>

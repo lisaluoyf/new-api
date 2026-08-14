@@ -19,11 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SectionPageLayout } from '@/components/layout'
 import { SubscriptionsDialogs } from './components/subscriptions-dialogs'
 import { SubscriptionsPrimaryButtons } from './components/subscriptions-primary-buttons'
 import { SubscriptionsProvider } from './components/subscriptions-provider'
 import { SubscriptionsTable } from './components/subscriptions-table'
+import { GPTSubscriptionAccessCard } from './components/gpt-subscription-access-card'
 
 export function Subscriptions() {
   const { t } = useTranslation()
@@ -50,7 +52,21 @@ export function Subscriptions() {
           </div>
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <SubscriptionsTable />
+          <Tabs defaultValue='standard'>
+            <TabsList variant='line' className='mb-4'>
+              <TabsTrigger value='standard'>{t('Subscription Plans')}</TabsTrigger>
+              <TabsTrigger value='gpt_subscription'>
+                {t('GPT Subscription Plans')}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value='standard'>
+              <SubscriptionsTable planType='standard' />
+            </TabsContent>
+            <TabsContent value='gpt_subscription'>
+              <GPTSubscriptionAccessCard />
+              <SubscriptionsTable planType='gpt_subscription' />
+            </TabsContent>
+          </Tabs>
         </SectionPageLayout.Content>
       </SectionPageLayout>
 

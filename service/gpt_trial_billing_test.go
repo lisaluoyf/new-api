@@ -128,6 +128,64 @@ func TestPreConsumeBillingUsesReferralRewardAfterTrial(t *testing.T) {
 	require.Equal(t, 1000, user.Quota)
 }
 
+func TestPreConsumeBillingUsesPaidGPTAfterTrialAndReferral(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	seedToken(t, 2, 1, "trial-billing-key", 1000)
+	seedSubscriptionPlan(t, 101, "APIMaster $50 GPT Trial", model.SubscriptionPlanTypeGPTTrial)
+	seedSubscriptionPlan(t, 102, "APIMaster Referral GPT Credits", model.SubscriptionPlanTypeGPTReferralReward)
+	seedSubscriptionPlan(t, 103, "Pro", model.SubscriptionPlanTypeGPTSubscription)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 103).Updates(map[string]any{
+		"model_allowlist": "gpt-5", "five_hour_amount": 500, "seven_day_amount": 1000,
+	}).Error)
+	model.InvalidateSubscriptionPlanCache(103)
+	seedUserSubscriptionWithPlan(t, 201, 1, 101, 40, 40)
+	seedUserSubscriptionWithPlan(t, 202, 1, 102, 40, 40)
+	seedUserSubscriptionWithPlan(t, 203, 1, 103, 0, 0)
+	require.NoError(t, model.DB.Model(&model.UserSubscription{}).Where("id = ?", 203).Updates(map[string]any{
+		"five_hour_amount": 500, "seven_day_amount": 1000,
+	}).Error)
+
+	info := seedGPTTrialBillingInfo("gpt-5", "wallet_first")
+	info.HasActiveGPTReferralReward = true
+	info.HasActiveGPTSubscription = true
+	apiErr := PreConsumeBilling(retryBillingContext(), info.WalletPriceData.QuotaToPreConsume, info)
+	require.Nil(t, apiErr)
+	require.Equal(t, BillingSourceSubscription, info.BillingSource)
+	require.Equal(t, model.SubscriptionPlanTypeGPTSubscription, info.PriceDataSource)
+	require.Equal(t, 103, info.SubscriptionPlanId)
+	require.Equal(t, 40, info.Billing.GetPreConsumedQuota())
+
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	require.Equal(t, 1000, user.Quota)
+}
+
+func TestPreConsumeBillingFallsBackToWalletWhenPaidRollingLimitReached(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	seedToken(t, 2, 1, "trial-billing-key", 1000)
+	seedSubscriptionPlan(t, 103, "Pro", model.SubscriptionPlanTypeGPTSubscription)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 103).Updates(map[string]any{
+		"model_allowlist": "gpt-5", "five_hour_amount": 30, "seven_day_amount": 100,
+	}).Error)
+	model.InvalidateSubscriptionPlanCache(103)
+	seedUserSubscriptionWithPlan(t, 203, 1, 103, 0, 0)
+	require.NoError(t, model.DB.Model(&model.UserSubscription{}).Where("id = ?", 203).Updates(map[string]any{
+		"five_hour_amount": 30, "seven_day_amount": 100,
+	}).Error)
+
+	info := seedGPTTrialBillingInfo("gpt-5", "subscription_first")
+	info.HasActiveGPTTrial = false
+	info.HasActiveGPTSubscription = true
+	apiErr := PreConsumeBilling(retryBillingContext(), info.WalletPriceData.QuotaToPreConsume, info)
+	require.Nil(t, apiErr)
+	require.Equal(t, BillingSourceWallet, info.BillingSource)
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	require.Equal(t, 880, user.Quota)
+}
+
 func TestPreConsumeBillingPrefersExpiringTrialOverReferralReward(t *testing.T) {
 	truncate(t)
 	seedUser(t, 1, 1000)

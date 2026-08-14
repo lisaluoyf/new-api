@@ -44,6 +44,7 @@ import {
   getResponseTimeColor,
   getTieredBillingSummary,
   getSubscriptionRequestBillingUSD,
+  getSubscriptionSourceLabel,
   hasAnyCacheTokens,
   isSubscriptionUsageLog,
   parseLogOther,
@@ -905,6 +906,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const isSubscription = isSubscriptionUsageLog(other)
 
         if (isSubscription) {
+          const sourceLabel = getSubscriptionSourceLabel(other, t)
           const subscriptionBillingUSD = getSubscriptionRequestBillingUSD(
             log,
             other
@@ -929,12 +931,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                     className='size-1.5 rounded-full bg-emerald-500'
                     aria-hidden='true'
                   />
-                  <span className='uppercase'>Sub</span>
+                  <span>{sourceLabel}</span>
                   <span>{subscriptionBillingText}</span>
                 </TooltipTrigger>
                 <TooltipContent>
                   <span>
-                    {t('Deducted by subscription')}: {subscriptionBillingText}
+                    {sourceLabel}: {subscriptionBillingText}
                   </span>
                 </TooltipContent>
               </Tooltip>
@@ -946,7 +948,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
 
         return (
           <div className='flex flex-col gap-0.5'>
-            <span className='border-border/80 bg-muted/60 inline-flex w-fit items-center rounded-md border px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums'>
+            <span className='border-border/80 bg-muted/60 inline-flex w-fit items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums'>
+              <span className='text-muted-foreground font-sans font-medium'>Wallet</span>
               {quotaStr}
             </span>
           </div>

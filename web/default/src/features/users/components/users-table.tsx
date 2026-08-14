@@ -41,6 +41,7 @@ import {
   DataTablePage,
 } from '@/components/data-table'
 import { getUsers, searchUsers } from '../api'
+import { getAdminPlans } from '@/features/subscriptions/api'
 import {
   USER_STATUS,
   getUserStatusOptions,
@@ -121,6 +122,12 @@ export function UsersTable() {
       },
       { columnId: 'trial', searchKey: 'trial', type: 'array' },
       {
+        columnId: 'gpt_subscription',
+        searchKey: 'gpt_subscription',
+        type: 'array',
+      },
+      { columnId: 'gpt_plan', searchKey: 'gpt_plan', type: 'array' },
+      {
         columnId: 'registration_channel',
         searchKey: 'channel',
         type: 'string',
@@ -137,6 +144,14 @@ export function UsersTable() {
       ?.value as string[]) || []
   const trialFilter =
     (columnFilters.find((f) => f.id === 'trial')?.value as string[]) || []
+  const gptSubscriptionFilter =
+    (columnFilters.find((f) => f.id === 'gpt_subscription')?.value as
+      | string[]
+      | undefined) || []
+  const gptPlanFilter =
+    (columnFilters.find((f) => f.id === 'gpt_plan')?.value as
+      | string[]
+      | undefined) || []
   const channelFilterFromUrl =
     (columnFilters.find((f) => f.id === 'registration_channel')
       ?.value as string) || ''
@@ -173,6 +188,8 @@ export function UsersTable() {
     country: countryFilter[0],
     provider: providerFilter[0],
     trial: trialFilter[0],
+    gpt_subscription: gptSubscriptionFilter[0],
+    gpt_plan: gptPlanFilter[0],
     channel: channelFilter || undefined,
   }
 
@@ -214,6 +231,17 @@ export function UsersTable() {
   })
 
   const users = data?.items || []
+
+  const { data: subscriptionPlans } = useQuery({
+    queryKey: ['user-filter-gpt-subscription-plans'],
+    queryFn: async () => {
+      const result = await getAdminPlans()
+      return (result.data || []).filter(
+        (item) => item.plan.plan_type === 'gpt_subscription'
+      )
+    },
+    staleTime: 60_000,
+  })
 
   const table = useReactTable({
     data: users,
@@ -327,6 +355,26 @@ export function UsersTable() {
             columnId: 'trial',
             title: 'Trial',
             options: getTrialStatusOptions(t),
+            singleSelect: true,
+          },
+          {
+            columnId: 'gpt_subscription',
+            title: t('GPT Subscription'),
+            options: [
+              { label: t('Active'), value: 'active' },
+              { label: t('Expired'), value: 'expired' },
+              { label: t('Disabled'), value: 'cancelled' },
+              { label: t('None'), value: 'none' },
+            ],
+            singleSelect: true,
+          },
+          {
+            columnId: 'gpt_plan',
+            title: t('GPT Plan'),
+            options: (subscriptionPlans || []).map((item) => ({
+              label: item.plan.title,
+              value: String(item.plan.id),
+            })),
             singleSelect: true,
           },
         ],

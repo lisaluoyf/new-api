@@ -17,8 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { type Row } from '@tanstack/react-table'
-import { MoreHorizontal, Pencil, Power, PowerOff } from 'lucide-react'
+import { MoreHorizontal, Pencil, Power, PowerOff, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -27,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { PlanRecord } from '../types'
+import { deletePlan } from '../api'
 import { useSubscriptions } from './subscriptions-provider'
 
 interface DataTableRowActionsProps {
@@ -35,7 +37,7 @@ interface DataTableRowActionsProps {
 
 export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const { t } = useTranslation()
-  const { setOpen, setCurrentRow } = useSubscriptions()
+  const { setOpen, setCurrentRow, triggerRefresh } = useSubscriptions()
 
   return (
     <DropdownMenu>
@@ -72,6 +74,29 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             </>
           )}
         </DropdownMenuItem>
+        {row.original.plan.plan_type === 'gpt_subscription' ? (
+          <DropdownMenuItem
+            className='text-destructive focus:text-destructive'
+            onClick={async () => {
+              if (!window.confirm(t('Delete this unreferenced plan?'))) return
+              try {
+                const result = await deletePlan(row.original.plan.id)
+                if (!result.success) throw new Error(result.message)
+                toast.success(t('Delete succeeded'))
+                triggerRefresh()
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : t('Operation failed')
+                )
+              }
+            }}
+          >
+            <Trash2 className='mr-2 h-4 w-4' />
+            {t('Delete')}
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )

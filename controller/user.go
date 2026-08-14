@@ -241,6 +241,8 @@ func getUserListFiltersFromQuery(c *gin.Context) model.UserListFilters {
 		Provider:            c.Query("provider"),
 		RegistrationChannel: c.Query("channel"),
 		TrialStatus:         c.Query("trial"),
+		GPTSubscriptionStatus: c.Query("gpt_subscription"),
+		GPTSubscriptionPlan:   c.Query("gpt_plan"),
 	}
 }
 

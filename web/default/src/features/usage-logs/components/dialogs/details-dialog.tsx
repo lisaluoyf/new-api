@@ -59,6 +59,7 @@ import {
   isViolationFeeLog,
   getFirstResponseTimeColor,
   getResponseTimeColor,
+  getSubscriptionSourceLabel,
 } from '../../lib/format'
 import {
   getLogTypeConfig,
@@ -950,6 +951,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
             {/* Subscription billing details */}
             {isSubscription && other && (
               <DetailSection label={t('Subscription Billing')}>
+                <DetailRow
+                  label={t('Billing Source')}
+                  value={getSubscriptionSourceLabel(other, t)}
+                />
                 {other.subscription_plan_id && (
                   <DetailRow
                     label={t('Plan')}
@@ -963,6 +968,29 @@ export function DetailsDialog(props: DetailsDialogProps) {
                     mono
                   />
                 )}
+                {other.subscription_cycle_id && (
+                  <DetailRow
+                    label={t('Subscription cycle')}
+                    value={`#${other.subscription_cycle_id}`}
+                    mono
+                  />
+                )}
+                {other.subscription_type === 'gpt_subscription' &&
+                  other.subscription_5h_limit != null && (
+                    <DetailRow
+                      label={t('5-hour rolling remaining')}
+                      value={`${formatLogQuota(other.subscription_5h_remain || 0)} / ${formatLogQuota(other.subscription_5h_limit)}`}
+                      mono
+                    />
+                  )}
+                {other.subscription_type === 'gpt_subscription' &&
+                  other.subscription_7d_limit != null && (
+                    <DetailRow
+                      label={t('7-day rolling remaining')}
+                      value={`${formatLogQuota(other.subscription_7d_remain || 0)} / ${formatLogQuota(other.subscription_7d_limit)}`}
+                      mono
+                    />
+                  )}
                 {other.subscription_pre_consumed != null && (
                   <DetailRow
                     label={t('Pre-consumed')}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"time"
 
@@ -70,6 +71,15 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
 		return
 	}
+	terms, err := resolveSubscriptionOrderTerms(userId, plan)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	if model.IsGPTPaidSubscriptionPlan(plan) && math.Abs(terms.Payable-plan.PriceAmount) > 0.005 {
+		common.ApiErrorMsg(c, "Creem 固定产品暂不支持差额升级，请选择 Stripe 或 EPay")
+		return
+	}
 
 	if plan.MaxPurchasePerUser > 0 {
 		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
@@ -88,14 +98,20 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 
 	// create pending order first
 	order := &model.SubscriptionOrder{
-		UserId:          userId,
-		PlanId:          plan.Id,
-		Money:           plan.PriceAmount,
-		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodCreem,
-		PaymentProvider: model.PaymentProviderCreem,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+		UserId:                 userId,
+		PlanId:                 plan.Id,
+		Money:                  terms.Payable,
+		ListPrice:              terms.ListPrice,
+		CreditAmount:           terms.CreditAmount,
+		OrderType:              terms.OrderType,
+		PreviousSubscriptionId: terms.PreviousSubscriptionId,
+		PreviousEndTime:        terms.PreviousEndTime,
+		PreviousCycleId:        terms.PreviousCycleId,
+		TradeNo:                referenceId,
+		PaymentMethod:          model.PaymentMethodCreem,
+		PaymentProvider:        model.PaymentProviderCreem,
+		CreateTime:             time.Now().Unix(),
+		Status:                 common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentCreateFailed)})
@@ -115,7 +131,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	product := &CreemProduct{
 		ProductId: plan.CreemProductId,
 		Name:      plan.Title,
-		Price:     plan.PriceAmount,
+		Price:     terms.Payable,
 		Currency:  currency,
 		Quota:     0,
 	}

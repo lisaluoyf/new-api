@@ -44,6 +44,9 @@ function buildListFilterParams(
   if (params.provider) qs.set('provider', params.provider)
   if (params.channel) qs.set('channel', params.channel)
   if (params.trial) qs.set('trial', params.trial)
+  if (params.gpt_subscription)
+    qs.set('gpt_subscription', params.gpt_subscription)
+  if (params.gpt_plan) qs.set('gpt_plan', params.gpt_plan)
   return qs
 }
 

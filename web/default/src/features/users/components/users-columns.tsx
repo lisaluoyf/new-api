@@ -54,7 +54,8 @@ function parseTrialBlocked(remark: string | undefined) {
 
 export function useUsersColumns(): ColumnDef<User>[] {
   const { t, i18n } = useTranslation()
-  const { setSelectedUserId, setUserInfoDialogOpen } = useUsers()
+  const { setSelectedUserId, setUserInfoDialogOpen, setSubscriptionDialogUser } =
+    useUsers()
   const isEnglish = (i18n.resolvedLanguage || i18n.language)
     .toLowerCase()
     .startsWith('en')
@@ -355,6 +356,48 @@ export function useUsersColumns(): ColumnDef<User>[] {
       minSize: 72,
       maxSize: 72,
       meta: { label: 'Trial', mobileHidden: true },
+    },
+    {
+      id: 'gpt_subscription',
+      accessorFn: (row) => row.gpt_subscription_status,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('GPT Subscription')} />
+      ),
+      cell: ({ row }) => {
+        const user = row.original
+        const status = user.gpt_subscription_status
+        if (!status || status === 'none') {
+          return <span className='text-muted-foreground text-sm'>-</span>
+        }
+        let variant: 'success' | 'warning' | 'neutral' = 'neutral'
+        if (status === 'active') variant = 'success'
+        if (status === 'expired') variant = 'warning'
+        let statusLabel = t('Disabled')
+        if (status === 'active') statusLabel = t('Active')
+        if (status === 'expired') statusLabel = t('Expired')
+        return (
+          <button
+            type='button'
+            className='text-left'
+            onClick={(event) => {
+              event.stopPropagation()
+              setSubscriptionDialogUser(user)
+            }}
+          >
+            <StatusBadge
+              label={`${user.gpt_subscription_plan_title || 'GPT'} · ${statusLabel}`}
+              variant={variant}
+              copyable={false}
+            />
+          </button>
+        )
+      },
+      filterFn: () => true,
+      enableSorting: false,
+      size: 148,
+      minSize: 148,
+      maxSize: 148,
+      meta: { label: t('GPT Subscription'), mobileHidden: true },
     },
     {
       id: 'quota',

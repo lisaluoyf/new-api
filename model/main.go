@@ -347,6 +347,9 @@ func migrateDB() error {
 			return err
 		}
 	}
+	if err := SeedDefaultGPTSubscriptionPlans(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -424,6 +427,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := SeedDefaultGPTSubscriptionPlans(); err != nil {
+		return err
+	}
 	common.SysLog("database migrated")
 	return nil
 }
@@ -457,6 +463,7 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`id`" + ` integer,
 ` + "`title`" + ` varchar(128) NOT NULL,
 ` + "`subtitle`" + ` varchar(255) DEFAULT '',
+` + "`plan_type`" + ` varchar(32) DEFAULT '',
 ` + "`price_amount`" + ` decimal(10,6) NOT NULL,
 ` + "`currency`" + ` varchar(8) NOT NULL DEFAULT 'USD',
 ` + "`duration_unit`" + ` varchar(16) NOT NULL DEFAULT 'month',
@@ -471,6 +478,12 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`total_amount`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
+` + "`tier_level`" + ` integer DEFAULT 0,
+` + "`five_hour_amount`" + ` bigint NOT NULL DEFAULT 0,
+` + "`seven_day_amount`" + ` bigint NOT NULL DEFAULT 0,
+` + "`model_allowlist`" + ` text DEFAULT '',
+` + "`recommended`" + ` numeric DEFAULT 0,
+` + "`card_description`" + ` text DEFAULT '',
 ` + "`created_at`" + ` bigint,
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
@@ -490,6 +503,7 @@ PRIMARY KEY (` + "`id`" + `)
 	required := []sqliteColumnDef{
 		{Name: "title", DDL: "`title` varchar(128) NOT NULL"},
 		{Name: "subtitle", DDL: "`subtitle` varchar(255) DEFAULT ''"},
+		{Name: "plan_type", DDL: "`plan_type` varchar(32) DEFAULT ''"},
 		{Name: "price_amount", DDL: "`price_amount` decimal(10,6) NOT NULL"},
 		{Name: "currency", DDL: "`currency` varchar(8) NOT NULL DEFAULT 'USD'"},
 		{Name: "duration_unit", DDL: "`duration_unit` varchar(16) NOT NULL DEFAULT 'month'"},
@@ -504,6 +518,12 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
 		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
+		{Name: "tier_level", DDL: "`tier_level` integer DEFAULT 0"},
+		{Name: "five_hour_amount", DDL: "`five_hour_amount` bigint NOT NULL DEFAULT 0"},
+		{Name: "seven_day_amount", DDL: "`seven_day_amount` bigint NOT NULL DEFAULT 0"},
+		{Name: "model_allowlist", DDL: "`model_allowlist` text DEFAULT ''"},
+		{Name: "recommended", DDL: "`recommended` numeric DEFAULT 0"},
+		{Name: "card_description", DDL: "`card_description` text DEFAULT ''"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},
 	}

@@ -69,6 +69,10 @@ export function BillingSummaryPage() {
           acc.subscription_cost_usd + row.subscription_cost_usd,
         subscription_billing_usd:
           acc.subscription_billing_usd + row.subscription_billing_usd,
+        paid_subscription_cost_usd:
+          acc.paid_subscription_cost_usd + row.paid_subscription_cost_usd,
+        paid_subscription_revenue_usd:
+          acc.paid_subscription_revenue_usd + row.paid_subscription_revenue_usd,
         accounting_ok_request_count:
           acc.accounting_ok_request_count + row.accounting_ok_request_count,
         accounting_target_request_count:
@@ -80,6 +84,8 @@ export function BillingSummaryPage() {
         revenue_usd: 0,
         subscription_cost_usd: 0,
         subscription_billing_usd: 0,
+        paid_subscription_cost_usd: 0,
+        paid_subscription_revenue_usd: 0,
         accounting_ok_request_count: 0,
         accounting_target_request_count: 0,
       }

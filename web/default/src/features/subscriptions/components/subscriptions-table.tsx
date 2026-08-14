@@ -32,7 +32,7 @@ import { getAdminPlans } from '../api'
 import { useSubscriptionsColumns } from './subscriptions-columns'
 import { useSubscriptions } from './subscriptions-provider'
 
-export function SubscriptionsTable() {
+export function SubscriptionsTable({ planType }: { planType?: string }) {
   const { t } = useTranslation()
   const columns = useSubscriptionsColumns()
   const { refreshTrigger } = useSubscriptions()
@@ -48,7 +48,15 @@ export function SubscriptionsTable() {
     placeholderData: (prev) => prev,
   })
 
-  const plans = useMemo(() => data || [], [data])
+  const plans = useMemo(
+    () =>
+      (data || []).filter((item) =>
+        planType === 'gpt_subscription'
+          ? item.plan.plan_type === 'gpt_subscription'
+          : item.plan.plan_type !== 'gpt_subscription'
+      ),
+    [data, planType]
+  )
 
   const table = useReactTable({
     data: plans,

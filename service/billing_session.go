@@ -128,8 +128,6 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	tokenKey := s.relayInfo.TokenKey
 	isPlayground := s.relayInfo.IsPlayground
 	tokenConsumed := s.tokenConsumed
-	extraReserved := s.extraReserved
-	subscriptionId := s.relayInfo.SubscriptionId
 	funding := s.funding
 	userId := s.relayInfo.UserId
 	s.mu.Unlock()
@@ -141,7 +139,7 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	))
 
 	gopool.Go(func() {
-		if err := s.executeRefund(funding, tokenId, tokenKey, isPlayground, tokenConsumed, extraReserved, subscriptionId); err != nil {
+		if err := s.executeRefund(funding, tokenId, tokenKey, isPlayground, tokenConsumed); err != nil {
 			common.SysLog(fmt.Sprintf("error refunding preconsume (async userId=%d): %s", userId, err.Error()))
 			s.mu.Lock()
 			s.refunded = false
@@ -161,8 +159,6 @@ func (s *BillingSession) RefundSync(c *gin.Context) error {
 	tokenKey := s.relayInfo.TokenKey
 	isPlayground := s.relayInfo.IsPlayground
 	tokenConsumed := s.tokenConsumed
-	extraReserved := s.extraReserved
-	subscriptionId := s.relayInfo.SubscriptionId
 	funding := s.funding
 	userId := s.relayInfo.UserId
 	s.refunded = true
@@ -170,7 +166,7 @@ func (s *BillingSession) RefundSync(c *gin.Context) error {
 
 	// Do not retry the whole refund sequence: wallet quota increments are not
 	// idempotent. SubscriptionFunding performs its own idempotent retry.
-	err := s.executeRefund(funding, tokenId, tokenKey, isPlayground, tokenConsumed, extraReserved, subscriptionId)
+	err := s.executeRefund(funding, tokenId, tokenKey, isPlayground, tokenConsumed)
 	if err != nil {
 		s.mu.Lock()
 		s.refunded = false
@@ -192,8 +188,6 @@ func (s *BillingSession) executeRefund(
 	tokenKey string,
 	isPlayground bool,
 	tokenConsumed int,
-	extraReserved int,
-	subscriptionId int,
 ) error {
 	if wallet, ok := funding.(*WalletFunding); ok {
 		walletQuota := wallet.consumed
@@ -209,11 +203,6 @@ func (s *BillingSession) executeRefund(
 	}
 	if err := funding.Refund(); err != nil {
 		return fmt.Errorf("refunding billing source: %w", err)
-	}
-	if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
-		if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
-			return fmt.Errorf("refunding subscription extra reserved quota: %w", err)
-		}
 	}
 	if tokenConsumed > 0 && !isPlayground {
 		if err := model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
@@ -381,7 +370,7 @@ func (s *BillingSession) reserveFunding(delta int) error {
 		funding.consumed += delta
 		return nil
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta)); err != nil {
+		if err := model.PostConsumeSubscriptionRequestDelta(funding.requestId, funding.subscriptionId, int64(delta)); err != nil {
 			return types.NewErrorWithStatusCode(
 				fmt.Errorf("订阅额度不足或未配置订阅: %s", err.Error()),
 				types.ErrorCodeInsufficientUserQuota,
@@ -405,7 +394,7 @@ func (s *BillingSession) rollbackFundingReserve(delta int) {
 			funding.consumed -= delta
 		}
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
+		if err := model.PostConsumeSubscriptionRequestDelta(funding.requestId, funding.subscriptionId, -int64(delta)); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
 		}
 	}
@@ -471,6 +460,12 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter + int64(s.extraReserved)
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
+		info.SubscriptionPlanType = sub.PlanType
+		info.SubscriptionFiveHourLimit = sub.FiveHourLimit
+		info.SubscriptionSevenDayLimit = sub.SevenDayLimit
+		info.SubscriptionFiveHourUsedAfter = sub.FiveHourUsed + int64(s.extraReserved)
+		info.SubscriptionSevenDayUsedAfter = sub.SevenDayUsed + int64(s.extraReserved)
+		info.SubscriptionCycleId = sub.CycleId
 	} else {
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
@@ -554,7 +549,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	tryStandardSubscription := func() (*BillingSession, *types.NewAPIError) {
-		return trySubscription(nil, model.IsGPTPromotionalSubscriptionPlan, preConsumedQuota, "")
+		return trySubscription(nil, model.IsGPTSpecialSubscriptionPlan, preConsumedQuota, "")
 	}
 
 	tryGPTTrial := func() (*BillingSession, *types.NewAPIError) {
@@ -595,12 +590,36 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return session, nil
 	}
 
+	tryGPTPaidSubscription := func() (*BillingSession, *types.NewAPIError) {
+		if !relayInfo.GPTTrialChecked || !relayInfo.HasActiveGPTSubscription || !IsFreeTrialEligibleModel(relayInfo.OriginModelName) {
+			return nil, nil
+		}
+		quota := relayInfo.PriceData.QuotaToPreConsume
+		if relayInfo.TrialPriceData != nil {
+			quota = relayInfo.TrialPriceData.QuotaToPreConsume
+		}
+		session, apiErr := trySubscription(model.IsGPTPaidSubscriptionPlan, nil, quota, model.SubscriptionPlanTypeGPTSubscription)
+		if apiErr != nil {
+			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+				relayInfo.ActivateWalletPriceData()
+				return nil, nil
+			}
+			return nil, apiErr
+		}
+		return session, nil
+	}
+
 	if session, apiErr := tryGPTTrial(); apiErr != nil {
 		return nil, apiErr
 	} else if session != nil {
 		return session, nil
 	}
 	if session, apiErr := tryGPTReferralReward(); apiErr != nil {
+		return nil, apiErr
+	} else if session != nil {
+		return session, nil
+	}
+	if session, apiErr := tryGPTPaidSubscription(); apiErr != nil {
 		return nil, apiErr
 	} else if session != nil {
 		return session, nil
@@ -623,7 +642,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	case "subscription_first":
 		fallthrough
 	default:
-		hasSub, subCheckErr := model.HasActiveUserSubscriptionExcludingPlanMatcher(relayInfo.UserId, model.IsGPTPromotionalSubscriptionPlan)
+		hasSub, subCheckErr := model.HasActiveUserSubscriptionExcludingPlanMatcher(relayInfo.UserId, model.IsGPTSpecialSubscriptionPlan)
 		if subCheckErr != nil {
 			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}

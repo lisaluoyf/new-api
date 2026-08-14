@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
@@ -192,6 +193,12 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		if relayInfo.SubscriptionPlanTitle != "" {
 			other["subscription_plan_title"] = relayInfo.SubscriptionPlanTitle
 		}
+		if relayInfo.SubscriptionPlanType != "" {
+			other["subscription_type"] = relayInfo.SubscriptionPlanType
+		}
+		if relayInfo.SubscriptionCycleId > 0 {
+			other["subscription_cycle_id"] = relayInfo.SubscriptionCycleId
+		}
 		// Compute "this request" subscription consumed + remaining
 		consumed := relayInfo.SubscriptionPreConsumed + relayInfo.SubscriptionPostDelta
 		usedFinal := relayInfo.SubscriptionAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
@@ -212,6 +219,22 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		}
 		if consumed > 0 {
 			other["subscription_consumed"] = consumed
+		}
+		if relayInfo.SubscriptionPlanType == model.SubscriptionPlanTypeGPTSubscription {
+			fiveUsed := relayInfo.SubscriptionFiveHourUsedAfter + relayInfo.SubscriptionPostDelta
+			sevenUsed := relayInfo.SubscriptionSevenDayUsedAfter + relayInfo.SubscriptionPostDelta
+			if fiveUsed < 0 {
+				fiveUsed = 0
+			}
+			if sevenUsed < 0 {
+				sevenUsed = 0
+			}
+			other["subscription_5h_limit"] = relayInfo.SubscriptionFiveHourLimit
+			other["subscription_5h_used"] = fiveUsed
+			other["subscription_5h_remain"] = max(int64(0), relayInfo.SubscriptionFiveHourLimit-fiveUsed)
+			other["subscription_7d_limit"] = relayInfo.SubscriptionSevenDayLimit
+			other["subscription_7d_used"] = sevenUsed
+			other["subscription_7d_remain"] = max(int64(0), relayInfo.SubscriptionSevenDayLimit-sevenUsed)
 		}
 		// Wallet quota is not deducted when billed from subscription.
 		other["wallet_quota_deducted"] = 0

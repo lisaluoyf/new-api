@@ -193,12 +193,20 @@ export interface LogOtherData {
   // Subscription billing fields
   subscription_plan_id?: string
   subscription_plan_title?: string
+  subscription_type?: string
   subscription_id?: string
+  subscription_cycle_id?: string
   subscription_pre_consumed?: number
   subscription_post_delta?: number
   subscription_consumed?: number
   subscription_remain?: number
   subscription_total?: number
+  subscription_5h_limit?: number
+  subscription_5h_used?: number
+  subscription_5h_remain?: number
+  subscription_7d_limit?: number
+  subscription_7d_used?: number
+  subscription_7d_remain?: number
   // Actual channel procurement prices (written at billing time from channel_model_pricings)
   ch_input_price?: number
   ch_output_price?: number

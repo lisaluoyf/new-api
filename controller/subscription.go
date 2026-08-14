@@ -201,6 +201,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
 	}
+	if req.Plan.TierLevel < 0 || req.Plan.FiveHourAmount < 0 || req.Plan.SevenDayAmount < 0 {
+		common.ApiErrorMsg(c, "GPT套餐等级和滚动额度不能为负数")
+		return
+	}
 	if !model.IsSupportedSubscriptionPlanType(req.Plan.PlanType) {
 		common.ApiErrorMsg(c, "无效的套餐类型")
 		return
@@ -269,6 +273,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
 	}
+	if req.Plan.TierLevel < 0 || req.Plan.FiveHourAmount < 0 || req.Plan.SevenDayAmount < 0 {
+		common.ApiErrorMsg(c, "GPT套餐等级和滚动额度不能为负数")
+		return
+	}
 	if !model.IsSupportedSubscriptionPlanType(req.Plan.PlanType) {
 		common.ApiErrorMsg(c, "无效的套餐类型")
 		return
@@ -307,6 +315,12 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
+			"tier_level":                 req.Plan.TierLevel,
+			"five_hour_amount":           req.Plan.FiveHourAmount,
+			"seven_day_amount":           req.Plan.SevenDayAmount,
+			"model_allowlist":            strings.TrimSpace(req.Plan.ModelAllowlist),
+			"recommended":                req.Plan.Recommended,
+			"card_description":           req.Plan.CardDescription,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
@@ -315,6 +329,44 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InvalidateSubscriptionPlanCache(id)
+	common.ApiSuccess(c, nil)
+}
+
+func AdminDeleteSubscriptionPlan(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		common.ApiErrorMsg(c, "无效的ID")
+		return
+	}
+	plan, err := model.GetSubscriptionPlanById(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !model.IsGPTPaidSubscriptionPlan(plan) {
+		common.ApiErrorMsg(c, "仅 GPT 付费订阅套餐支持删除")
+		return
+	}
+	var references int64
+	if err := model.DB.Model(&model.UserSubscription{}).Where("plan_id = ?", id).Count(&references).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var orderReferences int64
+	if err := model.DB.Model(&model.SubscriptionOrder{}).Where("plan_id = ?", id).Count(&orderReferences).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	references += orderReferences
+	if references > 0 {
+		common.ApiErrorMsg(c, "套餐已有订阅记录，只能下架，不能删除")
+		return
+	}
+	if err := model.DB.Delete(&model.SubscriptionPlan{}, id).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}

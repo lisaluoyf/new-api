@@ -24,7 +24,7 @@ export function getPlanFormSchema(t: TFunction) {
   return z.object({
     title: z.string().min(1, t('Please enter plan title')),
     subtitle: z.string().optional(),
-    plan_type: z.enum(['standard', 'gpt_trial']),
+    plan_type: z.enum(['standard', 'gpt_trial', 'gpt_subscription']),
     price_amount: z.coerce.number().min(0, t('Please enter amount')),
     duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
     duration_value: z.coerce.number().min(1),
@@ -44,6 +44,12 @@ export function getPlanFormSchema(t: TFunction) {
     upgrade_group: z.string().optional(),
     stripe_price_id: z.string().optional(),
     creem_product_id: z.string().optional(),
+    tier_level: z.coerce.number().min(0),
+    five_hour_amount: z.coerce.number().min(0),
+    seven_day_amount: z.coerce.number().min(0),
+    model_allowlist: z.string().optional(),
+    recommended: z.boolean(),
+    card_description: z.string().optional(),
   })
 }
 
@@ -66,6 +72,12 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   upgrade_group: '',
   stripe_price_id: '',
   creem_product_id: '',
+  tier_level: 0,
+  five_hour_amount: 0,
+  seven_day_amount: 0,
+  model_allowlist: '',
+  recommended: false,
+  card_description: '',
 }
 
 export const GPT_TRIAL_PRESET: PlanFormValues = {
@@ -85,13 +97,24 @@ export const GPT_TRIAL_PRESET: PlanFormValues = {
   upgrade_group: '',
   stripe_price_id: '',
   creem_product_id: '',
+  tier_level: 0,
+  five_hour_amount: 0,
+  seven_day_amount: 0,
+  model_allowlist: '',
+  recommended: false,
+  card_description: '',
 }
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
   return {
     title: plan.title || '',
     subtitle: plan.subtitle || '',
-    plan_type: plan.plan_type === 'gpt_trial' ? 'gpt_trial' : 'standard',
+    plan_type:
+      plan.plan_type === 'gpt_trial'
+        ? 'gpt_trial'
+        : plan.plan_type === 'gpt_subscription'
+          ? 'gpt_subscription'
+          : 'standard',
     price_amount: Number(plan.price_amount || 0),
     duration_unit: plan.duration_unit || 'month',
     duration_value: Number(plan.duration_value || 1),
@@ -105,6 +128,12 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     upgrade_group: plan.upgrade_group || '',
     stripe_price_id: plan.stripe_price_id || '',
     creem_product_id: plan.creem_product_id || '',
+    tier_level: Number(plan.tier_level || 0),
+    five_hour_amount: Number(plan.five_hour_amount || 0) / 500_000,
+    seven_day_amount: Number(plan.seven_day_amount || 0) / 500_000,
+    model_allowlist: plan.model_allowlist || '',
+    recommended: plan.recommended === true,
+    card_description: plan.card_description || '',
   }
 }
 
@@ -126,6 +155,12 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
       total_amount: Number(values.total_amount || 0),
       upgrade_group: values.upgrade_group || '',
+      tier_level: Number(values.tier_level || 0),
+      five_hour_amount: Math.round(Number(values.five_hour_amount || 0) * 500_000),
+      seven_day_amount: Math.round(Number(values.seven_day_amount || 0) * 500_000),
+      model_allowlist: values.model_allowlist || '',
+      recommended: values.recommended === true,
+      card_description: values.card_description || '',
     },
   }
 }

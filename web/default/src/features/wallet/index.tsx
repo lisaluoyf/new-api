@@ -23,7 +23,7 @@ import { RechargePanel } from './components/recharge-panel'
 import { RedemptionCodeCard } from './components/redemption-code-card'
 import { ReferralCard } from './components/referral-card'
 import { TransactionHistory } from './components/transaction-history'
-import { TrialSubscriptionSection } from './components/trial-subscription-section'
+import { WalletBenefitsCarousel } from './components/wallet-benefits-carousel'
 import { WalletStatsCard } from './components/wallet-stats-card'
 import { useAffiliate, usePostTopupInvitePrompt } from './hooks'
 import { useClinkReturnConfirm } from './hooks/use-clink-return-confirm'
@@ -67,7 +67,7 @@ export function Wallet() {
       <div className='space-y-5 p-6'>
         <div className='grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-start'>
           <WalletStatsCard user={user} loading={userLoading} />
-          <TrialSubscriptionSection />
+          <WalletBenefitsCarousel />
         </div>
 
         <div className='grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-start'>

@@ -161,6 +161,8 @@ func InitOptionMap() {
 	common.OptionMap["ReferralGPTMinTopupUSD"] = strconv.FormatFloat(common.ReferralGPTMinTopupUSD, 'f', -1, 64)
 	common.OptionMap["ReferralGPTRewardAmountUSD"] = strconv.FormatFloat(common.ReferralGPTRewardAmountUSD, 'f', -1, 64)
 	common.OptionMap["ReferralGPTRewardStartTime"] = strconv.FormatInt(common.ReferralGPTRewardStartTime, 10)
+	common.OptionMap[GPTSubscriptionPublicEnabledOption] = "false"
+	common.OptionMap[GPTSubscriptionWhitelistOption] = "lisa.luoyf@gmail.com"
 	common.OptionMap["FirstTopupPromoEnabled"] = strconv.FormatBool(common.FirstTopupPromoEnabled)
 	common.OptionMap["FirstTopupPromoDiscount"] = strconv.FormatFloat(common.FirstTopupPromoDiscount, 'f', -1, 64)
 	common.OptionMap["FirstTopupPromoAmount"] = strconv.Itoa(common.FirstTopupPromoAmount)

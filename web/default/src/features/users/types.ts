@@ -60,6 +60,10 @@ export const userSchema = z.object({
   registration_inviter_email: z.string().optional(),
   registration_provider: z.string().optional(),
   trial_claim_status: z.string().optional(),
+  gpt_subscription_status: z.string().optional(),
+  gpt_subscription_plan_id: z.number().optional(),
+  gpt_subscription_plan_title: z.string().optional(),
+  gpt_subscription_end_time: z.number().optional(),
   linux_do_id: z.string().optional(),
   status: userStatusSchema,
   role: userRoleSchema,
@@ -93,6 +97,8 @@ export interface UserListFilterParams {
   provider?: string
   channel?: string
   trial?: string
+  gpt_subscription?: string
+  gpt_plan?: string
 }
 
 export interface GetUsersParams extends UserListFilterParams {

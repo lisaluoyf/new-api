@@ -33,6 +33,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -133,6 +134,14 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnitOpts = getDurationUnitOptions(t)
   const resetPeriodOpts = getResetPeriodOptions(t)
+  const gptSettingLabels: Record<
+    'tier_level' | 'five_hour_amount' | 'seven_day_amount',
+    string
+  > = {
+    tier_level: t('Tier'),
+    five_hour_amount: t('5h official-price USD'),
+    seven_day_amount: t('7d official-price USD'),
+  }
 
   return (
     <Sheet
@@ -226,6 +235,10 @@ export function SubscriptionsMutateDrawer({
                           label: t('Standard Subscription'),
                         },
                         { value: 'gpt_trial', label: t('GPT Trial') },
+                        {
+                          value: 'gpt_subscription',
+                          label: t('GPT Subscription'),
+                        },
                       ]}
                       onValueChange={field.onChange}
                       value={field.value || 'standard'}
@@ -242,6 +255,9 @@ export function SubscriptionsMutateDrawer({
                           </SelectItem>
                           <SelectItem value='gpt_trial'>
                             {t('GPT Trial')}
+                          </SelectItem>
+                          <SelectItem value='gpt_subscription'>
+                            {t('GPT Subscription')}
                           </SelectItem>
                         </SelectGroup>
                       </SelectContent>
@@ -303,6 +319,50 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
               </div>
+
+              {form.watch('plan_type') === 'gpt_subscription' ? (
+                <div className='space-y-4 rounded-md border border-fuchsia-500/20 bg-fuchsia-500/5 p-3'>
+                  <h4 className='text-sm font-medium'>
+                    {t('GPT Subscription Settings')}
+                  </h4>
+                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
+                    {(['tier_level', 'five_hour_amount', 'seven_day_amount'] as const).map((name) => (
+                      <FormField key={name} control={form.control} name={name} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{gptSettingLabels[name]}</FormLabel>
+                          <FormControl><Input {...field} type='number' min={0} onChange={(e) => field.onChange(Number(e.target.value) || 0)} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    ))}
+                  </div>
+                  <FormField control={form.control} name='model_allowlist' render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Model allowlist')}</FormLabel>
+                      <FormControl><Input {...field} placeholder='gpt-5.4,gpt-5.5' /></FormControl>
+                      <FormDescription>
+                        {t(
+                          'Comma-separated model names. Changes apply immediately.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name='card_description' render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Card copy')}</FormLabel>
+                      <FormControl><Textarea {...field} rows={3} placeholder={t('Use | between benefit items')} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name='recommended' render={({ field }) => (
+                    <FormItem className='flex flex-row items-center gap-2'>
+                      <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                      <FormLabel className='!mt-0'>{t('Recommended card')}</FormLabel>
+                    </FormItem>
+                  )} />
+                </div>
+              ) : null}
 
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField
