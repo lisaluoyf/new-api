@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -1015,9 +1016,26 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 		} else {
 			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
 		}
+
+		// 查询本次充值的实付金额（Money 字段）
+		var actualPayment float64
+		var topUp TopUp
+		if err := DB.Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
+			Order("complete_time DESC").First(&topUp).Error; err == nil {
+			actualPayment = topUp.Money
+		}
+
 		lines := []string{
 			fmt.Sprintf("用户：%s", email),
 			fmt.Sprintf("金额：$%.2f", usdAmount),
+		}
+
+		// 仅当实付金额与充值金额不同时才显示"实付"字段（使用 1 美分误差容忍）
+		if actualPayment > 0 && math.Abs(actualPayment-usdAmount) > 0.01 {
+			lines = append(lines, fmt.Sprintf("实付：$%.2f", actualPayment))
+		}
+
+		lines = append(lines,
 			cumulativeLine,
 			fmt.Sprintf("余额：$%.2f", walletBalance),
 			fmt.Sprintf("渠道：%s", channel),
@@ -1025,7 +1043,8 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string) {
 			fmt.Sprintf("语言：%s", language),
 			fmt.Sprintf("方式：%s", methodLabel),
 			fmt.Sprintf("注册于：%s", registeredAt),
-		}
+		)
+
 		title := fmt.Sprintf("💰 付款成功（第 %d 次）", payCount)
 		_ = common.SendFeishuCard(chatID, title, lines)
 	}()
