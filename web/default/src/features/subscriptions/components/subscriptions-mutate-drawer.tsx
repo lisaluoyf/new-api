@@ -33,7 +33,6 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -52,6 +51,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { createPlan, updatePlan, getGroups } from '../api'
 import { getDurationUnitOptions, getResetPeriodOptions } from '../constants'
 import {
@@ -138,9 +138,9 @@ export function SubscriptionsMutateDrawer({
     'tier_level' | 'five_hour_amount' | 'seven_day_amount',
     string
   > = {
-    tier_level: t('Tier'),
-    five_hour_amount: t('5h official-price USD'),
-    seven_day_amount: t('7d official-price USD'),
+    tier_level: '档位等级',
+    five_hour_amount: '5 小时官方价额度（USD）',
+    seven_day_amount: '7 天官方价额度（USD）',
   }
 
   return (
@@ -237,7 +237,7 @@ export function SubscriptionsMutateDrawer({
                         { value: 'gpt_trial', label: t('GPT Trial') },
                         {
                           value: 'gpt_subscription',
-                          label: t('GPT Subscription'),
+                          label: 'GPT 订阅',
                         },
                       ]}
                       onValueChange={field.onChange}
@@ -257,7 +257,7 @@ export function SubscriptionsMutateDrawer({
                             {t('GPT Trial')}
                           </SelectItem>
                           <SelectItem value='gpt_subscription'>
-                            {t('GPT Subscription')}
+                            GPT 订阅
                           </SelectItem>
                         </SelectGroup>
                       </SelectContent>
@@ -322,45 +322,86 @@ export function SubscriptionsMutateDrawer({
 
               {form.watch('plan_type') === 'gpt_subscription' ? (
                 <div className='space-y-4 rounded-md border border-fuchsia-500/20 bg-fuchsia-500/5 p-3'>
-                  <h4 className='text-sm font-medium'>
-                    {t('GPT Subscription Settings')}
-                  </h4>
+                  <h4 className='text-sm font-medium'>GPT 订阅设置</h4>
                   <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
-                    {(['tier_level', 'five_hour_amount', 'seven_day_amount'] as const).map((name) => (
-                      <FormField key={name} control={form.control} name={name} render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{gptSettingLabels[name]}</FormLabel>
-                          <FormControl><Input {...field} type='number' min={0} onChange={(e) => field.onChange(Number(e.target.value) || 0)} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
+                    {(
+                      [
+                        'tier_level',
+                        'five_hour_amount',
+                        'seven_day_amount',
+                      ] as const
+                    ).map((name) => (
+                      <FormField
+                        key={name}
+                        control={form.control}
+                        name={name}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{gptSettingLabels[name]}</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type='number'
+                                min={0}
+                                onChange={(e) =>
+                                  field.onChange(Number(e.target.value) || 0)
+                                }
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     ))}
                   </div>
-                  <FormField control={form.control} name='model_allowlist' render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Model allowlist')}</FormLabel>
-                      <FormControl><Input {...field} placeholder='gpt-5.4,gpt-5.5' /></FormControl>
-                      <FormDescription>
-                        {t(
-                          'Comma-separated model names. Changes apply immediately.'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name='card_description' render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Card copy')}</FormLabel>
-                      <FormControl><Textarea {...field} rows={3} placeholder={t('Use | between benefit items')} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name='recommended' render={({ field }) => (
-                    <FormItem className='flex flex-row items-center gap-2'>
-                      <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                      <FormLabel className='!mt-0'>{t('Recommended card')}</FormLabel>
-                    </FormItem>
-                  )} />
+                  <FormField
+                    control={form.control}
+                    name='model_allowlist'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>模型白名单</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder='gpt-5.4,gpt-5.5' />
+                        </FormControl>
+                        <FormDescription>
+                          使用逗号分隔模型名称，修改后立即生效。
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='card_description'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>卡片文案</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            rows={3}
+                            placeholder='权益之间使用 | 分隔'
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='recommended'
+                    render={({ field }) => (
+                      <FormItem className='flex flex-row items-center gap-2'>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormLabel className='!mt-0'>推荐套餐</FormLabel>
+                      </FormItem>
+                    )}
+                  />
                 </div>
               ) : null}
 

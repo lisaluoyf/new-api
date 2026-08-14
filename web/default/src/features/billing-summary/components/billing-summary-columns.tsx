@@ -177,7 +177,7 @@ export function buildBillingSummaryColumns(
     {
       accessorKey: 'paid_subscription_cost_usd',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Paid Subscription Cost')} />
+        <DataTableColumnHeader column={column} title='付费订阅成本' />
       ),
       cell: ({ row }) => (
         <span className='font-mono text-sm'>
@@ -188,7 +188,7 @@ export function buildBillingSummaryColumns(
     {
       accessorKey: 'paid_subscription_revenue_usd',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Paid Subscription Revenue')} />
+        <DataTableColumnHeader column={column} title='付费订阅收入' />
       ),
       cell: ({ row }) => (
         <span className='font-mono text-sm'>

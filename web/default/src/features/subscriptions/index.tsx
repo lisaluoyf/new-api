@@ -21,11 +21,11 @@ import { useTranslation } from 'react-i18next'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SectionPageLayout } from '@/components/layout'
+import { GPTSubscriptionAccessCard } from './components/gpt-subscription-access-card'
 import { SubscriptionsDialogs } from './components/subscriptions-dialogs'
 import { SubscriptionsPrimaryButtons } from './components/subscriptions-primary-buttons'
 import { SubscriptionsProvider } from './components/subscriptions-provider'
 import { SubscriptionsTable } from './components/subscriptions-table'
-import { GPTSubscriptionAccessCard } from './components/gpt-subscription-access-card'
 
 export function Subscriptions() {
   const { t } = useTranslation()
@@ -54,10 +54,10 @@ export function Subscriptions() {
         <SectionPageLayout.Content>
           <Tabs defaultValue='standard'>
             <TabsList variant='line' className='mb-4'>
-              <TabsTrigger value='standard'>{t('Subscription Plans')}</TabsTrigger>
-              <TabsTrigger value='gpt_subscription'>
-                {t('GPT Subscription Plans')}
+              <TabsTrigger value='standard'>
+                {t('Subscription Plans')}
               </TabsTrigger>
+              <TabsTrigger value='gpt_subscription'>GPT 订阅套餐</TabsTrigger>
             </TabsList>
             <TabsContent value='standard'>
               <SubscriptionsTable planType='standard' />

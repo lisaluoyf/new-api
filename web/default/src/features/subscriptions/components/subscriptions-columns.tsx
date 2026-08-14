@@ -107,9 +107,9 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
       },
       {
         id: 'gpt_limits',
-        meta: { label: t('Rolling limits'), mobileHidden: true },
+        meta: { label: '滚动额度', mobileHidden: true },
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title={t('Rolling limits')} />
+          <DataTableColumnHeader column={column} title='滚动额度' />
         ),
         cell: ({ row }) => {
           const plan = row.original.plan
@@ -117,8 +117,12 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           const unit = 500_000
           return (
             <div className='text-muted-foreground text-xs'>
-              <div>5h ${(Number(plan.five_hour_amount || 0) / unit).toFixed(0)}</div>
-              <div>7d ${(Number(plan.seven_day_amount || 0) / unit).toFixed(0)}</div>
+              <div>
+                5 小时 ${(Number(plan.five_hour_amount || 0) / unit).toFixed(0)}
+              </div>
+              <div>
+                7 天 ${(Number(plan.seven_day_amount || 0) / unit).toFixed(0)}
+              </div>
             </div>
           )
         },
@@ -126,12 +130,9 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
       },
       {
         id: 'gpt_margin',
-        meta: { label: t('2.5% cost preview'), mobileHidden: true },
+        meta: { label: '2.5% 成本预览', mobileHidden: true },
         header: ({ column }) => (
-          <DataTableColumnHeader
-            column={column}
-            title={t('2.5% cost preview')}
-          />
+          <DataTableColumnHeader column={column} title='2.5% 成本预览' />
         ),
         cell: ({ row }) => {
           const plan = row.original.plan
@@ -140,12 +141,10 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           return (
             <div className='text-xs'>
               <div className='font-medium text-emerald-600'>
-                {t('97.5% request GM')}
+                请求理论毛利率 97.5%
               </div>
               <div className='text-muted-foreground'>
-                {t('7d full-use cost ${{amount}}', {
-                  amount: (sevenDayUSD * 0.025).toFixed(2),
-                })}
+                7 天额度满用理论成本 ${(sevenDayUSD * 0.025).toFixed(2)}
               </div>
             </div>
           )

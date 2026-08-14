@@ -45,27 +45,25 @@ export function GPTSubscriptionAccessCard() {
   }
 
   return (
-    <section className='mb-4 rounded-lg border bg-card p-4'>
+    <section className='bg-card mb-4 rounded-lg border p-4'>
       <div className='flex flex-wrap items-start justify-between gap-4'>
         <div className='flex gap-3'>
           <ShieldCheck className='mt-0.5 size-5 text-fuchsia-500' />
           <div>
-            <h3 className='text-sm font-semibold'>{t('Free Model Access')}</h3>
+            <h3 className='text-sm font-semibold'>GPT 订阅开放范围</h3>
             <p className='text-muted-foreground mt-1 text-xs'>
-              {t(
-                'When public access is off, only these test accounts can view, purchase, renew, or upgrade. Active subscriptions remain usable.'
-              )}
+              关闭全量开放时，仅下列测试账号可以查看、购买、续费或升级；已有订阅仍可正常使用。
             </p>
           </div>
         </div>
         <label className='flex items-center gap-2 text-sm font-medium'>
           <Switch checked={enabled} onCheckedChange={setEnabled} />
-          {t('Open to all users')}
+          对全部用户开放
         </label>
       </div>
       <div className='mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end'>
         <label className='space-y-2 text-xs font-medium'>
-          {t('Test account whitelist (one email per line)')}
+          测试账号白名单（每行一个邮箱）
           <Textarea
             value={emails}
             onChange={(event) => setEmails(event.target.value)}

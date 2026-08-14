@@ -359,7 +359,7 @@ export function UsersTable() {
           },
           {
             columnId: 'gpt_subscription',
-            title: t('GPT Subscription'),
+            title: 'GPT 订阅',
             options: [
               { label: t('Active'), value: 'active' },
               { label: t('Expired'), value: 'expired' },

@@ -361,7 +361,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
       id: 'gpt_subscription',
       accessorFn: (row) => row.gpt_subscription_status,
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('GPT Subscription')} />
+        <DataTableColumnHeader column={column} title='GPT 订阅' />
       ),
       cell: ({ row }) => {
         const user = row.original
@@ -397,7 +397,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
       size: 148,
       minSize: 148,
       maxSize: 148,
-      meta: { label: t('GPT Subscription'), mobileHidden: true },
+      meta: { label: 'GPT 订阅', mobileHidden: true },
     },
     {
       id: 'quota',
