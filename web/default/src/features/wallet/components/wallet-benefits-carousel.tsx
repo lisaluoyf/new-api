@@ -75,13 +75,17 @@ function GPTSubscriptionCard({ data }: { data: GPTState }) {
                 </span>
               </div>
               <div className='flex items-center justify-between gap-3'>
-                <span className='text-muted-foreground'>{t('5-hour usage')}</span>
+                <span className='text-muted-foreground'>
+                  {t('5-hour usage')}
+                </span>
                 <span className='font-mono font-medium'>
                   {usd(data.state.five_hour_used || 0)}
                 </span>
               </div>
               <div className='flex items-center justify-between gap-3'>
-                <span className='text-muted-foreground'>{t('7-day usage')}</span>
+                <span className='text-muted-foreground'>
+                  {t('7-day usage')}
+                </span>
                 <span className='font-mono font-medium'>
                   {usd(data.state.seven_day_used || 0)}
                 </span>
@@ -90,10 +94,13 @@ function GPTSubscriptionCard({ data }: { data: GPTState }) {
           ) : (
             <>
               <p className='text-muted-foreground leading-6'>
-                {t('Official-price GPT usage with rolling limits and wallet fallback.')}
+                {t(
+                  'Official-price GPT usage with rolling limits and wallet fallback.'
+                )}
               </p>
               <div className='font-mono text-lg font-semibold'>
-                {t('Starting at')} ${Number(lowest?.price_amount || 0).toFixed(0)}
+                {t('Starting at')} $
+                {Number(lowest?.price_amount || 0).toFixed(0)}
                 <span className='text-muted-foreground ml-1 text-xs font-normal'>
                   / 30 {t('days')}
                 </span>
@@ -125,7 +132,13 @@ export function WalletBenefitsCarousel() {
   useEffect(() => {
     let active = true
     void Promise.allSettled([
-      api.get('/api/subscription/gpt/plans'),
+      api.get('/api/subscription/gpt/plans', {
+        // This request only decides whether the optional Free Model card is
+        // visible. A 403 is expected for users outside the internal allowlist
+        // and must not surface as a global error toast.
+        skipErrorHandler: true,
+        skipBusinessError: true,
+      } as Record<string, unknown>),
       getSelfSubscriptionFull(),
     ]).then(([gptResult, allResult]) => {
       if (!active) return
@@ -150,7 +163,9 @@ export function WalletBenefitsCarousel() {
 
   const slides = useMemo(
     () => [
-      ...(gpt ? [{ key: 'gpt', node: <GPTSubscriptionCard data={gpt} /> }] : []),
+      ...(gpt
+        ? [{ key: 'gpt', node: <GPTSubscriptionCard data={gpt} /> }]
+        : []),
       ...(showTrial
         ? [{ key: 'trial', node: <TrialSubscriptionSection /> }]
         : []),
@@ -219,7 +234,7 @@ export function WalletBenefitsCarousel() {
             type='button'
             aria-label={t('Previous benefit')}
             title={t('Previous')}
-            className='bg-background/80 absolute left-2 top-[112px] flex size-8 items-center justify-center rounded-full border shadow-sm backdrop-blur'
+            className='bg-background/80 absolute top-[112px] left-2 flex size-8 items-center justify-center rounded-full border shadow-sm backdrop-blur'
             onClick={() => move(-1)}
           >
             <ChevronLeft className='size-4' />
@@ -228,7 +243,7 @@ export function WalletBenefitsCarousel() {
             type='button'
             aria-label={t('Next benefit')}
             title={t('Next')}
-            className='bg-background/80 absolute right-2 top-[112px] flex size-8 items-center justify-center rounded-full border shadow-sm backdrop-blur'
+            className='bg-background/80 absolute top-[112px] right-2 flex size-8 items-center justify-center rounded-full border shadow-sm backdrop-blur'
             onClick={() => move(1)}
           >
             <ChevronRight className='size-4' />
