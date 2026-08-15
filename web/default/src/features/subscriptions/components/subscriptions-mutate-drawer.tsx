@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery } from '@tanstack/react-query'
 import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -52,6 +53,8 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { MultiSelect } from '@/components/multi-select'
+import { getAllModels } from '@/features/channels/api'
 import { createPlan, updatePlan, getGroups } from '../api'
 import { getDurationUnitOptions, getResetPeriodOptions } from '../constants'
 import {
@@ -69,6 +72,17 @@ interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   currentRow?: PlanRecord
+}
+
+function parseModelAllowlist(value?: string): string[] {
+  return Array.from(
+    new Set(
+      (value || '')
+        .split(',')
+        .map((model) => model.trim())
+        .filter(Boolean)
+    )
+  )
 }
 
 export function SubscriptionsMutateDrawer({
@@ -105,6 +119,26 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
+  const modelAllowlist = form.watch('model_allowlist')
+
+  const { data: allModelsData, isLoading: isLoadingModels } = useQuery({
+    queryKey: ['channel_models'],
+    queryFn: getAllModels,
+    enabled: open,
+  })
+
+  const modelOptions = useMemo(() => {
+    const models = new Set(
+      (allModelsData?.data || [])
+        .map((model) => model.id?.trim())
+        .filter(Boolean)
+    )
+    parseModelAllowlist(modelAllowlist).forEach((model) => models.add(model))
+
+    return Array.from(models)
+      .sort((a, b) => a.localeCompare(b))
+      .map((model) => ({ value: model, label: model }))
+  }, [allModelsData, modelAllowlist])
 
   const onSubmit = async (values: PlanFormValues) => {
     setIsSubmitting(true)
@@ -361,10 +395,21 @@ export function SubscriptionsMutateDrawer({
                       <FormItem>
                         <FormLabel>模型白名单</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder='gpt-5.4,gpt-5.5' />
+                          <MultiSelect
+                            options={modelOptions}
+                            selected={parseModelAllowlist(field.value)}
+                            onChange={(models) =>
+                              field.onChange(models.join(','))
+                            }
+                            placeholder={
+                              isLoadingModels
+                                ? '正在加载模型...'
+                                : '搜索并选择模型'
+                            }
+                          />
                         </FormControl>
                         <FormDescription>
-                          使用逗号分隔模型名称，修改后立即生效。
+                          从系统模型列表中多选，修改后立即生效。
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
