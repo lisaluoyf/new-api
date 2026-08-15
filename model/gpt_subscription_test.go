@@ -344,6 +344,9 @@ func TestSeedDefaultGPTSubscriptionPlans(t *testing.T) {
 	require.EqualValues(t, 5*common.QuotaPerUnit, plans[0].FiveHourAmount)
 	require.EqualValues(t, 1320*common.QuotaPerUnit, plans[4].SevenDayAmount)
 	require.True(t, plans[2].Recommended)
+	for _, plan := range plans {
+		require.Equal(t, DefaultGPTSubscriptionModelAllowlist, plan.ModelAllowlist)
+	}
 }
 
 func TestGPTSubscriptionRollingLimitSettleAndRefund(t *testing.T) {

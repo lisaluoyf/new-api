@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	GPTSubscriptionPublicEnabledOption = "GPTSubscriptionPublicEnabled"
-	GPTSubscriptionWhitelistOption     = "GPTSubscriptionWhitelistEmails"
+	GPTSubscriptionPublicEnabledOption   = "GPTSubscriptionPublicEnabled"
+	GPTSubscriptionWhitelistOption       = "GPTSubscriptionWhitelistEmails"
+	DefaultGPTSubscriptionModelAllowlist = "gpt-5.4,gpt-5.4-mini,gpt-5.5,gpt-5.6-luna,gpt-5.6-sol,gpt-5.6-terra"
 )
 
 var (
@@ -287,7 +288,7 @@ func SeedDefaultGPTSubscriptionPlans() error {
 				TierLevel:       item.level,
 				FiveHourAmount:  int64(math.Round(item.five * common.QuotaPerUnit)),
 				SevenDayAmount:  int64(math.Round(item.seven * common.QuotaPerUnit)),
-				ModelAllowlist:  "gpt-5.4,gpt-5.5",
+				ModelAllowlist:  DefaultGPTSubscriptionModelAllowlist,
 				Recommended:     item.recommended,
 				CardDescription: "Official-price GPT usage with rolling 5-hour and 7-day limits.",
 			}
