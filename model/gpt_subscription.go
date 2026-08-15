@@ -290,7 +290,7 @@ func SeedDefaultGPTSubscriptionPlans() error {
 				SevenDayAmount:  int64(math.Round(item.seven * common.QuotaPerUnit)),
 				ModelAllowlist:  DefaultGPTSubscriptionModelAllowlist,
 				Recommended:     item.recommended,
-				CardDescription: "Official-price GPT usage with rolling 5-hour and 7-day limits.",
+				CardDescription: "",
 			}
 			if err := tx.Create(&plan).Error; err != nil {
 				return err

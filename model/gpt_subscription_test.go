@@ -346,6 +346,7 @@ func TestSeedDefaultGPTSubscriptionPlans(t *testing.T) {
 	require.True(t, plans[2].Recommended)
 	for _, plan := range plans {
 		require.Equal(t, DefaultGPTSubscriptionModelAllowlist, plan.ModelAllowlist)
+		require.Empty(t, plan.CardDescription)
 	}
 }
 
