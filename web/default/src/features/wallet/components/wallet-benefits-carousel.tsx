@@ -43,13 +43,13 @@ function GPTSubscriptionCard({ data }: { data: GPTState }) {
 
   return (
     <div
-      className={`${GLASS_CARD_CLS} flex h-[258px] flex-col justify-between px-5 py-4`}
+      className={`${GLASS_CARD_CLS} flex h-[258px] flex-col justify-between px-12 py-4`}
     >
       <div>
         <div className='flex items-start justify-between gap-4'>
           <div className='flex min-w-0 items-center gap-4'>
-            <div className='flex size-11 shrink-0 items-center justify-center rounded-xl bg-fuchsia-100 dark:bg-fuchsia-500/10'>
-              <Sparkles className='size-5 text-fuchsia-600 dark:text-fuchsia-300' />
+            <div className='flex size-11 shrink-0 items-center justify-center rounded-xl bg-cyan-100 dark:bg-cyan-500/10'>
+              <Sparkles className='size-5 text-cyan-600 dark:text-cyan-300' />
             </div>
             <div className='min-w-0'>
               <div className='text-muted-foreground text-xs font-medium'>
@@ -60,7 +60,7 @@ function GPTSubscriptionCard({ data }: { data: GPTState }) {
               </div>
             </div>
           </div>
-          <span className='rounded-full bg-fuchsia-50 px-3 py-1 text-sm font-medium text-fuchsia-700 dark:bg-fuchsia-500/10 dark:text-fuchsia-300'>
+          <span className='rounded-full bg-cyan-50 px-3 py-1 text-sm font-medium text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300'>
             {current ? t('Active') : t('Available')}
           </span>
         </div>
@@ -111,7 +111,7 @@ function GPTSubscriptionCard({ data }: { data: GPTState }) {
       </div>
 
       <Button
-        className='w-full bg-fuchsia-600 text-white hover:bg-fuchsia-700'
+        className='w-full bg-cyan-500 text-white hover:bg-cyan-600'
         onClick={() => window.top?.location.assign('/freemodel')}
       >
         {current ? t('Manage plan') : t('View plans')}
