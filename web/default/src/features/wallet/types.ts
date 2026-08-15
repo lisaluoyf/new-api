@@ -322,6 +322,12 @@ export interface TopupRecord {
   country?: string
   /** Admin-only: browser language from registration */
   language?: string
+  /** Admin-only: wallet funding or GPT subscription payment */
+  transaction_type?: 'wallet' | 'subscription'
+  /** Admin-only: subscription plan title when transaction_type is subscription */
+  subscription_plan_title?: string
+  /** Admin-only: purchase, renewal, or upgrade */
+  subscription_order_type?: string
 }
 
 /**

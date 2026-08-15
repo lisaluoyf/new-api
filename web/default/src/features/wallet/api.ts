@@ -309,7 +309,8 @@ export async function getAllBillingHistory(
   pageSize: number,
   keyword?: string,
   status?: string,
-  paymentMethod?: string
+  paymentMethod?: string,
+  transactionType?: string
 ): Promise<ApiResponse<BillingHistoryResponse>> {
   const params = new URLSearchParams({
     p: page.toString(),
@@ -324,6 +325,9 @@ export async function getAllBillingHistory(
   if (paymentMethod) {
     params.append('payment_method', paymentMethod)
   }
+  if (transactionType) {
+    params.append('transaction_type', transactionType)
+  }
   const res = await api.get(`/api/user/topup?${params.toString()}`)
   return res.data
 }
@@ -331,12 +335,14 @@ export async function getAllBillingHistory(
 export async function downloadAllBillingHistory(
   keyword?: string,
   status?: string,
-  paymentMethod?: string
+  paymentMethod?: string,
+  transactionType?: string
 ): Promise<void> {
   const params = new URLSearchParams()
   if (keyword) params.append('keyword', keyword)
   if (status) params.append('status', status)
   if (paymentMethod) params.append('payment_method', paymentMethod)
+  if (transactionType) params.append('transaction_type', transactionType)
   const res = await api.get(`/api/user/topup/export?${params.toString()}`, {
     responseType: 'blob',
   })
@@ -401,7 +407,11 @@ export async function submitCryptoDeposit(
   try {
     const res = await api.post(
       '/api/user/crypto/submit',
-      { intent_id: intentId, tx_hash: txHash, wallet_signature: walletSignature },
+      {
+        intent_id: intentId,
+        tx_hash: txHash,
+        wallet_signature: walletSignature,
+      },
       { skipBusinessError: true } as Record<string, unknown>
     )
     return res.data

@@ -63,6 +63,17 @@ const PAYMENT_METHODS = [
   'wxpay',
 ] as const
 
+const TRANSACTION_TYPES = ['', 'wallet', 'subscription'] as const
+
+function transactionTypeLabel(
+  transactionType: (typeof TRANSACTION_TYPES)[number],
+  translate: (key: string) => string
+): string {
+  if (transactionType === 'subscription') return translate('Subscription')
+  if (transactionType === 'wallet') return translate('Wallet')
+  return translate('All')
+}
+
 function formatRechargeAmount(amount: number): string {
   return `$${amount.toFixed(2)}`
 }
@@ -115,6 +126,29 @@ function StatusChip({ status }: { status: TopupStatus }) {
   )
 }
 
+function TransactionTypeChip(props: {
+  transactionType?: 'wallet' | 'subscription'
+  planTitle?: string
+  orderType?: string
+}) {
+  const { t } = useTranslation()
+  const isSubscription = props.transactionType === 'subscription'
+  const details = [props.planTitle, props.orderType].filter(Boolean).join(' · ')
+  return (
+    <span
+      title={details || undefined}
+      className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap ${
+        isSubscription
+          ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
+          : 'border-slate-200 bg-slate-50 text-slate-600'
+      }`}
+    >
+      {isSubscription ? t('Subscription') : t('Wallet')}
+      {isSubscription && props.planTitle ? ` · ${props.planTitle}` : ''}
+    </span>
+  )
+}
+
 export function TransactionHistory() {
   const { t } = useTranslation()
   const {
@@ -125,6 +159,7 @@ export function TransactionHistory() {
     keyword,
     statusFilter,
     paymentMethodFilter,
+    transactionTypeFilter,
     loading,
     exporting,
     isAdmin,
@@ -132,6 +167,7 @@ export function TransactionHistory() {
     handleSearch,
     handleStatusChange,
     handlePaymentMethodChange,
+    handleTransactionTypeChange,
     handleExport,
   } = useBillingHistory({ initialPageSize: 10 })
   const colCount = isAdmin ? 9 : 6
@@ -166,6 +202,25 @@ export function TransactionHistory() {
               onChange={(e) => handleSearch(e.target.value)}
               className='h-8 w-full text-sm sm:w-52'
             />
+            {isAdmin && (
+              <NativeSelect
+                size='sm'
+                value={transactionTypeFilter}
+                onChange={(event) =>
+                  handleTransactionTypeChange(event.target.value)
+                }
+                aria-label={t('Type')}
+              >
+                {TRANSACTION_TYPES.map((transactionType) => (
+                  <NativeSelectOption
+                    key={transactionType || 'all'}
+                    value={transactionType}
+                  >
+                    {transactionTypeLabel(transactionType, t)}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            )}
             {isAdmin && (
               <NativeSelect
                 size='sm'
@@ -323,13 +378,22 @@ export function TransactionHistory() {
                       className='hover:bg-muted/20 transition-colors'
                     >
                       <td className='px-4 py-3'>
-                        <div className='flex items-center'>
-                          <code className='text-foreground max-w-[200px] truncate font-mono text-xs'>
-                            {record.trade_no || `#${record.id}`}
-                          </code>
-                          <CopyBtn
-                            text={record.trade_no || String(record.id)}
-                          />
+                        <div className='flex flex-col items-start gap-1.5'>
+                          <div className='flex items-center'>
+                            <code className='text-foreground max-w-[200px] truncate font-mono text-xs'>
+                              {record.trade_no || `#${record.id}`}
+                            </code>
+                            <CopyBtn
+                              text={record.trade_no || String(record.id)}
+                            />
+                          </div>
+                          {isAdmin && (
+                            <TransactionTypeChip
+                              transactionType={record.transaction_type}
+                              planTitle={record.subscription_plan_title}
+                              orderType={record.subscription_order_type}
+                            />
+                          )}
                         </div>
                       </td>
                       {isAdmin && (
@@ -401,10 +465,7 @@ export function TransactionHistory() {
                         {formatRechargeAmount(creditedAmount)}
                       </td>
                       <td className='px-4 py-3 text-right font-mono font-medium'>
-                        {formatPaidAmount(
-                          record.money,
-                          record.payment_method
-                        )}
+                        {formatPaidAmount(record.money, record.payment_method)}
                       </td>
                       <td className='px-4 py-3 text-center'>
                         <StatusChip status={record.status} />

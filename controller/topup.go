@@ -677,6 +677,7 @@ func GetAllTopUps(c *gin.Context) {
 	keyword := c.Query("keyword")
 	status := c.Query("status")
 	paymentMethod := c.Query("payment_method")
+	transactionType := c.Query("transaction_type")
 
 	var (
 		topups []*model.TopUp
@@ -684,9 +685,9 @@ func GetAllTopUps(c *gin.Context) {
 		err    error
 	)
 	if keyword != "" {
-		topups, total, err = model.SearchAllTopUps(keyword, status, paymentMethod, pageInfo)
+		topups, total, err = model.SearchAllTopUps(keyword, status, paymentMethod, transactionType, pageInfo)
 	} else {
-		topups, total, err = model.GetAllTopUps(status, paymentMethod, pageInfo)
+		topups, total, err = model.GetAllTopUps(status, paymentMethod, transactionType, pageInfo)
 	}
 	if err != nil {
 		common.ApiError(c, err)
@@ -694,6 +695,7 @@ func GetAllTopUps(c *gin.Context) {
 	}
 
 	model.EnrichTopupsWithUserInfo(topups)
+	model.EnrichTopupsWithTransactionInfo(topups)
 
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(topups)
@@ -702,18 +704,19 @@ func GetAllTopUps(c *gin.Context) {
 
 // ExportAllTopUps downloads all transaction-history rows matching the admin filters.
 func ExportAllTopUps(c *gin.Context) {
-	topups, err := model.ExportAllTopUps(c.Query("keyword"), c.Query("status"), c.Query("payment_method"))
+	topups, err := model.ExportAllTopUps(c.Query("keyword"), c.Query("status"), c.Query("payment_method"), c.Query("transaction_type"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	model.EnrichTopupsWithUserInfo(topups)
+	model.EnrichTopupsWithTransactionInfo(topups)
 
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="transactions-%s.csv"`, time.Now().UTC().Format("20060102-150405")))
 	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
 	w := csv.NewWriter(c.Writer)
-	_ = w.Write([]string{"Order No.", "UID", "Username", "Email", "Country", "Language", "Payment Method", "Recharge Amount (USD)", "Amount Paid", "Status", "Created At (UTC)", "Completed At (UTC)"})
+	_ = w.Write([]string{"Order No.", "UID", "Username", "Email", "Country", "Language", "Transaction Type", "Subscription Plan", "Subscription Order Type", "Payment Method", "Recharge Amount (USD)", "Amount Paid", "Status", "Created At (UTC)", "Completed At (UTC)"})
 	for _, topup := range topups {
 		creditedAmount := topup.CreditedAmount
 		if creditedAmount <= 0 {
@@ -730,6 +733,9 @@ func ExportAllTopUps(c *gin.Context) {
 			sanitizeCSVCell(topup.Email),
 			sanitizeCSVCell(topup.Country),
 			sanitizeCSVCell(topup.Language),
+			sanitizeCSVCell(topup.TransactionType),
+			sanitizeCSVCell(topup.SubscriptionPlanTitle),
+			sanitizeCSVCell(topup.SubscriptionOrderType),
 			sanitizeCSVCell(topup.PaymentMethod),
 			strconv.FormatFloat(creditedAmount, 'f', 6, 64),
 			strconv.FormatFloat(topup.Money, 'f', 6, 64),

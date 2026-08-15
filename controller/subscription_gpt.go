@@ -20,6 +20,84 @@ type gptSubscriptionPaymentMethod struct {
 	Description   string `json:"description,omitempty"`
 }
 
+// publicGPTSubscriptionPlan is the read-only product catalog exposed to the
+// APIMaster marketing page. Keep payment identifiers, database IDs, purchase
+// limits, user groups, and all user/order state out of this DTO.
+type publicGPTSubscriptionPlan struct {
+	Title           string   `json:"title"`
+	Subtitle        string   `json:"subtitle,omitempty"`
+	PriceAmount     float64  `json:"price_amount"`
+	Currency        string   `json:"currency"`
+	DurationUnit    string   `json:"duration_unit"`
+	DurationValue   int      `json:"duration_value"`
+	TierLevel       int      `json:"tier_level"`
+	FiveHourAmount  int64    `json:"five_hour_amount"`
+	SevenDayAmount  int64    `json:"seven_day_amount"`
+	Models          []string `json:"models"`
+	Recommended     bool     `json:"recommended"`
+	CardDescription string   `json:"card_description,omitempty"`
+	UpdatedAt       int64    `json:"updated_at"`
+}
+
+func publicGPTSubscriptionModels(allowlist string) []string {
+	models := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, value := range strings.Split(allowlist, ",") {
+		modelName := strings.TrimSpace(value)
+		key := strings.ToLower(modelName)
+		if modelName == "" {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		models = append(models, modelName)
+	}
+	return models
+}
+
+// GetPublicGPTSubscriptionCatalog exposes only information that is already
+// intended for the public Free Model product page. It deliberately remains
+// readable while purchasing is in limited testing; all state-changing GPT
+// subscription endpoints still require UserAuth and server-side access checks.
+func GetPublicGPTSubscriptionCatalog(c *gin.Context) {
+	plans, err := model.GetEnabledGPTSubscriptionPlans()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	catalog := make([]publicGPTSubscriptionPlan, 0, len(plans))
+	var updatedAt int64
+	for _, plan := range plans {
+		catalog = append(catalog, publicGPTSubscriptionPlan{
+			Title:           plan.Title,
+			Subtitle:        plan.Subtitle,
+			PriceAmount:     plan.PriceAmount,
+			Currency:        plan.Currency,
+			DurationUnit:    plan.DurationUnit,
+			DurationValue:   plan.DurationValue,
+			TierLevel:       plan.TierLevel,
+			FiveHourAmount:  plan.FiveHourAmount,
+			SevenDayAmount:  plan.SevenDayAmount,
+			Models:          publicGPTSubscriptionModels(plan.ModelAllowlist),
+			Recommended:     plan.Recommended,
+			CardDescription: plan.CardDescription,
+			UpdatedAt:       plan.UpdatedAt,
+		})
+		if plan.UpdatedAt > updatedAt {
+			updatedAt = plan.UpdatedAt
+		}
+	}
+
+	common.ApiSuccess(c, gin.H{
+		"plans":          catalog,
+		"public_enabled": model.GPTSubscriptionPublicEnabled(),
+		"updated_at":     updatedAt,
+	})
+}
+
 func availableGPTSubscriptionPaymentMethods(userID int, payable float64) []gptSubscriptionPaymentMethod {
 	if payable < 0.01 {
 		return nil

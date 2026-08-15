@@ -128,3 +128,54 @@ func TestActivateFreeGPTSubscriptionAllowsWhitelistedUser(t *testing.T) {
 	require.NoError(t, db.Model(&model.UserSubscription{}).Where("user_id = ?", userID).Count(&subscriptionCount).Error)
 	require.EqualValues(t, 1, subscriptionCount)
 }
+
+func TestPublicGPTSubscriptionCatalogIsReadableWhilePurchasingClosed(t *testing.T) {
+	db, _ := setupFreeGPTSubscriptionControllerTest(t, false, false)
+	enabledPlan := model.SubscriptionPlan{
+		Title: "Pro+", Subtitle: "Standard", PlanType: model.SubscriptionPlanTypeGPTSubscription,
+		PriceAmount: 10, Currency: "USD", DurationUnit: model.SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true, TierLevel: 2, FiveHourAmount: 5_000_000,
+		SevenDayAmount: 33_000_000, ModelAllowlist: "gpt-5.4, gpt-5.5,gpt-5.4",
+		Recommended: true, CardDescription: "For light development",
+		StripePriceId: "stripe-private-price", CreemProductId: "creem-private-product",
+		UpgradeGroup: "private-group", MaxPurchasePerUser: 1,
+	}
+	require.NoError(t, db.Create(&enabledPlan).Error)
+	disabledPlan := model.SubscriptionPlan{
+		Title: "Disabled", PlanType: model.SubscriptionPlanTypeGPTSubscription,
+		Currency: "USD", DurationUnit: model.SubscriptionDurationDay, DurationValue: 30,
+		Enabled: false,
+	}
+	require.NoError(t, db.Create(&disabledPlan).Error)
+	require.NoError(t, db.Model(&disabledPlan).Update("enabled", false).Error)
+	require.NoError(t, db.Create(&model.SubscriptionPlan{
+		Title: "Standard subscription", PlanType: model.SubscriptionPlanTypeStandard,
+		Currency: "USD", DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
+		Enabled: true,
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/subscription/gpt/catalog", nil)
+	GetPublicGPTSubscriptionCatalog(context)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response map[string]any
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, true, response["success"])
+	data := response["data"].(map[string]any)
+	require.Equal(t, false, data["public_enabled"])
+	plans := data["plans"].([]any)
+	require.Len(t, plans, 1)
+	plan := plans[0].(map[string]any)
+	require.Equal(t, "Pro+", plan["title"])
+	require.Equal(t, []any{"gpt-5.4", "gpt-5.5"}, plan["models"])
+	for _, privateField := range []string{
+		"id", "plan_type", "stripe_price_id", "creem_product_id", "upgrade_group",
+		"max_purchase_per_user", "sort_order", "created_at",
+	} {
+		require.NotContains(t, plan, privateField)
+	}
+	require.NotContains(t, recorder.Body.String(), "stripe-private-price")
+	require.NotContains(t, recorder.Body.String(), "creem-private-product")
+}

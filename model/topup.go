@@ -34,7 +34,18 @@ type TopUp struct {
 	Username string `json:"username,omitempty" gorm:"-"`
 	Email    string `json:"email,omitempty" gorm:"-"`
 	Language string `json:"language,omitempty" gorm:"-"`
+	// Admin-only computed fields used to distinguish wallet funding from
+	// subscription purchases. The subscription order remains the source of
+	// truth, so historical rows do not need a duplicated purpose column.
+	TransactionType       string `json:"transaction_type,omitempty" gorm:"-"`
+	SubscriptionPlanTitle string `json:"subscription_plan_title,omitempty" gorm:"-"`
+	SubscriptionOrderType string `json:"subscription_order_type,omitempty" gorm:"-"`
 }
+
+const (
+	TopupTransactionTypeWallet       = "wallet"
+	TopupTransactionTypeSubscription = "subscription"
+)
 
 const (
 	PaymentMethodStripe       = "stripe"
@@ -487,7 +498,7 @@ func GetUserTopUps(userId int, status string, pageInfo *common.PageInfo) (topups
 
 // GetAllTopUps 获取全平台的充值记录（管理员使用，不限制时间窗口）
 // status 为空字符串时不过滤状态
-func GetAllTopUps(status string, paymentMethod string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+func GetAllTopUps(status string, paymentMethod string, transactionType string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -505,6 +516,7 @@ func GetAllTopUps(status string, paymentMethod string, pageInfo *common.PageInfo
 	if paymentMethod != "" {
 		query = query.Where("payment_method = ?", paymentMethod)
 	}
+	query = applyTopupTransactionTypeFilter(query, transactionType)
 
 	if err = query.Count(&total).Error; err != nil {
 		tx.Rollback()
@@ -569,7 +581,7 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 
 // SearchAllTopUps 按订单号 / 邮箱 / UID 搜索全平台充值记录（管理员使用，不限制时间窗口）
 // keyword 可以是订单号前缀、用户邮箱（含 @）、或纯数字 UID
-func SearchAllTopUps(keyword string, status string, paymentMethod string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+func SearchAllTopUps(keyword string, status string, paymentMethod string, transactionType string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -606,6 +618,7 @@ func SearchAllTopUps(keyword string, status string, paymentMethod string, pageIn
 	if paymentMethod != "" {
 		query = query.Where("payment_method = ?", paymentMethod)
 	}
+	query = applyTopupTransactionTypeFilter(query, transactionType)
 
 	if err = query.Limit(searchTopUpCountHardLimit).Count(&total).Error; err != nil {
 		tx.Rollback()
@@ -627,7 +640,7 @@ func SearchAllTopUps(keyword string, status string, paymentMethod string, pageIn
 
 // ExportAllTopUps returns all admin-visible topups matching the same filters as
 // the paginated transaction history.
-func ExportAllTopUps(keyword string, status string, paymentMethod string) (topups []*TopUp, err error) {
+func ExportAllTopUps(keyword string, status string, paymentMethod string, transactionType string) (topups []*TopUp, err error) {
 	query := DB.Model(&TopUp{})
 	if keyword != "" {
 		pattern, perr := sanitizeLikePattern(keyword)
@@ -650,8 +663,26 @@ func ExportAllTopUps(keyword string, status string, paymentMethod string) (topup
 	if paymentMethod != "" {
 		query = query.Where("payment_method = ?", paymentMethod)
 	}
+	query = applyTopupTransactionTypeFilter(query, transactionType)
 	err = query.Order("id desc").Find(&topups).Error
 	return topups, err
+}
+
+func subscriptionTradeNoSubquery(tx *gorm.DB) *gorm.DB {
+	return tx.Model(&SubscriptionOrder{}).
+		Select("trade_no").
+		Where("trade_no IS NOT NULL AND trade_no <> ''")
+}
+
+func applyTopupTransactionTypeFilter(query *gorm.DB, transactionType string) *gorm.DB {
+	switch strings.TrimSpace(transactionType) {
+	case TopupTransactionTypeSubscription:
+		return query.Where("trade_no IN (?)", subscriptionTradeNoSubquery(query.Session(&gorm.Session{NewDB: true})))
+	case TopupTransactionTypeWallet:
+		return query.Where("trade_no NOT IN (?)", subscriptionTradeNoSubquery(query.Session(&gorm.Session{NewDB: true})))
+	default:
+		return query
+	}
 }
 
 // ManualCompleteTopUp 管理员手动完成订单并给用户充值
@@ -989,6 +1020,7 @@ func successfulTopupUSDTotal(userId int) (float64, error) {
 }
 
 type paymentNotificationContext struct {
+	IsSubscription    bool
 	IsGPTSubscription bool
 	PlanTitle         string
 	OrderType         string
@@ -1053,11 +1085,12 @@ func getPaymentNotificationContext(userId int, tradeNo string) paymentNotificati
 		return paymentNotificationContext{}
 	}
 	plan, err := GetSubscriptionPlanById(order.PlanId)
-	if err != nil || !IsGPTPaidSubscriptionPlan(plan) {
+	if err != nil {
 		return paymentNotificationContext{}
 	}
 	context := paymentNotificationContext{
-		IsGPTSubscription: true,
+		IsSubscription:    true,
+		IsGPTSubscription: IsGPTPaidSubscriptionPlan(plan),
 		PlanTitle:         strings.TrimSpace(plan.Title),
 		OrderType:         formatSubscriptionOrderType(order.OrderType),
 		ActualPayment:     FormatTopupPaidAmount(order.Money, PaymentMethodStripe),
@@ -1128,7 +1161,7 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		DB.Model(&TopUp{}).Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).Count(&payCount)
 		cumulativePaidUSD, cumulativeErr := successfulTopupUSDTotal(userId)
 		cumulativeLabel := "累计到账"
-		if paymentContext.IsGPTSubscription {
+		if paymentContext.IsSubscription {
 			cumulativeLabel = "累计付款"
 		}
 		cumulativeLine := cumulativeLabel + "：—"
@@ -1141,7 +1174,7 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		// Use the exact trade instead of the user's latest row: payment callbacks
 		// can finish close together and must not borrow another order's amount.
 		actualPayment := ""
-		if paymentContext.IsGPTSubscription {
+		if paymentContext.IsSubscription {
 			actualPayment = paymentContext.ActualPayment
 		} else if tradeNo != "" {
 			var topUp TopUp
@@ -1151,10 +1184,21 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 			}
 		}
 
-		lines := []string{fmt.Sprintf("用户：%s", email)}
-		if paymentContext.IsGPTSubscription {
+		transactionTypeLabel := "钱包"
+		if paymentContext.IsSubscription {
+			transactionTypeLabel = "订阅"
+		}
+		lines := []string{
+			fmt.Sprintf("用户：%s", email),
+			fmt.Sprintf("交易类型：%s", transactionTypeLabel),
+		}
+		if paymentContext.IsSubscription {
+			productLabel := "订阅"
+			if paymentContext.IsGPTSubscription {
+				productLabel = "GPT 付费订阅"
+			}
 			lines = append(lines,
-				"产品：GPT 付费订阅",
+				"产品："+productLabel,
 				fmt.Sprintf("套餐：%s", paymentContext.PlanTitle),
 				fmt.Sprintf("订单类型：%s", paymentContext.OrderType),
 				fmt.Sprintf("订阅金额：$%.2f", usdAmount),
@@ -1178,8 +1222,8 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		)
 
 		title := fmt.Sprintf("💰 付款成功（第 %d 次）", payCount)
-		if paymentContext.IsGPTSubscription {
-			title = fmt.Sprintf("💎 GPT 订阅付款成功（第 %d 次）", payCount)
+		if paymentContext.IsSubscription {
+			title = fmt.Sprintf("💎 订阅付款成功（第 %d 次）", payCount)
 		}
 		_ = common.SendFeishuCard(chatID, title, lines)
 	}()
@@ -1305,6 +1349,62 @@ func EnrichTopupsWithUserInfo(topups []*TopUp) {
 			t.Language = u.Language
 			// Country comes only from top_ups.country — never users.country (it changes over time).
 		}
+	}
+}
+
+// EnrichTopupsWithTransactionInfo batch-classifies admin transaction rows.
+// A matching subscription order is authoritative; every other top-up is
+// wallet funding. This also backfills historical subscription payments that
+// were written before the admin marker existed.
+func EnrichTopupsWithTransactionInfo(topups []*TopUp) {
+	if len(topups) == 0 {
+		return
+	}
+	tradeNos := make([]string, 0, len(topups))
+	for _, topup := range topups {
+		if topup == nil {
+			continue
+		}
+		topup.TransactionType = TopupTransactionTypeWallet
+		if strings.TrimSpace(topup.TradeNo) != "" {
+			tradeNos = append(tradeNos, topup.TradeNo)
+		}
+	}
+	if len(tradeNos) == 0 {
+		return
+	}
+
+	type subscriptionTransactionRow struct {
+		TradeNo   string
+		PlanTitle string
+		OrderType string
+	}
+	var rows []subscriptionTransactionRow
+	err := DB.Table("subscription_orders AS so").
+		Select("so.trade_no, sp.title AS plan_title, so.order_type").
+		Joins("JOIN subscription_plans AS sp ON sp.id = so.plan_id").
+		Where("so.trade_no IN ?", tradeNos).
+		Find(&rows).Error
+	if err != nil {
+		common.SysLog("failed to enrich topups with subscription info: " + err.Error())
+		return
+	}
+
+	byTradeNo := make(map[string]subscriptionTransactionRow, len(rows))
+	for _, row := range rows {
+		byTradeNo[row.TradeNo] = row
+	}
+	for _, topup := range topups {
+		if topup == nil {
+			continue
+		}
+		row, ok := byTradeNo[topup.TradeNo]
+		if !ok {
+			continue
+		}
+		topup.TransactionType = TopupTransactionTypeSubscription
+		topup.SubscriptionPlanTitle = row.PlanTitle
+		topup.SubscriptionOrderType = row.OrderType
 	}
 }
 

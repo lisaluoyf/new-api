@@ -51,6 +51,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   const [keyword, setKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('')
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState('')
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [completing, setCompleting] = useState(false)
@@ -67,7 +68,8 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
             pageSize,
             keyword,
             statusFilter,
-            paymentMethodFilter
+            paymentMethodFilter,
+            transactionTypeFilter
           )
         : await getUserBillingHistory(page, pageSize, keyword)
 
@@ -90,7 +92,15 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     } finally {
       setLoading(false)
     }
-  }, [isAdmin, page, pageSize, keyword, statusFilter, paymentMethodFilter])
+  }, [
+    isAdmin,
+    page,
+    pageSize,
+    keyword,
+    statusFilter,
+    paymentMethodFilter,
+    transactionTypeFilter,
+  ])
 
   /**
    * Complete a pending order (admin only)
@@ -162,6 +172,11 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     setPage(1)
   }, [])
 
+  const handleTransactionTypeChange = useCallback((transactionType: string) => {
+    setTransactionTypeFilter(transactionType)
+    setPage(1)
+  }, [])
+
   const handleExport = useCallback(async () => {
     if (!isAdmin) return
     setExporting(true)
@@ -169,7 +184,8 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
       await downloadAllBillingHistory(
         keyword,
         statusFilter,
-        paymentMethodFilter
+        paymentMethodFilter,
+        transactionTypeFilter
       )
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -178,7 +194,13 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     } finally {
       setExporting(false)
     }
-  }, [isAdmin, keyword, statusFilter, paymentMethodFilter])
+  }, [
+    isAdmin,
+    keyword,
+    statusFilter,
+    paymentMethodFilter,
+    transactionTypeFilter,
+  ])
 
   // Fetch data when dependencies change
   useEffect(() => {
@@ -193,6 +215,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     keyword,
     statusFilter,
     paymentMethodFilter,
+    transactionTypeFilter,
     loading,
     exporting,
     completing,
@@ -202,6 +225,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     handleSearch,
     handleStatusChange,
     handlePaymentMethodChange,
+    handleTransactionTypeChange,
     handleExport,
     handleCompleteOrder,
     refresh: fetchBillingHistory,

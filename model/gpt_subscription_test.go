@@ -170,10 +170,37 @@ func TestGetPaymentNotificationContextMarksGPTSubscription(t *testing.T) {
 	InvalidateSubscriptionPlanCache(plan.Id)
 
 	context := getPaymentNotificationContext(userID, order.TradeNo)
+	require.True(t, context.IsSubscription)
 	require.True(t, context.IsGPTSubscription)
 	require.Equal(t, "Pro+", context.PlanTitle)
 	require.Equal(t, "升级", context.OrderType)
 	require.Equal(t, "¥73.00", context.ActualPayment)
+}
+
+func TestGetPaymentNotificationContextMarksStandardSubscription(t *testing.T) {
+	setupGPTSubscriptionTestDB(t)
+	const userID = 9041
+	createGPTSubscriptionTestUser(t, userID, 500)
+	plan := SubscriptionPlan{
+		Id: 9042, Title: "Standard", PlanType: SubscriptionPlanTypeStandard,
+		PriceAmount: 20, Currency: "USD", DurationUnit: SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true,
+	}
+	require.NoError(t, DB.Create(&plan).Error)
+	order := SubscriptionOrder{
+		UserId: userID, PlanId: plan.Id, Money: 20, TradeNo: "standard-subscription-notice",
+		OrderType: "purchase", PaymentMethod: PaymentMethodPayPal, PaymentProvider: PaymentProviderPayPal,
+		Status: common.TopUpStatusSuccess,
+	}
+	require.NoError(t, DB.Create(&order).Error)
+	InvalidateSubscriptionPlanCache(plan.Id)
+
+	context := getPaymentNotificationContext(userID, order.TradeNo)
+	require.True(t, context.IsSubscription)
+	require.False(t, context.IsGPTSubscription)
+	require.Equal(t, "Standard", context.PlanTitle)
+	require.Equal(t, "新购", context.OrderType)
+	require.Equal(t, "$20.00", context.ActualPayment)
 }
 
 func TestReverseRenewalRestoresPreviousEntitlement(t *testing.T) {

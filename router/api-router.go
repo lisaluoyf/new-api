@@ -50,6 +50,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 		apiRouter.GET("/rankings", controller.GetRankings)
 		apiRouter.GET("/public/marketplace", controller.GetPublicMarketplace)
+		apiRouter.GET("/subscription/gpt/catalog", controller.GetPublicGPTSubscriptionCatalog)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), controller.ResetPassword)

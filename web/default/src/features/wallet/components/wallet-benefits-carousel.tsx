@@ -33,6 +33,18 @@ function formatDate(timestamp: number) {
   }).format(new Date(timestamp * 1000))
 }
 
+function openFreeModelPage() {
+  const href = '/freemodel'
+  if (window.self !== window.top) {
+    window.parent.postMessage(
+      { type: 'apimaster-navigate', href },
+      window.location.origin
+    )
+    return
+  }
+  window.location.assign(href)
+}
+
 function GPTSubscriptionCard({ data }: { data: GPTState }) {
   const { t } = useTranslation()
   const current = data.state.subscription
@@ -112,7 +124,7 @@ function GPTSubscriptionCard({ data }: { data: GPTState }) {
 
       <Button
         className='w-full bg-cyan-500 text-white hover:bg-cyan-600'
-        onClick={() => window.top?.location.assign('/freemodel')}
+        onClick={openFreeModelPage}
       >
         {current ? t('Manage plan') : t('View plans')}
       </Button>
