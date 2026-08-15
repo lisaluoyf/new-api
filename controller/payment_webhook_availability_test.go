@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
+func TestStripeWebhookEnabledSupportsDynamicGPTSubscriptionCheckout(t *testing.T) {
 	originalAPISecret := setting.StripeApiSecret
 	originalWebhookSecret := setting.StripeWebhookSecret
 	originalPriceID := setting.StripePriceId
@@ -25,9 +25,16 @@ func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 	setting.StripeWebhookSecret = "whsec_test"
 	require.True(t, isStripeWebhookEnabled())
+	require.True(t, isStripeGPTSubscriptionEnabled())
 
 	setting.StripePriceId = ""
+	require.False(t, isStripeTopUpEnabled())
+	require.True(t, isStripeWebhookEnabled())
+	require.True(t, isStripeGPTSubscriptionEnabled())
+
+	setting.StripeApiSecret = ""
 	require.False(t, isStripeWebhookEnabled())
+	require.False(t, isStripeGPTSubscriptionEnabled())
 }
 
 func TestCreemWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {

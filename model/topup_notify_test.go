@@ -1,6 +1,10 @@
 package model
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/QuantumNous/new-api/common"
+)
 
 func TestFormatPaymentMethodLabel(t *testing.T) {
 	tests := []struct {
@@ -45,5 +49,38 @@ func TestFormatTopupPaidAmount(t *testing.T) {
 				t.Fatalf("FormatTopupPaidAmount(%v, %q) = %q, want %q", tt.money, tt.method, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFormatSubscriptionOrderType(t *testing.T) {
+	tests := map[string]string{
+		"purchase": "新购",
+		"renewal":  "续费",
+		"upgrade":  "升级",
+		"":         "新购",
+	}
+	for input, want := range tests {
+		if got := formatSubscriptionOrderType(input); got != want {
+			t.Fatalf("formatSubscriptionOrderType(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestSubscriptionEpayActualPayment(t *testing.T) {
+	rawSnapshot := common.GetJsonString(map[string]any{
+		"charge_amount": "73.00", "charge_currency": "CNY",
+	})
+	if got := subscriptionEpayActualPayment(rawSnapshot); got != "¥73.00" {
+		t.Fatalf("raw snapshot actual payment = %q, want ¥73.00", got)
+	}
+
+	completionPayload := common.GetJsonString(map[string]any{
+		"payment_snapshot": map[string]any{
+			"charge_amount": "146", "charge_currency": "CNY",
+		},
+		"callback": map[string]any{"trade_status": "TRADE_SUCCESS"},
+	})
+	if got := subscriptionEpayActualPayment(completionPayload); got != "¥146.00" {
+		t.Fatalf("completion payload actual payment = %q, want ¥146.00", got)
 	}
 }

@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery } from '@tanstack/react-query'
 import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -54,7 +53,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { MultiSelect } from '@/components/multi-select'
-import { getAllModels } from '@/features/channels/api'
+import { MODEL_TABS } from '@/features/channel-data/constants'
 import { createPlan, updatePlan, getGroups } from '../api'
 import { getDurationUnitOptions, getResetPeriodOptions } from '../constants'
 import {
@@ -121,24 +120,24 @@ export function SubscriptionsMutateDrawer({
   const resetPeriod = form.watch('quota_reset_period')
   const modelAllowlist = form.watch('model_allowlist')
 
-  const { data: allModelsData, isLoading: isLoadingModels } = useQuery({
-    queryKey: ['channel_models'],
-    queryFn: getAllModels,
-    enabled: open,
-  })
-
   const modelOptions = useMemo(() => {
-    const models = new Set(
-      (allModelsData?.data || [])
-        .map((model) => model.id?.trim())
-        .filter(Boolean)
+    const channelDataModelIds = new Set(MODEL_TABS.map((tab) => tab.modelId))
+    const channelDataOptions = MODEL_TABS.map((tab) => ({
+      value: tab.modelId,
+      label: `${tab.label} (${tab.modelId})`,
+    }))
+    const selectedModelsMissingFromChannelData = parseModelAllowlist(
+      modelAllowlist
     )
-    parseModelAllowlist(modelAllowlist).forEach((model) => models.add(model))
-
-    return Array.from(models)
+      .filter((model) => !channelDataModelIds.has(model))
       .sort((a, b) => a.localeCompare(b))
-      .map((model) => ({ value: model, label: model }))
-  }, [allModelsData, modelAllowlist])
+      .map((model) => ({
+        value: model,
+        label: `${model}（当前已选，渠道数据中暂无）`,
+      }))
+
+    return [...channelDataOptions, ...selectedModelsMissingFromChannelData]
+  }, [modelAllowlist])
 
   const onSubmit = async (values: PlanFormValues) => {
     setIsSubmitting(true)
@@ -401,15 +400,11 @@ export function SubscriptionsMutateDrawer({
                             onChange={(models) =>
                               field.onChange(models.join(','))
                             }
-                            placeholder={
-                              isLoadingModels
-                                ? '正在加载模型...'
-                                : '搜索并选择模型'
-                            }
+                            placeholder='搜索并选择模型'
                           />
                         </FormControl>
                         <FormDescription>
-                          从系统模型列表中多选，修改后立即生效。
+                          模型列表与“渠道数据”页面保持一致；修改后立即生效。
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -428,6 +423,10 @@ export function SubscriptionsMutateDrawer({
                             placeholder='权益之间使用 | 分隔'
                           />
                         </FormControl>
+                        <FormDescription>
+                          用于补充该档位已经实际开通的特殊服务或权限，权益之间使用
+                          | 分隔；不要填写尚未落地的承诺。
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

@@ -2,9 +2,9 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/Calcium-Ion/go-epay/epay"
@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	"github.com/shopspring/decimal"
 )
 
 type SubscriptionEpayPayRequest struct {
@@ -23,7 +24,77 @@ type SubscriptionEpayPayRequest struct {
 	PaymentMethod string `json:"payment_method"`
 }
 
+type subscriptionEpayPaymentSnapshot struct {
+	PayableUSD     float64 `json:"payable_usd"`
+	ExchangeRate   float64 `json:"exchange_rate"`
+	ChargeAmount   string  `json:"charge_amount"`
+	ChargeCurrency string  `json:"charge_currency"`
+}
+
+func calculateSubscriptionEpayChargeAmount(payableUSD float64, exchangeRate float64) (string, error) {
+	if payableUSD < 0.01 || exchangeRate <= 0 || math.IsNaN(payableUSD) || math.IsInf(payableUSD, 0) || math.IsNaN(exchangeRate) || math.IsInf(exchangeRate, 0) {
+		return "", fmt.Errorf("invalid subscription EPay amount")
+	}
+	amount := decimal.NewFromFloat(payableUSD).
+		Mul(decimal.NewFromFloat(exchangeRate)).
+		Round(2)
+	if amount.LessThan(decimal.NewFromFloat(0.01)) {
+		return "", fmt.Errorf("subscription EPay amount is too low")
+	}
+	return amount.StringFixed(2), nil
+}
+
+func verifySubscriptionEpayPaymentSnapshot(snapshotJSON string, callbackAmount string) error {
+	var snapshot subscriptionEpayPaymentSnapshot
+	if err := common.UnmarshalJsonStr(snapshotJSON, &snapshot); err != nil {
+		return fmt.Errorf("invalid subscription EPay payment snapshot: %w", err)
+	}
+	if snapshot.ChargeCurrency != "CNY" || snapshot.ChargeAmount == "" {
+		return fmt.Errorf("missing subscription EPay payment snapshot")
+	}
+	expected, err := decimal.NewFromString(snapshot.ChargeAmount)
+	if err != nil {
+		return fmt.Errorf("invalid expected subscription EPay amount: %w", err)
+	}
+	actual, err := decimal.NewFromString(callbackAmount)
+	if err != nil {
+		return fmt.Errorf("invalid callback subscription EPay amount: %w", err)
+	}
+	if !expected.Round(2).Equal(actual.Round(2)) {
+		return fmt.Errorf("subscription EPay amount mismatch: expected %s CNY, got %s CNY", expected.StringFixed(2), actual.StringFixed(2))
+	}
+	return nil
+}
+
+func verifySubscriptionEpayCallbackAmount(tradeNo string, callbackAmount string) (*model.SubscriptionOrder, error) {
+	order := model.GetSubscriptionOrderByTradeNo(tradeNo)
+	if order == nil {
+		return nil, model.ErrSubscriptionOrderNotFound
+	}
+	if order.PaymentProvider != model.PaymentProviderEpay {
+		return nil, model.ErrPaymentMethodMismatch
+	}
+	if order.Status == common.TopUpStatusSuccess {
+		return order, nil
+	}
+	return order, verifySubscriptionEpayPaymentSnapshot(order.ProviderPayload, callbackAmount)
+}
+
+func buildSubscriptionEpayCompletionPayload(snapshotJSON string, verifyInfo *epay.VerifyRes) string {
+	var snapshot subscriptionEpayPaymentSnapshot
+	if err := common.UnmarshalJsonStr(snapshotJSON, &snapshot); err != nil {
+		return common.GetJsonString(verifyInfo)
+	}
+	return common.GetJsonString(map[string]any{
+		"payment_snapshot": snapshot,
+		"callback":         verifyInfo,
+	})
+}
+
 func SubscriptionRequestEpay(c *gin.Context) {
+	if abortIfTopupForbidden(c) {
+		return
+	}
 	var req SubscriptionEpayPayRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
 		common.ApiErrorMsg(c, "参数错误")
@@ -60,6 +131,11 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	}
 	if terms.Payable < 0.01 {
 		common.ApiErrorMsg(c, "应付金额过低")
+		return
+	}
+	chargeAmount, err := calculateSubscriptionEpayChargeAmount(terms.Payable, operation_setting.Price)
+	if err != nil {
+		common.ApiErrorMsg(c, "人民币支付汇率配置错误")
 		return
 	}
 	if plan.MaxPurchasePerUser > 0 {
@@ -108,8 +184,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		TradeNo:                tradeNo,
 		PaymentMethod:          req.PaymentMethod,
 		PaymentProvider:        model.PaymentProviderEpay,
-		CreateTime:             time.Now().Unix(),
-		Status:                 common.TopUpStatusPending,
+		ProviderPayload: common.GetJsonString(subscriptionEpayPaymentSnapshot{
+			PayableUSD: terms.Payable, ExchangeRate: operation_setting.Price,
+			ChargeAmount: chargeAmount, ChargeCurrency: "CNY",
+		}),
+		CreateTime: time.Now().Unix(),
+		Status:     common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
 		common.ApiErrorMsg(c, "创建订单失败")
@@ -119,7 +199,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(terms.Payable, 'f', 2, 64),
+		Money:          chargeAmount,
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,
@@ -176,8 +256,15 @@ func SubscriptionEpayNotify(c *gin.Context) {
 
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
+	order, err := verifySubscriptionEpayCallbackAmount(verifyInfo.ServiceTradeNo, verifyInfo.Money)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("subscription EPay notify amount validation failed trade_no=%s error=%q", verifyInfo.ServiceTradeNo, err.Error()))
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
 
-	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+	providerPayload := buildSubscriptionEpayCompletionPayload(order.ProviderPayload, verifyInfo)
+	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, providerPayload, model.PaymentProviderEpay, verifyInfo.Type); err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -226,7 +313,14 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+		order, err := verifySubscriptionEpayCallbackAmount(verifyInfo.ServiceTradeNo, verifyInfo.Money)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("subscription EPay return amount validation failed trade_no=%s error=%q", verifyInfo.ServiceTradeNo, err.Error()))
+			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
+			return
+		}
+		providerPayload := buildSubscriptionEpayCompletionPayload(order.ProviderPayload, verifyInfo)
+		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, providerPayload, model.PaymentProviderEpay, verifyInfo.Type); err != nil {
 			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
 			return
 		}

@@ -379,7 +379,7 @@ type UserSubscription struct {
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
 	Status    string `json:"status" gorm:"type:varchar(32);index;index:idx_user_sub_active,priority:2"` // active/expired/cancelled
 
-	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin/referral
+	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin/referral/upgrade/free
 
 	// Purchase-time snapshots keep existing entitlements stable after admins edit a plan.
 	PlanTitleSnapshot       string  `json:"plan_title_snapshot" gorm:"type:varchar(128);default:''"`

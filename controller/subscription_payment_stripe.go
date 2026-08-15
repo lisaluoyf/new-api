@@ -2,7 +2,9 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,7 +24,63 @@ type SubscriptionStripePayRequest struct {
 	PlanId int `json:"plan_id"`
 }
 
+type subscriptionStripePaymentSnapshot struct {
+	PayableUSD     float64 `json:"payable_usd"`
+	ChargeAmount   int64   `json:"charge_amount"`
+	ChargeCurrency string  `json:"charge_currency"`
+}
+
+func newSubscriptionStripePaymentSnapshot(payable float64, currency string) (subscriptionStripePaymentSnapshot, error) {
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if payable < 0.01 || math.IsNaN(payable) || math.IsInf(payable, 0) || currency != "USD" {
+		return subscriptionStripePaymentSnapshot{}, fmt.Errorf("invalid subscription Stripe amount or currency")
+	}
+	amount := int64(math.Round(payable * 100))
+	if amount < 50 {
+		return subscriptionStripePaymentSnapshot{}, fmt.Errorf("subscription Stripe amount is below the minimum charge")
+	}
+	return subscriptionStripePaymentSnapshot{
+		PayableUSD: payable, ChargeAmount: amount, ChargeCurrency: currency,
+	}, nil
+}
+
+func verifySubscriptionStripePaymentSnapshot(snapshotJSON, amountTotal, currency string) error {
+	var snapshot subscriptionStripePaymentSnapshot
+	if err := common.UnmarshalJsonStr(snapshotJSON, &snapshot); err != nil {
+		return fmt.Errorf("invalid subscription Stripe payment snapshot: %w", err)
+	}
+	actualAmount, err := strconv.ParseInt(strings.TrimSpace(amountTotal), 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid subscription Stripe callback amount: %w", err)
+	}
+	actualCurrency := strings.ToUpper(strings.TrimSpace(currency))
+	if snapshot.ChargeAmount <= 0 || snapshot.ChargeCurrency == "" {
+		return fmt.Errorf("missing subscription Stripe payment snapshot")
+	}
+	if actualAmount != snapshot.ChargeAmount || actualCurrency != snapshot.ChargeCurrency {
+		return fmt.Errorf(
+			"subscription Stripe payment mismatch: expected %d %s, got %d %s",
+			snapshot.ChargeAmount, snapshot.ChargeCurrency, actualAmount, actualCurrency,
+		)
+	}
+	return nil
+}
+
+func buildSubscriptionStripeCompletionPayload(snapshotJSON string, callback map[string]any) string {
+	var snapshot subscriptionStripePaymentSnapshot
+	if err := common.UnmarshalJsonStr(snapshotJSON, &snapshot); err != nil {
+		return common.GetJsonString(callback)
+	}
+	return common.GetJsonString(map[string]any{
+		"payment_snapshot": snapshot,
+		"callback":         callback,
+	})
+}
+
 func SubscriptionRequestStripePay(c *gin.Context) {
+	if abortIfTopupForbidden(c) {
+		return
+	}
 	var req SubscriptionStripePayRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -46,12 +104,9 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgPaymentPriceIdNotConfig)
 		return
 	}
-	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
+	if !isStripeGPTSubscriptionEnabled() ||
+		(!strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_")) {
 		common.ApiErrorI18n(c, i18n.MsgPaymentStripeNotConfig)
-		return
-	}
-	if setting.StripeWebhookSecret == "" {
-		common.ApiErrorI18n(c, i18n.MsgPaymentWebhookNotConfig)
 		return
 	}
 
@@ -69,6 +124,15 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
+	}
+	providerPayload := ""
+	if model.IsGPTPaidSubscriptionPlan(plan) {
+		paymentSnapshot, err := newSubscriptionStripePaymentSnapshot(terms.Payable, plan.Currency)
+		if err != nil {
+			common.ApiErrorMsg(c, "Stripe 仅支持不低于 $0.50 的美元订阅订单")
+			return
+		}
+		providerPayload = common.GetJsonString(paymentSnapshot)
 	}
 
 	if plan.MaxPurchasePerUser > 0 {
@@ -106,6 +170,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		TradeNo:                referenceId,
 		PaymentMethod:          model.PaymentMethodStripe,
 		PaymentProvider:        model.PaymentProviderStripe,
+		ProviderPayload:        providerPayload,
 		CreateTime:             time.Now().Unix(),
 		Status:                 common.TopUpStatusPending,
 	}

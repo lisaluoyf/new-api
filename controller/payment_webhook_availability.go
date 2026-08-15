@@ -14,6 +14,11 @@ func isStripeTopUpEnabled() bool {
 		strings.TrimSpace(setting.StripePriceId) != ""
 }
 
+func isStripeGPTSubscriptionEnabled() bool {
+	return strings.TrimSpace(setting.StripeApiSecret) != "" &&
+		strings.TrimSpace(setting.StripeWebhookSecret) != ""
+}
+
 func isPayPalTopUpEnabled() bool {
 	return strings.TrimSpace(setting.PayPalClientID) != "" &&
 		strings.TrimSpace(setting.PayPalClientSecret) != "" &&
@@ -29,7 +34,7 @@ func isStripeWebhookConfigured() bool {
 }
 
 func isStripeWebhookEnabled() bool {
-	return isStripeTopUpEnabled()
+	return isStripeTopUpEnabled() || isStripeGPTSubscriptionEnabled()
 }
 
 func isCreemTopUpEnabled() bool {

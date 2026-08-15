@@ -29,6 +29,12 @@ func availableGPTSubscriptionPaymentMethods(userID int, payable float64) []gptSu
 	}
 
 	methods := make([]gptSubscriptionPaymentMethod, 0, 8)
+	if isStripeGPTSubscriptionEnabled() && payable+0.005 >= 0.50 {
+		methods = append(methods, gptSubscriptionPaymentMethod{
+			Provider: model.PaymentProviderStripe, PaymentMethod: model.PaymentMethodStripe,
+			Name: "Stripe", Description: "Credit / Debit Card",
+		})
+	}
 	if isPayPalTopUpEnabled() && payable+0.005 >= float64(setting.PayPalMinTopUp) {
 		methods = append(methods, gptSubscriptionPaymentMethod{
 			Provider: model.PaymentProviderPayPal, PaymentMethod: model.PaymentMethodPayPal,
@@ -217,6 +223,38 @@ func GetGPTSubscriptionQuote(c *gin.Context) {
 		"list_price": plan.PriceAmount, "credit_amount": credit, "payable": payable,
 		"payment_methods": availableGPTSubscriptionPaymentMethods(c.GetInt("id"), payable),
 	})
+}
+
+func ActivateFreeGPTSubscription(c *gin.Context) {
+	access, err := model.GetGPTSubscriptionAccess(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !access.CanPurchase {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Free Model purchases are currently closed"})
+		return
+	}
+	var req struct {
+		PlanId int `json:"plan_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	subscription, activated, err := model.ActivateFreeGPTSubscription(c.GetInt("id"), req.PlanId)
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrGPTSubscriptionPlanUnavailable):
+			common.ApiErrorMsg(c, "套餐不可用")
+		case errors.Is(err, model.ErrGPTSubscriptionPlanNotFree):
+			common.ApiErrorMsg(c, "该套餐不是免费套餐")
+		default:
+			common.ApiErrorMsg(c, err.Error())
+		}
+		return
+	}
+	common.ApiSuccess(c, gin.H{"subscription": subscription, "activated": activated})
 }
 
 func AdminGetUserGPTSubscriptionDetails(c *gin.Context) {

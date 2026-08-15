@@ -45,6 +45,7 @@ const (
 	PaymentMethodPlatega      = "platega"
 	PaymentMethodClink        = "clink"
 	PaymentMethodCrypto       = "crypto"
+	PaymentMethodFree         = "free"
 )
 
 const (
@@ -57,6 +58,7 @@ const (
 	PaymentProviderPlatega      = "platega"
 	PaymentProviderClink        = "clink"
 	PaymentProviderCrypto       = "crypto"
+	PaymentProviderFree         = "free"
 )
 
 var (
@@ -986,6 +988,102 @@ func successfulTopupUSDTotal(userId int) (float64, error) {
 	return total, err
 }
 
+type paymentNotificationContext struct {
+	IsGPTSubscription bool
+	PlanTitle         string
+	OrderType         string
+	ActualPayment     string
+}
+
+func formatSubscriptionOrderType(orderType string) string {
+	switch strings.ToLower(strings.TrimSpace(orderType)) {
+	case "renewal":
+		return "续费"
+	case "upgrade":
+		return "升级"
+	default:
+		return "新购"
+	}
+}
+
+func formatCurrencyAmount(amount, currency string) string {
+	value, err := decimal.NewFromString(strings.TrimSpace(amount))
+	if err != nil || value.LessThanOrEqual(decimal.Zero) {
+		return ""
+	}
+	switch strings.ToUpper(strings.TrimSpace(currency)) {
+	case "CNY":
+		return "¥" + value.StringFixed(2)
+	case "RUB":
+		return "₽" + value.StringFixed(2)
+	default:
+		return "$" + value.StringFixed(2)
+	}
+}
+
+func subscriptionEpayActualPayment(providerPayload string) string {
+	type snapshot struct {
+		ChargeAmount   string `json:"charge_amount"`
+		ChargeCurrency string `json:"charge_currency"`
+	}
+	var payload struct {
+		ChargeAmount    string   `json:"charge_amount"`
+		ChargeCurrency  string   `json:"charge_currency"`
+		PaymentSnapshot snapshot `json:"payment_snapshot"`
+	}
+	if err := common.UnmarshalJsonStr(providerPayload, &payload); err != nil {
+		return ""
+	}
+	current := payload.PaymentSnapshot
+	if current.ChargeAmount == "" {
+		current = snapshot{
+			ChargeAmount: payload.ChargeAmount, ChargeCurrency: payload.ChargeCurrency,
+		}
+	}
+	return formatCurrencyAmount(current.ChargeAmount, current.ChargeCurrency)
+}
+
+func getPaymentNotificationContext(userId int, tradeNo string) paymentNotificationContext {
+	if userId <= 0 || strings.TrimSpace(tradeNo) == "" {
+		return paymentNotificationContext{}
+	}
+	var order SubscriptionOrder
+	if err := DB.Where("trade_no = ? AND user_id = ? AND status = ?", tradeNo, userId, common.TopUpStatusSuccess).
+		First(&order).Error; err != nil {
+		return paymentNotificationContext{}
+	}
+	plan, err := GetSubscriptionPlanById(order.PlanId)
+	if err != nil || !IsGPTPaidSubscriptionPlan(plan) {
+		return paymentNotificationContext{}
+	}
+	context := paymentNotificationContext{
+		IsGPTSubscription: true,
+		PlanTitle:         strings.TrimSpace(plan.Title),
+		OrderType:         formatSubscriptionOrderType(order.OrderType),
+		ActualPayment:     FormatTopupPaidAmount(order.Money, PaymentMethodStripe),
+	}
+	var subscription UserSubscription
+	if err := DB.Select("plan_title_snapshot").
+		Where("user_id = ? AND current_cycle_id = ?", userId, order.Id).
+		First(&subscription).Error; err == nil && strings.TrimSpace(subscription.PlanTitleSnapshot) != "" {
+		context.PlanTitle = strings.TrimSpace(subscription.PlanTitleSnapshot)
+	}
+	if context.PlanTitle == "" {
+		context.PlanTitle = "未知套餐"
+	}
+	switch order.PaymentProvider {
+	case PaymentProviderEpay:
+		if actual := subscriptionEpayActualPayment(order.ProviderPayload); actual != "" {
+			context.ActualPayment = actual
+		}
+	case PaymentProviderPlatega:
+		if plategaOrder := GetPlategaOrderByTradeNo(tradeNo); plategaOrder != nil && plategaOrder.RubAmount > 0 {
+			context.ActualPayment = fmt.Sprintf("₽%.2f", plategaOrder.RubAmount)
+		}
+	}
+	return context
+}
+
 // NotifyPaymentSuccess sends a Feishu card to the ops group on successful payment.
 // quotaAdded is the quota units credited; USD amount is derived via QuotaPerUnit.
 // Runs in a goroutine so it never blocks the caller.
@@ -1024,13 +1122,18 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		usdAmount := float64(quotaAdded) / common.QuotaPerUnit
 		walletBalance := float64(user.Quota) / common.QuotaPerUnit
 		methodLabel := FormatPaymentMethodLabel(paymentMethod)
+		paymentContext := getPaymentNotificationContext(userId, tradeNo)
 		// 该用户第几次成功付款（含本次）；此时当前 TopUp 行已在事务内落库为 success。
 		var payCount int64
 		DB.Model(&TopUp{}).Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).Count(&payCount)
 		cumulativePaidUSD, cumulativeErr := successfulTopupUSDTotal(userId)
-		cumulativeLine := "累计到账：—"
+		cumulativeLabel := "累计到账"
+		if paymentContext.IsGPTSubscription {
+			cumulativeLabel = "累计付款"
+		}
+		cumulativeLine := cumulativeLabel + "：—"
 		if cumulativeErr == nil {
-			cumulativeLine = fmt.Sprintf("累计到账：$%.2f", cumulativePaidUSD)
+			cumulativeLine = fmt.Sprintf("%s：$%.2f", cumulativeLabel, cumulativePaidUSD)
 		} else {
 			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
 		}
@@ -1038,17 +1141,26 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		// Use the exact trade instead of the user's latest row: payment callbacks
 		// can finish close together and must not borrow another order's amount.
 		actualPayment := ""
-		var topUp TopUp
-		if tradeNo != "" {
+		if paymentContext.IsGPTSubscription {
+			actualPayment = paymentContext.ActualPayment
+		} else if tradeNo != "" {
+			var topUp TopUp
 			if err := DB.Where("trade_no = ? AND user_id = ? AND status = ?", tradeNo, userId, common.TopUpStatusSuccess).
 				First(&topUp).Error; err == nil && topUp.Money > 0 {
 				actualPayment = FormatTopupPaidAmount(topUp.Money, topUp.PaymentMethod)
 			}
 		}
 
-		lines := []string{
-			fmt.Sprintf("用户：%s", email),
-			fmt.Sprintf("到账额度：$%.2f", usdAmount),
+		lines := []string{fmt.Sprintf("用户：%s", email)}
+		if paymentContext.IsGPTSubscription {
+			lines = append(lines,
+				"产品：GPT 付费订阅",
+				fmt.Sprintf("套餐：%s", paymentContext.PlanTitle),
+				fmt.Sprintf("订单类型：%s", paymentContext.OrderType),
+				fmt.Sprintf("订阅金额：$%.2f", usdAmount),
+			)
+		} else {
+			lines = append(lines, fmt.Sprintf("到账额度：$%.2f", usdAmount))
 		}
 
 		if actualPayment != "" {
@@ -1066,6 +1178,9 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		)
 
 		title := fmt.Sprintf("💰 付款成功（第 %d 次）", payCount)
+		if paymentContext.IsGPTSubscription {
+			title = fmt.Sprintf("💎 GPT 订阅付款成功（第 %d 次）", payCount)
+		}
 		_ = common.SendFeishuCard(chatID, title, lines)
 	}()
 }

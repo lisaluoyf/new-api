@@ -352,11 +352,28 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		"currency":     strings.ToUpper(event.GetObjectValue("currency")),
 		"event_type":   string(event.Type),
 	}
-	if err := model.CompleteSubscriptionOrder(referenceId, common.GetJsonString(payload), model.PaymentProviderStripe, ""); err == nil {
+	if order := model.GetSubscriptionOrderByTradeNo(referenceId); order != nil {
+		plan, planErr := model.GetSubscriptionPlanById(order.PlanId)
+		if planErr != nil {
+			logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单套餐查询失败 trade_no=%s plan_id=%d event_type=%s client_ip=%s error=%q", referenceId, order.PlanId, string(event.Type), callerIp, planErr.Error()))
+			return
+		}
+		if model.IsGPTPaidSubscriptionPlan(plan) && order.Status != common.TopUpStatusSuccess {
+			if err := verifySubscriptionStripePaymentSnapshot(
+				order.ProviderPayload,
+				event.GetObjectValue("amount_total"),
+				event.GetObjectValue("currency"),
+			); err != nil {
+				logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单金额或币种校验失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
+				return
+			}
+		}
+		completionPayload := buildSubscriptionStripeCompletionPayload(order.ProviderPayload, payload)
+		if err := model.CompleteSubscriptionOrder(referenceId, completionPayload, model.PaymentProviderStripe, ""); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
+			return
+		}
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe 订阅订单处理成功 trade_no=%s event_type=%s client_ip=%s", referenceId, string(event.Type), callerIp))
-		return
-	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
-		logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
 		return
 	}
 

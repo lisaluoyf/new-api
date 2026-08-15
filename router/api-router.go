@@ -199,6 +199,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.GET("/gpt/access", controller.GetGPTSubscriptionAccess)
 			subscriptionRoute.GET("/gpt/plans", controller.GetGPTSubscriptionPlans)
 			subscriptionRoute.POST("/gpt/quote", controller.GetGPTSubscriptionQuote)
+			subscriptionRoute.POST("/gpt/free", middleware.CriticalRateLimit(), controller.ActivateFreeGPTSubscription)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
