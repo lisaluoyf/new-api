@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Clock3, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock3, TicketCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -61,11 +61,11 @@ function GPTSubscriptionCard({ data }: { data: GPTState }) {
         <div className='flex items-start justify-between gap-4'>
           <div className='flex min-w-0 items-center gap-4'>
             <div className='flex size-11 shrink-0 items-center justify-center rounded-xl bg-cyan-100 dark:bg-cyan-500/10'>
-              <Sparkles className='size-5 text-cyan-600 dark:text-cyan-300' />
+              <TicketCheck className='size-5 text-cyan-600 dark:text-cyan-300' />
             </div>
             <div className='min-w-0'>
               <div className='text-muted-foreground text-xs font-medium'>
-                Free Model
+                GPT Pass
               </div>
               <div className='mt-0.5 truncate text-2xl font-bold'>
                 {current?.plan_title_snapshot || t('GPT Subscription')}
@@ -145,7 +145,7 @@ export function WalletBenefitsCarousel() {
     let active = true
     void Promise.allSettled([
       api.get('/api/subscription/gpt/plans', {
-        // This request only decides whether the optional Free Model card is
+        // This request only decides whether the optional GPT Pass card is
         // visible. A 403 is expected for users outside the internal allowlist
         // and must not surface as a global error toast.
         skipErrorHandler: true,

@@ -2,7 +2,6 @@ package model
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const (
@@ -22,7 +20,6 @@ const (
 
 var (
 	ErrGPTSubscriptionPlanUnavailable = errors.New("GPT subscription plan is unavailable")
-	ErrGPTSubscriptionPlanNotFree     = errors.New("GPT subscription plan is not free")
 )
 
 type GPTSubscriptionAccess struct {
@@ -160,7 +157,7 @@ func IsModelAllowedForGPTSubscription(plan *SubscriptionPlan, modelName string) 
 
 func GetEnabledGPTSubscriptionPlans() ([]SubscriptionPlan, error) {
 	var plans []SubscriptionPlan
-	err := DB.Where("plan_type = ? AND enabled = ?", SubscriptionPlanTypeGPTSubscription, true).
+	err := DB.Where("plan_type = ? AND enabled = ? AND price_amount > ?", SubscriptionPlanTypeGPTSubscription, true, 0).
 		Order("sort_order desc, tier_level asc, id asc").Find(&plans).Error
 	return plans, err
 }
@@ -270,7 +267,6 @@ func SeedDefaultGPTSubscriptionPlans() error {
 		recommended     bool
 	}
 	seeds := []seed{
-		{"Pro", "Starter", 5, 5, 33, 1, 500, false},
 		{"Pro+", "Standard", 10, 10, 66, 2, 400, false},
 		{"Max", "Professional", 20, 20, 132, 3, 300, true},
 		{"Ultra", "Advanced", 100, 100, 660, 4, 200, false},
@@ -363,97 +359,6 @@ func CalculateGPTSubscriptionQuote(userId int, target *SubscriptionPlan) (orderT
 	}
 	payable = math.Max(0, target.PriceAmount-credit)
 	return "upgrade", previousId, credit, payable, nil
-}
-
-// ActivateFreeGPTSubscription activates an enabled zero-price GPT plan without
-// entering the payment or top-up ledger. Repeated activation of the same active
-// plan is idempotent and deliberately does not extend its expiry.
-func ActivateFreeGPTSubscription(userId int, planId int) (*UserSubscription, bool, error) {
-	if userId <= 0 || planId <= 0 {
-		return nil, false, errors.New("invalid user or plan")
-	}
-
-	var subscription *UserSubscription
-	activated := false
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		// The user lock serializes activations across different free plans for the
-		// same account. SQLite ignores FOR UPDATE but serializes transaction writes.
-		var user User
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("id").Where("id = ?", userId).First(&user).Error; err != nil {
-			return err
-		}
-
-		var plan SubscriptionPlan
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("id = ?", planId).First(&plan).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrGPTSubscriptionPlanUnavailable
-			}
-			return err
-		}
-		if !plan.Enabled || !IsGPTPaidSubscriptionPlan(&plan) {
-			return ErrGPTSubscriptionPlanUnavailable
-		}
-		if plan.PriceAmount != 0 {
-			return ErrGPTSubscriptionPlanNotFree
-		}
-
-		orderType := "purchase"
-		previousID := 0
-		previousEndTime := int64(0)
-		previousCycleID := 0
-		current, currentPlan, findErr := activeGPTPaidSubscriptionTx(tx, userId)
-		if findErr == nil {
-			if current.PlanId == plan.Id {
-				subscription = current
-				return nil
-			}
-			currentLevel := current.TierLevelSnapshot
-			if currentLevel == 0 {
-				currentLevel = currentPlan.TierLevel
-			}
-			if plan.TierLevel <= currentLevel {
-				return errors.New("active GPT subscription can only renew or upgrade")
-			}
-			orderType = "upgrade"
-			previousID = current.Id
-			previousEndTime = current.EndTime
-			previousCycleID = current.CurrentCycleId
-		} else if !errors.Is(findErr, gorm.ErrRecordNotFound) {
-			return findErr
-		}
-
-		now := GetDBTimestampTx(tx)
-		order := SubscriptionOrder{
-			UserId:                 userId,
-			PlanId:                 plan.Id,
-			Money:                  0,
-			ListPrice:              0,
-			CreditAmount:           0,
-			OrderType:              orderType,
-			PreviousSubscriptionId: previousID,
-			PreviousEndTime:        previousEndTime,
-			PreviousCycleId:        previousCycleID,
-			TradeNo:                fmt.Sprintf("free_gpt_%d_%d_%s", userId, time.Now().UnixNano(), common.GetRandomString(8)),
-			PaymentMethod:          PaymentMethodFree,
-			PaymentProvider:        PaymentProviderFree,
-			Status:                 common.TopUpStatusSuccess,
-			CreateTime:             now,
-			CompleteTime:           now,
-		}
-		if err := tx.Create(&order).Error; err != nil {
-			return err
-		}
-		created, err := completeGPTSubscriptionOrderWithSourceTx(tx, &order, &plan, "free")
-		if err != nil {
-			return err
-		}
-		subscription = created
-		activated = true
-		return nil
-	})
-	return subscription, activated, err
 }
 
 func completeGPTSubscriptionOrderTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) (*UserSubscription, error) {

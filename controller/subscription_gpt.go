@@ -58,7 +58,7 @@ func publicGPTSubscriptionModels(allowlist string) []string {
 }
 
 // GetPublicGPTSubscriptionCatalog exposes only information that is already
-// intended for the public Free Model product page. It deliberately remains
+// intended for the public GPT Pass product page. It deliberately remains
 // readable while purchasing is in limited testing; all state-changing GPT
 // subscription endpoints still require UserAuth and server-side access checks.
 func GetPublicGPTSubscriptionCatalog(c *gin.Context) {
@@ -186,12 +186,15 @@ func resolveSubscriptionOrderTerms(userId int, plan *model.SubscriptionPlan) (su
 	if !model.IsGPTPaidSubscriptionPlan(plan) {
 		return terms, nil
 	}
+	if plan.PriceAmount <= 0 {
+		return terms, model.ErrGPTSubscriptionPlanUnavailable
+	}
 	access, err := model.GetGPTSubscriptionAccess(userId)
 	if err != nil {
 		return terms, err
 	}
 	if !access.CanPurchase {
-		return terms, errors.New("Free Model purchases are currently closed")
+		return terms, errors.New("GPT Pass purchases are currently closed")
 	}
 	terms.OrderType, terms.PreviousSubscriptionId, terms.CreditAmount, terms.Payable, err = model.CalculateGPTSubscriptionQuote(userId, plan)
 	if err == nil && terms.PreviousSubscriptionId > 0 {
@@ -253,7 +256,7 @@ func GetGPTSubscriptionPlans(c *gin.Context) {
 		return
 	}
 	if !access.Allowed {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Free Model is not available for this account"})
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "GPT Pass is not available for this account"})
 		return
 	}
 	plans, err := model.GetEnabledGPTSubscriptionPlans()
@@ -276,7 +279,7 @@ func GetGPTSubscriptionQuote(c *gin.Context) {
 		return
 	}
 	if !access.CanPurchase {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Free Model purchases are currently closed"})
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "GPT Pass purchases are currently closed"})
 		return
 	}
 	var req struct {
@@ -301,38 +304,6 @@ func GetGPTSubscriptionQuote(c *gin.Context) {
 		"list_price": plan.PriceAmount, "credit_amount": credit, "payable": payable,
 		"payment_methods": availableGPTSubscriptionPaymentMethods(c.GetInt("id"), payable),
 	})
-}
-
-func ActivateFreeGPTSubscription(c *gin.Context) {
-	access, err := model.GetGPTSubscriptionAccess(c.GetInt("id"))
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if !access.CanPurchase {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Free Model purchases are currently closed"})
-		return
-	}
-	var req struct {
-		PlanId int `json:"plan_id"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
-		common.ApiErrorMsg(c, "参数错误")
-		return
-	}
-	subscription, activated, err := model.ActivateFreeGPTSubscription(c.GetInt("id"), req.PlanId)
-	if err != nil {
-		switch {
-		case errors.Is(err, model.ErrGPTSubscriptionPlanUnavailable):
-			common.ApiErrorMsg(c, "套餐不可用")
-		case errors.Is(err, model.ErrGPTSubscriptionPlanNotFree):
-			common.ApiErrorMsg(c, "该套餐不是免费套餐")
-		default:
-			common.ApiErrorMsg(c, err.Error())
-		}
-		return
-	}
-	common.ApiSuccess(c, gin.H{"subscription": subscription, "activated": activated})
 }
 
 func AdminGetUserGPTSubscriptionDetails(c *gin.Context) {
