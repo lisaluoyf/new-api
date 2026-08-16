@@ -1007,16 +1007,63 @@ func IsFirstTopupPromoEligible(userId int) (bool, int64) {
 	return true, expiresAt
 }
 
+const successfulTopupUSDTotalExpression = "COALESCE(SUM(CASE WHEN credited_amount > 0 THEN credited_amount ELSE amount END), 0)"
+
 // successfulTopupUSDTotal returns the total USD value credited for successful
 // top-ups. Money cannot be used here because it may be denominated in the
-// payment channel's local currency (for example CNY for Alipay).
+// payment channel's local currency (for example CNY for Alipay or RUB for
+// Platega). Amount/CreditedAmount are the USD values frozen with the order.
 func successfulTopupUSDTotal(userId int) (float64, error) {
 	var total float64
 	err := DB.Model(&TopUp{}).
 		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
-		Select("COALESCE(SUM(CASE WHEN credited_amount > 0 THEN credited_amount ELSE amount END), 0)").
+		Select(successfulTopupUSDTotalExpression).
 		Scan(&total).Error
 	return total, err
+}
+
+// EnrichUsersTotalTopupUSD fills lifetime successful top-up totals for a page
+// of users with one grouped query. It deliberately does not sum TopUp.Money:
+// Money is stored in the charged currency and may mix USD, CNY, and RUB.
+func EnrichUsersTotalTopupUSD(users []*User) error {
+	if len(users) == 0 {
+		return nil
+	}
+
+	userByID := make(map[int]*User, len(users))
+	userIDs := make([]int, 0, len(users))
+	for _, user := range users {
+		if user == nil || user.Id <= 0 {
+			continue
+		}
+		user.TotalTopupUSD = 0
+		userByID[user.Id] = user
+		userIDs = append(userIDs, user.Id)
+	}
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	type totalRow struct {
+		UserID        int     `gorm:"column:user_id"`
+		TotalTopupUSD float64 `gorm:"column:total_topup_usd"`
+	}
+	var rows []totalRow
+	err := DB.Model(&TopUp{}).
+		Select("user_id, "+successfulTopupUSDTotalExpression+" AS total_topup_usd").
+		Where("user_id IN ? AND status = ?", userIDs, common.TopUpStatusSuccess).
+		Group("user_id").
+		Scan(&rows).Error
+	if err != nil {
+		return err
+	}
+
+	for _, row := range rows {
+		if user := userByID[row.UserID]; user != nil {
+			user.TotalTopupUSD = row.TotalTopupUSD
+		}
+	}
+	return nil
 }
 
 type paymentNotificationContext struct {

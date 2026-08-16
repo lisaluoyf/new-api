@@ -60,6 +60,7 @@ type User struct {
 	Country          string         `json:"country,omitempty" gorm:"type:varchar(10);default:''"`
 	Language         string         `json:"language,omitempty" gorm:"type:varchar(10);default:''"`
 	TopupForbidden   bool           `json:"topup_forbidden" gorm:"-:all"`
+	TotalTopupUSD    float64        `json:"total_topup_usd,omitempty" gorm:"-:all"`
 
 	RegistrationChannelCode  string `json:"registration_channel_code,omitempty" gorm:"-:all"`
 	RegistrationChannelName  string `json:"registration_channel_name,omitempty" gorm:"-:all"`
@@ -365,6 +366,9 @@ func GetAllUsers(pageInfo *common.PageInfo, filters UserListFilters) (users []*U
 	EnrichUsersRegistrationChannels(users)
 	EnrichUsersTrialClaimStatus(users)
 	EnrichUsersGPTSubscriptionStatus(users)
+	if err := EnrichUsersTotalTopupUSD(users); err != nil {
+		return nil, 0, err
+	}
 	for _, user := range users {
 		user.ApplyDerivedFlags()
 	}
@@ -445,6 +449,9 @@ func SearchUsers(keyword string, group string, filters UserListFilters, startIdx
 	EnrichUsersRegistrationChannels(users)
 	EnrichUsersTrialClaimStatus(users)
 	EnrichUsersGPTSubscriptionStatus(users)
+	if err := EnrichUsersTotalTopupUSD(users); err != nil {
+		return nil, 0, err
+	}
 	for _, user := range users {
 		user.ApplyDerivedFlags()
 	}

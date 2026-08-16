@@ -1885,6 +1885,7 @@
     "How many normal retries should happen before switching to the official fallback channel.": "How many normal fallback attempts should happen before switching to the official fallback channel.",
     "Grok Settings": "Grok Settings",
     "Group": "Group",
+    "Cumulative Top-up": "Cumulative Top-up",
     "Group & Quota": "Group & Quota",
     "Group added. Click \"Save Settings\" to apply.": "Group added. Click \"Save Settings\" to apply.",
     "Group channels by tag for batch operations": "Group channels by tag for batch operations",

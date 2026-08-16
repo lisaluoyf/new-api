@@ -29,7 +29,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { DataTableColumnHeader } from '@/components/data-table'
-import { GroupBadge } from '@/components/group-badge'
 import { LongText } from '@/components/long-text'
 import { StatusBadge } from '@/components/status-badge'
 import { USER_STATUSES, USER_ROLES, isUserDeleted } from '../constants'
@@ -54,8 +53,11 @@ function parseTrialBlocked(remark: string | undefined) {
 
 export function useUsersColumns(): ColumnDef<User>[] {
   const { t, i18n } = useTranslation()
-  const { setSelectedUserId, setUserInfoDialogOpen, setSubscriptionDialogUser } =
-    useUsers()
+  const {
+    setSelectedUserId,
+    setUserInfoDialogOpen,
+    setSubscriptionDialogUser,
+  } = useUsers()
   const isEnglish = (i18n.resolvedLanguage || i18n.language)
     .toLowerCase()
     .startsWith('en')
@@ -465,23 +467,22 @@ export function useUsersColumns(): ColumnDef<User>[] {
       meta: { label: t('Quota') },
     },
     {
-      accessorKey: 'group',
+      accessorKey: 'total_topup_usd',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Group')} />
+        <DataTableColumnHeader column={column} title={t('Cumulative Top-up')} />
       ),
       cell: ({ row }) => {
-        const group = row.getValue('group') as string
-        return <GroupBadge group={group} />
+        const total = Number(row.original.total_topup_usd || 0)
+        return (
+          <span className='font-mono text-sm font-medium tabular-nums'>
+            ${total.toFixed(2)}
+          </span>
+        )
       },
-      filterFn: (row, id, value) => {
-        const group = String(row.getValue(id) || t('User Group')).toLowerCase()
-        const searchValue = String(value).toLowerCase()
-        return group.includes(searchValue)
-      },
-      size: 82,
-      minSize: 82,
-      maxSize: 82,
-      meta: { label: t('Group') },
+      size: 104,
+      minSize: 104,
+      maxSize: 104,
+      meta: { label: t('Cumulative Top-up') },
     },
     {
       accessorKey: 'role',

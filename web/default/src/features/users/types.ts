@@ -73,6 +73,7 @@ export const userSchema = z.object({
   country: z.string().optional(),
   language: z.string().optional(),
   topup_forbidden: z.boolean().optional(),
+  total_topup_usd: z.number().optional(),
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
 })
