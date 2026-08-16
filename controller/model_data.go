@@ -676,26 +676,27 @@ func applyGlobalModelPricingToRow(
 	}
 }
 
+// PublicDetectPoint omits channel grouping and admin-only fingerprint metadata.
+type PublicDetectPoint struct {
+	Status     string     `json:"status"`
+	DetectTime int64      `json:"detect_time"`
+	Top5       []TopKItem `json:"top5,omitempty"`
+}
+
 // PublicMarketplaceItem is the public-facing shape returned by GetPublicMarketplace.
-// It omits internal/admin fields (hub_price, model_price, group_ratio, pricing_source, etc.).
+// Keep this as an explicit allowlist: upstream identity, procurement pricing, and
+// channel configuration must never cross the public API boundary.
 type PublicMarketplaceItem struct {
-	ChannelID             int           `json:"channel_id"`
-	ChannelName           string        `json:"channel_name"`
-	KeyGroup              string        `json:"key_group"`
-	ClientExclusive       string        `json:"client_exclusive"` // "" | "codex" | "claude_code"
-	InputPrice            *float64      `json:"input_price"`
-	ActualPrice           *float64      `json:"actual_price"` // 采购价（内部参考），保留供折扣计算
-	UserPrice             *float64      `json:"user_price"`   // 用户最终价格 = actual_price × apimaster_price_ratio
-	OutputPrice           *float64      `json:"output_price"`
-	ActualOutputPrice     *float64      `json:"actual_output_price"`
-	ActualOutputUserPrice *float64      `json:"actual_output_user_price"` // 输出用户最终价格 = actual_output_price × apimaster_price_ratio
-	RechargeRate          float64       `json:"recharge_rate"`
-	OfficialInputPrice    *float64      `json:"official_input_price"`
-	OfficialOutputPrice   *float64      `json:"official_output_price"`
-	FingerprintHistory    []DetectPoint `json:"fingerprint_history"`
-	UptimeHistory         []DetectPoint `json:"uptime_history"`
-	LatencyMedianMs       float64       `json:"latency_median_ms"`
-	Status                int           `json:"status"`
+	ChannelID             int                 `json:"channel_id"`
+	ClientExclusive       string              `json:"client_exclusive"` // "" | "codex" | "claude_code"
+	UserPrice             *float64            `json:"user_price"`
+	ActualOutputUserPrice *float64            `json:"actual_output_user_price"`
+	OfficialInputPrice    *float64            `json:"official_input_price"`
+	OfficialOutputPrice   *float64            `json:"official_output_price"`
+	FingerprintHistory    []PublicDetectPoint `json:"fingerprint_history"`
+	UptimeHistory         []PublicDetectPoint `json:"uptime_history"`
+	LatencyMedianMs       float64             `json:"latency_median_ms"`
+	Status                int                 `json:"status"`
 }
 
 // publicMarketplaceCache is a simple per-model TTL cache.
@@ -731,7 +732,6 @@ func GetPublicMarketplace(c *gin.Context) {
 
 	type row struct {
 		ChannelID           int
-		ChannelName         string
 		Setting             *string
 		ModelMapping        *string
 		InputPrice          *float64
@@ -754,7 +754,7 @@ func GetPublicMarketplace(c *gin.Context) {
 
 	var rows []row
 	model.DB.Table("channels c").
-		Select("c.id as channel_id, c.name as channel_name, c.setting, c.model_mapping, p.input_price, p.output_price, p.group_ratio, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.status").
+		Select("c.id as channel_id, c.setting, c.model_mapping, p.input_price, p.output_price, p.group_ratio, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.status").
 		Joins("LEFT JOIN channel_model_pricings p ON c.id = p.channel_id AND p.model_name IN ?", candidates).
 		Joins("LEFT JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND a.group = 'default'", modelName).
 		Where("c.status = 1").
@@ -824,8 +824,8 @@ func GetPublicMarketplace(c *gin.Context) {
 	logs = append(logs, uptimeLogs...)
 
 	type histories struct {
-		Fingerprint []DetectPoint
-		Uptime      []DetectPoint
+		Fingerprint []PublicDetectPoint
+		Uptime      []PublicDetectPoint
 		Latencies   []float64
 	}
 	byChannel := map[int]*histories{}
@@ -838,7 +838,7 @@ func GetPublicMarketplace(c *gin.Context) {
 			h = &histories{}
 			byChannel[l.ChannelId] = h
 		}
-		point := DetectPoint{Status: l.Status, DetectTime: l.DetectTime, GroupName: l.GroupName}
+		point := PublicDetectPoint{Status: l.Status, DetectTime: l.DetectTime}
 		if l.Source == "uptime" {
 			if len(h.Uptime) < modelDataHistorySize {
 				h.Uptime = append(h.Uptime, point)
@@ -884,8 +884,8 @@ func GetPublicMarketplace(c *gin.Context) {
 			rechargeRate = *r.RechargeRate
 		}
 
-		fp := []DetectPoint{}
-		up := []DetectPoint{}
+		fp := []PublicDetectPoint{}
+		up := []PublicDetectPoint{}
 		var latencies []float64
 		if h := byChannel[r.ChannelID]; h != nil {
 			if h.Fingerprint != nil {
@@ -900,37 +900,25 @@ func GetPublicMarketplace(c *gin.Context) {
 		marketChannelRatio := r.ApimasterPriceRatio
 		apimasterRatio := service.EffectiveModelPriceRatio(r.ModelPriceRatios, &marketChannelRatio, modelName)
 
-		var inputPricePtr, outputPricePtr, actualPricePtr, actualOutPricePtr *float64
 		var userPricePtr, actualOutputUserPricePtr *float64
 		if r.InputPrice != nil {
 			in := *r.InputPrice
-			inputPricePtr = &in
 			actualIn := in * rechargeRate
-			actualPricePtr = &actualIn
 			userIn := actualIn * apimasterRatio
 			userPricePtr = &userIn
 		}
 		if r.OutputPrice != nil {
 			out := *r.OutputPrice
-			outputPricePtr = &out
 			actualOut := out * rechargeRate
-			actualOutPricePtr = &actualOut
 			userOut := actualOut * apimasterRatio
 			actualOutputUserPricePtr = &userOut
 		}
 
 		items = append(items, PublicMarketplaceItem{
 			ChannelID:             r.ChannelID,
-			ChannelName:           r.ChannelName,
-			KeyGroup:              modelDataExtractKeyGroup(r.Setting),
 			ClientExclusive:       modelDataExtractClientExclusive(r.Setting),
-			InputPrice:            inputPricePtr,
-			ActualPrice:           actualPricePtr,
 			UserPrice:             userPricePtr,
-			OutputPrice:           outputPricePtr,
-			ActualOutputPrice:     actualOutPricePtr,
 			ActualOutputUserPrice: actualOutputUserPricePtr,
-			RechargeRate:          rechargeRate,
 			OfficialInputPrice:    officialInPtr,
 			OfficialOutputPrice:   officialOutPtr,
 			FingerprintHistory:    fp,
