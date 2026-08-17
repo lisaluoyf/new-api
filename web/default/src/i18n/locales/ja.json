@@ -4553,9 +4553,16 @@
     "All models": "すべてのモデル",
     "APIMaster discounted pricing": "APIMaster 割引価格",
     "Experience Balance": "お試し残高",
+    "Experience Users": "Trial Users",
+    "Experience Cost": "Trial Cost",
+    "Experience Billing": "Trial Billing",
+    "Paid Subscription Balance": "Paid Subscription Balance",
     "Subscription Balance": "サブスクリプション残高",
     "GPT models": "GPT モデル",
-    "Official pricing": "公式価格"
+    "Official pricing": "公式価格",
+    "Paid Subscription Users": "Subscription Users",
+    "Paid Subscription Cost": "Subscription Cost",
+    "Paid Subscription Revenue": "Subscription Revenue"
   },
   "在线使用": "プレイグラウンド",
   "推广有礼": "アフィリエイト",

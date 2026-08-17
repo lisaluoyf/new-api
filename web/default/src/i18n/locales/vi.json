@@ -4553,9 +4553,16 @@
     "All models": "Tất cả mô hình",
     "APIMaster discounted pricing": "Giá ưu đãi của APIMaster",
     "Experience Balance": "Số dư dùng thử",
+    "Experience Users": "Trial Users",
+    "Experience Cost": "Trial Cost",
+    "Experience Billing": "Trial Billing",
+    "Paid Subscription Balance": "Paid Subscription Balance",
     "Subscription Balance": "Số dư gói đăng ký",
     "GPT models": "Mô hình GPT",
-    "Official pricing": "Giá chính thức"
+    "Official pricing": "Giá chính thức",
+    "Paid Subscription Users": "Subscription Users",
+    "Paid Subscription Cost": "Subscription Cost",
+    "Paid Subscription Revenue": "Subscription Revenue"
   },
   "在线使用": "Dùng trực tuyến",
   "推广有礼": "Giới thiệu",

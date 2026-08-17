@@ -4721,6 +4721,10 @@
     "All models": "All models",
     "APIMaster discounted pricing": "APIMaster discounted pricing",
     "Experience Balance": "Trial Balance",
+    "Experience Users": "Trial Users",
+    "Experience Cost": "Trial Cost",
+    "Experience Billing": "Trial Billing",
+    "Paid Subscription Balance": "Paid Subscription Balance",
     "Subscription Balance": "Subscription Balance",
     "Platform User Balance": "User Balance",
     "Non-subscription Users": "Non-subscription Users",
@@ -4767,7 +4771,6 @@
     "GPT Subscription Plans": "GPT Subscription Plans",
     "GPT Subscription": "GPT Subscription",
     "GPT Plan": "GPT Plan",
-    "Tier": "Tier",
     "5h official-price USD": "5h official-price USD",
     "7d official-price USD": "7d official-price USD",
     "Model allowlist": "Model allowlist",
@@ -4784,8 +4787,8 @@
     "Previous benefit": "Previous benefit",
     "Next benefit": "Next benefit",
     "Show benefit {{number}}": "Show benefit {{number}}",
-    "Paid Subscription Cost": "Paid Subscription Cost",
-    "Paid Subscription Revenue": "Paid Subscription Revenue",
+    "Paid Subscription Cost": "Subscription Cost",
+    "Paid Subscription Revenue": "Subscription Revenue",
     "Referral GPT Reward": "Referral GPT Reward",
     "Subscription cycle": "Subscription cycle",
     "5-hour rolling remaining": "5-hour rolling remaining",
@@ -4794,6 +4797,7 @@
     "Rolling limits": "Rolling limits",
     "2.5% cost preview": "2.5% cost preview",
     "97.5% request GM": "97.5% request gross margin",
-    "7d full-use cost ${{amount}}": "7d full-use cost ${{amount}}"
+    "7d full-use cost ${{amount}}": "7d full-use cost ${{amount}}",
+    "Paid Subscription Users": "Subscription Users"
   }
 }

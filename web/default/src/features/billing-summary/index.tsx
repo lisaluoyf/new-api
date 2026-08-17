@@ -45,17 +45,25 @@ export function BillingSummaryPage() {
     data?.success && data.wallet_balance_usd != null
       ? Number(data.wallet_balance_usd)
       : null
-  const subscriptionBalanceUSD =
-    data?.success && data.subscription_balance_usd != null
-      ? Number(data.subscription_balance_usd)
+  const experienceBalanceUSD =
+    data?.success && data.experience_balance_usd != null
+      ? Number(data.experience_balance_usd)
       : null
-  const nonSubscriptionUserCount =
-    data?.success && data.non_subscription_user_count != null
-      ? Number(data.non_subscription_user_count)
+  const paidSubscriptionBalanceUSD =
+    data?.success && data.paid_subscription_balance_usd != null
+      ? Number(data.paid_subscription_balance_usd)
+      : null
+  const walletUserCount =
+    data?.success && data.wallet_user_count != null
+      ? Number(data.wallet_user_count)
       : 0
-  const subscriptionUserCount =
-    data?.success && data.subscription_user_count != null
-      ? Number(data.subscription_user_count)
+  const experienceUserCount =
+    data?.success && data.experience_user_count != null
+      ? Number(data.experience_user_count)
+      : 0
+  const paidSubscriptionUserCount =
+    data?.success && data.paid_subscription_user_count != null
+      ? Number(data.paid_subscription_user_count)
       : 0
 
   // Prepend a synthetic "Total" row so the summed cost/revenue/profit/margin
@@ -65,10 +73,10 @@ export function BillingSummaryPage() {
       (acc, row) => ({
         cost_usd: acc.cost_usd + row.cost_usd,
         revenue_usd: acc.revenue_usd + row.revenue_usd,
-        subscription_cost_usd:
-          acc.subscription_cost_usd + row.subscription_cost_usd,
-        subscription_billing_usd:
-          acc.subscription_billing_usd + row.subscription_billing_usd,
+        experience_cost_usd:
+          acc.experience_cost_usd + row.experience_cost_usd,
+        experience_billing_usd:
+          acc.experience_billing_usd + row.experience_billing_usd,
         paid_subscription_cost_usd:
           acc.paid_subscription_cost_usd + row.paid_subscription_cost_usd,
         paid_subscription_revenue_usd:
@@ -82,8 +90,8 @@ export function BillingSummaryPage() {
       {
         cost_usd: 0,
         revenue_usd: 0,
-        subscription_cost_usd: 0,
-        subscription_billing_usd: 0,
+        experience_cost_usd: 0,
+        experience_billing_usd: 0,
         paid_subscription_cost_usd: 0,
         paid_subscription_revenue_usd: 0,
         accounting_ok_request_count: 0,
@@ -94,20 +102,24 @@ export function BillingSummaryPage() {
       {
         day: 0,
         ...totals,
-        non_subscription_user_count: nonSubscriptionUserCount,
-        subscription_user_count: subscriptionUserCount,
+        wallet_user_count: walletUserCount,
+        experience_user_count: experienceUserCount,
+        paid_subscription_user_count: paidSubscriptionUserCount,
         wallet_balance_usd: walletBalanceUSD,
-        subscription_balance_usd: subscriptionBalanceUSD,
+        experience_balance_usd: experienceBalanceUSD,
+        paid_subscription_balance_usd: paidSubscriptionBalanceUSD,
         isTotal: true,
       },
       ...rows,
     ]
   }, [
     rows,
-    nonSubscriptionUserCount,
-    subscriptionUserCount,
+    walletUserCount,
+    experienceUserCount,
+    paidSubscriptionUserCount,
     walletBalanceUSD,
-    subscriptionBalanceUSD,
+    experienceBalanceUSD,
+    paidSubscriptionBalanceUSD,
   ])
 
   const columns = useMemo(() => buildBillingSummaryColumns(t), [t])

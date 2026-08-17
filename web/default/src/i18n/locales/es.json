@@ -4553,9 +4553,16 @@
     "All models": "Todos los modelos",
     "APIMaster discounted pricing": "Precios con descuento de APIMaster",
     "Experience Balance": "Saldo de prueba",
+    "Experience Users": "Trial Users",
+    "Experience Cost": "Trial Cost",
+    "Experience Billing": "Trial Billing",
+    "Paid Subscription Balance": "Paid Subscription Balance",
     "Subscription Balance": "Saldo de suscripción",
     "GPT models": "Modelos GPT",
-    "Official pricing": "Precios oficiales"
+    "Official pricing": "Precios oficiales",
+    "Paid Subscription Users": "Subscription Users",
+    "Paid Subscription Cost": "Subscription Cost",
+    "Paid Subscription Revenue": "Subscription Revenue"
   },
   "在线使用": "Playground",
   "推广有礼": "Afiliados",

@@ -104,9 +104,21 @@ func TestGetBillingDailyFromRawLogs_SplitsSubscriptionMetrics(t *testing.T) {
 		ModelName:                      modelName,
 		ChannelId:                      channelID,
 		Quota:                          615500,
-		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription, "subscription_type": model.SubscriptionPlanTypeGPTTrial}),
 		AccountingChannelCostAmountUSD: 0.75,
 		AccountingUserFinalAmountUSD:   2.25,
+		AccountingStatus:               "ok",
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId:                         userID,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      baseTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          500000,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription, "subscription_type": model.SubscriptionPlanTypeGPTSubscription}),
+		AccountingChannelCostAmountUSD: 0.4,
+		AccountingUserFinalAmountUSD:   1.5,
 		AccountingStatus:               "ok",
 	})
 	// Non-OK rows should not affect the billing totals.
@@ -128,14 +140,17 @@ func TestGetBillingDailyFromRawLogs_SplitsSubscriptionMetrics(t *testing.T) {
 	require.Len(t, rows, 1)
 
 	row := rows[0]
-	assert.InDelta(t, 2.0, row.CostUSD, 1e-9)
-	assert.InDelta(t, 4.731, row.RevenueUSD, 1e-9)
-	assert.InDelta(t, 0.75, row.SubscriptionCostUSD, 1e-9)
-	assert.InDelta(t, 1.231, row.SubscriptionBillingUSD, 1e-9)
-	assert.Equal(t, int64(2), row.AccountingOKRequestCount)
-	assert.Equal(t, int64(3), row.AccountingTargetReqCount)
-	assert.Equal(t, int64(1), row.NonSubscriptionUserCount)
-	assert.Equal(t, int64(1), row.SubscriptionUserCount)
+	assert.InDelta(t, 2.4, row.CostUSD, 1e-9)
+	assert.InDelta(t, 5.731, row.RevenueUSD, 1e-9)
+	assert.InDelta(t, 0.75, row.ExperienceCostUSD, 1e-9)
+	assert.InDelta(t, 1.231, row.ExperienceBillingUSD, 1e-9)
+	assert.InDelta(t, 0.4, row.PaidSubscriptionCostUSD, 1e-9)
+	assert.InDelta(t, 1.0, row.PaidSubscriptionRevenueUSD, 1e-9)
+	assert.Equal(t, int64(3), row.AccountingOKRequestCount)
+	assert.Equal(t, int64(4), row.AccountingTargetReqCount)
+	assert.Equal(t, int64(1), row.WalletUserCount)
+	assert.Equal(t, int64(1), row.ExperienceUserCount)
+	assert.Equal(t, int64(1), row.PaidSubscriptionUserCount)
 }
 
 func TestGetBillingUserCountsTotal_DistinctAcrossWholeRange(t *testing.T) {
@@ -150,8 +165,9 @@ func TestGetBillingUserCountsTotal_DistinctAcrossWholeRange(t *testing.T) {
 
 	users := []model.User{
 		{Id: 1003, Username: "wallet-user", AffCode: "wallet-user", Status: common.UserStatusEnabled},
-		{Id: 1004, Username: "subscription-user", AffCode: "subscription-user", Status: common.UserStatusEnabled},
+		{Id: 1004, Username: "experience-user", AffCode: "experience-user", Status: common.UserStatusEnabled},
 		{Id: 1005, Username: "hybrid-user", AffCode: "hybrid-user", Status: common.UserStatusEnabled},
+		{Id: 1006, Username: "paid-user", AffCode: "paid-user", Status: common.UserStatusEnabled},
 	}
 	require.NoError(t, model.DB.Create(&users).Error)
 	seedChannel(t, channelID)
@@ -187,7 +203,7 @@ func TestGetBillingUserCountsTotal_DistinctAcrossWholeRange(t *testing.T) {
 		ModelName:                      modelName,
 		ChannelId:                      channelID,
 		Quota:                          615500,
-		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription, "subscription_type": model.SubscriptionPlanTypeGPTTrial}),
 		AccountingChannelCostAmountUSD: 0.7,
 		AccountingUserFinalAmountUSD:   2.1,
 		AccountingStatus:               "ok",
@@ -211,16 +227,29 @@ func TestGetBillingUserCountsTotal_DistinctAcrossWholeRange(t *testing.T) {
 		ModelName:                      modelName,
 		ChannelId:                      channelID,
 		Quota:                          615500,
-		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription, "subscription_type": model.SubscriptionPlanTypeGPTTrial}),
 		AccountingChannelCostAmountUSD: 0.6,
 		AccountingUserFinalAmountUSD:   1.8,
+		AccountingStatus:               "ok",
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId:                         1006,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      dayTwoTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          500000,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription, "subscription_type": model.SubscriptionPlanTypeGPTSubscription}),
+		AccountingChannelCostAmountUSD: 0.8,
+		AccountingUserFinalAmountUSD:   2.4,
 		AccountingStatus:               "ok",
 	})
 
 	totals, err := model.GetBillingUserCountsTotal(dayOneTs-10, dayTwoTs+10, modelName, channelID, "", "", "")
 	require.NoError(t, err)
-	assert.Equal(t, int64(2), totals.NonSubscriptionUserCount)
-	assert.Equal(t, int64(2), totals.SubscriptionUserCount)
+	assert.Equal(t, int64(2), totals.WalletUserCount)
+	assert.Equal(t, int64(2), totals.ExperienceUserCount)
+	assert.Equal(t, int64(1), totals.PaidSubscriptionUserCount)
 }
 
 func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {
@@ -255,9 +284,21 @@ func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {
 		ModelName:                      modelName,
 		ChannelId:                      channelID,
 		Quota:                          615500,
-		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription}),
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription, "subscription_type": model.SubscriptionPlanTypeGPTTrial}),
 		AccountingChannelCostAmountUSD: 0.75,
 		AccountingUserFinalAmountUSD:   2.25,
+		AccountingStatus:               "ok",
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId:                         userID,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      baseTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          500000,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription, "subscription_type": model.SubscriptionPlanTypeGPTSubscription}),
+		AccountingChannelCostAmountUSD: 0.4,
+		AccountingUserFinalAmountUSD:   1.5,
 		AccountingStatus:               "ok",
 	})
 
@@ -270,9 +311,11 @@ func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {
 	var row model.BillingHourlySummary
 	err := model.LOG_DB.Where("hour_bucket = ? AND model_name = ? AND channel_id = ?", baseTs/3600*3600, modelName, channelID).First(&row).Error
 	require.NoError(t, err)
-	assert.InDelta(t, 2.0, row.CostUSD, 1e-9)
-	assert.InDelta(t, 4.731, row.RevenueUSD, 1e-9)
-	assert.InDelta(t, 0.75, row.SubscriptionCostUSD, 1e-9)
-	assert.InDelta(t, 1.231, row.SubscriptionBillingUSD, 1e-9)
-	assert.Equal(t, int64(2), row.RequestCount)
+	assert.InDelta(t, 2.4, row.CostUSD, 1e-9)
+	assert.InDelta(t, 5.731, row.RevenueUSD, 1e-9)
+	assert.InDelta(t, 1.15, row.SubscriptionCostUSD, 1e-9)
+	assert.InDelta(t, 2.231, row.SubscriptionBillingUSD, 1e-9)
+	assert.InDelta(t, 0.4, row.PaidSubscriptionCostUSD, 1e-9)
+	assert.InDelta(t, 1.0, row.PaidSubscriptionRevenueUSD, 1e-9)
+	assert.Equal(t, int64(3), row.RequestCount)
 }

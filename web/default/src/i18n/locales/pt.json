@@ -4549,9 +4549,16 @@
     "All models": "Todos os modelos",
     "APIMaster discounted pricing": "Preços com desconto da APIMaster",
     "Experience Balance": "Saldo de teste",
+    "Experience Users": "Trial Users",
+    "Experience Cost": "Trial Cost",
+    "Experience Billing": "Trial Billing",
+    "Paid Subscription Balance": "Paid Subscription Balance",
     "Subscription Balance": "Saldo da assinatura",
     "GPT models": "Modelos GPT",
-    "Official pricing": "Preços oficiais"
+    "Official pricing": "Preços oficiais",
+    "Paid Subscription Users": "Subscription Users",
+    "Paid Subscription Cost": "Subscription Cost",
+    "Paid Subscription Revenue": "Subscription Revenue"
   },
   "User Balance": "Saldo dos usuários",
   "No active subscription": "Nenhuma assinatura ativa",

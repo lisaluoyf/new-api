@@ -4553,9 +4553,16 @@
     "All models": "Semua model",
     "APIMaster discounted pricing": "Harga diskon APIMaster",
     "Experience Balance": "Saldo uji coba",
+    "Experience Users": "Trial Users",
+    "Experience Cost": "Trial Cost",
+    "Experience Billing": "Trial Billing",
+    "Paid Subscription Balance": "Paid Subscription Balance",
     "Subscription Balance": "Saldo langganan",
     "GPT models": "Model GPT",
-    "Official pricing": "Harga resmi"
+    "Official pricing": "Harga resmi",
+    "Paid Subscription Users": "Subscription Users",
+    "Paid Subscription Cost": "Subscription Cost",
+    "Paid Subscription Revenue": "Subscription Revenue"
   },
   "在线使用": "Playground",
   "推广有礼": "Afiliasi",
