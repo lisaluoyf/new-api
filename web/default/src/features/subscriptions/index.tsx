@@ -21,7 +21,6 @@ import { useTranslation } from 'react-i18next'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SectionPageLayout } from '@/components/layout'
-import { GPTSubscriptionAccessCard } from './components/gpt-subscription-access-card'
 import { SubscriptionsDialogs } from './components/subscriptions-dialogs'
 import { SubscriptionsPrimaryButtons } from './components/subscriptions-primary-buttons'
 import { SubscriptionsProvider } from './components/subscriptions-provider'
@@ -63,7 +62,6 @@ export function Subscriptions() {
               <SubscriptionsTable planType='standard' />
             </TabsContent>
             <TabsContent value='gpt_subscription'>
-              <GPTSubscriptionAccessCard />
               <SubscriptionsTable planType='gpt_subscription' />
             </TabsContent>
           </Tabs>

@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -57,10 +56,9 @@ func publicGPTSubscriptionModels(allowlist string) []string {
 	return models
 }
 
-// GetPublicGPTSubscriptionCatalog exposes only information that is already
-// intended for the public GPT Pass product page. It deliberately remains
-// readable while purchasing is in limited testing; all state-changing GPT
-// subscription endpoints still require UserAuth and server-side access checks.
+// GetPublicGPTSubscriptionCatalog exposes only information intended for the
+// public GPT Pass product page. State-changing subscription endpoints still
+// require UserAuth and their normal plan, payment, and risk-control checks.
 func GetPublicGPTSubscriptionCatalog(c *gin.Context) {
 	plans, err := model.GetEnabledGPTSubscriptionPlans()
 	if err != nil {
@@ -189,13 +187,7 @@ func resolveSubscriptionOrderTerms(userId int, plan *model.SubscriptionPlan) (su
 	if plan.PriceAmount <= 0 {
 		return terms, model.ErrGPTSubscriptionPlanUnavailable
 	}
-	access, err := model.GetGPTSubscriptionAccess(userId)
-	if err != nil {
-		return terms, err
-	}
-	if !access.CanPurchase {
-		return terms, errors.New("GPT Pass purchases are currently closed")
-	}
+	var err error
 	terms.OrderType, terms.PreviousSubscriptionId, terms.CreditAmount, terms.Payable, err = model.CalculateGPTSubscriptionQuote(userId, plan)
 	if err == nil && terms.PreviousSubscriptionId > 0 {
 		var previous model.UserSubscription
@@ -273,15 +265,6 @@ func GetGPTSubscriptionPlans(c *gin.Context) {
 }
 
 func GetGPTSubscriptionQuote(c *gin.Context) {
-	access, err := model.GetGPTSubscriptionAccess(c.GetInt("id"))
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if !access.CanPurchase {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "GPT Pass purchases are currently closed"})
-		return
-	}
 	var req struct {
 		PlanId int `json:"plan_id"`
 	}

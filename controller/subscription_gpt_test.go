@@ -76,8 +76,8 @@ func setupFreeGPTSubscriptionControllerTest(t *testing.T, publicEnabled, whiteli
 	return db, userID
 }
 
-func TestPublicGPTSubscriptionCatalogIsReadableWhilePurchasingClosed(t *testing.T) {
-	db, _ := setupFreeGPTSubscriptionControllerTest(t, false, false)
+func TestPublicGPTSubscriptionCatalogAndPurchasingAreOpenToAllUsers(t *testing.T) {
+	db, userID := setupFreeGPTSubscriptionControllerTest(t, false, false)
 	enabledPlan := model.SubscriptionPlan{
 		Title: "Pro+", Subtitle: "Standard", PlanType: model.SubscriptionPlanTypeGPTSubscription,
 		PriceAmount: 10, Currency: "USD", DurationUnit: model.SubscriptionDurationDay,
@@ -117,7 +117,7 @@ func TestPublicGPTSubscriptionCatalogIsReadableWhilePurchasingClosed(t *testing.
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.Equal(t, true, response["success"])
 	data := response["data"].(map[string]any)
-	require.Equal(t, false, data["public_enabled"])
+	require.Equal(t, true, data["public_enabled"])
 	plans := data["plans"].([]any)
 	require.Len(t, plans, 1)
 	plan := plans[0].(map[string]any)
@@ -131,4 +131,11 @@ func TestPublicGPTSubscriptionCatalogIsReadableWhilePurchasingClosed(t *testing.
 	}
 	require.NotContains(t, recorder.Body.String(), "stripe-private-price")
 	require.NotContains(t, recorder.Body.String(), "creem-private-product")
+
+	access, err := model.GetGPTSubscriptionAccess(userID)
+	require.NoError(t, err)
+	require.True(t, access.PublicEnabled)
+	require.True(t, access.Allowed)
+	require.True(t, access.CanPurchase)
+	require.Empty(t, access.Whitelist)
 }

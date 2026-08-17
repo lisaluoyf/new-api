@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -66,105 +64,27 @@ func (e *GPTSubscriptionRollingLimitError) Error() string {
 		strings.Join(e.Info.LimitedWindows, ","), e.Info.RequestedQuota)
 }
 
-func getOptionString(key, fallback string) string {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
-	if value, ok := common.OptionMap[key]; ok {
-		return value
-	}
-	return fallback
-}
-
 func GPTSubscriptionPublicEnabled() bool {
-	enabled, _ := strconv.ParseBool(getOptionString(GPTSubscriptionPublicEnabledOption, "false"))
-	return enabled
+	return true
 }
 
 func GPTSubscriptionWhitelist() []string {
-	raw := getOptionString(GPTSubscriptionWhitelistOption, "lisa.luoyf@gmail.com")
-	seen := map[string]struct{}{}
-	result := make([]string, 0)
-	for _, value := range strings.Split(raw, ",") {
-		email := strings.ToLower(strings.TrimSpace(value))
-		if email == "" {
-			continue
-		}
-		if _, ok := seen[email]; ok {
-			continue
-		}
-		seen[email] = struct{}{}
-		result = append(result, email)
-	}
-	sort.Strings(result)
-	return result
+	return []string{}
 }
 
-func UpdateGPTSubscriptionAccessConfig(publicEnabled bool, whitelist []string) error {
-	clean := make([]string, 0, len(whitelist))
-	seen := map[string]struct{}{}
-	for _, value := range whitelist {
-		email := strings.ToLower(strings.TrimSpace(value))
-		if email == "" {
-			continue
-		}
-		if _, ok := seen[email]; ok {
-			continue
-		}
-		seen[email] = struct{}{}
-		clean = append(clean, email)
-	}
-	sort.Strings(clean)
-	if err := UpdateOption(GPTSubscriptionPublicEnabledOption, strconv.FormatBool(publicEnabled)); err != nil {
+func UpdateGPTSubscriptionAccessConfig(_ bool, _ []string) error {
+	if err := UpdateOption(GPTSubscriptionPublicEnabledOption, "true"); err != nil {
 		return err
 	}
-	return UpdateOption(GPTSubscriptionWhitelistOption, strings.Join(clean, ","))
-}
-
-func resolveAPIMasterEmailByUsername(username string) string {
-	username = strings.TrimSpace(username)
-	if APIMASTER_PG_DB == nil || username == "" {
-		return ""
-	}
-	var email string
-	_ = APIMASTER_PG_DB.Raw(`
-		SELECT LOWER(COALESCE(email, ''))
-		FROM users
-		WHERE LEFT(REPLACE(id::text, '-', ''), 20) = ?
-		LIMIT 1
-	`, username).Scan(&email).Error
-	return strings.ToLower(strings.TrimSpace(email))
+	return UpdateOption(GPTSubscriptionWhitelistOption, "")
 }
 
 func GetGPTSubscriptionAccess(userId int) (GPTSubscriptionAccess, error) {
 	access := GPTSubscriptionAccess{
-		PublicEnabled: GPTSubscriptionPublicEnabled(),
-		Whitelist:     GPTSubscriptionWhitelist(),
-	}
-	if userId <= 0 {
-		return access, nil
-	}
-	var user User
-	if err := DB.Select("id", "username", "email").Where("id = ?", userId).First(&user).Error; err != nil {
-		return access, err
-	}
-	emails := []string{strings.ToLower(strings.TrimSpace(user.Email)), resolveAPIMasterEmailByUsername(user.Username)}
-	whitelisted := false
-	for _, email := range emails {
-		for _, allowed := range access.Whitelist {
-			if email != "" && email == allowed {
-				whitelisted = true
-				break
-			}
-		}
-	}
-	access.CanPurchase = access.PublicEnabled || whitelisted
-	access.Allowed = access.CanPurchase
-	if !access.Allowed {
-		active, err := HasActiveUserSubscriptionByPlanMatcher(userId, IsGPTPaidSubscriptionPlan)
-		if err != nil {
-			return access, err
-		}
-		access.Allowed = active
+		PublicEnabled: true,
+		Allowed:       userId > 0,
+		CanPurchase:   userId > 0,
+		Whitelist:     []string{},
 	}
 	return access, nil
 }

@@ -1,8 +1,11 @@
 package model
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -373,6 +376,9 @@ func NotifyReferralGPTRewardToFeishu(logId int) error {
 	_ = DB.Select("id", "email", "username").Where("id = ?", reward.InviterId).First(&inviter).Error
 	_ = DB.Select("id", "email", "username").Where("id = ?", reward.InviteeId).First(&invitee).Error
 
+	// Send reward notification emails to both sides
+	go SendReferralRewardEmails(&inviter, &invitee, reward.InviterRewardQuota, reward.InviteeRewardQuota)
+
 	formatQuotaUSD := func(quota int64) string {
 		if common.QuotaPerUnit <= 0 {
 			return "$0.00"
@@ -509,6 +515,45 @@ func GetReferralGPTRewardLogs(userId, page, pageSize int) ([]ReferralGPTRewardRe
 		records = append(records, record)
 	}
 	return records, total, nil
+}
+
+// SendReferralRewardEmails sends notification emails to inviter and invitee.
+// Runs in background, calls Next.js API which handles language lookup and Resend.
+func SendReferralRewardEmails(inviter, invitee *User, inviterRewardQuota, inviteeRewardQuota int64) {
+	if inviter == nil || invitee == nil || common.QuotaPerUnit <= 0 {
+		return
+	}
+	inviterEmail := strings.TrimSpace(inviter.Email)
+	inviteeEmail := strings.TrimSpace(invitee.Email)
+	if inviterEmail == "" || inviteeEmail == "" {
+		return
+	}
+
+	inviterUSD := float64(inviterRewardQuota) / common.QuotaPerUnit
+	inviteeUSD := float64(inviteeRewardQuota) / common.QuotaPerUnit
+
+	apiURL := "http://127.0.0.1:3000/api/send-referral-reward-email"
+
+	sendOne := func(role, email string, rewardUSD float64) {
+		payload, _ := json.Marshal(map[string]interface{}{
+			"role":       role,
+			"email":      email,
+			"reward_usd": rewardUSD,
+		})
+		resp, err := http.Post(apiURL, "application/json", bytes.NewReader(payload))
+		if err != nil {
+			common.SysLog(fmt.Sprintf("SendReferralRewardEmail %s failed: %v", role, err))
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			common.SysLog(fmt.Sprintf("SendReferralRewardEmail %s returned %d", role, resp.StatusCode))
+		}
+	}
+
+	// Send both emails in background
+	go sendOne("inviter", inviterEmail, inviterUSD)
+	go sendOne("invitee", inviteeEmail, inviteeUSD)
 }
 
 func GetReferralGPTRewardedInvitees(inviteeIds []int) (map[int]int64, error) {

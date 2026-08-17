@@ -67,25 +67,6 @@ export async function deletePlan(id: number): Promise<ApiResponse> {
   return res.data
 }
 
-export interface GPTSubscriptionAccessConfig {
-  public_enabled: boolean
-  whitelist: string[]
-}
-
-export async function getGPTSubscriptionAccessConfig(): Promise<
-  ApiResponse<GPTSubscriptionAccessConfig>
-> {
-  const res = await api.get('/api/subscription/admin/gpt/access')
-  return res.data
-}
-
-export async function updateGPTSubscriptionAccessConfig(
-  data: GPTSubscriptionAccessConfig
-): Promise<ApiResponse<GPTSubscriptionAccessConfig>> {
-  const res = await api.put('/api/subscription/admin/gpt/access', data)
-  return res.data
-}
-
 // ============================================================================
 // Admin User Subscription Management
 // ============================================================================
