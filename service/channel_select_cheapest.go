@@ -189,6 +189,12 @@ func selectMostExpensiveChannelID(modelName string, bannedIDs []int) int {
 }
 
 func selectPricedChannelID(modelName string, bannedIDs []int, ascending bool) int {
+	// DeepSeek V4 prices change at fixed Beijing-time boundaries. Bypass the
+	// static route cache so selection switches at the same instant as billing.
+	if _, timed := DeepSeekV4OfficialPricingAt(modelName, time.Now()); timed {
+		return selectPricedChannelIDFromDB(modelName, bannedIDs, ascending)
+	}
+
 	// 只缓存无 bannedIDs 的首选（热路径）；重试时绕过缓存，直接查库
 	if len(bannedIDs) == 0 {
 		direction := "asc"
@@ -229,6 +235,7 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 		ModelMapping        *string
 		PricingModelName    *string
 		InputPrice          *float64
+		GroupRatio          *float64
 		RechargeRate        *float64
 		ApimasterPriceRatio *float64
 		ModelPriceRatios    *string
@@ -237,7 +244,7 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 	var rows []pricedCandidateRow
 
 	q := model.DB.Table("channels c").
-		Select(`c.id AS channel_id, c.setting, c.model_mapping, p.model_name AS pricing_model_name, p.input_price, c.recharge_rate, c.apimaster_price_ratio, c.model_price_ratios, c.priority`).
+		Select(`c.id AS channel_id, c.setting, c.model_mapping, p.model_name AS pricing_model_name, p.input_price, p.group_ratio, c.recharge_rate, c.apimaster_price_ratio, c.model_price_ratios, c.priority`).
 		// Join all pricing rows for eligible channels so a per-channel model_mapping
 		// target can be resolved in Go without database-specific JSON operators.
 		// applyPricedCandidateRow filters unrelated model rows below.
@@ -274,7 +281,7 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 			if row.PricingModelName != nil {
 				pricingModelName = *row.PricingModelName
 			}
-			applyPricedCandidateRow(&candidate, modelName, pricingModelName, *row.InputPrice)
+			applyPricedCandidateRow(&candidate, modelName, pricingModelName, *row.InputPrice, floatPointerOrDefault(row.GroupRatio, 1))
 		}
 		candidatesByChannel[row.ChannelID] = candidate
 	}
@@ -282,8 +289,9 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 	var bestID int
 	var bestPrice float64
 	var bestPriority int64
+	pricingAt := time.Now()
 	for _, candidate := range candidatesByChannel {
-		price, ok := routeCandidateUserInputPrice(candidate, modelName, globalInputUSD)
+		price, ok := routeCandidateUserInputPriceAt(candidate, modelName, globalInputUSD, pricingAt)
 		if !ok {
 			continue
 		}
@@ -303,12 +311,13 @@ type pricedRouteCandidate struct {
 	InputPrice          float64
 	HasInputPrice       bool
 	HasMappedInputPrice bool
+	GroupRatio          float64
 	RechargeRate        float64
 	ApimasterPriceRatio float64
 	Priority            int64
 }
 
-func applyPricedCandidateRow(candidate *pricedRouteCandidate, modelName, pricingModelName string, inputPrice float64) {
+func applyPricedCandidateRow(candidate *pricedRouteCandidate, modelName, pricingModelName string, inputPrice, groupRatio float64) {
 	if candidate == nil || inputPrice <= 0 {
 		return
 	}
@@ -316,6 +325,7 @@ func applyPricedCandidateRow(candidate *pricedRouteCandidate, modelName, pricing
 	if target != "" && pricingModelName == target {
 		if !candidate.HasMappedInputPrice || inputPrice < candidate.InputPrice {
 			candidate.InputPrice = inputPrice
+			candidate.GroupRatio = groupRatio
 			candidate.HasInputPrice = true
 			candidate.HasMappedInputPrice = true
 		}
@@ -328,11 +338,28 @@ func applyPricedCandidateRow(candidate *pricedRouteCandidate, modelName, pricing
 		// Keep a canonical/alias price as fallback only when the mapped target
 		// has no stored price, matching LookupPreferredChannelPricingRow.
 		candidate.InputPrice = inputPrice
+		candidate.GroupRatio = groupRatio
 		candidate.HasInputPrice = true
 	}
 }
 
 func routeCandidateUserInputPrice(candidate pricedRouteCandidate, modelName string, globalInputUSD float64) (float64, bool) {
+	return routeCandidateUserInputPriceAt(candidate, modelName, globalInputUSD, time.Now())
+}
+
+func routeCandidateUserInputPriceAt(candidate pricedRouteCandidate, modelName string, globalInputUSD float64, at time.Time) (float64, bool) {
+	if timedPrices, ok := DeepSeekV4OfficialPricingAt(modelName, at); ok {
+		groupRatio := candidate.GroupRatio
+		if manualGroupRatio := ExtractManualGroupRatio(candidate.Setting); manualGroupRatio > 0 {
+			groupRatio = manualGroupRatio
+		}
+		if groupRatio <= 0 {
+			groupRatio = 1
+		}
+		price := timedPrices.InputPrice * groupRatio * candidate.RechargeRate * candidate.ApimasterPriceRatio
+		return price, price > 0
+	}
+
 	inputPrice, ok := routeCandidateInputPrice(candidate, modelName, globalInputUSD)
 	if !ok {
 		return 0, false

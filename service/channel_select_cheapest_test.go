@@ -54,8 +54,8 @@ func TestMappedPricingRowOverridesCheaperCanonicalFallback(t *testing.T) {
 	mapping := `{"gpt-image-2":"gpt-image-2-official"}`
 	candidate := pricedRouteCandidate{ModelMapping: &mapping}
 
-	applyPricedCandidateRow(&candidate, "gpt-image-2", "gpt-image-2", 0.0085)
-	applyPricedCandidateRow(&candidate, "gpt-image-2", "gpt-image-2-official", 0.16872)
+	applyPricedCandidateRow(&candidate, "gpt-image-2", "gpt-image-2", 0.0085, 1)
+	applyPricedCandidateRow(&candidate, "gpt-image-2", "gpt-image-2-official", 0.16872, 1)
 
 	if !candidate.HasMappedInputPrice {
 		t.Fatal("expected mapped price to be resolved")
@@ -67,9 +67,29 @@ func TestMappedPricingRowOverridesCheaperCanonicalFallback(t *testing.T) {
 
 func TestPricedCandidateIgnoresUnrelatedModelRows(t *testing.T) {
 	candidate := pricedRouteCandidate{}
-	applyPricedCandidateRow(&candidate, "gpt-image-2", "unrelated-cheap-model", 0.00001)
-	applyPricedCandidateRow(&candidate, "gpt-image-2", "gpt-image-2", 0.05)
+	applyPricedCandidateRow(&candidate, "gpt-image-2", "unrelated-cheap-model", 0.00001, 1)
+	applyPricedCandidateRow(&candidate, "gpt-image-2", "gpt-image-2", 0.05, 1)
 	if candidate.InputPrice != 0.05 {
 		t.Fatalf("price=%v want canonical price 0.05", candidate.InputPrice)
+	}
+}
+
+func TestDeepSeekTimedRoutePriceUsesOfficialBaseAndChannelMultipliers(t *testing.T) {
+	setting := `{"manual_group_ratio":0.8}`
+	candidate := pricedRouteCandidate{
+		Setting:             &setting,
+		InputPrice:          0.01,
+		HasInputPrice:       true,
+		GroupRatio:          0.2,
+		RechargeRate:        0.5,
+		ApimasterPriceRatio: 1.1,
+	}
+	got, ok := routeCandidateUserInputPriceAt(candidate, "deepseek-v4-flash", 0.44, beijingTime(t, 15, 0))
+	if !ok {
+		t.Fatal("expected price")
+	}
+	want := 0.44 * 0.8 * 0.5 * 1.1
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("price=%v want %v", got, want)
 	}
 }
