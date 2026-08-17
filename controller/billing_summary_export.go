@@ -24,15 +24,16 @@ type billingSummaryExportRow struct {
 	Date                         string   `json:"date"`
 	TotalCostUSD                 float64  `json:"total_cost_usd"`
 	TotalRevenueUSD              float64  `json:"total_revenue_usd"`
-	NonSubscriptionCostUSD       float64  `json:"non_subscription_cost_usd"`
-	NonSubscriptionRevenueUSD    float64  `json:"non_subscription_revenue_usd"`
-	NonSubscriptionProfitUSD     float64  `json:"non_subscription_profit_usd"`
-	NonSubscriptionMarginPercent *float64 `json:"non_subscription_margin_percent"`
+	WalletCostUSD                float64  `json:"wallet_cost_usd"`
+	WalletRevenueUSD             float64  `json:"wallet_revenue_usd"`
+	WalletProfitUSD              float64  `json:"wallet_profit_usd"`
+	WalletMarginPercent          *float64 `json:"wallet_margin_percent"`
 	ExperienceCostUSD            float64  `json:"experience_cost_usd"`
 	ExperienceBillingUSD         float64  `json:"experience_billing_usd"`
+	WalletUserCount              int64    `json:"wallet_user_count"`
 	PaidSubscriptionCostUSD      float64  `json:"paid_subscription_cost_usd"`
 	PaidSubscriptionRevenueUSD   float64  `json:"paid_subscription_revenue_usd"`
-	NonSubscriptionUserCount     int64    `json:"non_subscription_user_count"`
+	PaidSubscriptionUserCount    int64    `json:"paid_subscription_user_count"`
 	ExperienceUserCount          int64    `json:"experience_user_count"`
 	WalletBalanceUSD             *float64 `json:"wallet_balance_usd"`
 	ExperienceBalanceUSD         *float64 `json:"experience_balance_usd"`
@@ -44,14 +45,20 @@ type billingSummaryExportRow struct {
 func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummaryExportRow {
 	exportRows := make([]billingSummaryExportRow, 0, len(rows))
 	for _, row := range rows {
-		nonSubscriptionCost := row.CostUSD - row.ExperienceCostUSD
-		nonSubscriptionRevenue := row.RevenueUSD - row.ExperienceBillingUSD
-		nonSubscriptionProfit := nonSubscriptionRevenue - nonSubscriptionCost
+		walletCost := row.CostUSD - row.ExperienceCostUSD - row.PaidSubscriptionCostUSD
+		if walletCost < 0 {
+			walletCost = 0
+		}
+		walletRevenue := row.RevenueUSD - row.ExperienceBillingUSD - row.PaidSubscriptionRevenueUSD
+		if walletRevenue < 0 {
+			walletRevenue = 0
+		}
+		walletProfit := walletRevenue - walletCost
 
-		var marginPercent *float64
-		if nonSubscriptionCost > 0 {
-			margin := nonSubscriptionProfit / nonSubscriptionCost * 100
-			marginPercent = &margin
+		var walletMarginPercent *float64
+		if walletCost > 0 {
+			margin := walletProfit / walletCost * 100
+			walletMarginPercent = &margin
 		}
 
 		exportRows = append(exportRows, billingSummaryExportRow{
@@ -59,15 +66,16 @@ func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummar
 			Date:                         time.Unix(row.Day, 0).In(billingExportLocation).Format("2006-01-02"),
 			TotalCostUSD:                 row.CostUSD,
 			TotalRevenueUSD:              row.RevenueUSD,
-			NonSubscriptionCostUSD:       nonSubscriptionCost,
-			NonSubscriptionRevenueUSD:    nonSubscriptionRevenue,
-			NonSubscriptionProfitUSD:     nonSubscriptionProfit,
-			NonSubscriptionMarginPercent: marginPercent,
+			WalletCostUSD:                walletCost,
+			WalletRevenueUSD:             walletRevenue,
+			WalletProfitUSD:              walletProfit,
+			WalletMarginPercent:          walletMarginPercent,
 			ExperienceCostUSD:            row.ExperienceCostUSD,
 			ExperienceBillingUSD:         row.ExperienceBillingUSD,
+			WalletUserCount:              row.WalletUserCount,
 			PaidSubscriptionCostUSD:      row.PaidSubscriptionCostUSD,
 			PaidSubscriptionRevenueUSD:   row.PaidSubscriptionRevenueUSD,
-			NonSubscriptionUserCount:     row.NonSubscriptionUserCount,
+			PaidSubscriptionUserCount:    row.PaidSubscriptionUserCount,
 			ExperienceUserCount:          row.ExperienceUserCount,
 			WalletBalanceUSD:             row.WalletBalanceUSD,
 			ExperienceBalanceUSD:         row.ExperienceBalanceUSD,
@@ -144,8 +152,9 @@ func BillingSummaryExport(c *gin.Context) {
 			"wallet_balance_usd":            walletBalanceUSD,
 			"experience_balance_usd":        experienceBalanceUSD,
 			"paid_subscription_balance_usd": paidSubscriptionBalanceUSD,
-			"non_subscription_user_count":   userCounts.NonSubscriptionUserCount,
+			"wallet_user_count":             userCounts.WalletUserCount,
 			"experience_user_count":         userCounts.ExperienceUserCount,
+			"paid_subscription_user_count":  userCounts.PaidSubscriptionUserCount,
 			"rows":                          buildBillingSummaryExportRows(rows),
 		},
 	})

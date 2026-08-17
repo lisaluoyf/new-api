@@ -52,7 +52,8 @@ func GetBillingSummary(c *gin.Context) {
 		"wallet_balance_usd":            walletBalanceUSD,
 		"experience_balance_usd":        experienceBalanceUSD,
 		"paid_subscription_balance_usd": paidSubscriptionBalanceUSD,
-		"non_subscription_user_count":   userCounts.NonSubscriptionUserCount,
+		"wallet_user_count":             userCounts.WalletUserCount,
 		"experience_user_count":         userCounts.ExperienceUserCount,
+		"paid_subscription_user_count":  userCounts.PaidSubscriptionUserCount,
 	})
 }

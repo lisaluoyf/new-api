@@ -4555,7 +4555,10 @@
     "Paid Subscription Balance": "付費訂閱餘額",
     "Subscription Balance": "訂閱餘額",
     "GPT models": "GPT 模型",
-    "Official pricing": "官方原價"
+    "Official pricing": "官方原價",
+    "Paid Subscription Users": "訂閱用戶",
+    "Paid Subscription Cost": "訂閱成本",
+    "Paid Subscription Revenue": "訂閱收入"
   },
   "User Balance": "用戶餘額",
   "No active subscription": "目前沒有可用訂閱",

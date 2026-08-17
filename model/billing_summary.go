@@ -90,8 +90,9 @@ type BillingDailyRow struct {
 	PaidSubscriptionRevenueUSD float64  `json:"paid_subscription_revenue_usd" gorm:"column:paid_subscription_revenue_usd"`
 	AccountingOKRequestCount   int64    `json:"accounting_ok_request_count" gorm:"column:accounting_ok_request_count"`
 	AccountingTargetReqCount   int64    `json:"accounting_target_request_count" gorm:"column:accounting_target_request_count"`
-	NonSubscriptionUserCount   int64    `json:"non_subscription_user_count" gorm:"-"`
+	WalletUserCount            int64    `json:"wallet_user_count" gorm:"-"`
 	ExperienceUserCount        int64    `json:"experience_user_count" gorm:"-"`
+	PaidSubscriptionUserCount  int64    `json:"paid_subscription_user_count" gorm:"-"`
 	WalletBalanceUSD           *float64 `json:"wallet_balance_usd,omitempty" gorm:"-"`
 	ExperienceBalanceUSD       *float64 `json:"experience_balance_usd,omitempty" gorm:"-"`
 	PaidSubscriptionBalanceUSD *float64 `json:"paid_subscription_balance_usd,omitempty" gorm:"-"`
@@ -103,14 +104,16 @@ type billingDailyCountRow struct {
 }
 
 type billingDailyUserCountRow struct {
-	Day                      int64 `gorm:"column:day"`
-	NonSubscriptionUserCount int64 `gorm:"column:non_subscription_user_count"`
-	ExperienceUserCount      int64 `gorm:"column:experience_user_count"`
+	Day                       int64 `gorm:"column:day"`
+	WalletUserCount           int64 `gorm:"column:wallet_user_count"`
+	ExperienceUserCount       int64 `gorm:"column:experience_user_count"`
+	PaidSubscriptionUserCount int64 `gorm:"column:paid_subscription_user_count"`
 }
 
 type billingUserCountTotals struct {
-	NonSubscriptionUserCount int64 `json:"non_subscription_user_count"`
-	ExperienceUserCount      int64 `json:"experience_user_count"`
+	WalletUserCount           int64 `json:"wallet_user_count"`
+	ExperienceUserCount       int64 `json:"experience_user_count"`
+	PaidSubscriptionUserCount int64 `json:"paid_subscription_user_count"`
 }
 
 // 日分桶按北京时间（UTC+8，无夏令时）切天，使账单页的"每天"与使用日志页
@@ -138,6 +141,10 @@ func billingExperienceSubscriptionCondition() string {
 
 func billingPaidSubscriptionCondition() string {
 	return `COALESCE(other, '') LIKE '%"subscription_type":"gpt_subscription"%'`
+}
+
+func billingWalletCondition() string {
+	return `(COALESCE(other, '') LIKE '%"billing_source":"wallet"%' OR (COALESCE(other, '') NOT LIKE '%"billing_source":"subscription"%' AND NOT ` + billingExperienceSubscriptionCondition() + ` AND NOT ` + billingPaidSubscriptionCondition() + `))`
 }
 
 // GetBillingDailyFromSummary aggregates the small pre-computed
@@ -331,8 +338,9 @@ func getBillingDailyUserCounts(startTimestamp, endTimestamp int64, modelName str
 	var rows []billingDailyUserCountRow
 	if err := tx.
 		Select(dayExpr + ` as day,
-			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND NOT ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as non_subscription_user_count,
-			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count`).
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingWalletCondition() + ` THEN user_id ELSE NULL END) as wallet_user_count,
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count,
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingPaidSubscriptionCondition() + ` THEN user_id ELSE NULL END) as paid_subscription_user_count`).
 		Group(dayExpr).
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -352,8 +360,9 @@ func mergeBillingDailyUserCounts(rows *[]BillingDailyRow, counts map[int64]billi
 	for i := range *rows {
 		row := &(*rows)[i]
 		if count, ok := counts[row.Day]; ok {
-			row.NonSubscriptionUserCount = count.NonSubscriptionUserCount
+			row.WalletUserCount = count.WalletUserCount
 			row.ExperienceUserCount = count.ExperienceUserCount
+			row.PaidSubscriptionUserCount = count.PaidSubscriptionUserCount
 		}
 		byDay[row.Day] = row
 	}
@@ -362,9 +371,10 @@ func mergeBillingDailyUserCounts(rows *[]BillingDailyRow, counts map[int64]billi
 			continue
 		}
 		*rows = append(*rows, BillingDailyRow{
-			Day:                      day,
-			NonSubscriptionUserCount: count.NonSubscriptionUserCount,
-			ExperienceUserCount:      count.ExperienceUserCount,
+			Day:                       day,
+			WalletUserCount:           count.WalletUserCount,
+			ExperienceUserCount:       count.ExperienceUserCount,
+			PaidSubscriptionUserCount: count.PaidSubscriptionUserCount,
 		})
 	}
 	sort.Slice(*rows, func(i, j int) bool {
@@ -379,8 +389,9 @@ func GetBillingUserCountsTotal(startTimestamp, endTimestamp int64, modelName str
 	}
 	var totals billingUserCountTotals
 	if err := tx.
-		Select(`COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND NOT ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as non_subscription_user_count,
-			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count`).
+		Select(`COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingWalletCondition() + ` THEN user_id ELSE NULL END) as wallet_user_count,
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count,
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingPaidSubscriptionCondition() + ` THEN user_id ELSE NULL END) as paid_subscription_user_count`).
 		Scan(&totals).Error; err != nil {
 		return billingUserCountTotals{}, err
 	}

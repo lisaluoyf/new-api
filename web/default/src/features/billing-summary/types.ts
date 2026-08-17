@@ -40,8 +40,9 @@ export interface BillingDailyRow {
   paid_subscription_revenue_usd: number
   accounting_ok_request_count: number
   accounting_target_request_count: number
-  non_subscription_user_count: number
+  wallet_user_count: number
   experience_user_count: number
+  paid_subscription_user_count: number
   wallet_balance_usd?: number | null
   experience_balance_usd?: number | null
   paid_subscription_balance_usd?: number | null
@@ -65,6 +66,7 @@ export interface BillingSummaryResponse
   wallet_balance_usd?: number
   experience_balance_usd?: number
   paid_subscription_balance_usd?: number
-  non_subscription_user_count?: number
+  wallet_user_count?: number
   experience_user_count?: number
+  paid_subscription_user_count?: number
 }

@@ -4555,7 +4555,10 @@
     "Paid Subscription Balance": "Paid Subscription Balance",
     "Subscription Balance": "Abonelik Bakiyesi",
     "GPT models": "GPT modelleri",
-    "Official pricing": "Resmi fiyatlandırma"
+    "Official pricing": "Resmi fiyatlandırma",
+    "Paid Subscription Users": "Subscription Users",
+    "Paid Subscription Cost": "Subscription Cost",
+    "Paid Subscription Revenue": "Subscription Revenue"
   },
   "User Balance": "Kullanıcı Bakiyesi",
   "No active subscription": "Aktif abonelik yok",

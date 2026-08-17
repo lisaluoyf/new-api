@@ -53,13 +53,17 @@ export function BillingSummaryPage() {
     data?.success && data.paid_subscription_balance_usd != null
       ? Number(data.paid_subscription_balance_usd)
       : null
-  const nonSubscriptionUserCount =
-    data?.success && data.non_subscription_user_count != null
-      ? Number(data.non_subscription_user_count)
+  const walletUserCount =
+    data?.success && data.wallet_user_count != null
+      ? Number(data.wallet_user_count)
       : 0
   const experienceUserCount =
     data?.success && data.experience_user_count != null
       ? Number(data.experience_user_count)
+      : 0
+  const paidSubscriptionUserCount =
+    data?.success && data.paid_subscription_user_count != null
+      ? Number(data.paid_subscription_user_count)
       : 0
 
   // Prepend a synthetic "Total" row so the summed cost/revenue/profit/margin
@@ -98,8 +102,9 @@ export function BillingSummaryPage() {
       {
         day: 0,
         ...totals,
-        non_subscription_user_count: nonSubscriptionUserCount,
+        wallet_user_count: walletUserCount,
         experience_user_count: experienceUserCount,
+        paid_subscription_user_count: paidSubscriptionUserCount,
         wallet_balance_usd: walletBalanceUSD,
         experience_balance_usd: experienceBalanceUSD,
         paid_subscription_balance_usd: paidSubscriptionBalanceUSD,
@@ -109,8 +114,9 @@ export function BillingSummaryPage() {
     ]
   }, [
     rows,
-    nonSubscriptionUserCount,
+    walletUserCount,
     experienceUserCount,
+    paidSubscriptionUserCount,
     walletBalanceUSD,
     experienceBalanceUSD,
     paidSubscriptionBalanceUSD,

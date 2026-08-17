@@ -4555,7 +4555,10 @@
     "Paid Subscription Balance": "Paid Subscription Balance",
     "Subscription Balance": "Saldo subskrypcji",
     "GPT models": "Modele GPT",
-    "Official pricing": "Ceny oficjalne"
+    "Official pricing": "Ceny oficjalne",
+    "Paid Subscription Users": "Subscription Users",
+    "Paid Subscription Cost": "Subscription Cost",
+    "Paid Subscription Revenue": "Subscription Revenue"
   },
   "User Balance": "Saldo użytkowników",
   "No active subscription": "Brak aktywnej subskrypcji",

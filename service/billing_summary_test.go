@@ -148,8 +148,9 @@ func TestGetBillingDailyFromRawLogs_SplitsSubscriptionMetrics(t *testing.T) {
 	assert.InDelta(t, 1.0, row.PaidSubscriptionRevenueUSD, 1e-9)
 	assert.Equal(t, int64(3), row.AccountingOKRequestCount)
 	assert.Equal(t, int64(4), row.AccountingTargetReqCount)
-	assert.Equal(t, int64(1), row.NonSubscriptionUserCount)
+	assert.Equal(t, int64(1), row.WalletUserCount)
 	assert.Equal(t, int64(1), row.ExperienceUserCount)
+	assert.Equal(t, int64(1), row.PaidSubscriptionUserCount)
 }
 
 func TestGetBillingUserCountsTotal_DistinctAcrossWholeRange(t *testing.T) {
@@ -246,8 +247,9 @@ func TestGetBillingUserCountsTotal_DistinctAcrossWholeRange(t *testing.T) {
 
 	totals, err := model.GetBillingUserCountsTotal(dayOneTs-10, dayTwoTs+10, modelName, channelID, "", "", "")
 	require.NoError(t, err)
-	assert.Equal(t, int64(3), totals.NonSubscriptionUserCount)
+	assert.Equal(t, int64(2), totals.WalletUserCount)
 	assert.Equal(t, int64(2), totals.ExperienceUserCount)
+	assert.Equal(t, int64(1), totals.PaidSubscriptionUserCount)
 }
 
 func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {

@@ -29,10 +29,20 @@ export function buildBillingSummaryColumns(
 ): ColumnDef<BillingTableRow, unknown>[] {
   const compactHeaderClass =
     'space-x-0 [&_button]:-ms-1! [&_button]:h-7! [&_button]:px-1! [&_svg]:ms-1! [&_svg]:size-3!'
-  const getNonSubscriptionCost = (row: BillingTableRow) =>
-    row.cost_usd - row.experience_cost_usd
-  const getNonSubscriptionRevenue = (row: BillingTableRow) =>
-    row.revenue_usd - row.experience_billing_usd
+  const getWalletCost = (row: BillingTableRow) =>
+    Math.max(
+      0,
+      row.cost_usd -
+        row.experience_cost_usd -
+        row.paid_subscription_cost_usd
+    )
+  const getWalletRevenue = (row: BillingTableRow) =>
+    Math.max(
+      0,
+      row.revenue_usd -
+        row.experience_billing_usd -
+        row.paid_subscription_revenue_usd
+    )
 
   return [
     {
@@ -73,7 +83,7 @@ export function buildBillingSummaryColumns(
       },
     },
     {
-      accessorKey: 'non_subscription_user_count',
+      accessorKey: 'wallet_user_count',
       size: 50,
       header: ({ column }) => (
         <DataTableColumnHeader
@@ -86,7 +96,7 @@ export function buildBillingSummaryColumns(
         <span
           className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
         >
-          {row.original.non_subscription_user_count ?? 0}
+          {row.original.wallet_user_count ?? 0}
         </span>
       ),
     },
@@ -102,7 +112,7 @@ export function buildBillingSummaryColumns(
       ),
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
-          {formatUSD(getNonSubscriptionCost(row.original))}
+          {formatUSD(getWalletCost(row.original))}
         </span>
       ),
     },
@@ -118,7 +128,7 @@ export function buildBillingSummaryColumns(
       ),
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
-          {formatUSD(getNonSubscriptionRevenue(row.original))}
+          {formatUSD(getWalletRevenue(row.original))}
         </span>
       ),
     },
@@ -128,8 +138,7 @@ export function buildBillingSummaryColumns(
       header: () => <span>{t('Profit')}</span>,
       cell: ({ row }) => {
         const profit =
-          getNonSubscriptionRevenue(row.original) -
-          getNonSubscriptionCost(row.original)
+          getWalletRevenue(row.original) - getWalletCost(row.original)
         return (
           <span
             className={`text-xs tabular-nums ${profit < 0 ? 'text-destructive' : ''}`}
@@ -144,8 +153,8 @@ export function buildBillingSummaryColumns(
       size: 56,
       header: () => <span>{t('Margin')}</span>,
       cell: ({ row }) => {
-        const cost = getNonSubscriptionCost(row.original)
-        const revenue = getNonSubscriptionRevenue(row.original)
+        const cost = getWalletCost(row.original)
+        const revenue = getWalletRevenue(row.original)
         if (cost <= 0)
           return <span className='text-muted-foreground text-xs'>—</span>
         const margin = ((revenue - cost) / cost) * 100
@@ -205,6 +214,24 @@ export function buildBillingSummaryColumns(
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
           {formatUSD(row.original.experience_billing_usd)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'paid_subscription_user_count',
+      size: 84,
+      header: ({ column }) => (
+        <DataTableColumnHeader
+          column={column}
+          title={t('Paid Subscription Users')}
+          className={compactHeaderClass}
+        />
+      ),
+      cell: ({ row }) => (
+        <span
+          className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
+        >
+          {row.original.paid_subscription_user_count ?? 0}
         </span>
       ),
     },
@@ -277,7 +304,7 @@ export function buildBillingSummaryColumns(
     {
       accessorKey: 'paid_subscription_balance_usd',
       size: 92,
-      header: () => <span>{t('Paid Subscription Balance')}</span>,
+      header: () => <span>{t('Subscription Balance')}</span>,
       cell: ({ row }) => {
         const balance = row.original.paid_subscription_balance_usd
         return balance != null ? (
