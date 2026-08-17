@@ -1,10 +1,12 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -345,6 +347,10 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 			}
 			s.tokenConsumed = 0
 		}
+		var rollingLimitErr *model.GPTSubscriptionRollingLimitError
+		if errors.As(err, &rollingLimitErr) {
+			return newGPTSubscriptionRollingLimitAPIError(c, s.relayInfo, rollingLimitErr, 0, false)
+		}
 		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "no active subscription") || strings.Contains(errMsg, "subscription quota insufficient") {
@@ -476,6 +482,122 @@ func (s *BillingSession) syncRelayInfo() {
 // NewBillingSession 工厂 — 根据计费偏好创建会话并处理回退
 // ---------------------------------------------------------------------------
 
+func billingUserTimezone(c *gin.Context, relayInfo *relaycommon.RelayInfo) string {
+	candidates := []string{}
+	if c != nil && c.Request != nil {
+		candidates = append(candidates, c.GetHeader("X-Timezone"))
+	}
+	if relayInfo != nil {
+		candidates = append(candidates, relayInfo.UserSetting.Timezone)
+	}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if _, err := time.LoadLocation(candidate); err == nil {
+			return candidate
+		}
+	}
+	return "UTC"
+}
+
+func billingUserLanguage(relayInfo *relaycommon.RelayInfo) string {
+	if relayInfo != nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(relayInfo.UserSetting.Language)), "zh") {
+		return "zh"
+	}
+	return "en"
+}
+
+func rollingWindowLabel(windows []string, language string) string {
+	if language == "zh" {
+		labels := make([]string, 0, len(windows))
+		for _, window := range windows {
+			if window == "5h" {
+				labels = append(labels, "5 小时")
+			} else if window == "7d" {
+				labels = append(labels, "7 天")
+			}
+		}
+		return strings.Join(labels, "和") + "滚动额度"
+	}
+	labels := make([]string, 0, len(windows))
+	for _, window := range windows {
+		if window == "5h" {
+			labels = append(labels, "5-hour")
+		} else if window == "7d" {
+			labels = append(labels, "7-day")
+		}
+	}
+	return strings.Join(labels, " and ") + " rolling allowance"
+}
+
+type localizedRollingLimitError struct {
+	message string
+	cause   *model.GPTSubscriptionRollingLimitError
+}
+
+func (e *localizedRollingLimitError) Error() string { return e.message }
+func (e *localizedRollingLimitError) Unwrap() error { return e.cause }
+
+func newGPTSubscriptionRollingLimitAPIError(c *gin.Context, relayInfo *relaycommon.RelayInfo, limitErr *model.GPTSubscriptionRollingLimitError, walletBalance int, walletInsufficient bool) *types.NewAPIError {
+	if limitErr == nil {
+		limitErr = &model.GPTSubscriptionRollingLimitError{}
+	}
+	info := limitErr.Info
+	timezone := billingUserTimezone(c, relayInfo)
+	language := billingUserLanguage(relayInfo)
+	message := "GPT Pass rolling allowance is temporarily unavailable."
+	if language == "zh" {
+		message = "GPT Pass 的" + rollingWindowLabel(info.LimitedWindows, language) + "暂时不足"
+	}
+	if info.AvailableAt > 0 {
+		at := time.Unix(info.AvailableAt, 0)
+		location, err := time.LoadLocation(timezone)
+		if err != nil {
+			location = time.UTC
+			timezone = "UTC"
+		}
+		at = at.In(location)
+		if language == "zh" {
+			message = fmt.Sprintf("GPT Pass 的%s已用尽，预计最早恢复时间为 %s（%s）", rollingWindowLabel(info.LimitedWindows, language), at.Format("2006年1月2日 15:04"), timezone)
+		} else {
+			message = fmt.Sprintf("Your GPT Pass %s is exhausted. It is expected to become available again after %s (%s)", rollingWindowLabel(info.LimitedWindows, language), at.Format("Jan 2, 2006 15:04"), timezone)
+		}
+	} else if language == "zh" {
+		message += "；本次请求预计超过套餐单次可用额度"
+	} else {
+		message += "; this request is larger than the plan's per-window allowance"
+	}
+	if walletInsufficient {
+		if language == "zh" {
+			message += "；钱包余额不足，可充值后继续使用"
+		} else {
+			message += ". Your wallet balance is insufficient; top up to continue immediately"
+		}
+	}
+	metadata := map[string]any{
+		"reason":                 string(types.ErrorCodeGPTSubscriptionRollingLimit),
+		"limited_windows":        info.LimitedWindows,
+		"available_at":           info.AvailableAt,
+		"retry_after_seconds":    info.RetryAfterSeconds,
+		"five_hour_available_at": info.FiveHourAvailableAt,
+		"seven_day_available_at": info.SevenDayAvailableAt,
+		"five_hour_used":         info.FiveHourUsed,
+		"five_hour_limit":        info.FiveHourLimit,
+		"seven_day_used":         info.SevenDayUsed,
+		"seven_day_limit":        info.SevenDayLimit,
+		"requested_quota":        info.RequestedQuota,
+		"timezone":               timezone,
+		"wallet_balance":         walletBalance,
+		"wallet_insufficient":    walletInsufficient,
+	}
+	metadataBytes, _ := common.Marshal(metadata)
+	apiErr := types.NewErrorWithStatusCode(&localizedRollingLimitError{message: message, cause: limitErr}, types.ErrorCodeGPTSubscriptionRollingLimit, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	apiErr.Metadata = metadataBytes
+	return apiErr
+}
+
 // NewBillingSession 根据用户计费偏好创建 BillingSession，处理 subscription_first / wallet_first 的回退。
 func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError) {
 	if relayInfo == nil {
@@ -483,6 +605,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
+	var paidRollingLimitErr *model.GPTSubscriptionRollingLimitError
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
@@ -494,12 +617,18 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
 		if userQuota <= 0 {
+			if paidRollingLimitErr != nil {
+				return nil, newGPTSubscriptionRollingLimitAPIError(c, relayInfo, paidRollingLimitErr, userQuota, true)
+			}
 			return nil, types.NewErrorWithStatusCode(
 				fmt.Errorf("用户额度不足, 剩余额度: %s", logger.FormatQuota(userQuota)),
 				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
 				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
 		if userQuota-preConsumedQuota < 0 {
+			if paidRollingLimitErr != nil {
+				return nil, newGPTSubscriptionRollingLimitAPIError(c, relayInfo, paidRollingLimitErr, userQuota, true)
+			}
 			return nil, types.NewErrorWithStatusCode(
 				fmt.Errorf("预扣费额度失败, 用户剩余额度: %s, 需要预扣费额度: %s", logger.FormatQuota(userQuota), logger.FormatQuota(preConsumedQuota)),
 				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
@@ -600,6 +729,12 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		}
 		session, apiErr := trySubscription(model.IsGPTPaidSubscriptionPlan, nil, quota, model.SubscriptionPlanTypeGPTSubscription)
 		if apiErr != nil {
+			var rollingLimitErr *model.GPTSubscriptionRollingLimitError
+			if errors.As(apiErr, &rollingLimitErr) {
+				paidRollingLimitErr = rollingLimitErr
+				relayInfo.ActivateWalletPriceData()
+				return nil, nil
+			}
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
 				relayInfo.ActivateWalletPriceData()
 				return nil, nil

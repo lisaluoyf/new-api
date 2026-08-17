@@ -86,8 +86,9 @@ const (
 	ErrorCodeUpdateDataError ErrorCode = "update_data_error"
 
 	// quota error
-	ErrorCodeInsufficientUserQuota      ErrorCode = "insufficient_user_quota"
-	ErrorCodePreConsumeTokenQuotaFailed ErrorCode = "pre_consume_token_quota_failed"
+	ErrorCodeInsufficientUserQuota       ErrorCode = "insufficient_user_quota"
+	ErrorCodePreConsumeTokenQuotaFailed  ErrorCode = "pre_consume_token_quota_failed"
+	ErrorCodeGPTSubscriptionRollingLimit ErrorCode = "gpt_subscription_rolling_limit"
 )
 
 type NewAPIError struct {
@@ -209,6 +210,9 @@ func (e *NewAPIError) ToOpenAIError() OpenAIError {
 	}
 	if result.Message == "" {
 		result.Message = string(e.errorType)
+	}
+	if len(e.Metadata) > 0 {
+		result.Metadata = e.Metadata
 	}
 	return result
 }

@@ -1566,6 +1566,7 @@ func preConsumeUserSubscription(
 			return errors.New("no active subscription")
 		}
 		matchedPlan := false
+		var rollingLimitErr *GPTSubscriptionRollingLimitError
 		for _, candidate := range subs {
 			sub := candidate
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
@@ -1588,18 +1589,18 @@ func preConsumeUserSubscription(
 				if sevenLimit <= 0 {
 					sevenLimit = plan.SevenDayAmount
 				}
-				fiveUsed, sevenUsed, usageErr := getGPTSubscriptionRollingUsageTx(tx, userId, now)
+				rollingInfo, usageErr := getGPTSubscriptionRollingLimitInfoTx(tx, userId, now, amount, fiveLimit, sevenLimit)
 				if usageErr != nil {
 					return usageErr
 				}
-				if (fiveLimit > 0 && fiveUsed+amount > fiveLimit) ||
-					(sevenLimit > 0 && sevenUsed+amount > sevenLimit) {
+				if len(rollingInfo.LimitedWindows) > 0 {
+					rollingLimitErr = &GPTSubscriptionRollingLimitError{Info: rollingInfo}
 					continue
 				}
 				returnValue.FiveHourLimit = fiveLimit
 				returnValue.SevenDayLimit = sevenLimit
-				returnValue.FiveHourUsedAfter = fiveUsed + amount
-				returnValue.SevenDayUsedAfter = sevenUsed + amount
+				returnValue.FiveHourUsedAfter = rollingInfo.FiveHourUsed + amount
+				returnValue.SevenDayUsedAfter = rollingInfo.SevenDayUsed + amount
 			}
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
@@ -1649,6 +1650,9 @@ func preConsumeUserSubscription(
 		}
 		if planMatcher != nil && !matchedPlan {
 			return errors.New("no active subscription for required plan")
+		}
+		if rollingLimitErr != nil {
+			return rollingLimitErr
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
 	})

@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -34,6 +35,35 @@ type GPTSubscriptionState struct {
 	Plan         *SubscriptionPlan `json:"plan,omitempty"`
 	FiveHourUsed int64             `json:"five_hour_used"`
 	SevenDayUsed int64             `json:"seven_day_used"`
+}
+
+// GPTSubscriptionRollingLimitInfo describes which strict rolling windows block
+// a request and the earliest time at which enough historical usage is expected
+// to leave those windows. Timestamps are Unix seconds so clients can format
+// them in the user's own timezone.
+type GPTSubscriptionRollingLimitInfo struct {
+	LimitedWindows      []string `json:"limited_windows"`
+	AvailableAt         int64    `json:"available_at,omitempty"`
+	RetryAfterSeconds   int64    `json:"retry_after_seconds,omitempty"`
+	FiveHourAvailableAt int64    `json:"five_hour_available_at,omitempty"`
+	SevenDayAvailableAt int64    `json:"seven_day_available_at,omitempty"`
+	FiveHourUsed        int64    `json:"five_hour_used"`
+	FiveHourLimit       int64    `json:"five_hour_limit"`
+	SevenDayUsed        int64    `json:"seven_day_used"`
+	SevenDayLimit       int64    `json:"seven_day_limit"`
+	RequestedQuota      int64    `json:"requested_quota"`
+}
+
+type GPTSubscriptionRollingLimitError struct {
+	Info GPTSubscriptionRollingLimitInfo
+}
+
+func (e *GPTSubscriptionRollingLimitError) Error() string {
+	if e == nil {
+		return "subscription quota insufficient: GPT subscription rolling limit reached"
+	}
+	return fmt.Sprintf("subscription quota insufficient: GPT subscription rolling limit reached, windows=%s, need=%d",
+		strings.Join(e.Info.LimitedWindows, ","), e.Info.RequestedQuota)
 }
 
 func getOptionString(key, fallback string) string {
@@ -451,4 +481,101 @@ func getGPTSubscriptionRollingUsageTx(tx *gorm.DB, userId int, now int64) (fiveH
 		Where("user_id = ? AND plan_type = ? AND status = ?", userId, SubscriptionPlanTypeGPTSubscription, "consumed").
 		Scan(&result).Error
 	return result.Five, result.Seven, err
+}
+
+type gptSubscriptionRollingUsageRecord struct {
+	PreConsumed int64
+	CreatedAt   int64
+}
+
+// getGPTSubscriptionRollingLimitInfoTx calculates both the current usage and
+// the first future timestamp at which a request of amount can fit. The +1
+// second matches the existing inclusive `created_at >= now-window` query: a
+// record is still counted at its exact expiry second and leaves on the next
+// second.
+func getGPTSubscriptionRollingLimitInfoTx(tx *gorm.DB, userId int, now, amount, fiveLimit, sevenLimit int64) (GPTSubscriptionRollingLimitInfo, error) {
+	info := GPTSubscriptionRollingLimitInfo{
+		FiveHourLimit:  fiveLimit,
+		SevenDayLimit:  sevenLimit,
+		RequestedQuota: amount,
+	}
+	if tx == nil {
+		tx = DB
+	}
+	fiveWindow := int64((5 * time.Hour).Seconds())
+	sevenWindow := int64((7 * 24 * time.Hour).Seconds())
+	var records []gptSubscriptionRollingUsageRecord
+	if err := tx.Model(&SubscriptionPreConsumeRecord{}).
+		Select("pre_consumed, created_at").
+		Where("user_id = ? AND plan_type = ? AND status = ? AND created_at >= ?", userId, SubscriptionPlanTypeGPTSubscription, "consumed", now-sevenWindow).
+		Order("created_at asc, id asc").
+		Find(&records).Error; err != nil {
+		return info, err
+	}
+
+	var fiveUsed, sevenUsed int64
+	for _, record := range records {
+		sevenUsed += record.PreConsumed
+		if record.CreatedAt >= now-fiveWindow {
+			fiveUsed += record.PreConsumed
+		}
+	}
+	info.FiveHourUsed = fiveUsed
+	info.SevenDayUsed = sevenUsed
+
+	calculateAvailableAt := func(window, used, limit int64) int64 {
+		if limit <= 0 || used+amount <= limit {
+			return 0
+		}
+		// A request larger than the complete window can never fit by waiting.
+		if amount > limit {
+			return 0
+		}
+		remaining := used
+		for i := 0; i < len(records); {
+			createdAt := records[i].CreatedAt
+			expiresAt := createdAt + window + 1
+			var expired int64
+			for i < len(records) && records[i].CreatedAt == createdAt {
+				if window == sevenWindow || records[i].CreatedAt >= now-window {
+					expired += records[i].PreConsumed
+				}
+				i++
+			}
+			remaining -= expired
+			if remaining+amount <= limit {
+				return expiresAt
+			}
+		}
+		return 0
+	}
+
+	if fiveLimit > 0 && fiveUsed+amount > fiveLimit {
+		info.FiveHourAvailableAt = calculateAvailableAt(fiveWindow, fiveUsed, fiveLimit)
+		info.LimitedWindows = append(info.LimitedWindows, "5h")
+	}
+	if sevenLimit > 0 && sevenUsed+amount > sevenLimit {
+		info.SevenDayAvailableAt = calculateAvailableAt(sevenWindow, sevenUsed, sevenLimit)
+		info.LimitedWindows = append(info.LimitedWindows, "7d")
+	}
+	if len(info.LimitedWindows) > 0 {
+		switch len(info.LimitedWindows) {
+		case 1:
+			if info.LimitedWindows[0] == "5h" {
+				info.AvailableAt = info.FiveHourAvailableAt
+			} else {
+				info.AvailableAt = info.SevenDayAvailableAt
+			}
+		default:
+			// Both windows must have room. A zero value means one window can
+			// never fit this request even after all current usage expires.
+			if info.FiveHourAvailableAt > 0 && info.SevenDayAvailableAt > 0 {
+				info.AvailableAt = max(info.FiveHourAvailableAt, info.SevenDayAvailableAt)
+			}
+		}
+		if info.AvailableAt > now {
+			info.RetryAfterSeconds = info.AvailableAt - now
+		}
+	}
+	return info, nil
 }

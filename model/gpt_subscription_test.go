@@ -324,6 +324,61 @@ func TestGPTSubscriptionRollingLimitSettleAndRefund(t *testing.T) {
 	require.Zero(t, updated.AmountUsed)
 }
 
+func TestGPTSubscriptionRollingLimitCalculatesEarliestRecovery(t *testing.T) {
+	setupGPTSubscriptionTestDB(t)
+	const userID = 9341
+	now := int64(1_800_000_000)
+	records := []SubscriptionPreConsumeRecord{
+		{RequestId: "rolling-old", UserId: userID, UserSubscriptionId: 1, PreConsumed: 40, PlanType: SubscriptionPlanTypeGPTSubscription, Status: "consumed"},
+		{RequestId: "rolling-five-a", UserId: userID, UserSubscriptionId: 1, PreConsumed: 30, PlanType: SubscriptionPlanTypeGPTSubscription, Status: "consumed"},
+		{RequestId: "rolling-five-b", UserId: userID, UserSubscriptionId: 1, PreConsumed: 20, PlanType: SubscriptionPlanTypeGPTSubscription, Status: "consumed"},
+	}
+	createdAt := []int64{now - 6*86400, now - 4*3600, now - 2*3600}
+	for i := range records {
+		record := records[i]
+		require.NoError(t, DB.Create(&record).Error)
+		require.NoError(t, DB.Model(&SubscriptionPreConsumeRecord{}).Where("id = ?", record.Id).Updates(map[string]any{
+			"created_at": createdAt[i], "updated_at": createdAt[i],
+		}).Error)
+	}
+
+	info, err := getGPTSubscriptionRollingLimitInfoTx(DB, userID, now, 20, 60, 100)
+	require.NoError(t, err)
+	require.Equal(t, []string{"5h", "7d"}, info.LimitedWindows)
+	require.EqualValues(t, 50, info.FiveHourUsed)
+	require.EqualValues(t, 90, info.SevenDayUsed)
+	require.Equal(t, now+3600+1, info.FiveHourAvailableAt)
+	require.Equal(t, now+86400+1, info.SevenDayAvailableAt)
+	require.Equal(t, now+86400+1, info.AvailableAt)
+	require.Equal(t, int64(86401), info.RetryAfterSeconds)
+}
+
+func TestGPTSubscriptionRollingLimitInclusiveBoundaryAndOversizedRequest(t *testing.T) {
+	setupGPTSubscriptionTestDB(t)
+	const userID = 9342
+	now := int64(1_800_100_000)
+	record := SubscriptionPreConsumeRecord{
+		RequestId: "rolling-boundary", UserId: userID, UserSubscriptionId: 1,
+		PreConsumed: 60, PlanType: SubscriptionPlanTypeGPTSubscription, Status: "consumed",
+	}
+	require.NoError(t, DB.Create(&record).Error)
+	require.NoError(t, DB.Model(&SubscriptionPreConsumeRecord{}).Where("id = ?", record.Id).Updates(map[string]any{
+		"created_at": now - 5*3600, "updated_at": now - 5*3600,
+	}).Error)
+
+	info, err := getGPTSubscriptionRollingLimitInfoTx(DB, userID, now, 1, 60, 1_000)
+	require.NoError(t, err)
+	require.Equal(t, []string{"5h"}, info.LimitedWindows)
+	require.Equal(t, now+1, info.AvailableAt)
+	require.EqualValues(t, 1, info.RetryAfterSeconds)
+
+	oversized, err := getGPTSubscriptionRollingLimitInfoTx(DB, userID, now, 61, 60, 1_000)
+	require.NoError(t, err)
+	require.Equal(t, []string{"5h"}, oversized.LimitedWindows)
+	require.Zero(t, oversized.AvailableAt)
+	require.Zero(t, oversized.RetryAfterSeconds)
+}
+
 func TestGPTSubscriptionUpgradeQuoteAndRenewal(t *testing.T) {
 	setupGPTSubscriptionTestDB(t)
 	now := GetDBTimestamp()
