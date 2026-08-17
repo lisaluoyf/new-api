@@ -21,6 +21,10 @@ import { DataTableColumnHeader } from '@/components/data-table'
 import { formatDay, formatUSD } from '../constants'
 import type { BillingTableRow } from '../types'
 
+function formatUSD1(value: number): string {
+  return `$${value.toFixed(1)}`
+}
+
 // Profit and margin are derived here from cost/revenue — not sent by the
 // backend, so they never go stale relative to the source numbers.
 // 毛利 (margin) is intentionally profit/cost, not profit/revenue.
@@ -247,7 +251,7 @@ export function buildBillingSummaryColumns(
       ),
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
-          {formatUSD(row.original.paid_subscription_cost_usd)}
+          {formatUSD1(row.original.paid_subscription_cost_usd)}
         </span>
       ),
     },
@@ -263,7 +267,7 @@ export function buildBillingSummaryColumns(
       ),
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
-          {formatUSD(row.original.paid_subscription_revenue_usd)}
+          {formatUSD1(row.original.paid_subscription_revenue_usd)}
         </span>
       ),
     },

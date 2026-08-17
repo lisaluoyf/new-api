@@ -109,6 +109,46 @@ func runBillingSummaryOnce() {
 	logger.LogInfo(ctx, fmt.Sprintf("billing-summary: refreshed %d bucket rows since %d", len(rows), since))
 }
 
+func applyPaidSubscriptionAccruals(rows *[]model.BillingDailyRow, accruals map[int64]model.BillingPaidSubscriptionDailyAccrual) {
+	if rows == nil {
+		return
+	}
+	byDay := make(map[int64]*model.BillingDailyRow, len(*rows))
+	for i := range *rows {
+		row := &(*rows)[i]
+		if accrual, ok := accruals[row.Day]; ok {
+			row.RevenueUSD += accrual.RevenueUSD - row.PaidSubscriptionRevenueUSD
+			if row.RevenueUSD < 0 {
+				row.RevenueUSD = 0
+			}
+			row.PaidSubscriptionRevenueUSD = accrual.RevenueUSD
+			row.PaidSubscriptionUserCount = accrual.UserCount
+		} else {
+			row.RevenueUSD -= row.PaidSubscriptionRevenueUSD
+			if row.RevenueUSD < 0 {
+				row.RevenueUSD = 0
+			}
+			row.PaidSubscriptionRevenueUSD = 0
+			row.PaidSubscriptionUserCount = 0
+		}
+		byDay[row.Day] = row
+	}
+	for day, accrual := range accruals {
+		if _, ok := byDay[day]; ok {
+			continue
+		}
+		*rows = append(*rows, model.BillingDailyRow{
+			Day:                        day,
+			RevenueUSD:                 accrual.RevenueUSD,
+			PaidSubscriptionRevenueUSD: accrual.RevenueUSD,
+			PaidSubscriptionUserCount:  accrual.UserCount,
+		})
+	}
+	sort.Slice(*rows, func(i, j int) bool {
+		return (*rows)[i].Day > (*rows)[j].Day
+	})
+}
+
 // GetBillingDaily picks the summary-table path when no user-identifying
 // filter is set, otherwise falls back to querying raw logs directly (see
 // model.GetBillingDailyFromRawLogs for why no name→id resolution is needed).
@@ -145,6 +185,11 @@ func GetBillingDaily(startTimestamp, endTimestamp int64, modelName string, chann
 	if err != nil {
 		return nil, err
 	}
+	paidSubscriptionAccruals, err := model.GetBillingPaidSubscriptionDailyAccruals(startTimestamp, endTimestamp)
+	if err != nil {
+		return nil, err
+	}
+	applyPaidSubscriptionAccruals(&rows, paidSubscriptionAccruals)
 	for i := range rows {
 		if balance, ok := experienceSnapshots[rows[i].Day]; ok {
 			balanceCopy := balance

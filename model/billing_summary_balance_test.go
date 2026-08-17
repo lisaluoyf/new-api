@@ -145,3 +145,52 @@ func TestGetNonAdminSubscriptionBalanceUSD(t *testing.T) {
 	require.NoError(t, db.First(&paidSnapshot, "day = ?", 100).Error)
 	require.Equal(t, now, paidSnapshot.SnapshotAt)
 }
+
+func TestGetBillingPaidSubscriptionDailyAccruals(t *testing.T) {
+	oldDB := DB
+	db, err := gorm.Open(sqlite.Open("file:billing-summary-paid-accruals?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&User{}, &UserSubscription{}, &SubscriptionPlan{}))
+	DB = db
+	t.Cleanup(func() {
+		DB = oldDB
+	})
+
+	users := []User{
+		{Id: 11, Username: "paid-1", AffCode: "paid-1", Role: common.RoleCommonUser},
+		{Id: 12, Username: "paid-2", AffCode: "paid-2", Role: common.RoleCommonUser},
+		{Id: 13, Username: "cancelled", AffCode: "cancelled", Role: common.RoleCommonUser},
+	}
+	require.NoError(t, db.Create(&users).Error)
+
+	plan := SubscriptionPlan{
+		Id:            201,
+		Title:         "GPT Subscription",
+		PlanType:      SubscriptionPlanTypeGPTSubscription,
+		PriceAmount:   48,
+		Currency:      "USD",
+		DurationUnit:  SubscriptionDurationDay,
+		DurationValue: 2,
+	}
+	require.NoError(t, db.Create(&plan).Error)
+
+	dayStart := billingDayStartUnix(common.GetTimestamp())
+	subs := []UserSubscription{
+		{UserId: 11, PlanId: 201, Status: "active", StartTime: dayStart, EndTime: dayStart + 2*86400, PriceAmountSnapshot: 48, DurationSecondsSnapshot: 2 * 86400},
+		{UserId: 12, PlanId: 201, Status: "active", StartTime: dayStart + 12*3600, EndTime: dayStart + 36*3600, PriceAmountSnapshot: 24, DurationSecondsSnapshot: 24 * 3600},
+		{UserId: 13, PlanId: 201, Status: "cancelled", StartTime: dayStart, EndTime: dayStart + 86400, PriceAmountSnapshot: 24, DurationSecondsSnapshot: 86400},
+	}
+	require.NoError(t, db.Create(&subs).Error)
+
+	accruals, err := GetBillingPaidSubscriptionDailyAccruals(dayStart, dayStart+2*86400-1)
+	require.NoError(t, err)
+	require.Len(t, accruals, 2)
+	require.InDelta(t, 36, accruals[dayStart].RevenueUSD, 1e-9)
+	require.Equal(t, int64(2), accruals[dayStart].UserCount)
+	require.InDelta(t, 36, accruals[dayStart+86400].RevenueUSD, 1e-9)
+	require.Equal(t, int64(2), accruals[dayStart+86400].UserCount)
+
+	totalUsers, err := GetBillingPaidSubscriptionUserCountTotal(dayStart, dayStart+2*86400-1)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), totalUsers)
+}

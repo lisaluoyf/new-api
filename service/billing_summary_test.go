@@ -170,6 +170,24 @@ func TestGetBillingUserCountsTotal_DistinctAcrossWholeRange(t *testing.T) {
 		{Id: 1006, Username: "paid-user", AffCode: "paid-user", Status: common.UserStatusEnabled},
 	}
 	require.NoError(t, model.DB.Create(&users).Error)
+	require.NoError(t, model.DB.Create(&model.SubscriptionPlan{
+		Id:            9001,
+		Title:         "GPT Subscription",
+		PlanType:      model.SubscriptionPlanTypeGPTSubscription,
+		PriceAmount:   30,
+		Currency:      "USD",
+		DurationUnit:  model.SubscriptionDurationMonth,
+		DurationValue: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.UserSubscription{
+		UserId:                  1006,
+		PlanId:                  9001,
+		Status:                  "active",
+		StartTime:               dayOneTs - 3600,
+		EndTime:                 dayTwoTs + 3600,
+		PriceAmountSnapshot:     30,
+		DurationSecondsSnapshot: 30 * 86400,
+	}).Error)
 	seedChannel(t, channelID)
 
 	seedConsumeLog(t, &model.Log{
@@ -318,4 +336,30 @@ func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {
 	assert.InDelta(t, 0.4, row.PaidSubscriptionCostUSD, 1e-9)
 	assert.InDelta(t, 1.0, row.PaidSubscriptionRevenueUSD, 1e-9)
 	assert.Equal(t, int64(3), row.RequestCount)
+}
+
+func TestApplyPaidSubscriptionAccruals(t *testing.T) {
+	rows := []model.BillingDailyRow{
+		{Day: 10, RevenueUSD: 11, PaidSubscriptionRevenueUSD: 1, PaidSubscriptionUserCount: 1},
+		{Day: 9, RevenueUSD: 5, PaidSubscriptionRevenueUSD: 0, PaidSubscriptionUserCount: 0},
+	}
+	accruals := map[int64]model.BillingPaidSubscriptionDailyAccrual{
+		10: {RevenueUSD: 3, UserCount: 2},
+		8:  {RevenueUSD: 4, UserCount: 1},
+	}
+
+	applyPaidSubscriptionAccruals(&rows, accruals)
+
+	require.Len(t, rows, 3)
+	assert.Equal(t, int64(10), rows[0].Day)
+	assert.InDelta(t, 13, rows[0].RevenueUSD, 1e-9)
+	assert.InDelta(t, 3, rows[0].PaidSubscriptionRevenueUSD, 1e-9)
+	assert.Equal(t, int64(2), rows[0].PaidSubscriptionUserCount)
+	assert.Equal(t, int64(9), rows[1].Day)
+	assert.InDelta(t, 5, rows[1].RevenueUSD, 1e-9)
+	assert.InDelta(t, 0, rows[1].PaidSubscriptionRevenueUSD, 1e-9)
+	assert.Equal(t, int64(8), rows[2].Day)
+	assert.InDelta(t, 4, rows[2].RevenueUSD, 1e-9)
+	assert.InDelta(t, 4, rows[2].PaidSubscriptionRevenueUSD, 1e-9)
+	assert.Equal(t, int64(1), rows[2].PaidSubscriptionUserCount)
 }
