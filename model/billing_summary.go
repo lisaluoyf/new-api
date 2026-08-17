@@ -116,6 +116,20 @@ type billingUserCountTotals struct {
 	PaidSubscriptionUserCount int64 `json:"paid_subscription_user_count"`
 }
 
+type BillingPaidSubscriptionDailyAccrual struct {
+	RevenueUSD float64 `json:"revenue_usd"`
+	UserCount  int64   `json:"user_count"`
+}
+
+type billingPaidSubscriptionAccrualRow struct {
+	UserId                  int     `gorm:"column:user_id"`
+	StartTime               int64   `gorm:"column:start_time"`
+	EndTime                 int64   `gorm:"column:end_time"`
+	PriceAmountSnapshot     float64 `gorm:"column:price_amount_snapshot"`
+	DurationSecondsSnapshot int64   `gorm:"column:duration_seconds_snapshot"`
+	PlanPriceAmount         float64 `gorm:"column:plan_price_amount"`
+}
+
 // 日分桶按北京时间（UTC+8，无夏令时）切天，使账单页的"每天"与使用日志页
 // （浏览器本地时间筛选，团队在北京）看到的同一天严格对齐。
 const billingDayTZOffsetSeconds = 8 * 3600
@@ -145,6 +159,123 @@ func billingPaidSubscriptionCondition() string {
 
 func billingWalletCondition() string {
 	return `(COALESCE(other, '') LIKE '%"billing_source":"wallet"%' OR (COALESCE(other, '') NOT LIKE '%"billing_source":"subscription"%' AND NOT ` + billingExperienceSubscriptionCondition() + ` AND NOT ` + billingPaidSubscriptionCondition() + `))`
+}
+
+func billingDayStartUnix(unixSeconds int64) int64 {
+	return ((unixSeconds + billingDayTZOffsetSeconds) / 86400 * 86400) - billingDayTZOffsetSeconds
+}
+
+func billingRangeDayEndExclusive(unixSeconds int64) int64 {
+	return billingDayStartUnix(unixSeconds) + 86400
+}
+
+func paidSubscriptionAccrualQuery(startTimestamp, endTimestamp int64) *gorm.DB {
+	tx := DB.Table("user_subscriptions").
+		Select(`user_subscriptions.user_id,
+			user_subscriptions.start_time,
+			user_subscriptions.end_time,
+			user_subscriptions.price_amount_snapshot,
+			user_subscriptions.duration_seconds_snapshot,
+			subscription_plans.price_amount as plan_price_amount`).
+		Joins("JOIN users ON users.id = user_subscriptions.user_id AND users.deleted_at IS NULL").
+		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
+		Where("users.role < ?", common.RoleAdminUser).
+		Where("subscription_plans.plan_type = ?", SubscriptionPlanTypeGPTSubscription).
+		Where("user_subscriptions.status <> ?", "cancelled").
+		Where("user_subscriptions.end_time > user_subscriptions.start_time")
+	if startTimestamp != 0 {
+		tx = tx.Where("user_subscriptions.end_time > ?", billingDayStartUnix(startTimestamp))
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("user_subscriptions.start_time < ?", billingRangeDayEndExclusive(endTimestamp))
+	}
+	return tx
+}
+
+func paidSubscriptionAccrualPriceAndDuration(row billingPaidSubscriptionAccrualRow) (float64, int64) {
+	price := row.PriceAmountSnapshot
+	if price <= 0 {
+		price = row.PlanPriceAmount
+	}
+	durationSeconds := row.DurationSecondsSnapshot
+	if durationSeconds <= 0 {
+		durationSeconds = subscriptionDurationSeconds(row.StartTime, row.EndTime)
+	}
+	return price, durationSeconds
+}
+
+func GetBillingPaidSubscriptionDailyAccruals(startTimestamp, endTimestamp int64) (map[int64]BillingPaidSubscriptionDailyAccrual, error) {
+	var rows []billingPaidSubscriptionAccrualRow
+	if err := paidSubscriptionAccrualQuery(startTimestamp, endTimestamp).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	type dailyAccumulator struct {
+		revenueUSD float64
+		users      map[int]struct{}
+	}
+	accumulators := make(map[int64]*dailyAccumulator)
+	var rangeStart int64
+	var rangeEndExclusive int64
+	if startTimestamp != 0 {
+		rangeStart = billingDayStartUnix(startTimestamp)
+	}
+	if endTimestamp != 0 {
+		rangeEndExclusive = billingRangeDayEndExclusive(endTimestamp)
+	}
+	for _, row := range rows {
+		price, durationSeconds := paidSubscriptionAccrualPriceAndDuration(row)
+		if price <= 0 || durationSeconds <= 0 {
+			continue
+		}
+		overlapStart := row.StartTime
+		if rangeStart != 0 && overlapStart < rangeStart {
+			overlapStart = rangeStart
+		}
+		overlapEnd := row.EndTime
+		if rangeEndExclusive != 0 && overlapEnd > rangeEndExclusive {
+			overlapEnd = rangeEndExclusive
+		}
+		if overlapEnd <= overlapStart {
+			continue
+		}
+		for dayStart := billingDayStartUnix(overlapStart); dayStart < overlapEnd; dayStart += 86400 {
+			dayEnd := dayStart + 86400
+			segmentStart := overlapStart
+			if segmentStart < dayStart {
+				segmentStart = dayStart
+			}
+			segmentEnd := overlapEnd
+			if segmentEnd > dayEnd {
+				segmentEnd = dayEnd
+			}
+			if segmentEnd <= segmentStart {
+				continue
+			}
+			accumulator, ok := accumulators[dayStart]
+			if !ok {
+				accumulator = &dailyAccumulator{users: make(map[int]struct{})}
+				accumulators[dayStart] = accumulator
+			}
+			accumulator.revenueUSD += price * float64(segmentEnd-segmentStart) / float64(durationSeconds)
+			accumulator.users[row.UserId] = struct{}{}
+		}
+	}
+	result := make(map[int64]BillingPaidSubscriptionDailyAccrual, len(accumulators))
+	for day, accumulator := range accumulators {
+		result[day] = BillingPaidSubscriptionDailyAccrual{
+			RevenueUSD: accumulator.revenueUSD,
+			UserCount:  int64(len(accumulator.users)),
+		}
+	}
+	return result, nil
+}
+
+func GetBillingPaidSubscriptionUserCountTotal(startTimestamp, endTimestamp int64) (int64, error) {
+	var count int64
+	err := paidSubscriptionAccrualQuery(startTimestamp, endTimestamp).
+		Distinct("user_subscriptions.user_id").
+		Count(&count).Error
+	return count, err
 }
 
 // GetBillingDailyFromSummary aggregates the small pre-computed
@@ -390,9 +521,12 @@ func GetBillingUserCountsTotal(startTimestamp, endTimestamp int64, modelName str
 	var totals billingUserCountTotals
 	if err := tx.
 		Select(`COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingWalletCondition() + ` THEN user_id ELSE NULL END) as wallet_user_count,
-			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count,
-			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingPaidSubscriptionCondition() + ` THEN user_id ELSE NULL END) as paid_subscription_user_count`).
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count`).
 		Scan(&totals).Error; err != nil {
+		return billingUserCountTotals{}, err
+	}
+	totals.PaidSubscriptionUserCount, err = GetBillingPaidSubscriptionUserCountTotal(startTimestamp, endTimestamp)
+	if err != nil {
 		return billingUserCountTotals{}, err
 	}
 	return totals, nil
