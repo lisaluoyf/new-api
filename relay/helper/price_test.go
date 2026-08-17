@@ -42,10 +42,10 @@ func TestDeepSeekV4PriceUsesOfficialScheduleAndUserMultiplier(t *testing.T) {
 	require.NoError(t, db.Exec(`INSERT INTO channels
 		(id, recharge_rate, apimaster_price_ratio, model_price_ratios)
 		VALUES (1, 0.1, 1.5, '{"deepseek-v4-flash":0.8}')`).Error)
-	// This deliberately conflicting procurement row must not determine user billing.
+	// Stored unit prices are ignored, but the upstream group multiplier remains part of billing.
 	require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings
 		(channel_id, model_name, input_price, output_price, cache_price, cache_creation_price, group_ratio, pricing_source)
-		VALUES (1, 'deepseek-v4-flash', 9, 27, 0.9, 9, 1, 'api')`).Error)
+		VALUES (1, 'deepseek-v4-flash', 9, 27, 0.9, 9, 0.5, 'api')`).Error)
 
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Set("group", "default")
@@ -59,7 +59,7 @@ func TestDeepSeekV4PriceUsesOfficialScheduleAndUserMultiplier(t *testing.T) {
 
 	price, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
 	require.NoError(t, err)
-	require.InDelta(t, 0.176/service.PlatformUSDPerModelRatio, price.ModelRatio, 0.0000001)
+	require.InDelta(t, 0.0088/service.PlatformUSDPerModelRatio, price.ModelRatio, 0.0000001)
 	require.InDelta(t, 3, price.CompletionRatio, 0.0000001)
 	require.InDelta(t, 0.007/0.22, price.CacheRatio, 0.0000001)
 	require.InDelta(t, 1, price.CacheCreationRatio, 0.0000001)
@@ -78,7 +78,17 @@ func TestDeepSeekV4RetryKeepsRequestTimeButRefreshesChannelMultiplier(t *testing
 		id integer primary key, recharge_rate real, model_mapping text, setting text,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
-	require.NoError(t, db.Exec(`INSERT INTO channels (id, apimaster_price_ratio) VALUES (1, 1), (2, 1.5)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
+		id integer primary key, channel_id integer not null, model_name text not null,
+		input_price real, output_price real, cache_price real, cache_creation_price real,
+		group_ratio real, pricing_source text
+	)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channels (id, recharge_rate, apimaster_price_ratio) VALUES
+		(1, 0.5, 1), (2, 0.25, 1.5)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings
+		(channel_id, model_name, input_price, output_price, group_ratio, pricing_source) VALUES
+		(1, 'deepseek-v4-pro', 9, 27, 0.8, 'api'),
+		(2, 'deepseek-v4-pro', 9, 27, 0.4, 'api')`).Error)
 
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Set("group", "default")
@@ -92,12 +102,12 @@ func TestDeepSeekV4RetryKeepsRequestTimeButRefreshesChannelMultiplier(t *testing
 
 	initial, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
 	require.NoError(t, err)
-	require.InDelta(t, 1.32/service.PlatformUSDPerModelRatio, initial.ModelRatio, 0.0000001)
+	require.InDelta(t, 1.32*0.8*0.5/service.PlatformUSDPerModelRatio, initial.ModelRatio, 0.0000001)
 
 	ctx.Set("channel_id", 2)
 	refreshed, err := RefreshModelPriceForRetry(ctx, info, 1000, &types.TokenCountMeta{})
 	require.NoError(t, err)
-	require.InDelta(t, 1.32*1.5/service.PlatformUSDPerModelRatio, refreshed.ModelRatio, 0.0000001)
+	require.InDelta(t, 1.32*0.4*0.25*1.5/service.PlatformUSDPerModelRatio, refreshed.ModelRatio, 0.0000001)
 }
 
 func TestRefreshModelPriceForRetryUsesFallbackChannelPricing(t *testing.T) {

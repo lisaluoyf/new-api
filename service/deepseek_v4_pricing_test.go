@@ -52,23 +52,38 @@ func TestDeepSeekV4OfficialPricingAtPro(t *testing.T) {
 	require.InDelta(t, 0.044, peak.CachePrice, 0.0000001)
 }
 
-func TestDeepSeekV4UserPricingAtUsesModelOverride(t *testing.T) {
+func TestDeepSeekV4ChannelPricingAppliesGroupRechargeAndUserOverride(t *testing.T) {
 	oldDB := model.DB
 	t.Cleanup(func() { model.DB = oldDB })
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, apimaster_price_ratio real, model_price_ratios text
+		id integer primary key, model_mapping text, setting text, recharge_rate real,
+		apimaster_price_ratio real, model_price_ratios text
+	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
+		id integer primary key, channel_id integer not null, model_name text not null,
+		input_price real, output_price real, cache_price real, cache_creation_price real,
+		group_ratio real, pricing_source text
 	)`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO channels (id, apimaster_price_ratio, model_price_ratios)
 		VALUES (1, 1.5, '{"deepseek-v4-flash":0.8}')`).Error)
+	require.NoError(t, db.Exec(`UPDATE channels SET recharge_rate = 0.1 WHERE id = 1`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings
+		(channel_id, model_name, input_price, output_price, group_ratio, pricing_source)
+		VALUES (1, 'deepseek-v4-flash', 9, 27, 0.5, 'api')`).Error)
+
+	procurement, ok := DeepSeekV4ProcurementPricingAt(1, "deepseek-v4-flash", beijingTime(t, 13, 0))
+	require.True(t, ok)
+	require.InDelta(t, 0.011, procurement.InputPrice, 0.0000001)
+	require.InDelta(t, 0.033, procurement.OutputPrice, 0.0000001)
 
 	prices, ok := DeepSeekV4UserPricingAt(1, "deepseek-v4-flash", beijingTime(t, 13, 0))
 	require.True(t, ok)
-	require.InDelta(t, 0.176, prices.InputPrice, 0.0000001)
-	require.InDelta(t, 0.528, prices.OutputPrice, 0.0000001)
-	require.InDelta(t, 0.0056, prices.CachePrice, 0.0000001)
+	require.InDelta(t, 0.0088, prices.InputPrice, 0.0000001)
+	require.InDelta(t, 0.0264, prices.OutputPrice, 0.0000001)
+	require.InDelta(t, 0.00028, prices.CachePrice, 0.0000001)
 }
 
 func TestDeepSeekV4OfficialPricingRejectsOtherModels(t *testing.T) {

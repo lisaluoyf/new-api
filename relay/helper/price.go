@@ -127,24 +127,23 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 		}
 		var success bool
 		var matchName string
-		// DeepSeek V4 user pricing is based on the official Beijing-time price
-		// schedule, then multiplied by the existing channel/model user-price
-		// ratio. Procurement price and recharge_rate remain cost/routing inputs.
+		// DeepSeek V4 uses the official Beijing-time price as the channel base,
+		// then preserves the existing upstream-group, recharge, and user-price
+		// multiplier chain.
 		// Use request StartTime so retries and long responses cannot cross tiers.
 		priceResolved := false
 		billingAt := info.StartTime
 		if billingAt.IsZero() {
 			billingAt = time.Now()
 		}
-		if official, ok := service.DeepSeekV4OfficialPricingAt(info.OriginModelName, billingAt); ok {
-			userPriceRatio := 1.0
-			if !useTrialPricing {
-				userPriceRatio = service.ChannelUserPriceRatio(c.GetInt("channel_id"), info.OriginModelName)
+		if userPrice, ok := service.DeepSeekV4UserPricingAt(c.GetInt("channel_id"), info.OriginModelName, billingAt); ok {
+			if useTrialPricing {
+				userPrice, _ = service.DeepSeekV4OfficialPricingAt(info.OriginModelName, billingAt)
 			}
-			modelRatio = official.InputPrice * userPriceRatio / service.PlatformUSDPerModelRatio
-			completionRatio = official.OutputPrice / official.InputPrice
-			cacheRatio = official.CachePrice / official.InputPrice
-			cacheCreationRatio = official.CacheCreationPrice / official.InputPrice
+			modelRatio = userPrice.InputPrice / service.PlatformUSDPerModelRatio
+			completionRatio = userPrice.OutputPrice / userPrice.InputPrice
+			cacheRatio = userPrice.CachePrice / userPrice.InputPrice
+			cacheCreationRatio = userPrice.CacheCreationPrice / userPrice.InputPrice
 			success = true
 			priceResolved = true
 		}

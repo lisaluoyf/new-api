@@ -107,7 +107,18 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 	status := "ok"
 	errorText := ""
 
-	channelCost, err := ChannelProcurementPricesResolved(input.ChannelId, input.ModelName)
+	var channelCost *model.ChannelActualPrices
+	var err error
+	if prices, ok := DeepSeekV4ProcurementPricingAt(input.ChannelId, input.ModelName, input.BillingAt); ok {
+		channelCost = &model.ChannelActualPrices{
+			InputPrice:         prices.InputPrice,
+			OutputPrice:        prices.OutputPrice,
+			CachePrice:         prices.CachePrice,
+			CacheCreationPrice: prices.CacheCreationPrice,
+		}
+	} else {
+		channelCost, err = ChannelProcurementPricesResolved(input.ChannelId, input.ModelName)
+	}
 	if err != nil {
 		status = "partial"
 		errorText = appendAccountingError(errorText, "channel_cost_lookup_failed: "+err.Error())

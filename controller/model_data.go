@@ -54,7 +54,7 @@ type ModelDataItem struct {
 	ClientExclusive string `json:"client_exclusive"` // "" | codex | claude_code
 	// Pricing fields: nil = no pricing row (upstream 401/404 / cookie-only auth / no endpoint).
 	// Frontend renders nil as "—".
-	ModelPrice                 *float64      `json:"model_price"`                  // 渠道原价 = input_price / group_ratio ($/1M) — the base price the channel claims; nil = unknown
+	ModelPrice                 *float64      `json:"model_price"`                  // 渠道原价/计费基准价 ($/1M); nil = unknown
 	OfficialInputPrice         *float64      `json:"official_input_price"`         // 官方原价 (unified official list price, 系统设置→模型定价); nil = not configured
 	OfficialOutputPrice        *float64      `json:"official_output_price"`        // 官方原价 output side; nil = not configured
 	BasePriceMismatchPct       *float64      `json:"base_price_mismatch_pct"`      // |渠道原价 − 官方原价| / 官方原价 × 100; nil when either side unknown
@@ -367,14 +367,6 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			userOut := actualOut * apimasterRatio
 			actualOutputUserPricePtr = &userOut
 		}
-		if isDeepSeekTimedPrice {
-			// DeepSeek V4 selling price uses the official time-of-day base price;
-			// procurement/recharge remain visible separately for margin analysis.
-			userIn := deepSeekTimedPrice.InputPrice * apimasterRatio
-			userOut := deepSeekTimedPrice.OutputPrice * apimasterRatio
-			userPricePtr = &userIn
-			actualOutputUserPricePtr = &userOut
-		}
 		var cachePricePtr, actualCachePricePtr *float64
 		if r.CachePrice != nil && *r.CachePrice > 0 {
 			cp := *r.CachePrice
@@ -388,6 +380,29 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			cacheCreationPricePtr = &ccp
 			accp := ccp * rechargeRate
 			actualCacheCreationPricePtr = &accp
+		}
+		if isDeepSeekTimedPrice {
+			gr := 1.0
+			if manualGroupRatio := service.ExtractManualGroupRatio(r.Setting); manualGroupRatio > 0 {
+				gr = manualGroupRatio
+			} else if r.GroupRatio != nil && *r.GroupRatio > 0 {
+				gr = *r.GroupRatio
+			}
+			groupRatioPtr = &gr
+			baseIn, baseOut := deepSeekTimedPrice.InputPrice, deepSeekTimedPrice.OutputPrice
+			groupedIn, groupedOut := baseIn*gr, baseOut*gr
+			procurementIn, procurementOut := groupedIn*rechargeRate, groupedOut*rechargeRate
+			userIn, userOut := procurementIn*apimasterRatio, procurementOut*apimasterRatio
+			modelPricePtr, inputPricePtr, outputPricePtr = &baseIn, &groupedIn, &groupedOut
+			actualPricePtr, actualOutPricePtr = &procurementIn, &procurementOut
+			userPricePtr, actualOutputUserPricePtr = &userIn, &userOut
+			zero, suggested := 0.0, gr
+			mismatchPtr, suggestedPtr = &zero, &suggested
+
+			cache, cacheCreation := deepSeekTimedPrice.CachePrice*gr, deepSeekTimedPrice.CacheCreationPrice*gr
+			actualCache, actualCacheCreation := cache*rechargeRate, cacheCreation*rechargeRate
+			cachePricePtr, cacheCreationPricePtr = &cache, &cacheCreation
+			actualCachePricePtr, actualCacheCreationPricePtr = &actualCache, &actualCacheCreation
 		}
 
 		keyGroup := modelDataExtractKeyGroup(r.Setting)
@@ -729,15 +744,18 @@ func GetPublicMarketplace(c *gin.Context) {
 		return
 	}
 
-	// Serve from cache if fresh.
-	publicMarketplaceCache.Lock()
-	if e, ok := publicMarketplaceCache.data[modelName]; ok && time.Now().Unix() < e.expiresAt {
-		items := e.items
+	_, isDeepSeekTimedPrice := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
+	// Time-of-day prices must switch exactly at the Beijing-time boundary.
+	if !isDeepSeekTimedPrice {
+		publicMarketplaceCache.Lock()
+		if e, ok := publicMarketplaceCache.data[modelName]; ok && time.Now().Unix() < e.expiresAt {
+			items := e.items
+			publicMarketplaceCache.Unlock()
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
+			return
+		}
 		publicMarketplaceCache.Unlock()
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
-		return
 	}
-	publicMarketplaceCache.Unlock()
 
 	type row struct {
 		ChannelID           int
@@ -885,7 +903,7 @@ func GetPublicMarketplace(c *gin.Context) {
 			officialOutPtr = &v
 		}
 	}
-	deepSeekTimedPrice, isDeepSeekTimedPrice := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
+	deepSeekTimedPrice, _ := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
 
 	items := make([]PublicMarketplaceItem, 0, len(rows))
 	for _, r := range rows {
@@ -924,8 +942,14 @@ func GetPublicMarketplace(c *gin.Context) {
 			actualOutputUserPricePtr = &userOut
 		}
 		if isDeepSeekTimedPrice {
-			userIn := deepSeekTimedPrice.InputPrice * apimasterRatio
-			userOut := deepSeekTimedPrice.OutputPrice * apimasterRatio
+			gr := 1.0
+			if manualGroupRatio := service.ExtractManualGroupRatio(r.Setting); manualGroupRatio > 0 {
+				gr = manualGroupRatio
+			} else if r.GroupRatio != nil && *r.GroupRatio > 0 {
+				gr = *r.GroupRatio
+			}
+			userIn := deepSeekTimedPrice.InputPrice * gr * rechargeRate * apimasterRatio
+			userOut := deepSeekTimedPrice.OutputPrice * gr * rechargeRate * apimasterRatio
 			userPricePtr = &userIn
 			actualOutputUserPricePtr = &userOut
 		}
@@ -968,13 +992,15 @@ func GetPublicMarketplace(c *gin.Context) {
 		}
 	}
 
-	// Store in cache for 2 minutes.
-	publicMarketplaceCache.Lock()
-	publicMarketplaceCache.data[modelName] = publicMarketplaceCacheEntry{
-		items:     items,
-		expiresAt: time.Now().Unix() + 120,
+	if !isDeepSeekTimedPrice {
+		// Store static-price models in cache for 2 minutes.
+		publicMarketplaceCache.Lock()
+		publicMarketplaceCache.data[modelName] = publicMarketplaceCacheEntry{
+			items:     items,
+			expiresAt: time.Now().Unix() + 120,
+		}
+		publicMarketplaceCache.Unlock()
 	}
-	publicMarketplaceCache.Unlock()
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
 }

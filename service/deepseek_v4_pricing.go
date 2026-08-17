@@ -1,6 +1,10 @@
 package service
 
-import "time"
+import (
+	"time"
+
+	"github.com/QuantumNous/new-api/model"
+)
 
 const deepSeekV4TimezoneOffsetSeconds = 8 * 60 * 60
 
@@ -51,15 +55,48 @@ func DeepSeekV4OfficialPricingAt(modelName string, at time.Time) (ModelUnitPrice
 	return scaleModelUnitPrices(offPeak, 2), true
 }
 
-// DeepSeekV4UserPricingAt applies the existing per-model/channel user-price
-// multiplier to the official time-of-day base price. Procurement price and
-// recharge_rate intentionally do not participate in the user selling price.
+// DeepSeekV4ProcurementPricingAt treats the official time-of-day price as the
+// channel's base price, then applies the channel's upstream group multiplier
+// and recharge rate using the existing procurement-cost policy.
+func DeepSeekV4ProcurementPricingAt(channelID int, modelName string, at time.Time) (ModelUnitPricesUSD, bool) {
+	prices, ok := DeepSeekV4OfficialPricingAt(modelName, at)
+	if !ok {
+		return ModelUnitPricesUSD{}, false
+	}
+	groupRatio, rechargeRate, _ := deepSeekV4ChannelMultipliers(channelID, modelName)
+	return scaleModelUnitPrices(prices, groupRatio*rechargeRate), true
+}
+
+// DeepSeekV4UserPricingAt preserves the existing channel selling-price chain:
+// official time-of-day base × upstream group × recharge_rate × user multiplier.
 func DeepSeekV4UserPricingAt(channelID int, modelName string, at time.Time) (ModelUnitPricesUSD, bool) {
 	prices, ok := DeepSeekV4OfficialPricingAt(modelName, at)
 	if !ok {
 		return ModelUnitPricesUSD{}, false
 	}
-	return scaleModelUnitPrices(prices, ChannelUserPriceRatio(channelID, modelName)), true
+	groupRatio, rechargeRate, userPriceRatio := deepSeekV4ChannelMultipliers(channelID, modelName)
+	return scaleModelUnitPrices(prices, groupRatio*rechargeRate*userPriceRatio), true
+}
+
+func deepSeekV4ChannelMultipliers(channelID int, modelName string) (groupRatio, rechargeRate, userPriceRatio float64) {
+	groupRatio, rechargeRate, userPriceRatio = 1, 1, 1
+	if channelID <= 0 || model.DB == nil {
+		return
+	}
+
+	ch, err := loadChannelPricingResolveContext(channelID)
+	if err != nil {
+		return
+	}
+	rechargeRate = ch.RechargeRate
+	userPriceRatio = ch.EffectivePriceRatio(modelName)
+
+	if manualGroupRatio := ExtractManualGroupRatio(ch.Setting); manualGroupRatio > 0 {
+		groupRatio = manualGroupRatio
+	} else if row, ok := LookupPreferredChannelPricingRow(channelID, modelName, ch.ModelMapping); ok {
+		groupRatio = row.GroupRatio
+	}
+	return
 }
 
 func scaleModelUnitPrices(prices ModelUnitPricesUSD, ratio float64) ModelUnitPricesUSD {
