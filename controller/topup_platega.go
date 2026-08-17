@@ -214,7 +214,7 @@ func RequestPlategaPay(c *gin.Context) {
 	returnURL := getPlategaReturnURL()
 	failedURL := getPlategaFailedURL()
 	if plan != nil {
-		description = "APIMaster.ai Free Model subscription"
+		description = "APIMaster.ai GPT Pass subscription"
 		returnURL = freeModelPaymentURL("success")
 		failedURL = freeModelPaymentURL("cancelled")
 	}

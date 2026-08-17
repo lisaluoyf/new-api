@@ -202,7 +202,7 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 			PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
 				Currency:    stripe.String(strings.ToLower(plan.Currency)),
 				UnitAmount:  stripe.Int64(int64(payable*100 + 0.5)),
-				ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{Name: stripe.String("Free Model · " + plan.Title)},
+				ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{Name: stripe.String("GPT Pass · " + plan.Title)},
 			},
 		}}
 		params.PaymentIntentData = &stripe.CheckoutSessionPaymentIntentDataParams{

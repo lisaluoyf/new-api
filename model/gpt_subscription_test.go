@@ -42,105 +42,6 @@ func createGPTSubscriptionTestUser(t *testing.T, id int, quota int) {
 	}).Error)
 }
 
-func TestActivateFreeGPTSubscription(t *testing.T) {
-	setupGPTSubscriptionTestDB(t)
-	const userID = 9001
-	createGPTSubscriptionTestUser(t, userID, 1234)
-	plan := SubscriptionPlan{
-		Id: 9002, Title: "Free Pro", PlanType: SubscriptionPlanTypeGPTSubscription,
-		PriceAmount: 0, Currency: "USD", DurationUnit: SubscriptionDurationDay,
-		DurationValue: 30, Enabled: true, TierLevel: 1, MaxPurchasePerUser: 1,
-		FiveHourAmount: 100, SevenDayAmount: 200,
-	}
-	require.NoError(t, DB.Create(&plan).Error)
-
-	first, activated, err := ActivateFreeGPTSubscription(userID, plan.Id)
-	require.NoError(t, err)
-	require.True(t, activated)
-	require.NotNil(t, first)
-	require.Equal(t, "free", first.Source)
-	require.Equal(t, plan.Id, first.PlanId)
-	require.Equal(t, 1234, func() int { var user User; require.NoError(t, DB.First(&user, userID).Error); return user.Quota }())
-	firstEnd := first.EndTime
-
-	second, activated, err := ActivateFreeGPTSubscription(userID, plan.Id)
-	require.NoError(t, err)
-	require.False(t, activated)
-	require.Equal(t, first.Id, second.Id)
-	require.Equal(t, firstEnd, second.EndTime)
-
-	var orderCount, topUpCount, subscriptionCount int64
-	require.NoError(t, DB.Model(&SubscriptionOrder{}).Where("user_id = ?", userID).Count(&orderCount).Error)
-	require.NoError(t, DB.Model(&TopUp{}).Where("user_id = ?", userID).Count(&topUpCount).Error)
-	require.NoError(t, DB.Model(&UserSubscription{}).Where("user_id = ?", userID).Count(&subscriptionCount).Error)
-	require.EqualValues(t, 1, orderCount)
-	require.Zero(t, topUpCount)
-	require.EqualValues(t, 1, subscriptionCount)
-	require.False(t, HasSuccessfulTopUp(userID))
-
-	var order SubscriptionOrder
-	require.NoError(t, DB.Where("user_id = ?", userID).First(&order).Error)
-	require.Equal(t, common.TopUpStatusSuccess, order.Status)
-	require.Equal(t, PaymentProviderFree, order.PaymentProvider)
-	require.Equal(t, PaymentMethodFree, order.PaymentMethod)
-	require.Zero(t, order.Money)
-	require.Equal(t, order.Id, first.CurrentCycleId)
-}
-
-func TestActivateFreeGPTSubscriptionRejectsPaidPlan(t *testing.T) {
-	setupGPTSubscriptionTestDB(t)
-	const userID = 9011
-	createGPTSubscriptionTestUser(t, userID, 500)
-	plan := SubscriptionPlan{
-		Id: 9012, Title: "Paid Pro", PlanType: SubscriptionPlanTypeGPTSubscription,
-		PriceAmount: 5, Currency: "USD", DurationUnit: SubscriptionDurationDay,
-		DurationValue: 30, Enabled: true, TierLevel: 1,
-	}
-	require.NoError(t, DB.Create(&plan).Error)
-
-	created, activated, err := ActivateFreeGPTSubscription(userID, plan.Id)
-	require.ErrorIs(t, err, ErrGPTSubscriptionPlanNotFree)
-	require.Nil(t, created)
-	require.False(t, activated)
-	var orderCount, subscriptionCount int64
-	require.NoError(t, DB.Model(&SubscriptionOrder{}).Count(&orderCount).Error)
-	require.NoError(t, DB.Model(&UserSubscription{}).Count(&subscriptionCount).Error)
-	require.Zero(t, orderCount)
-	require.Zero(t, subscriptionCount)
-}
-
-func TestActivateFreeGPTSubscriptionRejectsDowngrade(t *testing.T) {
-	setupGPTSubscriptionTestDB(t)
-	const userID = 9021
-	createGPTSubscriptionTestUser(t, userID, 500)
-	freePlan := SubscriptionPlan{
-		Id: 9022, Title: "Free Pro", PlanType: SubscriptionPlanTypeGPTSubscription,
-		PriceAmount: 0, Currency: "USD", DurationUnit: SubscriptionDurationDay,
-		DurationValue: 30, Enabled: true, TierLevel: 1,
-	}
-	paidPlan := SubscriptionPlan{
-		Id: 9023, Title: "Max", PlanType: SubscriptionPlanTypeGPTSubscription,
-		PriceAmount: 20, Currency: "USD", DurationUnit: SubscriptionDurationDay,
-		DurationValue: 30, Enabled: true, TierLevel: 3,
-	}
-	require.NoError(t, DB.Create(&freePlan).Error)
-	require.NoError(t, DB.Create(&paidPlan).Error)
-	now := GetDBTimestamp()
-	require.NoError(t, DB.Create(&UserSubscription{
-		UserId: userID, PlanId: paidPlan.Id, Status: "active", TierLevelSnapshot: 3,
-		StartTime: now, EndTime: now + 86400,
-	}).Error)
-
-	created, activated, err := ActivateFreeGPTSubscription(userID, freePlan.Id)
-	require.ErrorContains(t, err, "only renew or upgrade")
-	require.Nil(t, created)
-	require.False(t, activated)
-	var activeCount int64
-	require.NoError(t, DB.Model(&UserSubscription{}).
-		Where("user_id = ? AND status = ?", userID, "active").Count(&activeCount).Error)
-	require.EqualValues(t, 1, activeCount)
-}
-
 func TestGetPaymentNotificationContextMarksGPTSubscription(t *testing.T) {
 	setupGPTSubscriptionTestDB(t)
 	const userID = 9031
@@ -364,13 +265,13 @@ func TestSeedDefaultGPTSubscriptionPlans(t *testing.T) {
 	var plans []SubscriptionPlan
 	require.NoError(t, DB.Where("plan_type = ?", SubscriptionPlanTypeGPTSubscription).
 		Order("tier_level asc").Find(&plans).Error)
-	require.Len(t, plans, 5)
-	require.Equal(t, []string{"Pro", "Pro+", "Max", "Ultra", "Power"}, []string{
-		plans[0].Title, plans[1].Title, plans[2].Title, plans[3].Title, plans[4].Title,
+	require.Len(t, plans, 4)
+	require.Equal(t, []string{"Pro+", "Max", "Ultra", "Power"}, []string{
+		plans[0].Title, plans[1].Title, plans[2].Title, plans[3].Title,
 	})
-	require.EqualValues(t, 5*common.QuotaPerUnit, plans[0].FiveHourAmount)
-	require.EqualValues(t, 1320*common.QuotaPerUnit, plans[4].SevenDayAmount)
-	require.True(t, plans[2].Recommended)
+	require.EqualValues(t, 10*common.QuotaPerUnit, plans[0].FiveHourAmount)
+	require.EqualValues(t, 1320*common.QuotaPerUnit, plans[3].SevenDayAmount)
+	require.True(t, plans[1].Recommended)
 	for _, plan := range plans {
 		require.Equal(t, DefaultGPTSubscriptionModelAllowlist, plan.ModelAllowlist)
 		require.Empty(t, plan.CardDescription)
@@ -421,6 +322,61 @@ func TestGPTSubscriptionRollingLimitSettleAndRefund(t *testing.T) {
 	var updated UserSubscription
 	require.NoError(t, DB.First(&updated, sub.Id).Error)
 	require.Zero(t, updated.AmountUsed)
+}
+
+func TestGPTSubscriptionRollingLimitCalculatesEarliestRecovery(t *testing.T) {
+	setupGPTSubscriptionTestDB(t)
+	const userID = 9341
+	now := int64(1_800_000_000)
+	records := []SubscriptionPreConsumeRecord{
+		{RequestId: "rolling-old", UserId: userID, UserSubscriptionId: 1, PreConsumed: 40, PlanType: SubscriptionPlanTypeGPTSubscription, Status: "consumed"},
+		{RequestId: "rolling-five-a", UserId: userID, UserSubscriptionId: 1, PreConsumed: 30, PlanType: SubscriptionPlanTypeGPTSubscription, Status: "consumed"},
+		{RequestId: "rolling-five-b", UserId: userID, UserSubscriptionId: 1, PreConsumed: 20, PlanType: SubscriptionPlanTypeGPTSubscription, Status: "consumed"},
+	}
+	createdAt := []int64{now - 6*86400, now - 4*3600, now - 2*3600}
+	for i := range records {
+		record := records[i]
+		require.NoError(t, DB.Create(&record).Error)
+		require.NoError(t, DB.Model(&SubscriptionPreConsumeRecord{}).Where("id = ?", record.Id).Updates(map[string]any{
+			"created_at": createdAt[i], "updated_at": createdAt[i],
+		}).Error)
+	}
+
+	info, err := getGPTSubscriptionRollingLimitInfoTx(DB, userID, now, 20, 60, 100)
+	require.NoError(t, err)
+	require.Equal(t, []string{"5h", "7d"}, info.LimitedWindows)
+	require.EqualValues(t, 50, info.FiveHourUsed)
+	require.EqualValues(t, 90, info.SevenDayUsed)
+	require.Equal(t, now+3600+1, info.FiveHourAvailableAt)
+	require.Equal(t, now+86400+1, info.SevenDayAvailableAt)
+	require.Equal(t, now+86400+1, info.AvailableAt)
+	require.Equal(t, int64(86401), info.RetryAfterSeconds)
+}
+
+func TestGPTSubscriptionRollingLimitInclusiveBoundaryAndOversizedRequest(t *testing.T) {
+	setupGPTSubscriptionTestDB(t)
+	const userID = 9342
+	now := int64(1_800_100_000)
+	record := SubscriptionPreConsumeRecord{
+		RequestId: "rolling-boundary", UserId: userID, UserSubscriptionId: 1,
+		PreConsumed: 60, PlanType: SubscriptionPlanTypeGPTSubscription, Status: "consumed",
+	}
+	require.NoError(t, DB.Create(&record).Error)
+	require.NoError(t, DB.Model(&SubscriptionPreConsumeRecord{}).Where("id = ?", record.Id).Updates(map[string]any{
+		"created_at": now - 5*3600, "updated_at": now - 5*3600,
+	}).Error)
+
+	info, err := getGPTSubscriptionRollingLimitInfoTx(DB, userID, now, 1, 60, 1_000)
+	require.NoError(t, err)
+	require.Equal(t, []string{"5h"}, info.LimitedWindows)
+	require.Equal(t, now+1, info.AvailableAt)
+	require.EqualValues(t, 1, info.RetryAfterSeconds)
+
+	oversized, err := getGPTSubscriptionRollingLimitInfoTx(DB, userID, now, 61, 60, 1_000)
+	require.NoError(t, err)
+	require.Equal(t, []string{"5h"}, oversized.LimitedWindows)
+	require.Zero(t, oversized.AvailableAt)
+	require.Zero(t, oversized.RetryAfterSeconds)
 }
 
 func TestGPTSubscriptionUpgradeQuoteAndRenewal(t *testing.T) {

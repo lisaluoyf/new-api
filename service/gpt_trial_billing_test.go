@@ -2,7 +2,9 @@ package service
 
 import (
 	"testing"
+	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -184,6 +186,47 @@ func TestPreConsumeBillingFallsBackToWalletWhenPaidRollingLimitReached(t *testin
 	var user model.User
 	require.NoError(t, model.DB.First(&user, 1).Error)
 	require.Equal(t, 880, user.Quota)
+}
+
+func TestPreConsumeBillingReturnsRollingRecoveryWhenWalletIsInsufficient(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 0)
+	seedToken(t, 2, 1, "trial-billing-key", 1000)
+	seedSubscriptionPlan(t, 103, "Pro", model.SubscriptionPlanTypeGPTSubscription)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 103).Updates(map[string]any{
+		"model_allowlist": "gpt-5", "five_hour_amount": 50, "seven_day_amount": 100,
+	}).Error)
+	model.InvalidateSubscriptionPlanCache(103)
+	seedUserSubscriptionWithPlan(t, 203, 1, 103, 0, 0)
+	require.NoError(t, model.DB.Model(&model.UserSubscription{}).Where("id = ?", 203).Updates(map[string]any{
+		"five_hour_amount": 50, "seven_day_amount": 100,
+	}).Error)
+	record := model.SubscriptionPreConsumeRecord{
+		RequestId: "paid-rolling-existing", UserId: 1, UserSubscriptionId: 203,
+		PreConsumed: 30, PlanType: model.SubscriptionPlanTypeGPTSubscription, Status: "consumed",
+	}
+	require.NoError(t, model.DB.Create(&record).Error)
+	createdAt := time.Now().Unix() - 3600
+	require.NoError(t, model.DB.Model(&model.SubscriptionPreConsumeRecord{}).Where("id = ?", record.Id).Updates(map[string]any{
+		"created_at": createdAt, "updated_at": createdAt,
+	}).Error)
+
+	info := seedGPTTrialBillingInfo("gpt-5", "subscription_first")
+	info.HasActiveGPTTrial = false
+	info.HasActiveGPTSubscription = true
+	info.UserSetting.Language = "zh-CN"
+	info.UserSetting.Timezone = "Europe/Moscow"
+	apiErr := PreConsumeBilling(retryBillingContext(), info.WalletPriceData.QuotaToPreConsume, info)
+	require.NotNil(t, apiErr)
+	require.Equal(t, types.ErrorCodeGPTSubscriptionRollingLimit, apiErr.GetErrorCode())
+	require.Contains(t, apiErr.Error(), "5 小时滚动额度已用尽")
+	require.Contains(t, apiErr.Error(), "Europe/Moscow")
+	require.Contains(t, apiErr.Error(), "钱包余额不足")
+	var metadata map[string]any
+	require.NoError(t, common.Unmarshal(apiErr.Metadata, &metadata))
+	require.Equal(t, "gpt_subscription_rolling_limit", metadata["reason"])
+	require.Equal(t, "Europe/Moscow", metadata["timezone"])
+	require.Greater(t, int64(metadata["available_at"].(float64)), time.Now().Unix())
 }
 
 func TestPreConsumeBillingPrefersExpiringTrialOverReferralReward(t *testing.T) {

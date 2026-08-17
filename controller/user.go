@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -236,11 +237,11 @@ func Register(c *gin.Context) {
 
 func getUserListFiltersFromQuery(c *gin.Context) model.UserListFilters {
 	return model.UserListFilters{
-		Language:            c.Query("language"),
-		Country:             c.Query("country"),
-		Provider:            c.Query("provider"),
-		RegistrationChannel: c.Query("channel"),
-		TrialStatus:         c.Query("trial"),
+		Language:              c.Query("language"),
+		Country:               c.Query("country"),
+		Provider:              c.Query("provider"),
+		RegistrationChannel:   c.Query("channel"),
+		TrialStatus:           c.Query("trial"),
 		GPTSubscriptionStatus: c.Query("gpt_subscription"),
 		GPTSubscriptionPlan:   c.Query("gpt_plan"),
 	}
@@ -1017,8 +1018,10 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 
-	// 检查是否是语言偏好更新请求
-	if language, langExists := requestData["language"]; langExists {
+	// 检查是否是语言/时区偏好更新请求
+	language, langExists := requestData["language"]
+	timezone, timezoneExists := requestData["timezone"]
+	if langExists || timezoneExists {
 		userId := c.GetInt("id")
 		user, err := model.GetUserById(userId, false)
 		if err != nil {
@@ -1029,9 +1032,18 @@ func UpdateSelf(c *gin.Context) {
 		// 获取当前用户设置
 		currentSetting := user.GetSetting()
 
-		// 更新language字段
-		if langStr, ok := language.(string); ok {
+		// 更新 language 字段
+		if langStr, ok := language.(string); langExists && ok {
 			currentSetting.Language = langStr
+		}
+		// 时区必须是 Go 可识别的 IANA 时区，不接受任意字符串。
+		if timezoneExists {
+			timezoneStr, ok := timezone.(string)
+			if !ok || !isValidUserTimezone(timezoneStr) {
+				common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+				return
+			}
+			currentSetting.Timezone = strings.TrimSpace(timezoneStr)
 		}
 
 		// 保存更新后的设置
@@ -1091,6 +1103,15 @@ func UpdateSelf(c *gin.Context) {
 		"message": "",
 	})
 	return
+}
+
+func isValidUserTimezone(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	_, err := time.LoadLocation(value)
+	return err == nil
 }
 
 func checkUpdatePassword(originalPassword string, newPassword string, userId int) (updatePassword bool, err error) {
@@ -1667,28 +1688,46 @@ func UpdateUserSetting(c *gin.Context) {
 	common.ApiSuccessI18n(c, i18n.MsgSettingSaved, nil)
 }
 
-// SetUserLanguage sets language and/or country on a user account.
-// Called by the apimaster Next.js layer on login to sync browser language and geo.
+// SetUserLanguage sets language, country, and/or timezone on a user account.
+// Called by the apimaster Next.js layer to sync browser locale and geo.
 func SetUserLanguage(c *gin.Context) {
 	var req struct {
 		Username string `json:"username"`
 		Language string `json:"language"`
 		Country  string `json:"country"`
+		Timezone string `json:"timezone"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.Username == "" || (req.Language == "" && req.Country == "") {
+	if err := c.ShouldBindJSON(&req); err != nil || req.Username == "" || (req.Language == "" && req.Country == "" && req.Timezone == "") {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	if req.Timezone != "" && !isValidUserTimezone(req.Timezone) {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var user model.User
+	if err := model.DB.Select("id", "setting", "language", "country").Where("username = ?", req.Username).First(&user).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	updates := map[string]interface{}{}
+	settings := user.GetSetting()
 	if req.Language != "" {
 		updates["language"] = req.Language
+		settings.Language = req.Language
 	}
 	if req.Country != "" {
 		updates["country"] = strings.ToUpper(req.Country)
 	}
-	if err := model.DB.Model(&model.User{}).Where("username = ?", req.Username).Updates(updates).Error; err != nil {
+	if req.Timezone != "" {
+		settings.Timezone = strings.TrimSpace(req.Timezone)
+	}
+	user.SetSetting(settings)
+	updates["setting"] = user.Setting
+	if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(updates).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	_ = model.InvalidateUserCache(user.Id)
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }

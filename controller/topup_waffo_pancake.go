@@ -160,7 +160,7 @@ func RequestWaffoPancakePay(c *gin.Context) {
 	payMoney := 0.0
 	if req.PlanId > 0 {
 		if !strings.EqualFold(strings.TrimSpace(setting.WaffoPancakeCurrency), "USD") {
-			common.ApiErrorMsg(c, "Free Model 的 Waffo 支付目前仅支持 USD")
+			common.ApiErrorMsg(c, "GPT Pass 的 Waffo 支付目前仅支持 USD")
 			return
 		}
 		plan, terms, err = resolveGPTSubscriptionPayment(id, req.PlanId)

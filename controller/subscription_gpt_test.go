@@ -3,7 +3,6 @@ package controller
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -77,58 +76,6 @@ func setupFreeGPTSubscriptionControllerTest(t *testing.T, publicEnabled, whiteli
 	return db, userID
 }
 
-func performFreeGPTSubscriptionRequest(t *testing.T, userID, planID int) (*httptest.ResponseRecorder, map[string]any) {
-	t.Helper()
-	recorder := httptest.NewRecorder()
-	context, _ := gin.CreateTestContext(recorder)
-	context.Set("id", userID)
-	context.Request = httptest.NewRequest(
-		http.MethodPost,
-		"/api/subscription/gpt/free",
-		strings.NewReader(common.GetJsonString(map[string]any{"plan_id": planID})),
-	)
-	context.Request.Header.Set("Content-Type", "application/json")
-	ActivateFreeGPTSubscription(context)
-
-	var response map[string]any
-	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-	return recorder, response
-}
-
-func TestActivateFreeGPTSubscriptionRequiresPurchaseAccess(t *testing.T) {
-	db, userID := setupFreeGPTSubscriptionControllerTest(t, false, false)
-	plan := model.SubscriptionPlan{
-		Title: "Free Pro", PlanType: model.SubscriptionPlanTypeGPTSubscription,
-		PriceAmount: 0, Currency: "USD", DurationUnit: model.SubscriptionDurationDay,
-		DurationValue: 30, Enabled: true, TierLevel: 1,
-	}
-	require.NoError(t, db.Create(&plan).Error)
-
-	recorder, response := performFreeGPTSubscriptionRequest(t, userID, plan.Id)
-	require.Equal(t, http.StatusForbidden, recorder.Code)
-	require.Equal(t, false, response["success"])
-	var subscriptionCount int64
-	require.NoError(t, db.Model(&model.UserSubscription{}).Count(&subscriptionCount).Error)
-	require.Zero(t, subscriptionCount)
-}
-
-func TestActivateFreeGPTSubscriptionAllowsWhitelistedUser(t *testing.T) {
-	db, userID := setupFreeGPTSubscriptionControllerTest(t, false, true)
-	plan := model.SubscriptionPlan{
-		Title: "Free Pro", PlanType: model.SubscriptionPlanTypeGPTSubscription,
-		PriceAmount: 0, Currency: "USD", DurationUnit: model.SubscriptionDurationDay,
-		DurationValue: 30, Enabled: true, TierLevel: 1,
-	}
-	require.NoError(t, db.Create(&plan).Error)
-
-	recorder, response := performFreeGPTSubscriptionRequest(t, userID, plan.Id)
-	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Equal(t, true, response["success"])
-	var subscriptionCount int64
-	require.NoError(t, db.Model(&model.UserSubscription{}).Where("user_id = ?", userID).Count(&subscriptionCount).Error)
-	require.EqualValues(t, 1, subscriptionCount)
-}
-
 func TestPublicGPTSubscriptionCatalogIsReadableWhilePurchasingClosed(t *testing.T) {
 	db, _ := setupFreeGPTSubscriptionControllerTest(t, false, false)
 	enabledPlan := model.SubscriptionPlan{
@@ -141,6 +88,12 @@ func TestPublicGPTSubscriptionCatalogIsReadableWhilePurchasingClosed(t *testing.
 		UpgradeGroup: "private-group", MaxPurchasePerUser: 1,
 	}
 	require.NoError(t, db.Create(&enabledPlan).Error)
+	zeroPricePlan := model.SubscriptionPlan{
+		Title: "Legacy free plan", PlanType: model.SubscriptionPlanTypeGPTSubscription,
+		PriceAmount: 0, Currency: "USD", DurationUnit: model.SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true, TierLevel: 1,
+	}
+	require.NoError(t, db.Create(&zeroPricePlan).Error)
 	disabledPlan := model.SubscriptionPlan{
 		Title: "Disabled", PlanType: model.SubscriptionPlanTypeGPTSubscription,
 		Currency: "USD", DurationUnit: model.SubscriptionDurationDay, DurationValue: 30,
