@@ -482,24 +482,74 @@ func GetNonAdminExperienceBalanceUSD() (float64, error) {
 	return float64(totalQuota) / common.QuotaPerUnit, nil
 }
 
+type paidSubscriptionBalanceRow struct {
+	PriceAmountSnapshot     float64 `gorm:"column:price_amount_snapshot"`
+	DurationSecondsSnapshot int64   `gorm:"column:duration_seconds_snapshot"`
+	StartTime               int64   `gorm:"column:start_time"`
+	EndTime                 int64   `gorm:"column:end_time"`
+	PlanPriceAmount         float64 `gorm:"column:plan_price_amount"`
+}
+
+func paidSubscriptionBalanceUSDAt(row paidSubscriptionBalanceRow, at int64) float64 {
+	price := row.PriceAmountSnapshot
+	if price <= 0 {
+		price = row.PlanPriceAmount
+	}
+	if price <= 0 {
+		return 0
+	}
+	if row.EndTime <= row.StartTime {
+		return 0
+	}
+	if at <= row.StartTime {
+		return price
+	}
+	if at >= row.EndTime {
+		return 0
+	}
+	durationSeconds := row.DurationSecondsSnapshot
+	if durationSeconds <= 0 {
+		durationSeconds = subscriptionDurationSeconds(row.StartTime, row.EndTime)
+	}
+	if durationSeconds <= 0 {
+		return 0
+	}
+	remainingSeconds := row.EndTime - at
+	if remainingSeconds <= 0 {
+		return 0
+	}
+	if remainingSeconds > durationSeconds {
+		remainingSeconds = durationSeconds
+	}
+	return price * float64(remainingSeconds) / float64(durationSeconds)
+}
+
 func GetNonAdminPaidSubscriptionBalanceUSD() (float64, error) {
-	now := common.GetTimestamp()
-	var totalQuota int64
+	return GetNonAdminPaidSubscriptionBalanceUSDAt(common.GetTimestamp())
+}
+
+func GetNonAdminPaidSubscriptionBalanceUSDAt(at int64) (float64, error) {
+	var rows []paidSubscriptionBalanceRow
 	err := DB.Table("user_subscriptions").
+		Select(`user_subscriptions.price_amount_snapshot,
+			user_subscriptions.duration_seconds_snapshot,
+			user_subscriptions.start_time,
+			user_subscriptions.end_time,
+			subscription_plans.price_amount as plan_price_amount`).
 		Joins("JOIN users ON users.id = user_subscriptions.user_id AND users.deleted_at IS NULL").
 		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
 		Where("users.role < ?", common.RoleAdminUser).
-		Where("user_subscriptions.status = ? AND user_subscriptions.end_time > ?", "active", now).
+		Where("user_subscriptions.status = ? AND user_subscriptions.end_time > ?", "active", at).
 		Where("subscription_plans.plan_type = ?", SubscriptionPlanTypeGPTSubscription).
-		Select("COALESCE(SUM(CASE WHEN user_subscriptions.amount_total > user_subscriptions.amount_used THEN user_subscriptions.amount_total - user_subscriptions.amount_used ELSE 0 END), 0)").
-		Scan(&totalQuota).Error
+		Scan(&rows).Error
 	if err != nil {
 		return 0, err
 	}
-	if common.QuotaPerUnit <= 0 {
-		return 0, nil
+	var total float64
+	for _, row := range rows {
+		total += paidSubscriptionBalanceUSDAt(row, at)
 	}
-	return float64(totalQuota) / common.QuotaPerUnit, nil
+	return total, nil
 }
 
 func UpsertBillingWalletDailySnapshot(day, snapshotAt int64) (float64, error) {
@@ -560,7 +610,7 @@ func UpsertBillingExperienceDailySnapshot(day, snapshotAt int64) (float64, error
 }
 
 func UpsertBillingPaidSubscriptionDailySnapshot(day, snapshotAt int64) (float64, error) {
-	balanceUSD, err := GetNonAdminPaidSubscriptionBalanceUSD()
+	balanceUSD, err := GetNonAdminPaidSubscriptionBalanceUSDAt(snapshotAt)
 	if err != nil {
 		return 0, err
 	}
