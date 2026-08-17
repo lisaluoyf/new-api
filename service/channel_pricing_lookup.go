@@ -25,6 +25,26 @@ func EffectiveModelPriceRatio(modelPriceRatiosJSON *string, channelRatio *float6
 	return *channelRatio
 }
 
+// ChannelUserPriceRatio returns the existing user selling-price multiplier for
+// a channel/model. It deliberately excludes recharge_rate: that field belongs
+// to procurement cost, while this multiplier is the user-price policy.
+func ChannelUserPriceRatio(channelID int, modelName string) float64 {
+	if channelID <= 0 || model.DB == nil {
+		return 1
+	}
+	var ch struct {
+		ApimasterPriceRatio float64
+		ModelPriceRatios    *string
+	}
+	if err := model.DB.Table("channels").
+		Select("COALESCE(apimaster_price_ratio, 1.0) AS apimaster_price_ratio, model_price_ratios").
+		Where("id = ?", channelID).
+		Scan(&ch).Error; err != nil {
+		return 1
+	}
+	return EffectiveModelPriceRatio(ch.ModelPriceRatios, &ch.ApimasterPriceRatio, modelName)
+}
+
 // ChannelModelPriceRatio derives newapi-internal ratio numbers from a specific
 // channel's row in channel_model_pricings. Returns (0, 0, false) when no
 // pricing row exists for the (channel, model) pair.

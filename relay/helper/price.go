@@ -3,6 +3,7 @@ package helper
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -126,10 +127,31 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 		}
 		var success bool
 		var matchName string
-		// channel_model_pricings takes priority: actual procurement price × group_ratio (5% markup)
-		// is the billing model. Fall back to global model_ratio only when no channel row exists.
+		// DeepSeek V4 uses the official Beijing-time price as the channel base,
+		// then preserves the existing upstream-group, recharge, and user-price
+		// multiplier chain.
+		// Use request StartTime so retries and long responses cannot cross tiers.
+		priceResolved := false
+		billingAt := info.StartTime
+		if billingAt.IsZero() {
+			billingAt = time.Now()
+		}
+		if userPrice, ok := service.DeepSeekV4UserPricingAt(c.GetInt("channel_id"), info.OriginModelName, billingAt); ok {
+			if useTrialPricing {
+				userPrice, _ = service.DeepSeekV4OfficialPricingAt(info.OriginModelName, billingAt)
+			}
+			modelRatio = userPrice.InputPrice / service.PlatformUSDPerModelRatio
+			completionRatio = userPrice.OutputPrice / userPrice.InputPrice
+			cacheRatio = userPrice.CachePrice / userPrice.InputPrice
+			cacheCreationRatio = userPrice.CacheCreationPrice / userPrice.InputPrice
+			success = true
+			priceResolved = true
+		}
+		// For other models, channel_model_pricings takes priority: actual procurement
+		// price × user-price ratio is the billing model. Fall back to global
+		// model_ratio only when no channel row exists.
 		ratioFromChannel := false
-		if !useTrialPricing {
+		if !success && !useTrialPricing {
 			if channelID := c.GetInt("channel_id"); channelID > 0 {
 				if channelPrice, ok := service.ChannelModelPriceData(channelID, info.OriginModelName); ok {
 					modelRatio = channelPrice.ModelRatio
@@ -154,7 +176,7 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 			}
 		}
 		// Skip the operator completion-ratio lookup when channel pricing already supplied one.
-		if !ratioFromChannel {
+		if !ratioFromChannel && !priceResolved {
 			completionRatio = ratio_setting.GetCompletionRatio(info.OriginModelName)
 		}
 		if cacheRatio == 0 {

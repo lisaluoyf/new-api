@@ -4,11 +4,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -18,6 +20,95 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestDeepSeekV4PriceUsesOfficialScheduleAndUserMultiplier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
+
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.Exec(`CREATE TABLE channels (
+		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		apimaster_price_ratio real, model_price_ratios text
+	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
+		id integer primary key, channel_id integer not null, model_name text not null,
+		input_price real, output_price real, cache_price real, cache_creation_price real,
+		group_ratio real, pricing_source text
+	)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channels
+		(id, recharge_rate, apimaster_price_ratio, model_price_ratios)
+		VALUES (1, 0.1, 1.5, '{"deepseek-v4-flash":0.8}')`).Error)
+	// Stored unit prices are ignored, but the upstream group multiplier remains part of billing.
+	require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings
+		(channel_id, model_name, input_price, output_price, cache_price, cache_creation_price, group_ratio, pricing_source)
+		VALUES (1, 'deepseek-v4-flash', 9, 27, 0.9, 9, 0.5, 'api')`).Error)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	ctx.Set("channel_id", 1)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "deepseek-v4-flash",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+		StartTime:       time.Date(2026, time.August, 17, 13, 0, 0, 0, time.FixedZone("CST", 8*60*60)),
+	}
+
+	price, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.InDelta(t, 0.0088/service.PlatformUSDPerModelRatio, price.ModelRatio, 0.0000001)
+	require.InDelta(t, 3, price.CompletionRatio, 0.0000001)
+	require.InDelta(t, 0.007/0.22, price.CacheRatio, 0.0000001)
+	require.InDelta(t, 1, price.CacheCreationRatio, 0.0000001)
+}
+
+func TestDeepSeekV4RetryKeepsRequestTimeButRefreshesChannelMultiplier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
+
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.Exec(`CREATE TABLE channels (
+		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		apimaster_price_ratio real, model_price_ratios text
+	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
+		id integer primary key, channel_id integer not null, model_name text not null,
+		input_price real, output_price real, cache_price real, cache_creation_price real,
+		group_ratio real, pricing_source text
+	)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channels (id, recharge_rate, apimaster_price_ratio) VALUES
+		(1, 0.5, 1), (2, 0.25, 1.5)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings
+		(channel_id, model_name, input_price, output_price, group_ratio, pricing_source) VALUES
+		(1, 'deepseek-v4-pro', 9, 27, 0.8, 'api'),
+		(2, 'deepseek-v4-pro', 9, 27, 0.4, 'api')`).Error)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	ctx.Set("channel_id", 1)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "deepseek-v4-pro",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+		StartTime:       time.Date(2026, time.August, 17, 9, 0, 0, 0, time.FixedZone("CST", 8*60*60)),
+	}
+
+	initial, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.InDelta(t, 1.32*0.8*0.5/service.PlatformUSDPerModelRatio, initial.ModelRatio, 0.0000001)
+
+	ctx.Set("channel_id", 2)
+	refreshed, err := RefreshModelPriceForRetry(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.InDelta(t, 1.32*0.4*0.25*1.5/service.PlatformUSDPerModelRatio, refreshed.ModelRatio, 0.0000001)
+}
 
 func TestRefreshModelPriceForRetryUsesFallbackChannelPricing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
