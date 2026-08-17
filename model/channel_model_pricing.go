@@ -19,6 +19,8 @@ type ChannelModelPricing struct {
 	Currency           string  `json:"currency"       gorm:"size:8;default:'USD'"`
 	PricingSource      string  `json:"pricing_source" gorm:"size:16;default:'api'"` // "api" | "manual"
 	FetchedAt          int64   `json:"fetched_at"`
+	BillingMode        string  `json:"billing_mode" gorm:"size:32"`
+	BillingExpr        string  `json:"billing_expr" gorm:"type:text"`
 }
 
 // GetChannelModelPricing returns the pricing row for a given channel+model.
@@ -85,6 +87,7 @@ func UpsertChannelModelPricings(rows []ChannelModelPricing) error {
 		DoUpdates: clause.AssignmentColumns([]string{
 			"input_price", "output_price", "cache_price", "cache_creation_price",
 			"group_ratio", "currency", "pricing_source", "fetched_at",
+			"billing_mode", "billing_expr",
 		}),
 	}).Create(&rows).Error
 }

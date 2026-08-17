@@ -42,6 +42,8 @@ type pricingExportPricing struct {
 	Currency           string  `json:"currency"`
 	PricingSource      string  `json:"pricing_source"`
 	FetchedAt          int64   `json:"fetched_at"`
+	BillingMode        string  `json:"billing_mode,omitempty"`
+	BillingExpr        string  `json:"billing_expr,omitempty"`
 	// effective user-price markup for THIS (channel, model): override > channel > 1.0
 	UserPriceRatio float64 `json:"user_price_ratio"`
 }
@@ -109,6 +111,8 @@ func PricingExport(c *gin.Context) {
 			Currency:           row.Currency,
 			PricingSource:      row.PricingSource,
 			FetchedAt:          row.FetchedAt,
+			BillingMode:        row.BillingMode,
+			BillingExpr:        row.BillingExpr,
 			UserPriceRatio:     userPriceRatio,
 		})
 	}

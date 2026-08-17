@@ -26,7 +26,8 @@ var (
 
 // FetchChannelPricing calls {base_url}/api/pricing (public, no auth required)
 // and stores per-model USD costs into channel_model_pricing.
-// Actual cost = model_ratio × group_ratio[key_group] × $2/1M tokens.
+// Legacy ratio pricing uses model_ratio × group_ratio[key_group] × $2/1M.
+// A simple tiered expression instead uses its USD coefficients × group ratio.
 // Errors are logged, not returned — this runs in a background goroutine.
 func FetchChannelPricing(channel *model.Channel) {
 	ctx := context.Background()
@@ -82,6 +83,8 @@ func FetchChannelPricing(channel *model.Channel) {
 		CompletionRatio  float64 `json:"completion_ratio"`   // output/input multiplier
 		CacheRatio       float64 `json:"cache_ratio"`        // cache-read / input multiplier
 		CreateCacheRatio float64 `json:"create_cache_ratio"` // cache-write / input multiplier
+		BillingMode      string  `json:"billing_mode"`
+		BillingExpr      string  `json:"billing_expr"`
 	}
 	type pricingResp struct {
 		Success    *bool              `json:"success"`
@@ -134,7 +137,18 @@ func FetchChannelPricing(channel *model.Channel) {
 			continue
 		}
 		var inputPrice, outputPrice, cachePrice, cacheCreationPrice float64
-		if item.QuotaType == 1 {
+		billingMode := strings.TrimSpace(item.BillingMode)
+		billingExpr := strings.TrimSpace(item.BillingExpr)
+		flatExprPrices, flatExprOK := flatTieredPricing(item.BillingMode, item.BillingExpr)
+		if billingMode == "tiered_expr" && !flatExprOK {
+			logger.LogWarn(ctx, fmt.Sprintf("channel-pricing [%d] model=%s: tiered expression is not a single linear token price; retaining ratio fallback", channel.Id, item.ModelName))
+		}
+		if flatExprOK {
+			inputPrice = flatExprPrices.InputPrice * groupMul
+			outputPrice = flatExprPrices.OutputPrice * groupMul
+			cachePrice = flatExprPrices.CachePrice * groupMul
+			cacheCreationPrice = flatExprPrices.CacheCreationPrice * groupMul
+		} else if item.QuotaType == 1 {
 			inputPrice = item.ModelPrice * groupMul
 		} else {
 			inputPrice = item.ModelRatio * groupMul * 2
@@ -164,6 +178,8 @@ func FetchChannelPricing(channel *model.Channel) {
 			Currency:           "USD",
 			PricingSource:      "api",
 			FetchedAt:          now,
+			BillingMode:        billingMode,
+			BillingExpr:        billingExpr,
 		})
 	}
 
