@@ -27,8 +27,10 @@ func DeepSeekV4OfficialPricingAt(modelName string, at time.Time) (ModelUnitPrice
 	if at.IsZero() {
 		at = time.Now()
 	}
-	hour := at.In(deepSeekV4Timezone).Hour()
-	peak := (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18)
+	period, ok := DeepSeekV4PricingPeriodAt(modelName, at)
+	if !ok {
+		return ModelUnitPricesUSD{}, false
+	}
 
 	var offPeak ModelUnitPricesUSD
 	switch modelName {
@@ -49,10 +51,27 @@ func DeepSeekV4OfficialPricingAt(modelName string, at time.Time) (ModelUnitPrice
 	default:
 		return ModelUnitPricesUSD{}, false
 	}
-	if !peak {
+	if period == "off_peak" {
 		return offPeak, true
 	}
 	return scaleModelUnitPrices(offPeak, 2), true
+}
+
+// DeepSeekV4PricingPeriodAt returns the official pricing period in Beijing time.
+func DeepSeekV4PricingPeriodAt(modelName string, at time.Time) (string, bool) {
+	switch modelName {
+	case "deepseek-v4-flash", "deepseek-v4-pro":
+	default:
+		return "", false
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	hour := at.In(deepSeekV4Timezone).Hour()
+	if (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18) {
+		return "peak", true
+	}
+	return "off_peak", true
 }
 
 // DeepSeekV4ProcurementPricingAt treats the official time-of-day price as the

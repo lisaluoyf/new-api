@@ -325,11 +325,10 @@ func GenerateClaudeOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 	return info
 }
 
-// appendChannelActualPrice looks up the channel's actual procurement price from
-// channel_model_pricings and writes it into the other map so it is permanently
-// archived in the log row — immune to future pricing changes or channel deletion.
+// appendChannelActualPrice archives the channel's user-facing base price in the
+// log row so later pricing changes cannot alter the displayed billing details.
 func appendChannelActualPrice(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
-	if relayInfo == nil || other == nil {
+	if relayInfo == nil || relayInfo.ChannelMeta == nil || other == nil {
 		return
 	}
 	channelId := relayInfo.ChannelId
@@ -337,9 +336,23 @@ func appendChannelActualPrice(relayInfo *relaycommon.RelayInfo, other map[string
 	if channelId == 0 || modelName == "" {
 		return
 	}
-	p, err := ChannelActualPricesResolved(channelId, modelName)
-	if err != nil || p == nil {
-		return
+	var p *model.ChannelActualPrices
+	if timedPrices, ok := DeepSeekV4UserPricingAt(channelId, modelName, relayInfo.StartTime); ok {
+		p = &model.ChannelActualPrices{
+			InputPrice:         timedPrices.InputPrice,
+			OutputPrice:        timedPrices.OutputPrice,
+			CachePrice:         timedPrices.CachePrice,
+			CacheCreationPrice: timedPrices.CacheCreationPrice,
+		}
+		if period, found := DeepSeekV4PricingPeriodAt(modelName, relayInfo.StartTime); found {
+			other["ch_price_period"] = period
+		}
+	} else {
+		var err error
+		p, err = ChannelActualPricesResolved(channelId, modelName)
+		if err != nil || p == nil {
+			return
+		}
 	}
 	if p.InputPrice > 0 {
 		other["ch_input_price"] = p.InputPrice

@@ -38,6 +38,7 @@ import {
 import { DataTableColumnHeader } from '@/components/data-table'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import type { UsageLog } from '../../data/schema'
+import { getDeepSeekV4TimedPricingDisplay } from '../../lib/deepseek-v4-pricing'
 import {
   formatModelName,
   getFirstResponseTimeColor,
@@ -193,9 +194,46 @@ function buildDetailSegments(
       })
     }
   } else {
+    const timedPricing = getDeepSeekV4TimedPricingDisplay(log, other)
     const isDuration = isDurationBilling(other.billing_mode)
     const isPerCall = !isDuration && isPerCallBilling(other.model_price)
-    if (isPerCall) {
+    if (timedPricing) {
+      segments.push({
+        text: `off_peak · ${formatPriceList(
+          [
+            formatPriceCompact(timedPricing.offPeakInput),
+            formatPriceCompact(timedPricing.offPeakOutput),
+          ],
+          true
+        )}`,
+      })
+      segments.push({
+        text: `peak · ${formatPriceList(
+          [
+            formatPriceCompact(timedPricing.peakInput),
+            formatPriceCompact(timedPricing.peakOutput),
+          ],
+          true
+        )}`,
+      })
+      segments.push({
+        text: `${t('Current Period')} · ${timedPricing.currentPeriod}`,
+        muted: true,
+      })
+      segments.push({
+        text: `${t('User Group Ratio')} · ${formatRatioCompact(timedPricing.groupRatio)}x`,
+        muted: true,
+      })
+      segments.push({
+        text: `${t('Final Price')} · ${formatPriceList(
+          [
+            formatPriceCompact(timedPricing.finalInput),
+            formatPriceCompact(timedPricing.finalOutput),
+          ],
+          true
+        )}`,
+      })
+    } else if (isPerCall) {
       segments.push({
         text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
       })
@@ -949,7 +987,9 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         return (
           <div className='flex flex-col gap-0.5'>
             <span className='border-border/80 bg-muted/60 inline-flex w-fit items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums'>
-              <span className='text-muted-foreground font-sans font-medium'>Wallet</span>
+              <span className='text-muted-foreground font-sans font-medium'>
+                Wallet
+              </span>
               {quotaStr}
             </span>
           </div>
@@ -969,6 +1009,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const segments = buildDetailSegments(log, other, t)
         const primary = segments[0]
         const hasMore = segments.length > 1
+        const showTimedPricing =
+          other != null && getDeepSeekV4TimedPricingDisplay(log, other) != null
 
         return (
           <>
@@ -980,7 +1022,25 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 onClick={() => setDialogOpen(true)}
                 title={t('Click to view full details')}
               >
-                {primary ? (
+                {showTimedPricing ? (
+                  <span className='flex min-w-0 flex-col gap-0.5 leading-snug'>
+                    {segments.map((segment) => (
+                      <span
+                        key={segment.text}
+                        className={cn(
+                          'truncate group-hover:underline',
+                          segment.muted
+                            ? 'text-muted-foreground/60'
+                            : segment.danger
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-foreground'
+                        )}
+                      >
+                        {segment.text}
+                      </span>
+                    ))}
+                  </span>
+                ) : primary ? (
                   <span
                     className={cn(
                       'truncate leading-snug group-hover:underline',

@@ -48,6 +48,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import type { UsageLog } from '../../data/schema'
+import { getDeepSeekV4TimedPricingDisplay } from '../../lib/deepseek-v4-pricing'
 import {
   parseLogOther,
   isSubscriptionUsageLog,
@@ -156,6 +157,9 @@ function BillingBreakdown(props: {
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
   const fmtPrice = (usd: number) => formatBillingCurrencyFromUSD(usd, priceOpts)
   const baseInputUSD = other.model_ratio != null ? other.model_ratio * 2.0 : 0
+  const timedPricing = getDeepSeekV4TimedPricingDisplay(log, other)
+  const fmtPricePair = (input: number, output: number) =>
+    `${fmtPrice(input)} / ${fmtPrice(output)}/M`
 
   if (isTieredExpr) {
     rows.push({
@@ -181,6 +185,31 @@ function BillingBreakdown(props: {
         value: t('No matching results'),
       })
     }
+  } else if (timedPricing) {
+    rows.push({ label: t('Billing Mode'), value: t('Time-based Pricing') })
+    rows.push({
+      label: 'off_peak',
+      value: fmtPricePair(
+        timedPricing.offPeakInput,
+        timedPricing.offPeakOutput
+      ),
+    })
+    rows.push({
+      label: 'peak',
+      value: fmtPricePair(timedPricing.peakInput, timedPricing.peakOutput),
+    })
+    rows.push({
+      label: t('Current Period'),
+      value: timedPricing.currentPeriod,
+    })
+    rows.push({
+      label: t('User Group Ratio'),
+      value: `${formatRatio(timedPricing.groupRatio)}x`,
+    })
+    rows.push({
+      label: t('Final Price'),
+      value: fmtPricePair(timedPricing.finalInput, timedPricing.finalOutput),
+    })
   } else if (isDuration) {
     rows.push({ label: t('Billing Mode'), value: t('Per-second') })
     if (other.model_price != null) {
@@ -221,7 +250,7 @@ function BillingBreakdown(props: {
   const userGR = other.user_group_ratio
   const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
   const effectiveGR = isUserGR ? userGR : other.group_ratio
-  if (effectiveGR != null && Number.isFinite(effectiveGR)) {
+  if (!timedPricing && effectiveGR != null && Number.isFinite(effectiveGR)) {
     rows.push({
       label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
       value: `${formatRatio(effectiveGR)}x`,

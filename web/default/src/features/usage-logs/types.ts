@@ -207,11 +207,12 @@ export interface LogOtherData {
   subscription_7d_limit?: number
   subscription_7d_used?: number
   subscription_7d_remain?: number
-  // Actual channel procurement prices (written at billing time from channel_model_pricings)
+  // Channel user base prices archived at billing time, before user group scaling.
   ch_input_price?: number
   ch_output_price?: number
   ch_cache_price?: number
   ch_cache_creation_price?: number
+  ch_price_period?: 'off_peak' | 'peak'
 }
 
 /**
