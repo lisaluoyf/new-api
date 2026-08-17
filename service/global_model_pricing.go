@@ -2,6 +2,7 @@ package service
 
 import (
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
@@ -13,6 +14,16 @@ const PlatformUSDPerModelRatio = 2.0
 // Pricing (ModelPrice / ModelRatio / CompletionRatio / CacheRatio). Tries the
 // canonical model name and ModelNameCandidates aliases (e.g. minimax-m3 ↔ MiniMax-M3).
 func GlobalModelPricingUSD(canonical string) (input, output, cache, cacheCreation float64, ok bool) {
+	return GlobalModelPricingUSDAt(canonical, time.Now())
+}
+
+// GlobalModelPricingUSDAt is the time-aware form used by tests and request
+// snapshots. DeepSeek V4 has an official peak/off-peak schedule; all other
+// models continue to resolve from the operator's static global settings.
+func GlobalModelPricingUSDAt(canonical string, at time.Time) (input, output, cache, cacheCreation float64, ok bool) {
+	if prices, found := DeepSeekV4OfficialPricingAt(canonical, at); found {
+		return prices.InputPrice, prices.OutputPrice, prices.CachePrice, prices.CacheCreationPrice, true
+	}
 	for _, name := range ModelPricingLookupNames(canonical) {
 		// Price-based (quota_type=1: per-request/per-second/per-image, e.g.
 		// sora/kling/gpt-image) has no "output token" axis at all — don't run

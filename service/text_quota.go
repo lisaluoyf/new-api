@@ -585,6 +585,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		CacheWriteTokens:         cacheWriteTokens,
 		GroupRatio:               summary.GroupRatio,
 		Quota:                    summary.Quota,
+		BillingAt:                relayInfo.StartTime,
 	}
 	if requestData := ImageRequestDataFromContext(ctx); len(requestData) > 0 {
 		if imageCount := coerceRequestInt(requestData["actual_image_count"]); imageCount > 0 {

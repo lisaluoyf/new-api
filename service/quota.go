@@ -249,6 +249,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		OutputTokens: usage.OutputTokens,
 		GroupRatio:   groupRatio,
 		Quota:        quota,
+		BillingAt:    relayInfo.StartTime,
 	})
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
@@ -382,6 +383,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		CacheWriteTokens: usage.PromptTokensDetails.CachedCreationTokens,
 		GroupRatio:       groupRatio,
 		Quota:            quota,
+		BillingAt:        relayInfo.StartTime,
 	})
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,

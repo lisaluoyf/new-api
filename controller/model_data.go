@@ -290,6 +290,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 	// 官方原价 (unified official list price, 系统设置→模型定价). Feeds the 官方原价
 	// column and the tampered-base-price alert only — never 采购价/计费.
 	officialIn, officialOut, _, _, officialOK := service.GlobalModelPricingUSD(modelName)
+	deepSeekTimedPrice, isDeepSeekTimedPrice := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
 
 	items := make([]ModelDataItem, 0, len(rows))
 	for _, r := range rows {
@@ -364,6 +365,14 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			actualOutPricePtr = &actualOut
 			// output 用户最终价格 = 输出采购价 × apimaster_price_ratio
 			userOut := actualOut * apimasterRatio
+			actualOutputUserPricePtr = &userOut
+		}
+		if isDeepSeekTimedPrice {
+			// DeepSeek V4 selling price uses the official time-of-day base price;
+			// procurement/recharge remain visible separately for margin analysis.
+			userIn := deepSeekTimedPrice.InputPrice * apimasterRatio
+			userOut := deepSeekTimedPrice.OutputPrice * apimasterRatio
+			userPricePtr = &userIn
 			actualOutputUserPricePtr = &userOut
 		}
 		var cachePricePtr, actualCachePricePtr *float64
@@ -876,6 +885,7 @@ func GetPublicMarketplace(c *gin.Context) {
 			officialOutPtr = &v
 		}
 	}
+	deepSeekTimedPrice, isDeepSeekTimedPrice := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
 
 	items := make([]PublicMarketplaceItem, 0, len(rows))
 	for _, r := range rows {
@@ -916,6 +926,12 @@ func GetPublicMarketplace(c *gin.Context) {
 			actualOut := out * rechargeRate
 			actualOutPricePtr = &actualOut
 			userOut := actualOut * apimasterRatio
+			actualOutputUserPricePtr = &userOut
+		}
+		if isDeepSeekTimedPrice {
+			userIn := deepSeekTimedPrice.InputPrice * apimasterRatio
+			userOut := deepSeekTimedPrice.OutputPrice * apimasterRatio
+			userPricePtr = &userIn
 			actualOutputUserPricePtr = &userOut
 		}
 

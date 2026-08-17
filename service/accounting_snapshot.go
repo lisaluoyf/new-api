@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -22,6 +23,7 @@ type ConsumeAccountingInput struct {
 	DurationSeconds          int
 	GroupRatio               float64
 	Quota                    int
+	BillingAt                time.Time
 }
 
 type accountingPriceTuple struct {
@@ -119,7 +121,17 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		snap.AmountsUSD["channel_cost"] = fields.ChannelCostAmountUSD
 	}
 
-	userPrice, err := ChannelActualPricesResolved(input.ChannelId, input.ModelName)
+	var userPrice *model.ChannelActualPrices
+	if prices, ok := DeepSeekV4UserPricingAt(input.ChannelId, input.ModelName, input.BillingAt); ok {
+		userPrice = &model.ChannelActualPrices{
+			InputPrice:         prices.InputPrice,
+			OutputPrice:        prices.OutputPrice,
+			CachePrice:         prices.CachePrice,
+			CacheCreationPrice: prices.CacheCreationPrice,
+		}
+	} else {
+		userPrice, err = ChannelActualPricesResolved(input.ChannelId, input.ModelName)
+	}
 	if err != nil {
 		status = "partial"
 		errorText = appendAccountingError(errorText, "user_price_lookup_failed: "+err.Error())
@@ -142,7 +154,7 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 
 	official := accountingPriceTuple{}
 	if input.ModelName != "" {
-		in, out, cache, cacheCreation, ok := GlobalModelPricingUSD(input.ModelName)
+		in, out, cache, cacheCreation, ok := GlobalModelPricingUSDAt(input.ModelName, input.BillingAt)
 		if ok {
 			official = accountingPriceTuple{
 				InputPrice:         in,
