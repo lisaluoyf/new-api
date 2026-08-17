@@ -66,6 +66,12 @@ func runBillingSummaryOnce() {
 	if _, err := model.UpsertBillingSubscriptionDailySnapshot(billingDayStart(now), now); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: subscription snapshot failed: %v", err))
 	}
+	if _, err := model.UpsertBillingExperienceDailySnapshot(billingDayStart(now), now); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: experience snapshot failed: %v", err))
+	}
+	if _, err := model.UpsertBillingPaidSubscriptionDailySnapshot(billingDayStart(now), now); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: paid subscription snapshot failed: %v", err))
+	}
 	// Floor to the hour: the upsert overwrites whole (hour, model, channel)
 	// buckets, so the window boundary must sit exactly on a bucket edge. A
 	// mid-hour boundary re-aggregates the straddled bucket from only part of
@@ -127,14 +133,39 @@ func GetBillingDaily(startTimestamp, endTimestamp int64, modelName string, chann
 			rows[i].WalletBalanceUSD = &balanceCopy
 		}
 	}
-	subscriptionSnapshots, err := model.GetBillingSubscriptionDailySnapshots(startTimestamp, endTimestamp)
+	legacySubscriptionSnapshots, err := model.GetBillingSubscriptionDailySnapshots(startTimestamp, endTimestamp)
+	if err != nil {
+		return nil, err
+	}
+	experienceSnapshots, err := model.GetBillingExperienceDailySnapshots(startTimestamp, endTimestamp)
+	if err != nil {
+		return nil, err
+	}
+	paidSubscriptionSnapshots, err := model.GetBillingPaidSubscriptionDailySnapshots(startTimestamp, endTimestamp)
 	if err != nil {
 		return nil, err
 	}
 	for i := range rows {
-		if balance, ok := subscriptionSnapshots[rows[i].Day]; ok {
+		if balance, ok := experienceSnapshots[rows[i].Day]; ok {
 			balanceCopy := balance
-			rows[i].SubscriptionBalanceUSD = &balanceCopy
+			rows[i].ExperienceBalanceUSD = &balanceCopy
+		}
+		if balance, ok := paidSubscriptionSnapshots[rows[i].Day]; ok {
+			balanceCopy := balance
+			rows[i].PaidSubscriptionBalanceUSD = &balanceCopy
+		}
+		if rows[i].ExperienceBalanceUSD == nil {
+			if legacyBalance, ok := legacySubscriptionSnapshots[rows[i].Day]; ok {
+				derivedExperience := legacyBalance
+				if paidBalance, hasPaid := paidSubscriptionSnapshots[rows[i].Day]; hasPaid {
+					derivedExperience -= paidBalance
+					if derivedExperience < 0 {
+						derivedExperience = 0
+					}
+				}
+				balanceCopy := derivedExperience
+				rows[i].ExperienceBalanceUSD = &balanceCopy
+			}
 		}
 	}
 	return rows, nil

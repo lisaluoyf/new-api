@@ -34,16 +34,17 @@ export interface BillingDailyRow {
   day: number // unix seconds, floored to the day (UTC)
   cost_usd: number
   revenue_usd: number
-  subscription_cost_usd: number
-  subscription_billing_usd: number
+  experience_cost_usd: number
+  experience_billing_usd: number
   paid_subscription_cost_usd: number
   paid_subscription_revenue_usd: number
   accounting_ok_request_count: number
   accounting_target_request_count: number
   non_subscription_user_count: number
-  subscription_user_count: number
+  experience_user_count: number
   wallet_balance_usd?: number | null
-  subscription_balance_usd?: number | null
+  experience_balance_usd?: number | null
+  paid_subscription_balance_usd?: number | null
 }
 
 // Frontend-only row shape: a synthetic "Total" row is prepended to the table
@@ -62,7 +63,8 @@ export interface ApiResponse<T = unknown> {
 export interface BillingSummaryResponse
   extends ApiResponse<BillingDailyRow[]> {
   wallet_balance_usd?: number
-  subscription_balance_usd?: number
+  experience_balance_usd?: number
+  paid_subscription_balance_usd?: number
   non_subscription_user_count?: number
-  subscription_user_count?: number
+  experience_user_count?: number
 }
