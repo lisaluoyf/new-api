@@ -269,12 +269,12 @@ func GetGPTSubscriptionQuote(c *gin.Context) {
 		PlanId int `json:"plan_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorMsg(c, "Invalid parameters")
 		return
 	}
 	plan, err := model.GetSubscriptionPlanById(req.PlanId)
 	if err != nil || plan == nil || !plan.Enabled || !model.IsGPTPaidSubscriptionPlan(plan) {
-		common.ApiErrorMsg(c, "套餐不可用")
+		common.ApiErrorMsg(c, "Plan is not available")
 		return
 	}
 	orderType, previousId, credit, payable, err := model.CalculateGPTSubscriptionQuote(c.GetInt("id"), plan)
@@ -321,6 +321,20 @@ func AdminGetUserGPTSubscriptionDetails(c *gin.Context) {
 			Scan(&usage).Error
 	}
 	common.ApiSuccess(c, gin.H{"state": state, "orders": orders, "usage": usage})
+}
+
+func AdminInvalidateUserGPTSubscription(c *gin.Context) {
+	userID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || userID <= 0 {
+		common.ApiErrorMsg(c, "无效的用户ID")
+		return
+	}
+	msg, err := model.AdminInvalidateCurrentGPTSubscription(userID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"message": msg})
 }
 
 func AdminReverseGPTSubscriptionOrder(c *gin.Context) {

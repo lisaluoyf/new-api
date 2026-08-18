@@ -38,20 +38,20 @@ func RequestPlategaAmount(c *gin.Context) {
 		return
 	}
 	if req.PlanId <= 0 && req.Amount < int64(setting.PlategaMinTopUp) {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.PlategaMinTopUp)})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", setting.PlategaMinTopUp)})
 		return
 	}
 
 	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
 		return
 	}
 
 	rubAmount := getPlategaPayRubAmount(req.Amount, group, id)
 	if rubAmount <= 0.01 {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Top-up amount is too low"})
 		return
 	}
 
@@ -126,7 +126,7 @@ func RequestPlategaPay(c *gin.Context) {
 		return
 	}
 	if !isPlategaTopUpEnabled() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Platega 充值未启用"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Platega top-up is not enabled"})
 		return
 	}
 
@@ -136,7 +136,7 @@ func RequestPlategaPay(c *gin.Context) {
 		return
 	}
 	if req.PlanId <= 0 && req.Amount < int64(setting.PlategaMinTopUp) {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.PlategaMinTopUp)})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", setting.PlategaMinTopUp)})
 		return
 	}
 
@@ -158,7 +158,7 @@ func RequestPlategaPay(c *gin.Context) {
 			return
 		}
 		if terms.Payable+0.005 < float64(setting.PlategaMinTopUp) {
-			common.ApiErrorMsg(c, fmt.Sprintf("SBP 最低支付金额为 $%d", setting.PlategaMinTopUp))
+			common.ApiErrorMsg(c, fmt.Sprintf("SBP minimum payment amount is $%d", setting.PlategaMinTopUp))
 			return
 		}
 		rate := setting.PlategaUSDRate
@@ -169,13 +169,13 @@ func RequestPlategaPay(c *gin.Context) {
 	} else {
 		group, groupErr := model.GetUserGroup(id, true)
 		if groupErr != nil {
-			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
 			return
 		}
 		payRub = getPlategaPayRubAmount(req.Amount, group, id)
 	}
 	if payRub <= 0.01 {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Top-up amount is too low"})
 		return
 	}
 
@@ -190,7 +190,7 @@ func RequestPlategaPay(c *gin.Context) {
 		order := newGPTSubscriptionOrder(id, plan, terms, tradeNo, model.PaymentMethodPlatega, model.PaymentProviderPlatega)
 		if err := order.Insert(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Platega 创建订阅订单失败 user_id=%d trade_no=%s plan_id=%d error=%q", id, tradeNo, plan.Id, err.Error()))
-			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to create order"})
 			return
 		}
 	} else {
@@ -206,7 +206,7 @@ func RequestPlategaPay(c *gin.Context) {
 		}
 		if err := topUp.FillCountryFromIP(c.ClientIP(), profileCountry).Insert(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Platega 创建本地订单失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
-			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to create order"})
 			return
 		}
 	}
@@ -238,7 +238,7 @@ func RequestPlategaPay(c *gin.Context) {
 		} else {
 			_ = model.UpdatePendingTopUpStatus(tradeNo, model.PaymentProviderPlatega, common.TopUpStatusFailed)
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to start payment"})
 		return
 	}
 
@@ -264,7 +264,7 @@ func RequestPlategaPay(c *gin.Context) {
 	}
 	if err := plategaOrder.Insert(); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Platega 保存订单扩展信息失败 trade_no=%s error=%q", tradeNo, err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "保存订单失败"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to save order"})
 		return
 	}
 

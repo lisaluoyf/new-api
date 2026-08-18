@@ -12,18 +12,18 @@ import (
 
 func resolveGPTSubscriptionPayment(userID int, planID int) (*model.SubscriptionPlan, subscriptionOrderTerms, error) {
 	if userID <= 0 || planID <= 0 {
-		return nil, subscriptionOrderTerms{}, errors.New("参数错误")
+		return nil, subscriptionOrderTerms{}, errors.New("Invalid parameters")
 	}
 	plan, err := model.GetSubscriptionPlanById(planID)
 	if err != nil || plan == nil || !plan.Enabled || !model.IsGPTPaidSubscriptionPlan(plan) {
-		return nil, subscriptionOrderTerms{}, errors.New("套餐不可用")
+		return nil, subscriptionOrderTerms{}, errors.New("Plan is not available")
 	}
 	terms, err := resolveSubscriptionOrderTerms(userID, plan)
 	if err != nil {
 		return nil, subscriptionOrderTerms{}, err
 	}
 	if terms.Payable < 0.01 {
-		return nil, subscriptionOrderTerms{}, errors.New("应付金额过低")
+		return nil, subscriptionOrderTerms{}, errors.New("Payable amount is too low")
 	}
 	return plan, terms, nil
 }

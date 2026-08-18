@@ -97,7 +97,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	}
 	var req SubscriptionEpayPayRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorMsg(c, "Invalid parameters")
 		return
 	}
 
@@ -107,19 +107,19 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 	if !plan.Enabled {
-		common.ApiErrorMsg(c, "套餐未启用")
+		common.ApiErrorMsg(c, "Plan is not enabled")
 		return
 	}
 	if model.IsGPTPromotionalSubscriptionPlan(plan) {
-		common.ApiErrorMsg(c, "试用套餐仅可通过活动领取")
+		common.ApiErrorMsg(c, "Trial plans can only be claimed through the promotion")
 		return
 	}
 	if plan.PriceAmount < 0.01 {
-		common.ApiErrorMsg(c, "套餐金额过低")
+		common.ApiErrorMsg(c, "Plan price is too low")
 		return
 	}
 	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
-		common.ApiErrorMsg(c, "支付方式不存在")
+		common.ApiErrorMsg(c, "Payment method does not exist")
 		return
 	}
 
@@ -130,12 +130,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 	if terms.Payable < 0.01 {
-		common.ApiErrorMsg(c, "应付金额过低")
+		common.ApiErrorMsg(c, "Payable amount is too low")
 		return
 	}
 	chargeAmount, err := calculateSubscriptionEpayChargeAmount(terms.Payable, operation_setting.Price)
 	if err != nil {
-		common.ApiErrorMsg(c, "人民币支付汇率配置错误")
+		common.ApiErrorMsg(c, "CNY exchange rate is not configured correctly")
 		return
 	}
 	if plan.MaxPurchasePerUser > 0 {
@@ -145,7 +145,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 			return
 		}
 		if count >= int64(plan.MaxPurchasePerUser) {
-			common.ApiErrorMsg(c, "已达到该套餐购买上限")
+			common.ApiErrorMsg(c, "You have reached the purchase limit for this plan")
 			return
 		}
 	}
@@ -153,12 +153,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	callBackAddress := service.GetCallbackAddress()
 	returnUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/return")
 	if err != nil {
-		common.ApiErrorMsg(c, "回调地址配置错误")
+		common.ApiErrorMsg(c, "Callback URL is misconfigured")
 		return
 	}
 	notifyUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/notify")
 	if err != nil {
-		common.ApiErrorMsg(c, "回调地址配置错误")
+		common.ApiErrorMsg(c, "Callback URL is misconfigured")
 		return
 	}
 
@@ -167,7 +167,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 
 	client := GetEpayClient()
 	if client == nil {
-		common.ApiErrorMsg(c, "当前管理员未配置支付信息")
+		common.ApiErrorMsg(c, "Payment configuration is missing")
 		return
 	}
 
@@ -192,7 +192,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Status:     common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
-		common.ApiErrorMsg(c, "创建订单失败")
+		common.ApiErrorMsg(c, "Failed to create order")
 		return
 	}
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{

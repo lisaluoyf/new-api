@@ -81,7 +81,7 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
 }
 
 export const GPT_TRIAL_PRESET: PlanFormValues = {
-  title: 'APIMaster $20 GPT Trial',
+  title: 'APIMaster GPT Trial',
   subtitle: '5-day GPT trial at official pricing',
   plan_type: 'gpt_trial',
   price_amount: 0,
@@ -93,7 +93,7 @@ export const GPT_TRIAL_PRESET: PlanFormValues = {
   enabled: false,
   sort_order: 0,
   max_purchase_per_user: 1,
-  total_amount: 10_000_000,
+  total_amount: 25_000_000,
   upgrade_group: '',
   stripe_price_id: '',
   creem_product_id: '',

@@ -47,13 +47,13 @@ type StripeAdaptor struct {
 
 func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 	if req.Amount < getStripeMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getStripeMinTopup())})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", getStripeMinTopup())})
 		return
 	}
 	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
 		return
 	}
 	payMoney := getStripePayMoney(float64(req.Amount), group)
@@ -70,11 +70,11 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		return
 	}
 	if req.Amount < getStripeMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("充值数量不能小于 %d", getStripeMinTopup()), "data": 10})
+		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Top-up amount cannot be less than %d", getStripeMinTopup()), "data": 10})
 		return
 	}
 	if req.Amount > 10000 {
-		c.JSON(http.StatusOK, gin.H{"message": "充值数量不能大于 10000", "data": 10})
+		c.JSON(http.StatusOK, gin.H{"message": "Top-up amount cannot be greater than 10000", "data": 10})
 		return
 	}
 

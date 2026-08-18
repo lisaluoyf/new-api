@@ -193,7 +193,7 @@ func RechargePlatega(tradeNo string, callerIp string) (err error) {
 	}
 
 	if quotaToAdd > 0 {
-		RecordTopupLog(topUp.UserId, fmt.Sprintf("Russian SBP QR 充值成功，充值额度: %v，支付金额: %.2f RUB", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodPlatega)
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("Russian SBP QR top-up successful, credited amount: %v, amount paid: %.2f RUB", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodPlatega)
 		OnTopupSucceeded(topUp.UserId, quotaToAdd, PaymentMethodPlatega, topUp.TradeNo)
 	}
 	return nil

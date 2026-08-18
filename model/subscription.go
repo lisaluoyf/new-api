@@ -605,7 +605,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			return nil, err
 		}
 		if count >= int64(plan.MaxPurchasePerUser) {
-			return nil, errors.New("已达到该套餐购买上限")
+			return nil, errors.New("You have reached the purchase limit for this plan")
 		}
 	}
 	nowUnix := GetDBTimestampTx(tx)
@@ -749,7 +749,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
 	}
 	if logUserId > 0 {
-		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
+		msg := fmt.Sprintf("Subscription purchase successful, plan: %s, amount paid: %.2f, payment method: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeTopup, msg)
 		paidQuota := int(math.Round(logMoney * common.QuotaPerUnit))
 		if paidQuota > 0 {
@@ -1234,6 +1234,29 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	return result
 }
 
+func adminInvalidateUserSubscriptionTx(tx *gorm.DB, userSubscriptionId int, now int64) (int, string, error) {
+	if tx == nil || userSubscriptionId <= 0 {
+		return 0, "", errors.New("invalid userSubscriptionId")
+	}
+	var sub UserSubscription
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+		return 0, "", err
+	}
+	if err := tx.Model(&sub).Updates(map[string]interface{}{
+		"status":     "cancelled",
+		"end_time":   now,
+		"updated_at": now,
+	}).Error; err != nil {
+		return 0, "", err
+	}
+	target, err := downgradeUserGroupForSubscriptionTx(tx, &sub, now)
+	if err != nil {
+		return 0, "", err
+	}
+	return sub.UserId, target, nil
+}
+
 // AdminInvalidateUserSubscription marks a user subscription as cancelled and ends it immediately.
 func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	if userSubscriptionId <= 0 {
@@ -1244,27 +1267,12 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	downgradeGroup := ""
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
-			return err
-		}
-		userId = sub.UserId
-		if err := tx.Model(&sub).Updates(map[string]interface{}{
-			"status":     "cancelled",
-			"end_time":   now,
-			"updated_at": now,
-		}).Error; err != nil {
-			return err
-		}
-		target, err := downgradeUserGroupForSubscriptionTx(tx, &sub, now)
+		var err error
+		userId, downgradeGroup, err = adminInvalidateUserSubscriptionTx(tx, userSubscriptionId, now)
 		if err != nil {
 			return err
 		}
-		if target != "" {
-			cacheGroup = target
-			downgradeGroup = target
-		}
+		cacheGroup = downgradeGroup
 		return nil
 	})
 	if err != nil {
@@ -1277,6 +1285,55 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
 	}
 	return "", nil
+}
+
+// AdminInvalidateCurrentGPTSubscription invalidates the user's current paid GPT
+// subscription while preserving historical billing and usage records.
+func AdminInvalidateCurrentGPTSubscription(userId int) (string, error) {
+	if userId <= 0 {
+		return "", errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	cacheGroup := ""
+	invalidated := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var subs []UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+			Order("end_time desc, id desc").
+			Find(&subs).Error; err != nil {
+			return err
+		}
+		for i := range subs {
+			plan, err := getSubscriptionPlanByIdTx(tx, subs[i].PlanId)
+			if err != nil {
+				return err
+			}
+			if !IsGPTPaidSubscriptionPlan(plan) {
+				continue
+			}
+			_, cacheGroup, err = adminInvalidateUserSubscriptionTx(tx, subs[i].Id, now)
+			if err != nil {
+				return err
+			}
+			invalidated = true
+			return nil
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if cacheGroup != "" {
+		_ = UpdateUserGroupCache(userId, cacheGroup)
+	}
+	if !invalidated {
+		return "当前没有有效的 GPT 订阅", nil
+	}
+	if cacheGroup != "" {
+		return fmt.Sprintf("GPT 订阅已关闭，用户分组将回退到 %s", cacheGroup), nil
+	}
+	return "GPT 订阅已关闭", nil
 }
 
 // AdminDeleteUserSubscription hard-deletes a user subscription.

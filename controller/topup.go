@@ -398,7 +398,7 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 	if req.Amount < getMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", getMinTopup())})
 		return
 	}
 
@@ -411,7 +411,7 @@ func RequestEpay(c *gin.Context) {
 	}
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group, id)
@@ -614,7 +614,7 @@ func EpayNotify(c *gin.Context) {
 				return
 			}
 			logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值成功 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d money=%.2f topup=%q", topUp.TradeNo, topUp.UserId, c.ClientIP(), quotaToAdd, topUp.Money, common.GetJsonString(topUp)))
-			model.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), c.ClientIP(), topUp.PaymentMethod, "epay")
+			model.RecordTopupLog(topUp.UserId, fmt.Sprintf("Online top-up successful, credited amount: %v, amount paid: %f", logger.LogQuota(quotaToAdd), topUp.Money), c.ClientIP(), topUp.PaymentMethod, "epay")
 			model.OnTopupSucceeded(topUp.UserId, quotaToAdd, topUp.PaymentMethod, topUp.TradeNo)
 		}
 	} else {
@@ -634,13 +634,13 @@ func RequestAmount(c *gin.Context) {
 	}
 
 	if req.Amount < getMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", getMinTopup())})
 		return
 	}
 	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group, id)
@@ -771,7 +771,7 @@ type AdminCompleteTopupRequest struct {
 func AdminCompleteTopUp(c *gin.Context) {
 	var req AdminCompleteTopupRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.TradeNo == "" {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorMsg(c, "Invalid parameters")
 		return
 	}
 

@@ -66,7 +66,7 @@ func RequestClinkPay(c *gin.Context) {
 		return
 	}
 	if !isClinkTopUpEnabled() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Clink 充值未启用"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Clink top-up is not enabled"})
 		return
 	}
 
@@ -116,7 +116,7 @@ func RequestClinkPay(c *gin.Context) {
 			return
 		}
 		if terms.Payable+0.005 < float64(setting.ClinkMinTopUp) {
-			common.ApiErrorMsg(c, fmt.Sprintf("Clink 最低支付金额为 $%d", setting.ClinkMinTopUp))
+			common.ApiErrorMsg(c, fmt.Sprintf("Clink minimum payment amount is $%d", setting.ClinkMinTopUp))
 			return
 		}
 		chargedMoney = terms.Payable
@@ -220,7 +220,7 @@ func RequestClinkPay(c *gin.Context) {
 
 func ConfirmClinkPay(c *gin.Context) {
 	if !isClinkTopUpEnabled() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Clink 充值未启用"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Clink top-up is not enabled"})
 		return
 	}
 
