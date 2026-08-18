@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { type ColumnDef } from '@tanstack/react-table'
-import { DataTableColumnHeader } from '@/components/data-table'
 import { formatDay, formatUSD } from '../constants'
 import type { BillingTableRow } from '../types'
 
@@ -31,8 +30,6 @@ function formatUSD1(value: number): string {
 export function buildBillingSummaryColumns(
   t: (key: string) => string
 ): ColumnDef<BillingTableRow, unknown>[] {
-  const compactHeaderClass =
-    'space-x-0 [&_button]:-ms-1! [&_button]:h-7! [&_button]:px-1! [&_svg]:ms-1! [&_svg]:size-3!'
   const getWalletCost = (row: BillingTableRow) =>
     Math.max(
       0,
@@ -47,18 +44,14 @@ export function buildBillingSummaryColumns(
         row.experience_billing_usd -
         row.paid_subscription_revenue_usd
     )
+  const getPaidSubscriptionProfit = (row: BillingTableRow) =>
+    row.paid_subscription_revenue_usd - row.paid_subscription_cost_usd
 
   return [
     {
       accessorKey: 'day',
-      size: 90,
-      header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Date')}
-          className={compactHeaderClass}
-        />
-      ),
+      size: 86,
+      header: () => <span>{t('Date')}</span>,
       cell: ({ row }) =>
         row.original.isTotal ? (
           <span className='text-xs font-semibold'>{t('Total')}</span>
@@ -70,7 +63,7 @@ export function buildBillingSummaryColumns(
     },
     {
       id: 'accounting_requests',
-      size: 170,
+      size: 164,
       header: () => <span>{t('Accounting OK / Requests (%)')}</span>,
       cell: ({ row }) => {
         const okCount = row.original.accounting_ok_request_count ?? 0
@@ -88,14 +81,8 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'wallet_user_count',
-      size: 50,
-      header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Users')}
-          className={compactHeaderClass}
-        />
-      ),
+      size: 46,
+      header: () => <span>{t('Users')}</span>,
       cell: ({ row }) => (
         <span
           className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
@@ -106,14 +93,8 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'cost_usd',
-      size: 56,
-      header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Platform Cost')}
-          className={compactHeaderClass}
-        />
-      ),
+      size: 52,
+      header: () => <span>{t('Platform Cost')}</span>,
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
           {formatUSD(getWalletCost(row.original))}
@@ -122,14 +103,8 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'revenue_usd',
-      size: 56,
-      header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Revenue')}
-          className={compactHeaderClass}
-        />
-      ),
+      size: 52,
+      header: () => <span>{t('Revenue')}</span>,
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
           {formatUSD(getWalletRevenue(row.original))}
@@ -138,7 +113,7 @@ export function buildBillingSummaryColumns(
     },
     {
       id: 'profit_usd',
-      size: 54,
+      size: 50,
       header: () => <span>{t('Profit')}</span>,
       cell: ({ row }) => {
         const profit =
@@ -154,7 +129,7 @@ export function buildBillingSummaryColumns(
     },
     {
       id: 'margin',
-      size: 56,
+      size: 54,
       header: () => <span>{t('Margin')}</span>,
       cell: ({ row }) => {
         const cost = getWalletCost(row.original)
@@ -173,14 +148,8 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'experience_user_count',
-      size: 74,
-      header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Experience Users')}
-          className={compactHeaderClass}
-        />
-      ),
+      size: 68,
+      header: () => <span>{t('Experience Users')}</span>,
       cell: ({ row }) => (
         <span
           className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
@@ -191,14 +160,8 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'experience_cost_usd',
-      size: 74,
-      header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Experience Cost')}
-          className={compactHeaderClass}
-        />
-      ),
+      size: 68,
+      header: () => <span>{t('Experience Cost')}</span>,
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
           {formatUSD(row.original.experience_cost_usd)}
@@ -207,14 +170,8 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'experience_billing_usd',
-      size: 76,
-      header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Experience Billing')}
-          className={compactHeaderClass}
-        />
-      ),
+      size: 70,
+      header: () => <span>{t('Experience Billing')}</span>,
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
           {formatUSD(row.original.experience_billing_usd)}
@@ -223,14 +180,8 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'paid_subscription_user_count',
-      size: 84,
-      header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Paid Subscription Users')}
-          className={compactHeaderClass}
-        />
-      ),
+      size: 70,
+      header: () => <span>{t('Paid Subscription Users')}</span>,
       cell: ({ row }) => (
         <span
           className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
@@ -241,14 +192,8 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'paid_subscription_cost_usd',
-      size: 84,
-      header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Paid Subscription Cost')}
-          className={compactHeaderClass}
-        />
-      ),
+      size: 56,
+      header: () => <span>{t('Cost')}</span>,
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
           {formatUSD1(row.original.paid_subscription_cost_usd)}
@@ -257,14 +202,8 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'paid_subscription_revenue_usd',
-      size: 84,
-      header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Paid Subscription Revenue')}
-          className={compactHeaderClass}
-        />
-      ),
+      size: 56,
+      header: () => <span>{t('Revenue')}</span>,
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
           {formatUSD1(row.original.paid_subscription_revenue_usd)}
@@ -272,8 +211,41 @@ export function buildBillingSummaryColumns(
       ),
     },
     {
+      id: 'paid_subscription_profit_usd',
+      size: 52,
+      header: () => <span>{t('Profit')}</span>,
+      cell: ({ row }) => {
+        const profit = getPaidSubscriptionProfit(row.original)
+        return (
+          <span
+            className={`text-xs tabular-nums ${profit < 0 ? 'text-destructive' : ''}`}
+          >
+            {formatUSD1(profit)}
+          </span>
+        )
+      },
+    },
+    {
+      id: 'paid_subscription_margin',
+      size: 54,
+      header: () => <span>{t('Margin')}</span>,
+      cell: ({ row }) => {
+        const cost = row.original.paid_subscription_cost_usd
+        if (cost <= 0)
+          return <span className='text-muted-foreground text-xs'>—</span>
+        const margin = (getPaidSubscriptionProfit(row.original) / cost) * 100
+        return (
+          <span
+            className={`text-xs tabular-nums ${margin < 0 ? 'text-destructive' : ''}`}
+          >
+            {margin.toFixed(1)}%
+          </span>
+        )
+      },
+    },
+    {
       accessorKey: 'wallet_balance_usd',
-      size: 84,
+      size: 76,
       header: () => <span>{t('Wallet Balance')}</span>,
       cell: ({ row }) => {
         const balance = row.original.wallet_balance_usd
@@ -290,7 +262,7 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'experience_balance_usd',
-      size: 84,
+      size: 76,
       header: () => <span>{t('Experience Balance')}</span>,
       cell: ({ row }) => {
         const balance = row.original.experience_balance_usd
@@ -307,7 +279,7 @@ export function buildBillingSummaryColumns(
     },
     {
       accessorKey: 'paid_subscription_balance_usd',
-      size: 92,
+      size: 76,
       header: () => <span>{t('Subscription Balance')}</span>,
       cell: ({ row }) => {
         const balance = row.original.paid_subscription_balance_usd

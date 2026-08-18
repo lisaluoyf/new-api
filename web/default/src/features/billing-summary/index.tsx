@@ -145,7 +145,7 @@ export function BillingSummaryPage() {
           isFetching={isFetching}
           hideMobile
           showPagination={false}
-          tableClassName='[&_table]:text-xs [&_th]:h-9 [&_th]:overflow-hidden [&_th]:px-1.5 [&_th]:text-xs [&_td]:overflow-hidden [&_td]:px-1.5 [&_td]:py-2'
+          tableClassName='[&_table]:text-xs [&_th]:h-9 [&_th]:overflow-hidden [&_th]:px-1 [&_th]:text-xs [&_td]:overflow-hidden [&_td]:px-1 [&_td]:py-2'
           emptyTitle={t('No Data')}
           getRowClassName={(row) =>
             row.original.isTotal ? 'bg-muted/40 border-b-2' : undefined
