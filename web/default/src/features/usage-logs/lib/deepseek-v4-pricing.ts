@@ -23,13 +23,8 @@ export type DeepSeekV4PricePeriod = 'off_peak' | 'peak'
 
 export interface DeepSeekV4TimedPricingDisplay {
   currentPeriod: DeepSeekV4PricePeriod
-  offPeakInput: number
-  offPeakOutput: number
-  peakInput: number
-  peakOutput: number
-  groupRatio: number
-  finalInput: number
-  finalOutput: number
+  currentInput: number
+  currentOutput: number
 }
 
 function isPeakAtUnixSeconds(timestamp: number): boolean {
@@ -38,17 +33,6 @@ function isPeakAtUnixSeconds(timestamp: number): boolean {
     (beijingHour >= 9 && beijingHour < 12) ||
     (beijingHour >= 14 && beijingHour < 18)
   )
-}
-
-function effectiveGroupRatio(other: LogOtherData): number {
-  const userRatio = other.user_group_ratio
-  if (userRatio != null && Number.isFinite(userRatio) && userRatio !== -1) {
-    return userRatio
-  }
-  if (other.group_ratio != null && Number.isFinite(other.group_ratio)) {
-    return other.group_ratio
-  }
-  return 1
 }
 
 export function getDeepSeekV4TimedPricingDisplay(
@@ -87,20 +71,10 @@ export function getDeepSeekV4TimedPricingDisplay(
   const currentPeriod: DeepSeekV4PricePeriod =
     other.ch_price_period ??
     (isPeakAtUnixSeconds(log.created_at) ? 'peak' : 'off_peak')
-  const offPeakInput = currentPeriod === 'peak' ? input / 2 : input
-  const offPeakOutput = currentPeriod === 'peak' ? output / 2 : output
-  const peakInput = offPeakInput * 2
-  const peakOutput = offPeakOutput * 2
-  const groupRatio = effectiveGroupRatio(other)
 
   return {
     currentPeriod,
-    offPeakInput,
-    offPeakOutput,
-    peakInput,
-    peakOutput,
-    groupRatio,
-    finalInput: input * groupRatio,
-    finalOutput: output * groupRatio,
+    currentInput: input,
+    currentOutput: output,
   }
 }

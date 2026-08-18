@@ -186,29 +186,12 @@ function BillingBreakdown(props: {
       })
     }
   } else if (timedPricing) {
-    rows.push({ label: t('Billing Mode'), value: t('Time-based Pricing') })
     rows.push({
-      label: 'off_peak',
+      label: timedPricing.currentPeriod,
       value: fmtPricePair(
-        timedPricing.offPeakInput,
-        timedPricing.offPeakOutput
+        timedPricing.currentInput,
+        timedPricing.currentOutput
       ),
-    })
-    rows.push({
-      label: 'peak',
-      value: fmtPricePair(timedPricing.peakInput, timedPricing.peakOutput),
-    })
-    rows.push({
-      label: t('Current Period'),
-      value: timedPricing.currentPeriod,
-    })
-    rows.push({
-      label: t('User Group Ratio'),
-      value: `${formatRatio(timedPricing.groupRatio)}x`,
-    })
-    rows.push({
-      label: t('Final Price'),
-      value: fmtPricePair(timedPricing.finalInput, timedPricing.finalOutput),
     })
   } else if (isDuration) {
     rows.push({ label: t('Billing Mode'), value: t('Per-second') })

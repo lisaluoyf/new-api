@@ -199,36 +199,10 @@ function buildDetailSegments(
     const isPerCall = !isDuration && isPerCallBilling(other.model_price)
     if (timedPricing) {
       segments.push({
-        text: `off_peak · ${formatPriceList(
+        text: `${timedPricing.currentPeriod} · ${formatPriceList(
           [
-            formatPriceCompact(timedPricing.offPeakInput),
-            formatPriceCompact(timedPricing.offPeakOutput),
-          ],
-          true
-        )}`,
-      })
-      segments.push({
-        text: `peak · ${formatPriceList(
-          [
-            formatPriceCompact(timedPricing.peakInput),
-            formatPriceCompact(timedPricing.peakOutput),
-          ],
-          true
-        )}`,
-      })
-      segments.push({
-        text: `${t('Current Period')} · ${timedPricing.currentPeriod}`,
-        muted: true,
-      })
-      segments.push({
-        text: `${t('User Group Ratio')} · ${formatRatioCompact(timedPricing.groupRatio)}x`,
-        muted: true,
-      })
-      segments.push({
-        text: `${t('Final Price')} · ${formatPriceList(
-          [
-            formatPriceCompact(timedPricing.finalInput),
-            formatPriceCompact(timedPricing.finalOutput),
+            formatPriceCompact(timedPricing.currentInput),
+            formatPriceCompact(timedPricing.currentOutput),
           ],
           true
         )}`,
