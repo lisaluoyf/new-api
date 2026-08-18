@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -550,8 +551,88 @@ type gptSubscriptionRollingLimitNotifySnapshot struct {
 	RequestId             string
 	SubscriptionId        int
 	SubscriptionPlanTitle string
+	AutoSwitchedToWallet  bool
 	UsingGroup            string
 	UserGroup             string
+}
+
+type rollingLimitNotifyState struct {
+	ExpiresAt time.Time
+}
+
+var gptSubscriptionRollingLimitNotifyStore sync.Map
+
+func formatGPTSubscriptionPlanPrice(price float64) string {
+	if price <= 0 {
+		return "—"
+	}
+	if math.Abs(price-math.Round(price)) < 0.000001 {
+		return fmt.Sprintf("%.0fU", math.Round(price))
+	}
+	return fmt.Sprintf("%.2fU", price)
+}
+
+func shouldSendGPTSubscriptionRollingLimitFeishu(relayInfo *relaycommon.RelayInfo, limitErr *model.GPTSubscriptionRollingLimitError) bool {
+	if relayInfo == nil || limitErr == nil {
+		return false
+	}
+	key := fmt.Sprintf("gpt_subscription_rolling_limit_notify:%d:%d", relayInfo.UserId, relayInfo.SubscriptionId)
+	ttl := time.Duration(limitErr.Info.RetryAfterSeconds) * time.Second
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
+	ttl += 5 * time.Minute
+
+	if common.RedisEnabled && common.RDB != nil {
+		ok, err := common.RedisSetNX(key, "1", ttl)
+		if err != nil {
+			common.SysLog("notify GPT subscription rolling limit dedupe via redis failed: " + err.Error())
+			return true
+		}
+		return ok
+	}
+
+	now := time.Now()
+	if value, ok := gptSubscriptionRollingLimitNotifyStore.Load(key); ok {
+		if state, ok := value.(rollingLimitNotifyState); ok && now.Before(state.ExpiresAt) {
+			return false
+		}
+	}
+	gptSubscriptionRollingLimitNotifyStore.Store(key, rollingLimitNotifyState{ExpiresAt: now.Add(ttl)})
+	return true
+}
+
+func formatWalletBalanceUSD(quota int) string {
+	if quota <= 0 {
+		return "$0.00"
+	}
+	return fmt.Sprintf("$%.2f", float64(quota)/common.QuotaPerUnit)
+}
+
+func loadGPTSubscriptionPlanSummary(userId int, fallbackTitle string) (string, string) {
+	title := "GPT Pass"
+	price := "—"
+	if userId <= 0 {
+		return title, price
+	}
+	if subTitle := strings.TrimSpace(fallbackTitle); subTitle != "" {
+		title = subTitle
+	}
+	if state, err := model.GetGPTSubscriptionState(userId); err == nil && state.Subscription != nil {
+		if snapshotTitle := strings.TrimSpace(state.Subscription.PlanTitleSnapshot); snapshotTitle != "" {
+			title = snapshotTitle
+		}
+		if plan := state.Plan; plan != nil {
+			if planTitle := strings.TrimSpace(plan.Title); planTitle != "" {
+				title = planTitle
+			}
+			price = formatGPTSubscriptionPlanPrice(plan.PriceAmount)
+		}
+		if state.Subscription.PriceAmountSnapshot > 0 {
+			price = formatGPTSubscriptionPlanPrice(state.Subscription.PriceAmountSnapshot)
+		}
+	}
+	return title, price
 }
 
 func rollingWindowOpsLabel(windows []string) string {
@@ -654,6 +735,9 @@ func notifyGPTSubscriptionRollingLimitFeishu(relayInfo *relaycommon.RelayInfo, l
 	if chatID == "" || relayInfo == nil || limitErr == nil || len(limitErr.Info.LimitedWindows) == 0 {
 		return
 	}
+	if !shouldSendGPTSubscriptionRollingLimitFeishu(relayInfo, limitErr) {
+		return
+	}
 	snapshot := gptSubscriptionRollingLimitNotifySnapshot{
 		UserId:                relayInfo.UserId,
 		UserEmail:             relayInfo.UserEmail,
@@ -664,6 +748,7 @@ func notifyGPTSubscriptionRollingLimitFeishu(relayInfo *relaycommon.RelayInfo, l
 		RequestId:             relayInfo.RequestId,
 		SubscriptionId:        relayInfo.SubscriptionId,
 		SubscriptionPlanTitle: relayInfo.SubscriptionPlanTitle,
+		AutoSwitchedToWallet:  true,
 		UsingGroup:            relayInfo.UsingGroup,
 		UserGroup:             relayInfo.UserGroup,
 	}
@@ -685,19 +770,10 @@ func notifyGPTSubscriptionRollingLimitFeishu(relayInfo *relaycommon.RelayInfo, l
 			email = fmt.Sprintf("user#%d", snapshot.UserId)
 		}
 
-		planPrice := "—"
-		if snapshot.SubscriptionId > 0 {
-			var sub model.UserSubscription
-			if err := model.DB.Select("id", "price_amount_snapshot").Where("id = ?", snapshot.SubscriptionId).First(&sub).Error; err == nil {
-				if sub.PriceAmountSnapshot > 0 {
-					planPrice = fmt.Sprintf("$%.2f", sub.PriceAmountSnapshot)
-				}
-			}
-		}
-
-		planTitle := strings.TrimSpace(snapshot.SubscriptionPlanTitle)
-		if planTitle == "" {
-			planTitle = "GPT Pass"
+		planTitle, planPrice := loadGPTSubscriptionPlanSummary(snapshot.UserId, snapshot.SubscriptionPlanTitle)
+		walletBalance := "$0.00"
+		if userQuota, err := model.GetUserQuota(snapshot.UserId, false); err == nil {
+			walletBalance = formatWalletBalanceUSD(userQuota)
 		}
 
 		lines := []string{
@@ -711,6 +787,13 @@ func notifyGPTSubscriptionRollingLimitFeishu(relayInfo *relaycommon.RelayInfo, l
 			fmt.Sprintf("UID：%d", snapshot.UserId),
 			fmt.Sprintf("套餐：%s", planTitle),
 			fmt.Sprintf("套餐价格：%s", planPrice),
+			fmt.Sprintf("自动切换到余额：%s", func() string {
+				if snapshot.AutoSwitchedToWallet {
+					return "是"
+				}
+				return "否"
+			}()),
+			fmt.Sprintf("钱包余额：%s", walletBalance),
 			fmt.Sprintf("预计恢复时间：%s", formatRelativeRestoreCN(info.AvailableAt)),
 		}
 
