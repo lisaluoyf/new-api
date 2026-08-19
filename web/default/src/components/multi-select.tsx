@@ -35,6 +35,7 @@ interface MultiSelectProps {
   onChange: (values: string[]) => void
   placeholder?: string
   className?: string
+  allowCustomValue?: boolean
 }
 
 export function MultiSelect({
@@ -43,6 +44,7 @@ export function MultiSelect({
   onChange,
   placeholder,
   className,
+  allowCustomValue = false,
 }: MultiSelectProps) {
   const { t } = useTranslation()
   const resolvedPlaceholder = placeholder ?? t('Select items...')
@@ -57,6 +59,24 @@ export function MultiSelect({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const input = inputRef.current
     if (input) {
+      if (e.key === 'Enter' && allowCustomValue && inputValue.trim()) {
+        e.preventDefault()
+        e.stopPropagation()
+
+        const customValues = inputValue
+          .split(/[,，]/)
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .map((value) => {
+            const existingOption = options.find(
+              (option) => option.value === value || option.label === value
+            )
+            return existingOption?.value ?? value
+          })
+        onChange(Array.from(new Set([...selected, ...customValues])))
+        setInputValue('')
+        return
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (input.value === '' && selected.length > 0) {
           onChange(selected.slice(0, -1))

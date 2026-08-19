@@ -2715,6 +2715,7 @@ export function ChannelMutateDrawer({
                           selected={currentModelsArray}
                           onChange={handleModelsChange}
                           placeholder={t('Select models or add custom ones')}
+                          allowCustomValue
                         />
                       </FormControl>
                       <FormDescription>
