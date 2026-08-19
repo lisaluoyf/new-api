@@ -21,7 +21,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-	"github.com/tidwall/sjson"
 )
 
 // ============================
@@ -41,6 +40,7 @@ type ImageURL struct {
 type responseTask struct {
 	ID                 string `json:"id"`
 	TaskID             string `json:"task_id,omitempty"` //兼容旧接口
+	RequestID          string `json:"request_id,omitempty"`
 	Object             string `json:"object"`
 	Model              string `json:"model"`
 	Status             string `json:"status"`
@@ -55,6 +55,13 @@ type responseTask struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
+	Usage *struct {
+		CostInUSDTicks int64 `json:"cost_in_usd_ticks"`
+	} `json:"usage,omitempty"`
+	Video *struct {
+		Duration int    `json:"duration"`
+		URL      string `json:"url"`
+	} `json:"video,omitempty"`
 }
 
 // ============================
@@ -91,7 +98,31 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if info.Action == constant.TaskActionRemix {
 		return validateRemixRequest(c)
 	}
-	return relaycommon.ValidateMultipartDirect(c, info)
+	if taskErr := relaycommon.ValidateMultipartDirect(c, info); taskErr != nil {
+		return taskErr
+	}
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	if isGrokVideoModel(req.Model) {
+		seconds := req.Duration
+		if seconds <= 0 {
+			seconds, _ = strconv.Atoi(req.Seconds)
+		}
+		if seconds < 6 {
+			seconds = 6
+		}
+		req.Duration = seconds
+		req.Seconds = strconv.Itoa(seconds)
+		c.Set("task_request", req)
+	}
+	return nil
+}
+
+func isGrokVideoModel(modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	return strings.HasPrefix(modelName, "grok-imagine-video") || strings.HasPrefix(modelName, "grok-1.5-video-")
 }
 
 // EstimateBilling 根据用户请求的 seconds 和 size 计算 OtherRatios。
@@ -112,6 +143,9 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	}
 	if seconds <= 0 {
 		seconds = 4
+	}
+	if isGrokVideoModel(req.Model) && seconds < 6 {
+		seconds = 6
 	}
 
 	size := req.Size
@@ -155,6 +189,14 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err == nil {
 			bodyMap["model"] = info.UpstreamModelName
+			if isGrokVideoModel(info.OriginModelName) {
+				if taskReq, reqErr := relaycommon.GetTaskRequest(c); reqErr == nil {
+					bodyMap["duration"] = taskReq.Duration
+					if _, ok := bodyMap["seconds"]; ok {
+						bodyMap["seconds"] = taskReq.Seconds
+					}
+				}
+			}
 			if newBody, err := common.Marshal(bodyMap); err == nil {
 				return bytes.NewReader(newBody), nil
 			}
@@ -242,14 +284,35 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		upstreamID = dResp.TaskID
 	}
 	if upstreamID == "" {
+		upstreamID = dResp.RequestID
+	}
+	if upstreamID == "" {
 		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
 		return
 	}
 
-	// 使用公开 task_xxxx ID 返回给客户端
-	dResp.ID = info.PublicTaskID
-	dResp.TaskID = info.PublicTaskID
-	c.JSON(http.StatusOK, dResp)
+	if strings.Contains(c.Request.URL.Path, "/videos/generations") {
+		c.JSON(http.StatusOK, gin.H{
+			"code":  200,
+			"data":  []gin.H{{"status": "submitted", "task_id": info.PublicTaskID}},
+			"error": nil,
+		})
+	} else {
+		// 使用公开 task_xxxx ID 返回给客户端，不暴露上游 request_id。
+		dResp.ID = info.PublicTaskID
+		dResp.TaskID = ""
+		dResp.RequestID = ""
+		if dResp.Object == "" {
+			dResp.Object = "video"
+		}
+		if dResp.Model == "" {
+			dResp.Model = info.OriginModelName
+		}
+		if dResp.Status == "" {
+			dResp.Status = "queued"
+		}
+		c.JSON(http.StatusOK, dResp)
+	}
 	return upstreamID, responseBody, nil
 }
 
@@ -294,14 +357,17 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		Code: 0,
 	}
 
-	switch resTask.Status {
+	switch strings.ToLower(strings.TrimSpace(resTask.Status)) {
 	case "queued", "pending":
 		taskResult.Status = model.TaskStatusQueued
 	case "processing", "in_progress":
 		taskResult.Status = model.TaskStatusInProgress
-	case "completed":
+	case "completed", "done", "success", "succeeded":
 		taskResult.Status = model.TaskStatusSuccess
 		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
+		if resTask.Video != nil && resTask.Video.Duration > 0 {
+			taskResult.BillableSeconds = resTask.Video.Duration
+		}
 	case "failed", "cancelled":
 		taskResult.Status = model.TaskStatusFailure
 		if resTask.Error != nil {
@@ -319,10 +385,20 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
-	data := task.Data
-	var err error
-	if data, err = sjson.SetBytes(data, "id", task.TaskID); err != nil {
-		return nil, errors.Wrap(err, "set id failed")
+	var raw responseTask
+	_ = common.Unmarshal(task.Data, &raw)
+	out := map[string]any{
+		"id":       task.TaskID,
+		"object":   "video",
+		"model":    task.Properties.OriginModelName,
+		"status":   task.Status.ToVideoStatus(),
+		"progress": task.Progress,
 	}
-	return data, nil
+	if task.Status == model.TaskStatusSuccess {
+		out["url"] = task.GetResultURL()
+	}
+	if raw.Video != nil && raw.Video.Duration > 0 {
+		out["seconds"] = strconv.Itoa(raw.Video.Duration)
+	}
+	return common.Marshal(out)
 }

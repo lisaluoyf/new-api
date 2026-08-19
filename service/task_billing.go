@@ -172,13 +172,27 @@ func BackfillTaskLogOnComplete(ctx context.Context, task *model.Task, taskResult
 	if err := model.UpdateLogResultByTaskID(task.UserId, task.TaskID, elapsed, extra); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("failed to backfill use_time for task %s: %v", task.TaskID, err))
 	}
-	if task.Platform == constant.TaskPlatformApimartVideo {
-		if cost := gjson.GetBytes(task.Data, "data.cost").Float(); cost > 0 {
-			if err := model.UpdateLogChannelCostByTaskID(task.UserId, task.TaskID, cost); err != nil {
-				logger.LogWarn(ctx, fmt.Sprintf("failed to backfill channel cost for task %s: %v", task.TaskID, err))
-			}
+	if cost := taskActualChannelCostUSD(task); cost > 0 {
+		if err := model.UpdateLogChannelCostByTaskID(task.UserId, task.TaskID, cost); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("failed to backfill channel cost for task %s: %v", task.TaskID, err))
 		}
 	}
+}
+
+func taskActualChannelCostUSD(task *model.Task) float64 {
+	if task == nil || len(task.Data) == 0 {
+		return 0
+	}
+	if task.Platform == constant.TaskPlatformApimartVideo {
+		if cost := gjson.GetBytes(task.Data, "data.cost").Float(); cost > 0 {
+			return cost
+		}
+	}
+	// api.apikey.fun reports USD in 1e-10 dollar ticks.
+	if ticks := gjson.GetBytes(task.Data, "usage.cost_in_usd_ticks").Int(); ticks > 0 {
+		return float64(ticks) / 10_000_000_000
+	}
+	return 0
 }
 
 func taskActualBillableSeconds(task *model.Task, taskResult *relaycommon.TaskInfo) int {
