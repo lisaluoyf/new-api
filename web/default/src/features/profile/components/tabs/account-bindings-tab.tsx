@@ -85,6 +85,13 @@ export function AccountBindingsTab({
   const [telegramGroupStatus, setTelegramGroupStatus] =
     useState<TelegramGroupStatus | null>(null)
 
+  const telegramGroupUrl =
+    typeof status?.telegram_group_url === 'string'
+      ? status.telegram_group_url
+      : undefined
+  const resolvedTelegramGroupUrl =
+    telegramGroupStatus?.group_url || telegramGroupUrl
+
   const customProviders = status?.custom_oauth_providers as
     | Array<{ id: string; name: string }>
     | undefined
@@ -127,7 +134,7 @@ export function AccountBindingsTab({
     }
     try {
       const res = await getTelegramGroupStatus()
-      const data = res.success ? res.data ?? null : null
+      const data = res.success ? (res.data ?? null) : null
       setTelegramGroupStatus(data)
       return Boolean(data?.joined)
     } catch {
@@ -235,6 +242,13 @@ export function AccountBindingsTab({
       setPendingAction(null)
     }
   }, [onUpdate, t])
+
+  const handleStartTelegramBind = useCallback(() => {
+    if (resolvedTelegramGroupUrl) {
+      window.open(resolvedTelegramGroupUrl, '_blank', 'noopener,noreferrer')
+    }
+    dialogs.open('telegram')
+  }, [dialogs, resolvedTelegramGroupUrl])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -375,7 +389,7 @@ export function AccountBindingsTab({
           (profile as unknown as Record<string, unknown>).telegram_id
         ),
         isEnabled: status?.telegram_oauth || false,
-        onBind: () => dialogs.open('telegram'),
+        onBind: handleStartTelegramBind,
         onUnbind: handleUnbindTelegram,
         busy: pendingAction === 'telegram',
       },
@@ -397,10 +411,10 @@ export function AccountBindingsTab({
         },
       },
     ].filter((binding) => binding.isEnabled)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     dialogs,
     handleStartTwitterBind,
+    handleStartTelegramBind,
     handleUnbindTelegram,
     handleUnbindTwitter,
     pendingAction,
@@ -411,12 +425,6 @@ export function AccountBindingsTab({
   ])
 
   if (!profile || !status || loading) return null
-  const telegramGroupUrl =
-    typeof status.telegram_group_url === 'string'
-      ? status.telegram_group_url
-      : undefined
-  const resolvedTelegramGroupUrl =
-    telegramGroupStatus?.group_url || telegramGroupUrl
 
   return (
     <>
@@ -487,9 +495,7 @@ export function AccountBindingsTab({
           <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
             <div className='min-w-0'>
               <div className='flex items-center gap-1.5'>
-                <p className='text-sm font-medium'>
-                  {t('Telegram Community')}
-                </p>
+                <p className='text-sm font-medium'>{t('Telegram Community')}</p>
                 {telegramGroupStatus?.joined && (
                   <StatusBadge
                     label={t('Joined')}
@@ -502,7 +508,9 @@ export function AccountBindingsTab({
                 {profile.telegram_id
                   ? telegramGroupStatus?.joined
                     ? t('Membership verified')
-                    : t('Join the community; this page will update automatically')
+                    : t(
+                        'Join the community; this page will update automatically'
+                      )
                   : t('Bind Telegram first')}
               </p>
             </div>
@@ -633,6 +641,7 @@ export function AccountBindingsTab({
             open ? dialogs.open('telegram') : dialogs.close('telegram')
           }
           botName={status.telegram_bot_name as string}
+          groupUrl={resolvedTelegramGroupUrl}
           onSuccess={onUpdate}
         />
       )}

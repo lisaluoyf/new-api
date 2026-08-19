@@ -16,10 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Send } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { buttonVariants } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -36,6 +38,7 @@ interface TelegramBindDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   botName: string
+  groupUrl?: string
   onSuccess: () => void
 }
 
@@ -43,9 +46,13 @@ export function TelegramBindDialog({
   open,
   onOpenChange,
   botName,
+  groupUrl,
 }: TelegramBindDialogProps) {
   const { t } = useTranslation()
   const widgetRef = useRef<HTMLDivElement | null>(null)
+  const [widgetState, setWidgetState] = useState<'loading' | 'ready' | 'error'>(
+    'loading'
+  )
   const authUrl = useMemo(() => {
     if (typeof window === 'undefined') return ''
     const redirect = `${window.location.origin}/_panel/profile`
@@ -55,7 +62,8 @@ export function TelegramBindDialog({
   useEffect(() => {
     if (!open || !botName || !widgetRef.current || !authUrl) return
 
-    widgetRef.current.innerHTML = ''
+    const widgetElement = widgetRef.current
+    widgetElement.innerHTML = ''
     const script = document.createElement('script')
     script.async = true
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
@@ -64,12 +72,14 @@ export function TelegramBindDialog({
     script.setAttribute('data-auth-url', authUrl)
     script.setAttribute('data-request-access', 'write')
     script.setAttribute('data-radius', '10')
-    widgetRef.current.appendChild(script)
+    script.onload = () => setWidgetState('ready')
+    script.onerror = () => setWidgetState('error')
+    widgetElement.appendChild(script)
 
     return () => {
-      if (widgetRef.current) {
-        widgetRef.current.innerHTML = ''
-      }
+      script.onload = null
+      script.onerror = null
+      widgetElement.innerHTML = ''
     }
   }, [authUrl, botName, open])
 
@@ -77,7 +87,9 @@ export function TelegramBindDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
-          <DialogTitle>{t('Bind Telegram Account')}</DialogTitle>
+          <DialogTitle>
+            {t('Bind Telegram Account')} · {t('Join community')}
+          </DialogTitle>
           <DialogDescription>
             {t('Click the button below to bind your Telegram account')}
           </DialogDescription>
@@ -92,6 +104,17 @@ export function TelegramBindDialog({
               )}
             </AlertDescription>
           </Alert>
+
+          {groupUrl && (
+            <a
+              href={groupUrl}
+              target='_blank'
+              rel='noreferrer'
+              className={cn(buttonVariants({ variant: 'outline' }), 'w-full')}
+            >
+              {t('Join community')}
+            </a>
+          )}
 
           <div className='flex flex-col items-center justify-center gap-4 rounded-lg border p-6'>
             <div className='flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900'>
@@ -114,10 +137,18 @@ export function TelegramBindDialog({
               ref={widgetRef}
               className='flex min-h-12 justify-center'
               aria-live='polite'
-            >
-              <div className='text-muted-foreground rounded-lg border border-dashed px-6 py-3 text-sm'>
-                {t('Telegram Login Widget')}
-              </div>
+            />
+            <div className='flex min-h-12 justify-center' aria-live='polite'>
+              {widgetState === 'loading' && (
+                <div className='text-muted-foreground rounded-lg border border-dashed px-6 py-3 text-sm'>
+                  {t('Loading...')}
+                </div>
+              )}
+              {widgetState === 'error' && (
+                <div className='text-destructive rounded-lg border border-dashed px-6 py-3 text-center text-sm'>
+                  {t('Telegram Login Widget')}
+                </div>
+              )}
             </div>
           </div>
 
