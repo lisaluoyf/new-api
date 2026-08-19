@@ -363,3 +363,76 @@ func TestApplyPaidSubscriptionAccruals(t *testing.T) {
 	assert.InDelta(t, 4, rows[2].PaidSubscriptionRevenueUSD, 1e-9)
 	assert.Equal(t, int64(1), rows[2].PaidSubscriptionUserCount)
 }
+
+func TestGetBillingDailyCapsPaidSubscriptionToCurrentTime(t *testing.T) {
+	truncate(t)
+
+	const (
+		channelID = 2004
+		modelName = "gpt-5"
+	)
+
+	dayStart := billingDayStart(common.GetTimestamp())
+	originalNow := billingSummaryNow
+	billingSummaryNow = func() time.Time { return time.Unix(dayStart+12*3600, 0) }
+	defer func() { billingSummaryNow = originalNow }()
+
+	users := []model.User{
+		{
+			Id:       3001,
+			Username: "paid-now-1",
+			Password: "password",
+			AffCode:  "paid-now-1",
+			Role:     common.RoleCommonUser,
+			Status:   common.UserStatusEnabled,
+		},
+		{
+			Id:       3002,
+			Username: "paid-now-2",
+			Password: "password",
+			AffCode:  "paid-now-2",
+			Role:     common.RoleCommonUser,
+			Status:   common.UserStatusEnabled,
+		},
+	}
+	require.NoError(t, model.DB.Create(&users).Error)
+	require.NoError(t, model.DB.Create(&model.SubscriptionPlan{
+		Id:            9201,
+		Title:         "GPT Subscription",
+		PlanType:      model.SubscriptionPlanTypeGPTSubscription,
+		PriceAmount:   24,
+		Currency:      "USD",
+		DurationUnit:  model.SubscriptionDurationDay,
+		DurationValue: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&[]model.UserSubscription{
+		{
+			UserId:                  3001,
+			PlanId:                  9201,
+			Status:                  "active",
+			StartTime:               dayStart,
+			EndTime:                 dayStart + 24*3600,
+			PriceAmountSnapshot:     24,
+			DurationSecondsSnapshot: 24 * 3600,
+		},
+		{
+			UserId:                  3002,
+			PlanId:                  9201,
+			Status:                  "active",
+			StartTime:               dayStart + 18*3600,
+			EndTime:                 dayStart + 30*3600,
+			PriceAmountSnapshot:     24,
+			DurationSecondsSnapshot: 24 * 3600,
+		},
+	}).Error)
+
+	rows, err := GetBillingDaily(dayStart, dayStart+24*3600-1, modelName, channelID, "", "", "")
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.InDelta(t, 12, rows[0].PaidSubscriptionRevenueUSD, 1e-9)
+	assert.Equal(t, int64(1), rows[0].PaidSubscriptionUserCount)
+
+	totals, err := GetBillingUserCountsTotal(dayStart, dayStart+24*3600-1, modelName, channelID, "", "", "")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), totals.PaidSubscriptionUserCount)
+}

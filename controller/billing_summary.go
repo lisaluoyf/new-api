@@ -26,7 +26,7 @@ func GetBillingSummary(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	userCounts, err := model.GetBillingUserCountsTotal(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
+	userCounts, err := service.GetBillingUserCountsTotal(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return

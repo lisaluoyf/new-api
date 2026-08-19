@@ -169,7 +169,7 @@ func billingRangeDayEndExclusive(unixSeconds int64) int64 {
 	return billingDayStartUnix(unixSeconds) + 86400
 }
 
-func paidSubscriptionAccrualQuery(startTimestamp, endTimestamp int64) *gorm.DB {
+func paidSubscriptionAccrualQueryAt(startTimestamp, endTimestamp, asOfTimestamp int64) *gorm.DB {
 	tx := DB.Table("user_subscriptions").
 		Select(`user_subscriptions.user_id,
 			user_subscriptions.start_time,
@@ -187,9 +187,19 @@ func paidSubscriptionAccrualQuery(startTimestamp, endTimestamp int64) *gorm.DB {
 		tx = tx.Where("user_subscriptions.end_time > ?", billingDayStartUnix(startTimestamp))
 	}
 	if endTimestamp != 0 {
-		tx = tx.Where("user_subscriptions.start_time < ?", billingRangeDayEndExclusive(endTimestamp))
+		rangeEndExclusive := billingRangeDayEndExclusive(endTimestamp)
+		if asOfTimestamp != 0 && asOfTimestamp < rangeEndExclusive {
+			rangeEndExclusive = asOfTimestamp
+		}
+		tx = tx.Where("user_subscriptions.start_time < ?", rangeEndExclusive)
+	} else if asOfTimestamp != 0 {
+		tx = tx.Where("user_subscriptions.start_time < ?", asOfTimestamp)
 	}
 	return tx
+}
+
+func paidSubscriptionAccrualQuery(startTimestamp, endTimestamp int64) *gorm.DB {
+	return paidSubscriptionAccrualQueryAt(startTimestamp, endTimestamp, 0)
 }
 
 func paidSubscriptionAccrualPriceAndDuration(row billingPaidSubscriptionAccrualRow) (float64, int64) {
@@ -204,9 +214,9 @@ func paidSubscriptionAccrualPriceAndDuration(row billingPaidSubscriptionAccrualR
 	return price, durationSeconds
 }
 
-func GetBillingPaidSubscriptionDailyAccruals(startTimestamp, endTimestamp int64) (map[int64]BillingPaidSubscriptionDailyAccrual, error) {
+func GetBillingPaidSubscriptionDailyAccrualsAt(startTimestamp, endTimestamp, asOfTimestamp int64) (map[int64]BillingPaidSubscriptionDailyAccrual, error) {
 	var rows []billingPaidSubscriptionAccrualRow
-	if err := paidSubscriptionAccrualQuery(startTimestamp, endTimestamp).Scan(&rows).Error; err != nil {
+	if err := paidSubscriptionAccrualQueryAt(startTimestamp, endTimestamp, asOfTimestamp).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	type dailyAccumulator struct {
@@ -221,6 +231,9 @@ func GetBillingPaidSubscriptionDailyAccruals(startTimestamp, endTimestamp int64)
 	}
 	if endTimestamp != 0 {
 		rangeEndExclusive = billingRangeDayEndExclusive(endTimestamp)
+	}
+	if asOfTimestamp != 0 && (rangeEndExclusive == 0 || asOfTimestamp < rangeEndExclusive) {
+		rangeEndExclusive = asOfTimestamp
 	}
 	for _, row := range rows {
 		price, durationSeconds := paidSubscriptionAccrualPriceAndDuration(row)
@@ -270,12 +283,20 @@ func GetBillingPaidSubscriptionDailyAccruals(startTimestamp, endTimestamp int64)
 	return result, nil
 }
 
-func GetBillingPaidSubscriptionUserCountTotal(startTimestamp, endTimestamp int64) (int64, error) {
+func GetBillingPaidSubscriptionDailyAccruals(startTimestamp, endTimestamp int64) (map[int64]BillingPaidSubscriptionDailyAccrual, error) {
+	return GetBillingPaidSubscriptionDailyAccrualsAt(startTimestamp, endTimestamp, 0)
+}
+
+func GetBillingPaidSubscriptionUserCountTotalAt(startTimestamp, endTimestamp, asOfTimestamp int64) (int64, error) {
 	var count int64
-	err := paidSubscriptionAccrualQuery(startTimestamp, endTimestamp).
+	err := paidSubscriptionAccrualQueryAt(startTimestamp, endTimestamp, asOfTimestamp).
 		Distinct("user_subscriptions.user_id").
 		Count(&count).Error
 	return count, err
+}
+
+func GetBillingPaidSubscriptionUserCountTotal(startTimestamp, endTimestamp int64) (int64, error) {
+	return GetBillingPaidSubscriptionUserCountTotalAt(startTimestamp, endTimestamp, 0)
 }
 
 // GetBillingDailyFromSummary aggregates the small pre-computed
@@ -514,6 +535,10 @@ func mergeBillingDailyUserCounts(rows *[]BillingDailyRow, counts map[int64]billi
 }
 
 func GetBillingUserCountsTotal(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string) (billingUserCountTotals, error) {
+	return GetBillingUserCountsTotalAt(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email, 0)
+}
+
+func GetBillingUserCountsTotalAt(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string, asOfTimestamp int64) (billingUserCountTotals, error) {
 	tx, err := buildBillingDailyUserCountsBaseQuery(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
 	if err != nil {
 		return billingUserCountTotals{}, err
@@ -525,7 +550,7 @@ func GetBillingUserCountsTotal(startTimestamp, endTimestamp int64, modelName str
 		Scan(&totals).Error; err != nil {
 		return billingUserCountTotals{}, err
 	}
-	totals.PaidSubscriptionUserCount, err = GetBillingPaidSubscriptionUserCountTotal(startTimestamp, endTimestamp)
+	totals.PaidSubscriptionUserCount, err = GetBillingPaidSubscriptionUserCountTotalAt(startTimestamp, endTimestamp, asOfTimestamp)
 	if err != nil {
 		return billingUserCountTotals{}, err
 	}
