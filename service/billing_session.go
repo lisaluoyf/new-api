@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -540,6 +541,268 @@ type localizedRollingLimitError struct {
 func (e *localizedRollingLimitError) Error() string { return e.message }
 func (e *localizedRollingLimitError) Unwrap() error { return e.cause }
 
+type gptSubscriptionRollingLimitNotifySnapshot struct {
+	UserId                int
+	UserEmail             string
+	Language              string
+	Timezone              string
+	OriginModelName       string
+	RequestURLPath        string
+	RequestId             string
+	SubscriptionId        int
+	SubscriptionPlanTitle string
+	AutoSwitchedToWallet  bool
+	UsingGroup            string
+	UserGroup             string
+}
+
+type rollingLimitNotifyState struct {
+	ExpiresAt time.Time
+}
+
+var gptSubscriptionRollingLimitNotifyStore sync.Map
+
+func formatGPTSubscriptionPlanPrice(price float64) string {
+	if price <= 0 {
+		return "—"
+	}
+	if math.Abs(price-math.Round(price)) < 0.000001 {
+		return fmt.Sprintf("%.0fU", math.Round(price))
+	}
+	return fmt.Sprintf("%.2fU", price)
+}
+
+func shouldSendGPTSubscriptionRollingLimitFeishu(relayInfo *relaycommon.RelayInfo, limitErr *model.GPTSubscriptionRollingLimitError) bool {
+	if relayInfo == nil || limitErr == nil {
+		return false
+	}
+	key := fmt.Sprintf("gpt_subscription_rolling_limit_notify:%d:%d", relayInfo.UserId, relayInfo.SubscriptionId)
+	ttl := time.Duration(limitErr.Info.RetryAfterSeconds) * time.Second
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
+	ttl += 5 * time.Minute
+
+	if common.RedisEnabled && common.RDB != nil {
+		ok, err := common.RedisSetNX(key, "1", ttl)
+		if err != nil {
+			common.SysLog("notify GPT subscription rolling limit dedupe via redis failed: " + err.Error())
+			return true
+		}
+		return ok
+	}
+
+	now := time.Now()
+	if value, ok := gptSubscriptionRollingLimitNotifyStore.Load(key); ok {
+		if state, ok := value.(rollingLimitNotifyState); ok && now.Before(state.ExpiresAt) {
+			return false
+		}
+	}
+	gptSubscriptionRollingLimitNotifyStore.Store(key, rollingLimitNotifyState{ExpiresAt: now.Add(ttl)})
+	return true
+}
+
+func formatWalletBalanceUSD(quota int) string {
+	if quota <= 0 {
+		return "$0.00"
+	}
+	return fmt.Sprintf("$%.2f", float64(quota)/common.QuotaPerUnit)
+}
+
+func loadGPTSubscriptionPlanSummary(userId int, fallbackTitle string) (string, string) {
+	title := "GPT Pass"
+	price := "—"
+	if userId <= 0 {
+		return title, price
+	}
+	if subTitle := strings.TrimSpace(fallbackTitle); subTitle != "" {
+		title = subTitle
+	}
+	if state, err := model.GetGPTSubscriptionState(userId); err == nil && state.Subscription != nil {
+		if snapshotTitle := strings.TrimSpace(state.Subscription.PlanTitleSnapshot); snapshotTitle != "" {
+			title = snapshotTitle
+		}
+		if plan := state.Plan; plan != nil {
+			if planTitle := strings.TrimSpace(plan.Title); planTitle != "" {
+				title = planTitle
+			}
+			price = formatGPTSubscriptionPlanPrice(plan.PriceAmount)
+		}
+		if state.Subscription.PriceAmountSnapshot > 0 {
+			price = formatGPTSubscriptionPlanPrice(state.Subscription.PriceAmountSnapshot)
+		}
+	}
+	return title, price
+}
+
+func rollingWindowOpsLabel(windows []string) string {
+	labels := make([]string, 0, len(windows))
+	for _, window := range windows {
+		switch window {
+		case "5h":
+			labels = append(labels, "5小时")
+		case "7d":
+			labels = append(labels, "7天")
+		default:
+			if strings.TrimSpace(window) != "" {
+				labels = append(labels, strings.TrimSpace(window))
+			}
+		}
+	}
+	if len(labels) == 0 {
+		return "未知窗口"
+	}
+	return strings.Join(labels, " / ")
+}
+
+func formatQuotaAsUSD(quota int64) string {
+	if common.QuotaPerUnit <= 0 {
+		return fmt.Sprintf("%d quota", quota)
+	}
+	return fmt.Sprintf("$%.2f", float64(quota)/common.QuotaPerUnit)
+}
+
+func formatWalletQuotaAsUSD(quota int) string {
+	if common.QuotaPerUnit <= 0 {
+		return fmt.Sprintf("%d quota", quota)
+	}
+	return fmt.Sprintf("$%.2f", float64(quota)/common.QuotaPerUnit)
+}
+
+func formatElapsedDurationCN(seconds int64) string {
+	if seconds <= 0 {
+		return "刚开始"
+	}
+	days := seconds / 86400
+	hours := (seconds % 86400) / 3600
+	minutes := (seconds % 3600) / 60
+
+	parts := make([]string, 0, 3)
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%d天", days))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%d小时", hours))
+	}
+	if minutes > 0 && days == 0 {
+		parts = append(parts, fmt.Sprintf("%d分钟", minutes))
+	}
+	if len(parts) == 0 {
+		return "不到1分钟"
+	}
+	if len(parts) > 2 {
+		parts = parts[:2]
+	}
+	return strings.Join(parts, "")
+}
+
+func formatRelativeRestoreCN(availableAt int64) string {
+	if availableAt <= 0 {
+		return "待系统重新计算"
+	}
+	remaining := availableAt - time.Now().Unix()
+	if remaining <= 0 {
+		return "几分钟内"
+	}
+	hours := remaining / 3600
+	minutes := (remaining % 3600) / 60
+	if minutes <= 0 && remaining > 0 {
+		minutes = 1
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%d小时%d分钟后", hours, minutes)
+	}
+	return fmt.Sprintf("%d分钟后", minutes)
+}
+
+func formatUnixInTimezone(unixSeconds int64, timezone string) string {
+	if unixSeconds <= 0 {
+		return "—"
+	}
+	location := time.UTC
+	displayTZ := "UTC"
+	if candidate := strings.TrimSpace(timezone); candidate != "" {
+		if resolved, err := time.LoadLocation(candidate); err == nil {
+			location = resolved
+			displayTZ = candidate
+		}
+	}
+	return fmt.Sprintf("%s（%s）", time.Unix(unixSeconds, 0).In(location).Format("2006-01-02 15:04:05"), displayTZ)
+}
+
+func notifyGPTSubscriptionRollingLimitFeishu(relayInfo *relaycommon.RelayInfo, limitErr *model.GPTSubscriptionRollingLimitError) {
+	chatID := common.FeishuRiskChatID()
+	if chatID == "" || relayInfo == nil || limitErr == nil || len(limitErr.Info.LimitedWindows) == 0 {
+		return
+	}
+	if !shouldSendGPTSubscriptionRollingLimitFeishu(relayInfo, limitErr) {
+		return
+	}
+	snapshot := gptSubscriptionRollingLimitNotifySnapshot{
+		UserId:                relayInfo.UserId,
+		UserEmail:             relayInfo.UserEmail,
+		Language:              relayInfo.UserSetting.Language,
+		Timezone:              relayInfo.UserSetting.Timezone,
+		OriginModelName:       relayInfo.OriginModelName,
+		RequestURLPath:        relayInfo.RequestURLPath,
+		RequestId:             relayInfo.RequestId,
+		SubscriptionId:        relayInfo.SubscriptionId,
+		SubscriptionPlanTitle: relayInfo.SubscriptionPlanTitle,
+		AutoSwitchedToWallet:  true,
+		UsingGroup:            relayInfo.UsingGroup,
+		UserGroup:             relayInfo.UserGroup,
+	}
+	info := limitErr.Info
+
+	go func() {
+		email := strings.TrimSpace(snapshot.UserEmail)
+		username := ""
+		if snapshot.UserId > 0 {
+			var user model.User
+			if err := model.DB.Select("id", "username", "email").Where("id = ?", snapshot.UserId).First(&user).Error; err == nil {
+				if strings.TrimSpace(user.Email) != "" {
+					email = strings.TrimSpace(user.Email)
+				}
+				username = strings.TrimSpace(user.Username)
+			}
+		}
+		if email == "" {
+			email = fmt.Sprintf("user#%d", snapshot.UserId)
+		}
+
+		planTitle, planPrice := loadGPTSubscriptionPlanSummary(snapshot.UserId, snapshot.SubscriptionPlanTitle)
+		walletBalance := "$0.00"
+		if userQuota, err := model.GetUserQuota(snapshot.UserId, false); err == nil {
+			walletBalance = formatWalletBalanceUSD(userQuota)
+		}
+
+		lines := []string{
+			fmt.Sprintf("用户邮箱：%s", email),
+			fmt.Sprintf("用户名：%s", func() string {
+				if username == "" {
+					return "—"
+				}
+				return username
+			}()),
+			fmt.Sprintf("UID：%d", snapshot.UserId),
+			fmt.Sprintf("套餐：%s", planTitle),
+			fmt.Sprintf("套餐价格：%s", planPrice),
+			fmt.Sprintf("自动切换到余额：%s", func() string {
+				if snapshot.AutoSwitchedToWallet {
+					return "是"
+				}
+				return "否"
+			}()),
+			fmt.Sprintf("钱包余额：%s", walletBalance),
+			fmt.Sprintf("预计恢复时间：%s", formatRelativeRestoreCN(info.AvailableAt)),
+		}
+
+		if err := common.SendFeishuCard(chatID, "⚠️ GPT Pass 额度告警", lines); err != nil {
+			common.SysLog("notify GPT subscription rolling limit to Feishu failed: " + err.Error())
+		}
+	}()
+}
+
 func newGPTSubscriptionRollingLimitAPIError(c *gin.Context, relayInfo *relaycommon.RelayInfo, limitErr *model.GPTSubscriptionRollingLimitError, walletBalance int, walletInsufficient bool) *types.NewAPIError {
 	if limitErr == nil {
 		limitErr = &model.GPTSubscriptionRollingLimitError{}
@@ -732,6 +995,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 			var rollingLimitErr *model.GPTSubscriptionRollingLimitError
 			if errors.As(apiErr, &rollingLimitErr) {
 				paidRollingLimitErr = rollingLimitErr
+				notifyGPTSubscriptionRollingLimitFeishu(relayInfo, rollingLimitErr)
 				relayInfo.ActivateWalletPriceData()
 				return nil, nil
 			}

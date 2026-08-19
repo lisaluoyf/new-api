@@ -319,7 +319,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+	RecordTopupLog(topUp.UserId, fmt.Sprintf("Online top-up successful, credited amount: %v, amount paid: %d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
 	OnTopupSucceeded(topUp.UserId, int(quota), PaymentMethodStripe, topUp.TradeNo)
 
 	return nil
@@ -372,7 +372,7 @@ func RechargePayPal(referenceId string, callerIp string) (err error) {
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用 PayPal 充值成功，充值金额: %v，支付金额：%.2f", logger.FormatQuota(int(quota)), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodPayPal)
+	RecordTopupLog(topUp.UserId, fmt.Sprintf("PayPal top-up successful, credited amount: %v, amount paid: %.2f", logger.FormatQuota(int(quota)), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodPayPal)
 	OnTopupSucceeded(topUp.UserId, int(quota), PaymentMethodPayPal, topUp.TradeNo)
 
 	return nil
@@ -422,7 +422,7 @@ func RechargeClink(referenceId string, callerIp string) (err error) {
 	}
 
 	if quota > 0 {
-		RecordTopupLog(topUp.UserId, fmt.Sprintf("Clink 充值成功，充值金额: %v，支付金额：%.2f", logger.FormatQuota(int(quota)), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodClink)
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("Clink top-up successful, credited amount: %v, amount paid: %.2f", logger.FormatQuota(int(quota)), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodClink)
 		OnTopupSucceeded(topUp.UserId, int(quota), PaymentMethodClink, topUp.TradeNo)
 	}
 
@@ -752,7 +752,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	}
 
 	// 事务外记录日志，避免阻塞
-	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
+	RecordTopupLog(userId, fmt.Sprintf("Admin top-up completed, credited amount: %v, amount paid: %f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
 	// 管理员补单代表一笔真实到账，必须走和其它支付方式一样的成功钩子
 	// （返佣 + 飞书通知 + GA4 purchase），否则这笔充值在推广渠道转化漏斗和
 	// GA 里都不存在。
@@ -828,7 +828,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodCreem)
+	RecordTopupLog(topUp.UserId, fmt.Sprintf("Creem top-up successful, credited amount: %v, amount paid: %.2f", quota, topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodCreem)
 	OnTopupSucceeded(topUp.UserId, int(quota), PaymentMethodCreem, topUp.TradeNo)
 
 	return nil
@@ -890,7 +890,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 	}
 
 	if quotaToAdd > 0 {
-		RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffo)
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo top-up successful, credited amount: %v, amount paid: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffo)
 		OnTopupSucceeded(topUp.UserId, quotaToAdd, PaymentMethodWaffo, topUp.TradeNo)
 	}
 
@@ -951,7 +951,7 @@ func RechargeWaffoPancake(tradeNo string, callerIp string) (err error) {
 	}
 
 	if quotaToAdd > 0 {
-		RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo Pancake充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffoPancake)
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo Pancake top-up successful, credited amount: %v, amount paid: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffoPancake)
 		OnTopupSucceeded(topUp.UserId, quotaToAdd, PaymentMethodWaffoPancake, topUp.TradeNo)
 	}
 

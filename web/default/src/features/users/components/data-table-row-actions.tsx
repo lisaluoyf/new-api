@@ -46,6 +46,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { UserSubscriptionsDialog } from '@/features/subscriptions/components/dialogs/user-subscriptions-dialog'
 import {
   addTrialBlockedEmailDomain,
+  invalidateUserGPTSubscription,
   manageUser,
   removeTrialBlockedEmailDomain,
   resetUserPasskey,
@@ -78,6 +79,9 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
+  const [closeGPTSubscriptionOpen, setCloseGPTSubscriptionOpen] =
+    useState(false)
+  const [closingGPTSubscription, setClosingGPTSubscription] = useState(false)
 
   const handleEdit = () => {
     setCurrentRow(user)
@@ -175,10 +179,29 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     }
   }
 
+  const handleCloseGPTSubscription = async () => {
+    setClosingGPTSubscription(true)
+    try {
+      const result = await invalidateUserGPTSubscription(user.id)
+      if (result.success) {
+        toast.success(result.data?.message || t('Has been invalidated'))
+        triggerRefresh()
+      } else {
+        toast.error(result.message || t('Failed to close GPT subscription'))
+      }
+    } catch (_error) {
+      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } finally {
+      setClosingGPTSubscription(false)
+      setCloseGPTSubscriptionOpen(false)
+    }
+  }
+
   const isDisabled = user.status === USER_STATUS.DISABLED
   const isAdmin = user.role >= USER_ROLE.ADMIN
   const isRoot = user.role === USER_ROLE.ROOT
   const isTopupForbidden = user.topup_forbidden === true
+  const hasActiveGPTSubscription = user.gpt_subscription_status === 'active'
 
   if (isUserDeleted(user)) {
     return null
@@ -268,6 +291,22 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
               <CreditCard size={16} />
             </DropdownMenuShortcut>
           </DropdownMenuItem>
+
+          {hasActiveGPTSubscription && (
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                setCloseGPTSubscriptionOpen(true)
+              }}
+              disabled={isRoot}
+              className='text-destructive focus:text-destructive'
+            >
+              {t('Close GPT subscription')}
+              <DropdownMenuShortcut>
+                <PowerOff size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          )}
 
           <DropdownMenuItem
             onClick={() =>
@@ -386,6 +425,20 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         desc={`将 ${emailDomain || '该域名'} 移出 GPT Trial 黑域名后，这个域名下的账号可重新按现有规则参与领取判定。`}
         confirmText='确认移出'
         handleConfirm={handleRemoveTrialBlockedDomain}
+      />
+
+      <ConfirmDialog
+        open={closeGPTSubscriptionOpen}
+        onOpenChange={setCloseGPTSubscriptionOpen}
+        title={t('Close GPT subscription')}
+        desc={t(
+          'Close GPT subscription for {{username}}? The subscription will end immediately. Historical usage and billing records will not be changed.',
+          { username: user.username }
+        )}
+        confirmText={t('Close subscription')}
+        destructive
+        isLoading={closingGPTSubscription}
+        handleConfirm={handleCloseGPTSubscription}
       />
 
       <UserBindingDialog

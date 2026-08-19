@@ -49,7 +49,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		return
 	}
 	if model.IsGPTPromotionalSubscriptionPlan(plan) {
-		common.ApiErrorMsg(c, "试用套餐仅可通过活动领取")
+		common.ApiErrorMsg(c, "Trial plans can only be claimed through the promotion")
 		return
 	}
 	if plan.CreemProductId == "" {
@@ -77,7 +77,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		return
 	}
 	if model.IsGPTPaidSubscriptionPlan(plan) && math.Abs(terms.Payable-plan.PriceAmount) > 0.005 {
-		common.ApiErrorMsg(c, "Creem 固定产品暂不支持差额升级，请选择 Stripe 或 EPay")
+		common.ApiErrorMsg(c, "Creem fixed products do not support upgrade credits yet. Please use Stripe or EPay.")
 		return
 	}
 

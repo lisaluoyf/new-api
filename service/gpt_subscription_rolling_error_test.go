@@ -3,6 +3,7 @@ package service
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -56,4 +57,27 @@ func TestGPTSubscriptionRollingLimitErrorFallsBackToUTC(t *testing.T) {
 	var metadata map[string]any
 	require.NoError(t, common.Unmarshal(apiErr.Metadata, &metadata))
 	require.Equal(t, "UTC", metadata["timezone"])
+}
+
+func TestGPTSubscriptionRollingLimitNotifyHelpers(t *testing.T) {
+	require.Equal(t, "10U", formatGPTSubscriptionPlanPrice(10))
+	require.Equal(t, "10.50U", formatGPTSubscriptionPlanPrice(10.5))
+	require.Equal(t, "$10.00", formatWalletBalanceUSD(5000000))
+}
+
+func TestGPTSubscriptionRollingLimitNotifyDedupesByUserAndSubscription(t *testing.T) {
+	oldRedisEnabled := common.RedisEnabled
+	common.RedisEnabled = false
+	gptSubscriptionRollingLimitNotifyStore = sync.Map{}
+	t.Cleanup(func() {
+		common.RedisEnabled = oldRedisEnabled
+		gptSubscriptionRollingLimitNotifyStore = sync.Map{}
+	})
+
+	relayInfo := &relaycommon.RelayInfo{UserId: 1431, SubscriptionId: 2075}
+	limitErr := &model.GPTSubscriptionRollingLimitError{Info: model.GPTSubscriptionRollingLimitInfo{
+		RetryAfterSeconds: 600,
+	}}
+	require.True(t, shouldSendGPTSubscriptionRollingLimitFeishu(relayInfo, limitErr))
+	require.False(t, shouldSendGPTSubscriptionRollingLimitFeishu(relayInfo, limitErr))
 }

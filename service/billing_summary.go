@@ -27,6 +27,20 @@ const (
 var billingSummaryOnce sync.Once
 var billingSummaryNow = time.Now
 
+type billingUserCountTotals struct {
+	WalletUserCount           int64 `json:"wallet_user_count"`
+	ExperienceUserCount       int64 `json:"experience_user_count"`
+	PaidSubscriptionUserCount int64 `json:"paid_subscription_user_count"`
+}
+
+func billingSummaryEffectiveEndTimestamp(endTimestamp int64) int64 {
+	now := billingSummaryNow().Unix()
+	if endTimestamp == 0 || endTimestamp > now {
+		return now
+	}
+	return endTimestamp
+}
+
 func billingHourExpr(col string) string {
 	if common.UsingMySQL {
 		return fmt.Sprintf("(%s DIV 3600) * 3600", col)
@@ -185,7 +199,7 @@ func GetBillingDaily(startTimestamp, endTimestamp int64, modelName string, chann
 	if err != nil {
 		return nil, err
 	}
-	paidSubscriptionAccruals, err := model.GetBillingPaidSubscriptionDailyAccruals(startTimestamp, endTimestamp)
+	paidSubscriptionAccruals, err := model.GetBillingPaidSubscriptionDailyAccrualsAt(startTimestamp, endTimestamp, billingSummaryNow().Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +228,19 @@ func GetBillingDaily(startTimestamp, endTimestamp int64, modelName string, chann
 		}
 	}
 	return rows, nil
+}
+
+func GetBillingUserCountsTotal(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string) (billingUserCountTotals, error) {
+	nowUnix := billingSummaryNow().Unix()
+	totals, err := model.GetBillingUserCountsTotalAt(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email, nowUnix)
+	if err != nil {
+		return billingUserCountTotals{}, err
+	}
+	return billingUserCountTotals{
+		WalletUserCount:           totals.WalletUserCount,
+		ExperienceUserCount:       totals.ExperienceUserCount,
+		PaidSubscriptionUserCount: totals.PaidSubscriptionUserCount,
+	}, nil
 }
 
 type billingDailyRangePlan struct {

@@ -66,12 +66,12 @@ type CreemAdaptor struct {
 
 func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	if req.PaymentMethod != model.PaymentMethodCreem {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "不支持的支付渠道"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Unsupported payment channel"})
 		return
 	}
 
 	if req.ProductId == "" {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "请选择产品"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Please select a product"})
 		return
 	}
 
@@ -80,7 +80,7 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	err := json.Unmarshal([]byte(setting.CreemProducts), &products)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 产品配置解析失败 user_id=%d error=%q", c.GetInt("id"), err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "产品配置错误"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Product configuration is invalid"})
 		return
 	}
 
@@ -94,7 +94,7 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	}
 
 	if selectedProduct == nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "产品不存在"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Product does not exist"})
 		return
 	}
 

@@ -122,7 +122,7 @@ func BillingSummaryExport(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	userCounts, err := model.GetBillingUserCountsTotal(0, 0, "", 0, "", "", "")
+	userCounts, err := service.GetBillingUserCountsTotal(0, 0, "", 0, "", "", "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return

@@ -111,7 +111,7 @@ func RequestPayPalPay(c *gin.Context) {
 		return
 	}
 	if !isPayPalTopUpEnabled() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "PayPal 支付未启用"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "PayPal payment is not enabled"})
 		return
 	}
 	var req PayPalPayRequest
@@ -160,7 +160,7 @@ func RequestPayPalPay(c *gin.Context) {
 			return
 		}
 		if terms.Payable+0.005 < float64(setting.PayPalMinTopUp) {
-			common.ApiErrorMsg(c, fmt.Sprintf("PayPal 最低支付金额为 $%d", setting.PayPalMinTopUp))
+			common.ApiErrorMsg(c, fmt.Sprintf("PayPal minimum payment amount is $%d", setting.PayPalMinTopUp))
 			return
 		}
 		chargedMoney = terms.Payable

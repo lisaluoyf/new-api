@@ -97,7 +97,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		return
 	}
 	if model.IsGPTPromotionalSubscriptionPlan(plan) {
-		common.ApiErrorMsg(c, "试用套餐仅可通过活动领取")
+		common.ApiErrorMsg(c, "Trial plans can only be claimed through the promotion")
 		return
 	}
 	if plan.StripePriceId == "" && !model.IsGPTPaidSubscriptionPlan(plan) {
@@ -129,7 +129,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	if model.IsGPTPaidSubscriptionPlan(plan) {
 		paymentSnapshot, err := newSubscriptionStripePaymentSnapshot(terms.Payable, plan.Currency)
 		if err != nil {
-			common.ApiErrorMsg(c, "Stripe 仅支持不低于 $0.50 的美元订阅订单")
+			common.ApiErrorMsg(c, "Stripe only supports USD subscription orders of at least $0.50")
 			return
 		}
 		providerPayload = common.GetJsonString(paymentSnapshot)

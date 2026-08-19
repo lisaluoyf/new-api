@@ -220,6 +220,7 @@ func SetApiRouter(router *gin.Engine) {
 			// User subscription management (admin)
 			subscriptionAdminRoute.GET("/users/:id/subscriptions", controller.AdminListUserSubscriptions)
 			subscriptionAdminRoute.GET("/users/:id/gpt", controller.AdminGetUserGPTSubscriptionDetails)
+			subscriptionAdminRoute.POST("/users/:id/gpt/invalidate", controller.AdminInvalidateUserGPTSubscription)
 			subscriptionAdminRoute.POST("/orders/:trade_no/reverse", controller.AdminReverseGPTSubscriptionOrder)
 			subscriptionAdminRoute.POST("/users/:id/subscriptions", controller.AdminCreateUserSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)

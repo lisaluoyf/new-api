@@ -167,6 +167,15 @@ export async function removeTrialBlockedEmailDomain(
   return res.data
 }
 
+export async function invalidateUserGPTSubscription(
+  userId: number
+): Promise<ApiResponse<{ message?: string }>> {
+  const res = await api.post(
+    `/api/subscription/admin/users/${userId}/gpt/invalidate`
+  )
+  return res.data
+}
+
 /**
  * Get all available groups
  */

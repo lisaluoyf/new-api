@@ -42,6 +42,33 @@ func createGPTSubscriptionTestUser(t *testing.T, id int, quota int) {
 	}).Error)
 }
 
+func TestAdminInvalidateCurrentGPTSubscription(t *testing.T) {
+	setupGPTSubscriptionTestDB(t)
+	const userID = 9051
+	now := GetDBTimestamp()
+	createGPTSubscriptionTestUser(t, userID, 500)
+	plan := SubscriptionPlan{
+		Id: 9052, Title: "Starter", PlanType: SubscriptionPlanTypeGPTSubscription,
+		PriceAmount: 10, Currency: "USD", DurationUnit: SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true,
+	}
+	require.NoError(t, DB.Create(&plan).Error)
+	sub := UserSubscription{
+		Id: 9053, UserId: userID, PlanId: plan.Id, Status: "active",
+		StartTime: now, EndTime: now + 30*86400,
+	}
+	require.NoError(t, DB.Create(&sub).Error)
+
+	msg, err := AdminInvalidateCurrentGPTSubscription(userID)
+	require.NoError(t, err)
+	require.Equal(t, "GPT 订阅已关闭", msg)
+
+	var invalidated UserSubscription
+	require.NoError(t, DB.First(&invalidated, sub.Id).Error)
+	require.Equal(t, "cancelled", invalidated.Status)
+	require.Equal(t, now, invalidated.EndTime)
+}
+
 func TestGetPaymentNotificationContextMarksGPTSubscription(t *testing.T) {
 	setupGPTSubscriptionTestDB(t)
 	const userID = 9031

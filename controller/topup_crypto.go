@@ -704,7 +704,7 @@ func verifyAndCredit(intentId string) {
 		}
 		recordCryptoIntentLog(
 			intent.UserId,
-			fmt.Sprintf("使用加密货币购买 GPT 订阅成功，支付金额：%.4f USD", usdValue),
+			fmt.Sprintf("Crypto payment for GPT subscription successful, amount paid: %.4f USD", usdValue),
 			&intent,
 			map[string]interface{}{
 				"stage":                       "subscription_confirmed",
@@ -801,7 +801,7 @@ func verifyAndCredit(intentId string) {
 	if err := model.IncrUserQuotaCache(intent.UserId, int64(quotaToAdd)); err != nil {
 		common.SysLog(fmt.Sprintf("crypto: update quota cache failed userId=%d intent=%s err=%v", intent.UserId, intent.Id, err))
 	}
-	model.RecordTopupLog(intent.UserId, fmt.Sprintf("使用加密货币充值成功，充值金额: %v，支付金额：%.2f", logger.FormatQuota(quotaToAdd), usdValue), "", "crypto", "crypto")
+	model.RecordTopupLog(intent.UserId, fmt.Sprintf("Crypto top-up successful, credited amount: %v, amount paid: %.2f", logger.FormatQuota(quotaToAdd), usdValue), "", "crypto", "crypto")
 	model.OnTopupSucceeded(intent.UserId, quotaToAdd, "crypto", tradeNo)
 	common.SysLog(fmt.Sprintf("crypto: confirmed userId=%d intent=%s txHash=%s usd=%.4f quota=%d", intent.UserId, intent.Id, *intent.TxHash, usdValue, quotaToAdd))
 }
