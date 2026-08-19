@@ -94,7 +94,22 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if strings.Contains(c.Request.URL.Path, "/videos/generations") {
 		return a.validateApimartJSON(c, info)
 	}
-	return relaycommon.ValidateMultipartDirect(c, info)
+	if taskErr := relaycommon.ValidateMultipartDirect(c, info); taskErr != nil {
+		return taskErr
+	}
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	seconds := req.Duration
+	if seconds <= 0 {
+		seconds, _ = strconv.Atoi(req.Seconds)
+	}
+	seconds = normalizeVideoDuration(req.Model, seconds)
+	req.Duration = seconds
+	req.Seconds = strconv.Itoa(seconds)
+	c.Set("task_request", req)
+	return nil
 }
 
 func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
@@ -130,9 +145,7 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 	if !IsVideoModel(body.Model) {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported model %q", body.Model), "invalid_model", http.StatusBadRequest)
 	}
-	if body.Duration <= 0 {
-		body.Duration = 4
-	}
+	body.Duration = normalizeVideoDuration(body.Model, body.Duration)
 	if body.Resolution == "" {
 		body.Resolution = "720p"
 	}
@@ -233,9 +246,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 			seconds = s
 		}
 	}
-	if seconds <= 0 {
-		seconds = 4
-	}
+	seconds = normalizeVideoDuration(req.Model, seconds)
 	resolution := "720p"
 	if req.Metadata != nil {
 		if v, ok := req.Metadata["resolution"].(string); ok && v != "" {
@@ -304,9 +315,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		if body.Model == "" {
 			body.Model = publicModel
 		}
-		if body.Duration <= 0 {
-			body.Duration = 4
-		}
+		body.Duration = normalizeVideoDuration(publicModel, body.Duration)
 		if body.Resolution == "" {
 			body.Resolution = "720p"
 		}
@@ -342,9 +351,7 @@ func openAIToApimart(req relaycommon.TaskSubmitReq, upstreamModel string) submit
 	if duration <= 0 {
 		duration, _ = strconv.Atoi(req.Seconds)
 	}
-	if duration <= 0 {
-		duration = 4
-	}
+	duration = normalizeVideoDuration(req.Model, duration)
 	resolution, aspect := sizeToApimart(req.Size)
 	if req.Metadata != nil {
 		if v, ok := req.Metadata["resolution"].(string); ok && v != "" {

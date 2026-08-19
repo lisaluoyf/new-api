@@ -172,6 +172,13 @@ func BackfillTaskLogOnComplete(ctx context.Context, task *model.Task, taskResult
 	if err := model.UpdateLogResultByTaskID(task.UserId, task.TaskID, elapsed, extra); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("failed to backfill use_time for task %s: %v", task.TaskID, err))
 	}
+	if task.Platform == constant.TaskPlatformApimartVideo {
+		if cost := gjson.GetBytes(task.Data, "data.cost").Float(); cost > 0 {
+			if err := model.UpdateLogChannelCostByTaskID(task.UserId, task.TaskID, cost); err != nil {
+				logger.LogWarn(ctx, fmt.Sprintf("failed to backfill channel cost for task %s: %v", task.TaskID, err))
+			}
+		}
+	}
 }
 
 func taskActualBillableSeconds(task *model.Task, taskResult *relaycommon.TaskInfo) int {
@@ -192,31 +199,7 @@ func taskActualBillableSeconds(task *model.Task, taskResult *relaycommon.TaskInf
 			return int(math.Ceil(v))
 		}
 	}
-	cost := gjson.GetBytes(task.Data, "data.cost").Float()
-	if cost <= 0 {
-		return 0
-	}
-	rate := taskMotionUSDPerSecond(task)
-	if rate <= 0 {
-		return 0
-	}
-	return int(math.Round(cost / rate))
-}
-
-func taskMotionUSDPerSecond(task *model.Task) float64 {
-	if task == nil || task.PrivateData.BillingContext == nil {
-		return 0
-	}
-	rate := task.PrivateData.BillingContext.ModelPrice
-	if rate <= 0 {
-		return 0
-	}
-	if bc := task.PrivateData.BillingContext; bc.OtherRatios != nil {
-		if modeR, ok := bc.OtherRatios["mode"]; ok && modeR > 0 && modeR != 1 {
-			rate *= modeR
-		}
-	}
-	return rate
+	return 0
 }
 
 func mergeRequestDataDuration(extra map[string]interface{}, task *model.Task, seconds int) {

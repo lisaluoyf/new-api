@@ -59,6 +59,25 @@ func normalizeModel(model string) string {
 	return model
 }
 
+func normalizeVideoDuration(model string, seconds int) int {
+	if seconds <= 0 {
+		seconds = 4
+	}
+	minimum := 0
+	switch normalizeModel(model) {
+	case ModelGrokImagineVideo15, ModelGrokVideo6s:
+		minimum = 6
+	case ModelGrokVideo10s:
+		minimum = 10
+	case ModelGrokVideo15s:
+		minimum = 15
+	}
+	if seconds < minimum {
+		return minimum
+	}
+	return seconds
+}
+
 func modeBillingRatio(mode string) float64 {
 	if strings.EqualFold(strings.TrimSpace(mode), "pro") {
 		return ProUSDPerSecond / StdUSDPerSecond

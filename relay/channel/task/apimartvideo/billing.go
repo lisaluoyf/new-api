@@ -40,10 +40,24 @@ func motionBillableSeconds(c *gin.Context, videoURL, orientation string, clientE
 }
 
 func extractBillableSecondsFromApimart(body []byte) int {
-	return extractBillableSecondsFromApimartWithMode(body, "std")
+	return extractExplicitBillableSecondsFromApimart(body)
 }
 
 func extractBillableSecondsFromApimartWithMode(body []byte, mode string) int {
+	if seconds := extractExplicitBillableSecondsFromApimart(body); seconds > 0 {
+		return seconds
+	}
+	if cost := gjson.GetBytes(body, "data.cost").Float(); cost > 0 {
+		rate := StdUSDPerSecond
+		if strings.EqualFold(strings.TrimSpace(mode), "pro") {
+			rate = ProUSDPerSecond
+		}
+		return int(math.Round(cost / rate))
+	}
+	return 0
+}
+
+func extractExplicitBillableSecondsFromApimart(body []byte) int {
 	if len(body) == 0 {
 		return 0
 	}
@@ -59,13 +73,6 @@ func extractBillableSecondsFromApimartWithMode(body []byte, mode string) int {
 		if v := gjson.GetBytes(body, path).Float(); v > 0 {
 			return int(math.Ceil(v))
 		}
-	}
-	if cost := gjson.GetBytes(body, "data.cost").Float(); cost > 0 {
-		rate := StdUSDPerSecond
-		if strings.EqualFold(strings.TrimSpace(mode), "pro") {
-			rate = ProUSDPerSecond
-		}
-		return int(math.Round(cost / rate))
 	}
 	return 0
 }

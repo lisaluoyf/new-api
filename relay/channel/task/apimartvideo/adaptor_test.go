@@ -41,3 +41,12 @@ func TestIsChannel(t *testing.T) {
 	require.True(t, IsChannel("https://api.apib.ai"))
 	require.False(t, IsChannel("https://api.openai.com"))
 }
+
+func TestNormalizeVideoDuration(t *testing.T) {
+	require.Equal(t, 6, normalizeVideoDuration(ModelGrokImagineVideo15, 4))
+	require.Equal(t, 6, normalizeVideoDuration(ModelGrokImagineVideo15, 6))
+	require.Equal(t, 8, normalizeVideoDuration(ModelGrokImagineVideo15, 8))
+	require.Equal(t, 10, normalizeVideoDuration(ModelGrokVideo10s, 6))
+	require.Equal(t, 15, normalizeVideoDuration(ModelGrokVideo15s, 10))
+	require.Equal(t, 4, normalizeVideoDuration("sora-2", 0))
+}

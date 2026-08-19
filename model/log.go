@@ -256,6 +256,41 @@ func UpdateLogResultByTaskID(userID int, taskID string, useTimeSeconds int, extr
 	return LOG_DB.Model(&Log{}).Where("id = ?", row.Id).Updates(updates).Error
 }
 
+// UpdateLogChannelCostByTaskID replaces the estimated procurement cost with
+// the actual cost returned by an asynchronous upstream task.
+func UpdateLogChannelCostByTaskID(userID int, taskID string, costUSD float64) error {
+	if userID <= 0 || strings.TrimSpace(taskID) == "" || costUSD <= 0 {
+		return nil
+	}
+	row, err := findConsumeLogRowForTask(userID, taskID)
+	if err != nil {
+		return err
+	}
+	otherMap, _ := common.StrToMap(row.Other)
+	if otherMap == nil {
+		otherMap = map[string]interface{}{}
+	}
+	otherMap["upstream_actual_cost_usd"] = costUSD
+
+	snapshotMap, _ := common.StrToMap(row.AccountingSnapshot)
+	if snapshotMap != nil {
+		amounts, _ := snapshotMap["amounts_usd"].(map[string]interface{})
+		if amounts == nil {
+			amounts = map[string]interface{}{}
+			snapshotMap["amounts_usd"] = amounts
+		}
+		amounts["channel_cost"] = costUSD
+	}
+	updates := map[string]interface{}{
+		"accounting_channel_cost_amount_usd": costUSD,
+		"other":                              common.MapToJsonStr(otherMap),
+	}
+	if snapshotMap != nil {
+		updates["accounting_snapshot"] = common.MapToJsonStr(snapshotMap)
+	}
+	return LOG_DB.Model(&Log{}).Where("id = ?", row.Id).Updates(updates).Error
+}
+
 // FindRecentImageChannelID returns the channel from the user's latest gpt-image consume within withinSec.
 func FindRecentImageChannelID(userID int, withinSec int64) (int, bool) {
 	if userID <= 0 || withinSec <= 0 {

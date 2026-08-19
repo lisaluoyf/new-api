@@ -43,5 +43,6 @@ func TestExtractBillableSecondsFromApimart(t *testing.T) {
 	require.Equal(t, 5, extractBillableSecondsFromApimart(body))
 
 	costBody := []byte(`{"data":{"cost":0.41152,"status":"completed"}}`)
-	require.Equal(t, 4, extractBillableSecondsFromApimart(costBody))
+	require.Zero(t, extractBillableSecondsFromApimart(costBody))
+	require.Equal(t, 4, extractBillableSecondsFromApimartWithMode(costBody, "std"))
 }
