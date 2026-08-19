@@ -297,7 +297,13 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		if err := common.Unmarshal(raw, &body); err != nil {
 			return nil, err
 		}
-		body.Model = normalizeModel(body.Model)
+		publicModel := normalizeModel(body.Model)
+		// Preserve the channel's model mapping (for example, Grok's public
+		// model may map to a provider-specific upstream model name).
+		body.Model = strings.TrimSpace(info.UpstreamModelName)
+		if body.Model == "" {
+			body.Model = publicModel
+		}
 		if body.Duration <= 0 {
 			body.Duration = 4
 		}

@@ -6,7 +6,11 @@ import (
 
 const (
 	ModelKlingV3MotionControl = "kling-v3-motion-control"
-	ModelDoubaoSeedance20    = "doubao-seedance-2.0"
+	ModelDoubaoSeedance20     = "doubao-seedance-2.0"
+	ModelGrokImagineVideo15   = "grok-imagine-video-1.5"
+	ModelGrokVideo10s         = "grok-1.5-video-10s"
+	ModelGrokVideo15s         = "grok-1.5-video-15s"
+	ModelGrokVideo6s          = "grok-1.5-video-6s"
 	// StdUSDPerSecond is APIMart purchase price for mode=std.
 	StdUSDPerSecond = 0.10288
 	// ProUSDPerSecond is APIMart purchase price for mode=pro.
@@ -18,6 +22,10 @@ var ModelList = []string{
 	"sora-2",
 	"sora-2-pro",
 	ModelDoubaoSeedance20,
+	ModelGrokImagineVideo15,
+	ModelGrokVideo10s,
+	ModelGrokVideo15s,
+	ModelGrokVideo6s,
 	ModelKlingV3MotionControl,
 }
 
@@ -25,7 +33,9 @@ var ChannelName = "apimart-video"
 
 func IsVideoModel(model string) bool {
 	switch strings.TrimSpace(model) {
-	case "sora", "sora-2", "sora-2-pro", ModelDoubaoSeedance20, ModelKlingV3MotionControl:
+	case "sora", "sora-2", "sora-2-pro", ModelDoubaoSeedance20,
+		ModelGrokImagineVideo15, ModelGrokVideo10s, ModelGrokVideo15s, ModelGrokVideo6s,
+		ModelKlingV3MotionControl:
 		return true
 	default:
 		return false

@@ -30,6 +30,10 @@ func TestNormalizeModel(t *testing.T) {
 	require.True(t, IsVideoModel("sora"))
 	require.Equal(t, ModelDoubaoSeedance20, normalizeModel(ModelDoubaoSeedance20))
 	require.True(t, IsVideoModel(ModelDoubaoSeedance20))
+	require.True(t, IsVideoModel(ModelGrokImagineVideo15))
+	require.True(t, IsVideoModel(ModelGrokVideo10s))
+	require.True(t, IsVideoModel(ModelGrokVideo15s))
+	require.True(t, IsVideoModel(ModelGrokVideo6s))
 }
 
 func TestIsChannel(t *testing.T) {
