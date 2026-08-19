@@ -49,7 +49,9 @@ export function isLogMediaVideoModel(modelName: string): boolean {
     model === 'sora-2-pro' ||
     model.startsWith('sora-2-') ||
     model === 'kling-v3-motion-control' ||
-    model === 'minimax-h3'
+    model === 'minimax-h3' ||
+    model.startsWith('grok-imagine-video') ||
+    model.startsWith('grok-1.5-video-')
   )
 }
 
