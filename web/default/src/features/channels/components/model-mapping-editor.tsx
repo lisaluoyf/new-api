@@ -36,8 +36,6 @@ type MappingRow = {
   to: string
 }
 
-const FREE_MODEL_ID = 'apimaster-freemodel'
-
 export function ModelMappingEditor({
   value,
   onChange,
@@ -60,25 +58,11 @@ export function ModelMappingEditor({
       }
       const parsed = JSON.parse(json)
       const newRows: MappingRow[] = Object.entries(parsed).map(
-        ([from, to], index) => {
-          const target = String(to)
-          // The relay stores aliases as client model -> upstream model. For
-          // FreeModel, operations staff think in the opposite direction:
-          // upstream model -> APIMaster FreeModel. Keep that presentation in
-          // visual mode while preserving the relay's storage format.
-          if (from === FREE_MODEL_ID) {
-            return {
-              id: `${Date.now()}-${index}`,
-              from: target,
-              to: FREE_MODEL_ID,
-            }
-          }
-          return {
-            id: `${Date.now()}-${index}`,
-            from,
-            to: target,
-          }
-        }
+        ([from, to], index) => ({
+          id: `${Date.now()}-${index}`,
+          from,
+          to: String(to),
+        })
       )
       setRows(newRows)
     } catch (_error) {
@@ -108,13 +92,7 @@ export function ModelMappingEditor({
     const obj: Record<string, string> = {}
     updatedRows.forEach((row) => {
       if (row.from.trim()) {
-        const source = row.from.trim()
-        const target = row.to.trim()
-        if (target === FREE_MODEL_ID) {
-          obj[FREE_MODEL_ID] = source
-        } else {
-          obj[source] = target
-        }
+        obj[row.from.trim()] = row.to.trim()
       }
     })
     return JSON.stringify(obj, null, 2)
