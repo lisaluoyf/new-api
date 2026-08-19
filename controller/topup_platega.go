@@ -194,15 +194,21 @@ func RequestPlategaPay(c *gin.Context) {
 			return
 		}
 	} else {
+		paidUSD := float64(normalizedAmount)
+		if setting.PlategaUSDRate > 0 {
+			paidUSD = payRub / setting.PlategaUSDRate
+		}
 		topUp := &model.TopUp{
-			UserId:          id,
-			Amount:          normalizedAmount,
-			Money:           payRub,
-			TradeNo:         tradeNo,
-			PaymentMethod:   model.PaymentMethodPlatega,
-			PaymentProvider: model.PaymentProviderPlatega,
-			CreateTime:      common.GetTimestamp(),
-			Status:          common.TopUpStatusPending,
+			UserId:              id,
+			Amount:              normalizedAmount,
+			PaidAmountUSD:       paidUSD,
+			PaidAmountUSDSource: "order",
+			Money:               payRub,
+			TradeNo:             tradeNo,
+			PaymentMethod:       model.PaymentMethodPlatega,
+			PaymentProvider:     model.PaymentProviderPlatega,
+			CreateTime:          common.GetTimestamp(),
+			Status:              common.TopUpStatusPending,
 		}
 		if err := topUp.FillCountryFromIP(c.ClientIP(), profileCountry).Insert(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Platega 创建本地订单失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))

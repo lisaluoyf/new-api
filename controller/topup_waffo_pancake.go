@@ -200,15 +200,21 @@ func RequestWaffoPancakePay(c *gin.Context) {
 			return
 		}
 	} else {
+		paidUSD := payMoney
+		if !strings.EqualFold(strings.TrimSpace(setting.WaffoPancakeCurrency), "USD") && setting.WaffoPancakeUnitPrice > 0 {
+			paidUSD = payMoney / setting.WaffoPancakeUnitPrice
+		}
 		topUp = &model.TopUp{
-			UserId:          id,
-			Amount:          normalizeWaffoPancakeTopUpAmount(req.Amount),
-			Money:           payMoney,
-			TradeNo:         tradeNo,
-			PaymentMethod:   model.PaymentMethodWaffoPancake,
-			PaymentProvider: model.PaymentProviderWaffoPancake,
-			CreateTime:      time.Now().Unix(),
-			Status:          common.TopUpStatusPending,
+			UserId:              id,
+			Amount:              normalizeWaffoPancakeTopUpAmount(req.Amount),
+			PaidAmountUSD:       paidUSD,
+			PaidAmountUSDSource: "order",
+			Money:               payMoney,
+			TradeNo:             tradeNo,
+			PaymentMethod:       model.PaymentMethodWaffoPancake,
+			PaymentProvider:     model.PaymentProviderWaffoPancake,
+			CreateTime:          time.Now().Unix(),
+			Status:              common.TopUpStatusPending,
 		}
 		if err := topUp.FillCountryFromIP(c.ClientIP(), user.Country).Insert(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 创建充值订单失败 user_id=%d trade_no=%s amount=%d error=%q", id, tradeNo, req.Amount, err.Error()))

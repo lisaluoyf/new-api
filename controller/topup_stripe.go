@@ -104,14 +104,16 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	}
 
 	topUp := &model.TopUp{
-		UserId:          id,
-		Amount:          req.Amount,
-		Money:           chargedMoney,
-		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodStripe,
-		PaymentProvider: model.PaymentProviderStripe,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+		UserId:              id,
+		Amount:              req.Amount,
+		PaidAmountUSD:       chargedMoney,
+		PaidAmountUSDSource: "order",
+		Money:               chargedMoney,
+		TradeNo:             referenceId,
+		PaymentMethod:       model.PaymentMethodStripe,
+		PaymentProvider:     model.PaymentProviderStripe,
+		CreateTime:          time.Now().Unix(),
+		Status:              common.TopUpStatusPending,
 	}
 	err = topUp.FillCountryFromIP(c.ClientIP(), user.Country).Insert()
 	if err != nil {
@@ -376,6 +378,13 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe 订阅订单处理成功 trade_no=%s event_type=%s client_ip=%s", referenceId, string(event.Type), callerIp))
 		return
 	}
+	paidTotal, parseErr := strconv.ParseFloat(event.GetObjectValue("amount_total"), 64)
+	currency := strings.ToUpper(event.GetObjectValue("currency"))
+	if parseErr == nil && paidTotal > 0 && currency == "USD" {
+		if err := model.UpdateTopUpPaidAmountUSD(referenceId, paidTotal/100, "settlement"); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("Stripe 更新实际支付 USD 快照失败 trade_no=%s error=%q", referenceId, err.Error()))
+		}
+	}
 
 	err := model.Recharge(referenceId, customerId, callerIp)
 	if err != nil {
@@ -383,8 +392,7 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		return
 	}
 
-	total, _ := strconv.ParseFloat(event.GetObjectValue("amount_total"), 64)
-	currency := strings.ToUpper(event.GetObjectValue("currency"))
+	total := paidTotal
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe 充值成功 trade_no=%s amount_total=%.2f currency=%s event_type=%s client_ip=%s", referenceId, total/100, currency, string(event.Type), callerIp))
 }
 

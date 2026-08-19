@@ -113,7 +113,7 @@ func FetchChannelPricing(channel *model.Channel) {
 	// - key_group set + NOT found         → misconfigured; clear stale rows + manual fallback
 	if keyGroup == "" {
 		logger.LogInfo(ctx, fmt.Sprintf("channel-pricing [%d]: key_group not set — skipping API pricing", channel.Id))
-		_ = model.DB.Where("channel_id = ?", channel.Id).Delete(&model.ChannelModelPricing{}).Error
+		_ = deleteRefreshableChannelPricings(channel.Id)
 		fetchModelPriceRatioFallback(ctx, channel)
 		return
 	}
@@ -121,7 +121,7 @@ func FetchChannelPricing(channel *model.Channel) {
 	if !ok || v <= 0 {
 		logger.LogWarn(ctx, fmt.Sprintf("channel-pricing [%d]: key_group=%q not found in group_ratio map %v — clearing stale pricing",
 			channel.Id, keyGroup, keysOf(parsed.GroupRatio)))
-		_ = model.DB.Where("channel_id = ?", channel.Id).Delete(&model.ChannelModelPricing{}).Error
+		_ = deleteRefreshableChannelPricings(channel.Id)
 		fetchModelPriceRatioFallback(ctx, channel)
 		return
 	}
@@ -131,9 +131,17 @@ func FetchChannelPricing(channel *model.Channel) {
 	groupMul := resolveChannelGroupRatio(channel.Setting, v)
 
 	now := time.Now().Unix()
+	var protectedModels []string
+	_ = model.DB.Model(&model.ChannelModelPricing{}).
+		Where("channel_id = ? AND pricing_source = ?", channel.Id, "free_model").
+		Pluck("model_name", &protectedModels).Error
+	protected := make(map[string]bool, len(protectedModels))
+	for _, modelName := range protectedModels {
+		protected[modelName] = true
+	}
 	rows := make([]model.ChannelModelPricing, 0, len(parsed.Data))
 	for _, item := range parsed.Data {
-		if item.ModelName == "" {
+		if item.ModelName == "" || protected[item.ModelName] {
 			continue
 		}
 		var inputPrice, outputPrice, cachePrice, cacheCreationPrice float64
@@ -246,6 +254,10 @@ func fetchModelPriceRatioFallback(ctx context.Context, channel *model.Channel) {
 		return
 	}
 	logger.LogInfo(ctx, fmt.Sprintf("channel-pricing [%d]: manual pricing now resolved live from 官方原价, cleared any stale snapshot rows", channel.Id))
+}
+
+func deleteRefreshableChannelPricings(channelID int) error {
+	return model.DB.Where("channel_id = ? AND (pricing_source IS NULL OR pricing_source <> ?)", channelID, "free_model").Delete(&model.ChannelModelPricing{}).Error
 }
 
 // ── hub.romaapi.com pricing fallback ───────────────────────────────────────

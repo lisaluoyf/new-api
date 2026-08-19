@@ -33,3 +33,17 @@ func TestEnrichUsersTotalTopupUSDUsesFrozenUSDValues(t *testing.T) {
 	require.InDelta(t, 3, users[1].TotalTopupUSD, 0.000001)
 	require.Zero(t, users[2].TotalTopupUSD)
 }
+
+func TestGetUserPaidAmountUSDUsesActualPaymentSnapshot(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&TopUp{}))
+	DB = db
+	require.NoError(t, db.Create(&[]TopUp{
+		{UserId: 7, TradeNo: "promo", PaidAmountUSD: 7.5, CreditedAmount: 10, Money: 7.5, PaymentProvider: PaymentProviderStripe, Status: common.TopUpStatusSuccess},
+		{UserId: 7, TradeNo: "pending", PaidAmountUSD: 100, Status: common.TopUpStatusPending},
+	}).Error)
+	total, err := GetUserPaidAmountUSD(7)
+	require.NoError(t, err)
+	require.InDelta(t, 7.5, total, 0.000001)
+}

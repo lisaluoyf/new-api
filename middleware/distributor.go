@@ -61,6 +61,29 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if service.IsFreeModel(modelRequest.Model) {
+			modelRequest.Model = service.FreeModelID
+			if c.Request.URL.Path != "/v1/chat/completions" {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, "apimaster-freemodel is only available on /v1/chat/completions")
+				return
+			}
+			if ok, source, eligibilityErr := service.FreeModelEligibility(c.GetInt("id")); eligibilityErr != nil {
+				abortWithOpenAiMessage(c, http.StatusInternalServerError, "free_model_eligibility_unavailable")
+				return
+			} else if !ok {
+				abortWithOpenAiMessage(c, http.StatusForbidden, service.FreeModelNotEligibleError().Error())
+				return
+			} else {
+				common.SetContextKey(c, "free_model_eligibility_source", source)
+			}
+			c.Set("model", modelRequest.Model)
+			if !CheckFreeModelRateLimit(c) {
+				return
+			}
+			// A virtual model must always use the shared cheapest selector; token-level
+			// specific-channel pinning would bypass the advertised route semantics.
+			ok = false
+		}
 		modelRequest.Model = service.PrepareGptImage2ModelRequest(c, modelRequest.Model)
 		if modelRequest.Model != "" && common.IsImageGenerationModel(modelRequest.Model) && isTextCompletionPath(c.Request.URL.Path) {
 			abortImageModelOnTextEndpoint(c, modelRequest.Model)
@@ -99,7 +122,7 @@ func Distribute() func(c *gin.Context) {
 			// Select a channel for the user
 			// check token model mapping
 			modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
-			if modelLimitEnable {
+			if modelLimitEnable && !service.IsFreeModel(modelRequest.Model) {
 				s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
 				if !ok {
 					// token model limit is empty, all models are not allowed
@@ -125,6 +148,10 @@ func Distribute() func(c *gin.Context) {
 				}
 				var selectGroup string
 				usingGroup := normalizeDistributorUsingGroup(c)
+				if service.IsFreeModel(modelRequest.Model) {
+					usingGroup = service.AutoCheapestGroup
+					common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
+				}
 				// check path is /pg/chat/completions
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
 					playgroundRequest := &dto.PlayGroundRequest{}

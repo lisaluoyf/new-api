@@ -146,14 +146,16 @@ func RequestClinkPay(c *gin.Context) {
 			amount = amount / int64(common.QuotaPerUnit)
 		}
 		topUp := &model.TopUp{
-			UserId:          id,
-			Amount:          amount,
-			Money:           chargedMoney,
-			TradeNo:         tradeNo,
-			PaymentMethod:   model.PaymentMethodClink,
-			PaymentProvider: model.PaymentProviderClink,
-			CreateTime:      common.GetTimestamp(),
-			Status:          common.TopUpStatusPending,
+			UserId:              id,
+			Amount:              amount,
+			PaidAmountUSD:       chargedMoney,
+			PaidAmountUSDSource: "order",
+			Money:               chargedMoney,
+			TradeNo:             tradeNo,
+			PaymentMethod:       model.PaymentMethodClink,
+			PaymentProvider:     model.PaymentProviderClink,
+			CreateTime:          common.GetTimestamp(),
+			Status:              common.TopUpStatusPending,
 		}
 		if err := topUp.FillCountryFromIP(c.ClientIP(), user.Country).Insert(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 创建本地订单失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))

@@ -49,6 +49,8 @@ func includePublicDetectHistoryStatus(status string) bool {
 type ModelDataItem struct {
 	ChannelID       int    `json:"channel_id"`
 	ChannelName     string `json:"channel_name"`
+	UpstreamModel   string `json:"upstream_model,omitempty"`
+	Priority        int64  `json:"priority"`
 	Group           string `json:"group"`
 	KeyGroup        string `json:"key_group"`
 	ClientExclusive string `json:"client_exclusive"` // "" | codex | claude_code
@@ -117,11 +119,74 @@ func GetModelData(c *gin.Context) {
 	})
 }
 
+// GetFreeModelSettings returns the administrator-only virtual model settings.
+func GetFreeModelSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": service.GetFreeModelSettings()})
+}
+
+func SaveFreeModelSettings(c *gin.Context) {
+	var settings service.FreeModelSettings
+	if err := common.DecodeJson(c.Request.Body, &settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if err := service.SaveFreeModelSettings(settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": service.GetFreeModelSettings()})
+}
+
+func SaveFreeModelRoutePrice(c *gin.Context) {
+	channelID, err := strconv.Atoi(c.Param("channel_id"))
+	if err != nil || channelID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid channel_id"})
+		return
+	}
+	var req struct {
+		InputPrice float64 `json:"input_price"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil || req.InputPrice <= 0 || math.IsNaN(req.InputPrice) || math.IsInf(req.InputPrice, 0) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "input_price must be positive"})
+		return
+	}
+	channel, err := model.GetChannelById(channelID, true)
+	if err != nil || channel == nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "channel not found"})
+		return
+	}
+	if !common.StringsContains(channel.GetModels(), service.FreeModelID) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "channel does not advertise FreeModel"})
+		return
+	}
+	upstream := service.ModelMappingTarget(channel.ModelMapping, service.FreeModelID)
+	if upstream == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "FreeModel requires a model_mapping target"})
+		return
+	}
+	// Keep the virtual model's routing weight separate from the mapped upstream
+	// model's real pricing. Sharing the upstream (channel_id, model_name) row would
+	// overwrite normal input/output/cache/tiered billing data for paid requests.
+	row := model.ChannelModelPricing{ChannelId: channelID, ModelName: service.FreeModelID, InputPrice: req.InputPrice, GroupRatio: 1, Currency: "USD", PricingSource: "free_model", FetchedAt: time.Now().Unix()}
+	if err := model.UpsertChannelModelPricings([]model.ChannelModelPricing{row}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if err := model.DB.Where("channel_id = ? AND pricing_source = ? AND model_name <> ?", channelID, "free_model", service.FreeModelID).
+		Delete(&model.ChannelModelPricing{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	service.InvalidateChannelRoutingCache()
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": row})
+}
+
 func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, bool, float64, float64) {
 	type row struct {
 		ChannelID                  int
 		ChannelName                string
 		ChannelGroup               string
+		Priority                   *int64
 		BaseURL                    *string
 		Setting                    *string
 		ModelMapping               *string
@@ -166,7 +231,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 	}
 	var rows []row
 	model.DB.Table("channels c").
-		Select("c.id as channel_id, c.name as channel_name, "+channelGroupColumn+" as channel_group, c.base_url, c.setting, c.model_mapping, p.input_price, p.output_price, p.cache_price, p.cache_creation_price, p.group_ratio, p.pricing_source, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.status, c.consecutive_fingerprint_pass, COALESCE(a.enabled, true) as model_enabled, c.other_info").
+		Select("c.id as channel_id, c.name as channel_name, "+channelGroupColumn+" as channel_group, c.priority, c.base_url, c.setting, c.model_mapping, p.input_price, p.output_price, p.cache_price, p.cache_creation_price, p.group_ratio, p.pricing_source, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.status, c.consecutive_fingerprint_pass, COALESCE(a.enabled, true) as model_enabled, c.other_info").
 		Joins("LEFT JOIN channel_model_pricings p ON c.id = p.channel_id AND p.model_name IN ?", candidates).
 		Joins("LEFT JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND a.group = 'default'", modelName).
 		// Show all status (1/2/3) so the operator can act on auto-disabled ones from the table.
@@ -193,6 +258,11 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 
 	// Per-channel model_mapping: upstream pricing may use the mapped name only.
 	for i := range rows {
+		// FreeModel's stored price is only a routing weight. Do not replace it with
+		// the mapped real model's normal billing price or a global/manual fallback.
+		if service.IsFreeModel(modelName) {
+			continue
+		}
 		applyModelMappingPricingToRow(
 			rows[i].ChannelID, rows[i].ModelMapping, modelName,
 			&rows[i].InputPrice, &rows[i].OutputPrice, &rows[i].CachePrice, &rows[i].CacheCreationPrice,
@@ -423,12 +493,20 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		if r.PricingSource != nil {
 			pricingSource = *r.PricingSource
 		}
+		upstreamModel := service.ModelMappingTarget(r.ModelMapping, modelName)
 
 		statusReason, statusTime, recoveryPassCount := modelDataStatusMetadata(r.Status, r.ModelEnabled, r.OtherInfo, modelName, r.ConsecutiveFingerprintPass)
 
 		items = append(items, ModelDataItem{
-			ChannelID:                  r.ChannelID,
-			ChannelName:                r.ChannelName,
+			ChannelID:     r.ChannelID,
+			ChannelName:   r.ChannelName,
+			UpstreamModel: upstreamModel,
+			Priority: func() int64 {
+				if r.Priority != nil {
+					return *r.Priority
+				}
+				return 0
+			}(),
 			Group:                      r.ChannelGroup,
 			KeyGroup:                   keyGroup,
 			ClientExclusive:            clientExclusive,
@@ -739,7 +817,7 @@ type publicMarketplaceCacheEntry struct {
 // GET /api/public/marketplace?model=<model_name>
 func GetPublicMarketplace(c *gin.Context) {
 	modelName := c.DefaultQuery("model", "claude-sonnet-4-6")
-	if isHiddenChannelDataModel(modelName) {
+	if service.IsFreeModel(modelName) || isHiddenChannelDataModel(modelName) {
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": []any{}})
 		return
 	}

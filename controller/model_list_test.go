@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
@@ -239,4 +240,29 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 	require.NotContains(t, ids, "zz-token-tiered-empty-expr-model")
 	require.NotContains(t, ids, "zz-token-tiered-missing-expr-model")
 	require.NotContains(t, ids, "zz-token-unpriced-model")
+}
+
+func TestListModelsHidesFreeModel(t *testing.T) {
+	originalSelfUse := operation_setting.SelfUseModeEnabled
+	operation_setting.SelfUseModeEnabled = true
+	t.Cleanup(func() { operation_setting.SelfUseModeEnabled = originalSelfUse })
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{Id: 1002, Username: "free-model-user", AffCode: "free-model-user", Group: "default", Status: common.UserStatusEnabled}).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: service.FreeModelID, ChannelId: 1, Enabled: true}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 1002)
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+	require.NotContains(t, decodeListModelsResponse(t, recorder), service.FreeModelID)
+
+	tokenRecorder := httptest.NewRecorder()
+	tokenCtx, _ := gin.CreateTestContext(tokenRecorder)
+	tokenCtx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	common.SetContextKey(tokenCtx, constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(tokenCtx, constant.ContextKeyTokenModelLimit, map[string]bool{service.FreeModelID: true})
+	ListModels(tokenCtx, constant.ChannelTypeOpenAI)
+	require.NotContains(t, decodeListModelsResponse(t, tokenRecorder), service.FreeModelID)
 }

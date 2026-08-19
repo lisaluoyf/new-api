@@ -112,6 +112,7 @@ func tencentStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *htt
 		}
 
 		response := streamResponseTencent2OpenAI(&tencentResponse)
+		response.Model = service.FreeModelResponseName(info.OriginModelName, response.Model)
 		if len(response.Choices) != 0 {
 			responseText += response.Choices[0].Delta.GetContentString()
 		}
@@ -151,6 +152,7 @@ func tencentHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Resp
 		}, resp.StatusCode)
 	}
 	fullTextResponse := responseTencent2OpenAI(&tencentSb.Response)
+	fullTextResponse.Model = service.FreeModelResponseName(info.OriginModelName, fullTextResponse.Model)
 	jsonResponse, err := common.Marshal(fullTextResponse)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)

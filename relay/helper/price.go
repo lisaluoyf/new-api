@@ -247,8 +247,30 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	if err != nil {
 		return types.PriceData{}, err
 	}
+	if info != nil && service.IsFreeModel(info.OriginModelName) {
+		priceData = forceFreeModelPriceData(priceData)
+		info.TieredBillingSnapshot = nil
+		info.BillingRequestInput = nil
+	}
 	info.SetWalletPriceData(priceData)
 	return priceData, nil
+}
+
+func forceFreeModelPriceData(priceData types.PriceData) types.PriceData {
+	priceData.FreeModel = true
+	priceData.ModelPrice = 0
+	priceData.ModelRatio = 0
+	priceData.CompletionRatio = 0
+	priceData.CacheRatio = 0
+	priceData.CacheCreationRatio = 0
+	priceData.CacheCreation5mRatio = 0
+	priceData.CacheCreation1hRatio = 0
+	priceData.ImageRatio = 0
+	priceData.AudioRatio = 0
+	priceData.AudioCompletionRatio = 0
+	priceData.Quota = 0
+	priceData.QuotaToPreConsume = 0
+	return priceData
 }
 
 func BuildGPTTrialPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {

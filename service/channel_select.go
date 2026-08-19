@@ -90,7 +90,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	// Routing algorithm 0.1 (auto-cheapest / token group "default"):
 	//   every retry: cheapest among remaining enabled channels (price ascending).
 	//   Failed channels are excluded via use_channel before each pick.
-	if param.TokenGroup == AutoCheapestGroup {
+	if usesAutoCheapest(param.TokenGroup, param.ModelName) {
 		SetGptImage2RoutingRetry(param.Ctx, param.GetRetry())
 		ch, selectErr := SelectCheapestEnabledChannel(param.Ctx, param.ModelName)
 		if selectErr != nil {
@@ -196,4 +196,8 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		}
 	}
 	return channel, selectGroup, nil
+}
+
+func usesAutoCheapest(tokenGroup, modelName string) bool {
+	return tokenGroup == AutoCheapestGroup || IsFreeModel(modelName)
 }

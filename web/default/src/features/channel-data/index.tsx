@@ -27,6 +27,7 @@ import {
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { parseGroupsList } from '@/features/channels/lib'
+import { handleUpdateChannelField } from '@/features/channels/lib/channel-actions'
 import { MODEL_TABS } from './constants'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -50,6 +51,8 @@ interface DetectPoint {
 interface ModelDataItem {
   channel_id: number
   channel_name: string
+  upstream_model?: string
+  priority: number
   group: string
   key_group: string
   client_exclusive?: string  // '' | codex | claude_code
@@ -276,6 +279,7 @@ function hasPositivePrice(price: number | null | undefined): boolean {
 }
 
 function isLLMModel(modelId: string): boolean {
+  if (modelId === 'apimaster-freemodel') return false
   return !NON_LLM_MODEL_IDS.has(modelId)
 }
 
@@ -285,7 +289,9 @@ function getPriceUnit(modelId: string): string {
   return '$/1M'
 }
 
-const CHANNEL_DATA_MODEL_IDS = MODEL_TABS.map((tab) => tab.modelId)
+const CHANNEL_DATA_MODEL_IDS = MODEL_TABS.map((tab) => tab.modelId).filter(
+  (modelId) => modelId !== 'apimaster-freemodel',
+)
 
 function getModelLabel(modelId: string): string {
   return MODEL_TABS.find((tab) => tab.modelId === modelId)?.label ?? modelId
@@ -578,6 +584,15 @@ export function ChannelDataPage() {
   const [hubRefreshMsg, setHubRefreshMsg] = useState<string>('')
   // modelId → true if fingerprint_enabled OR uptime_enabled (for tab dot style)
   const [tabDetectEnabled, setTabDetectEnabled] = useState<Record<string, boolean>>({})
+  const [freeSettings, setFreeSettings] = useState({
+    cumulative_paid_enabled: true,
+    minimum_cumulative_paid_usd: 50,
+    active_subscription_enabled: true,
+    minimum_subscription_price_usd: 20,
+    account_requests_per_minute: 10,
+  })
+  const [freeSettingsOpen, setFreeSettingsOpen] = useState(false)
+  const isFreeModel = activeModel === 'apimaster-freemodel'
 
   // Fetch detect config for all tabs once on mount to show filled/hollow dots
   useEffect(() => {
@@ -664,6 +679,40 @@ export function ChannelDataPage() {
       })
       .finally(() => setLoading(false))
   }, [activeModel])
+
+  useEffect(() => {
+    if (!isFreeModel) return
+    api.get('/api/admin/free-model/settings').then((res) => {
+      if (res.data?.success && res.data.data) setFreeSettings(res.data.data)
+    })
+  }, [isFreeModel])
+
+  const saveFreeSettings = useCallback(() => {
+    api.put('/api/admin/free-model/settings', freeSettings).then(() => setFreeSettingsOpen(false))
+  }, [freeSettings])
+
+  const editFreePrice = useCallback((item: ModelDataItem) => {
+    const current = item.input_price ?? item.actual_price ?? 0
+    const raw = window.prompt(t('FreeModel route price ($/1M input tokens)'), String(current))
+    if (raw == null) return
+    const inputPrice = Number(raw)
+    if (!Number.isFinite(inputPrice) || inputPrice <= 0) return
+    api.put(`/api/admin/free-model/channels/${item.channel_id}/route-price`, { input_price: inputPrice }).then(() => {
+      api.get('/api/admin/channel-data', { params: { model: activeModel } }).then((res) => {
+        if (res.data?.success) setData(res.data.data ?? [])
+      })
+    })
+  }, [activeModel, t])
+
+  const editPriority = useCallback((item: ModelDataItem) => {
+    const raw = window.prompt(t('Channel priority'), String(item.priority ?? 0))
+    if (raw == null) return
+    const priority = Number(raw)
+    if (!Number.isInteger(priority)) return
+    handleUpdateChannelField(item.channel_id, 'priority', priority, undefined, () => {
+      setData((current) => current.map((row) => row.channel_id === item.channel_id ? { ...row, priority } : row))
+    })
+  }, [t])
 
   // Fetch detect config when model changes, then poll every 30s so the
   // "下次 HH:MM" countdown stays fresh as auto-detect ticks fire.
@@ -981,6 +1030,20 @@ export function ChannelDataPage() {
 
           <div className='flex flex-wrap items-center justify-between gap-3'>
             <div className='flex flex-wrap items-center gap-2'>
+              {isFreeModel && (
+                <button
+                  onClick={() => setFreeSettingsOpen(true)}
+                  className='inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-100'
+                >
+                  <Settings2 className='w-3.5 h-3.5' />
+                  {t('FreeModel Settings')}
+                </button>
+              )}
+              {isFreeModel && (
+                <span className='rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700'>
+                  {t('User billing: $0')}
+                </span>
+              )}
             <button
               onClick={refreshPricing}
               disabled={pricingRefreshing}
@@ -1018,6 +1081,7 @@ export function ChannelDataPage() {
           {/* Auto-detect controls: two rows */}
           <div className='flex flex-col gap-1.5 items-end'>
             {/* Model detection */}
+            {!isFreeModel && <>
             <div className='flex items-center gap-2'>
               <span className='text-xs text-gray-400 w-16 text-right'>{t('Model Detect')}</span>
               <Switch
@@ -1038,6 +1102,7 @@ export function ChannelDataPage() {
                 {!configFetching && config.fingerprint_enabled ? fmtNextDetect(t, config.next_fingerprint_at) : ''}
               </span>
             </div>
+            </>}
             {/* Uptime */}
             <div className='flex items-center gap-2'>
               <span className='text-xs text-gray-400 w-16 text-right'>{t('Uptime')}</span>
@@ -1116,14 +1181,15 @@ export function ChannelDataPage() {
               <tr className='border-b border-gray-100'>
                 <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>ID</th>
                 <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide w-36'>{t('Site')}</th>
-                <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Groups')}</th>
+                <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{isFreeModel ? t('Upstream Model') : t('Groups')}</th>
                 <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Site Group')}</th>
                 <th className='text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Client')}</th>
                 <th className='text-right px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Recharge Rate')}</th>
+                <th className='text-right px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>{t('Priority')}</th>
                 <th className='text-right px-2 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide'>gratio</th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16'>
                   <div className='flex flex-col items-end leading-tight gap-0.5'>
-                    <span>{t('Channel Original Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
+                    <span>{isFreeModel ? t('Route Price') : t('Channel Original Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
                   </div>
                 </th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16'>
@@ -1138,7 +1204,7 @@ export function ChannelDataPage() {
                 </th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16'>
                   <div className='flex flex-col items-end leading-tight gap-0.5'>
-                    <span>{t('User Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
+                    <span>{isFreeModel ? t('Sort Price') : t('User Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
                   </div>
                 </th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16'>
@@ -1157,12 +1223,12 @@ export function ChannelDataPage() {
             <tbody className='divide-y divide-gray-50'>
               {loading && (
                 <tr>
-                  <td colSpan={18} className='px-5 py-12 text-center text-sm text-gray-400'>{t('Loading…')}</td>
+                  <td colSpan={19} className='px-5 py-12 text-center text-sm text-gray-400'>{t('Loading…')}</td>
                 </tr>
               )}
               {!loading && data.length === 0 && (
                 <tr>
-                  <td colSpan={18} className='px-5 py-12 text-center text-sm text-gray-400'>
+                  <td colSpan={19} className='px-5 py-12 text-center text-sm text-gray-400'>
                     {t('No data — please add channels supporting this model in Channel Management')}
                   </td>
                 </tr>
@@ -1233,7 +1299,14 @@ export function ChannelDataPage() {
                       </div>
                     </td>
                     <td className={`px-3 py-2.5 ${dim}`}>
+                      {isFreeModel ? (
+                        <div className='flex flex-col gap-0.5 text-xs'>
+                          <span className='font-mono text-gray-700'>{item.upstream_model || '—'}</span>
+                          <span className='text-gray-400'>{t('mapped upstream model')}</span>
+                        </div>
+                      ) : (
                       <ChannelGroups value={item.group} />
+                      )}
                     </td>
                     <td className={`px-3 py-2.5 text-gray-500 ${dim}`}>{item.key_group || <span className='text-gray-300'>—</span>}</td>
                     <td className={`px-3 py-2.5 ${dim}`}>
@@ -1242,6 +1315,7 @@ export function ChannelDataPage() {
                     <td className={`px-3 py-2.5 text-right text-gray-500 tabular-nums text-xs ${dim}`}>
                       {item.recharge_rate != null ? item.recharge_rate.toFixed(4) : <span className='text-gray-300'>—</span>}
                     </td>
+                    <td className={`px-3 py-2.5 text-right text-gray-500 tabular-nums text-xs ${dim}`}>{item.priority ?? 0}</td>
                     <td className={`px-2 py-3.5 text-right text-gray-500 tabular-nums text-xs ${dim}`}>
                       {item.group_ratio != null ? item.group_ratio.toFixed(3) : <span className='text-gray-300'>—</span>}
                     </td>
@@ -1410,22 +1484,24 @@ export function ChannelDataPage() {
                       ) : <span className='text-gray-300'>—</span>}
                     </td>
                     <td className={`px-3 py-2.5 ${dim}`}>
-                      <DotGrid
-                        history={item.fingerprint_history}
-                        onAnalyze={item.base_url ? () => handleAnalyze(item) : undefined}
-                      />
+                      {isFreeModel ? <span className='text-gray-300'>—</span> : (
+                        <DotGrid
+                          history={item.fingerprint_history}
+                          onAnalyze={item.base_url ? () => handleAnalyze(item) : undefined}
+                        />
+                      )}
                     </td>
                     <td className={`px-3 py-2.5 ${dim}`}><DotGrid history={item.uptime_history} /></td>
                     <td className='px-3 py-2.5 text-center'>
                       <div className='flex items-center justify-center gap-2'>
-                        <button
+                        {!isFreeModel && <button
                           onClick={() => detectNow(item.channel_id)}
                           disabled={!!detectingChannels[`${item.channel_id}-${activeModel}`]}
                           className='text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-md px-2.5 py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap'
                           title={t('Trigger a fingerprint detection now, result shows in the Detection Result column in ~15-20s')}
                         >
                           {detectingChannels[`${item.channel_id}-${activeModel}`] ? t('Detecting…') : t('Manual Detect')}
-                        </button>
+                        </button>}
                         <button
                           onClick={() => pingNow(item.channel_id)}
                           disabled={!!pingingChannels[`${item.channel_id}-${activeModel}`]}
@@ -1434,6 +1510,22 @@ export function ChannelDataPage() {
                         >
                           {pingingChannels[`${item.channel_id}-${activeModel}`] ? t('Pinging…') : t('Manual Ping')}
                         </button>
+                        {isFreeModel && (
+                          <button
+                            onClick={() => editFreePrice(item)}
+                            className='text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 border border-orange-200 rounded-md px-2.5 py-1 transition-colors whitespace-nowrap'
+                          >
+                            {t('Edit Route Price')}
+                          </button>
+                        )}
+                        {isFreeModel && (
+                          <button
+                            onClick={() => editPriority(item)}
+                            className='text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1 transition-colors whitespace-nowrap'
+                          >
+                            {t('Edit Priority')}
+                          </button>
+                        )}
                         <button
                           onClick={() => toggleChannel(item.channel_id, isEffectivelyEnabled)}
                           className={
@@ -1468,6 +1560,37 @@ export function ChannelDataPage() {
         {analysis && (
           <AnalysisModal state={analysis} onClose={() => setAnalysis(null)} />
         )}
+        <Dialog open={freeSettingsOpen} onOpenChange={setFreeSettingsOpen}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>{t('FreeModel Settings')}</DialogTitle></DialogHeader>
+            <div className='space-y-4 py-2'>
+              <label className='flex items-center justify-between gap-4 text-sm'>
+                <span>{t('Enable cumulative paid eligibility')}</span>
+                <Switch checked={freeSettings.cumulative_paid_enabled} onCheckedChange={(value) => setFreeSettings((current) => ({ ...current, cumulative_paid_enabled: value }))} />
+              </label>
+              <label className='space-y-1 text-sm'>
+                <span>{t('Minimum cumulative paid USD')}</span>
+                <Input type='number' min='0' step='0.01' value={freeSettings.minimum_cumulative_paid_usd} onChange={(event) => setFreeSettings((current) => ({ ...current, minimum_cumulative_paid_usd: Number(event.target.value) }))} />
+              </label>
+              <label className='flex items-center justify-between gap-4 text-sm'>
+                <span>{t('Enable active subscription eligibility')}</span>
+                <Switch checked={freeSettings.active_subscription_enabled} onCheckedChange={(value) => setFreeSettings((current) => ({ ...current, active_subscription_enabled: value }))} />
+              </label>
+              <label className='space-y-1 text-sm'>
+                <span>{t('Minimum active subscription price USD')}</span>
+                <Input type='number' min='0' step='0.01' value={freeSettings.minimum_subscription_price_usd} onChange={(event) => setFreeSettings((current) => ({ ...current, minimum_subscription_price_usd: Number(event.target.value) }))} />
+              </label>
+              <label className='space-y-1 text-sm'>
+                <span>{t('Requests per account per minute')}</span>
+                <Input type='number' min='1' step='1' value={freeSettings.account_requests_per_minute} onChange={(event) => setFreeSettings((current) => ({ ...current, account_requests_per_minute: Number(event.target.value) }))} />
+              </label>
+            </div>
+            <DialogFooter>
+              <Button variant='outline' onClick={() => setFreeSettingsOpen(false)}>{t('Cancel')}</Button>
+              <Button onClick={saveFreeSettings}>{t('Save')}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
       </SectionPageLayout.Content>
     </SectionPageLayout>

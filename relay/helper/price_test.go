@@ -65,6 +65,20 @@ func TestDeepSeekV4PriceUsesOfficialScheduleAndUserMultiplier(t *testing.T) {
 	require.InDelta(t, 1, price.CacheCreationRatio, 0.0000001)
 }
 
+func TestForceFreeModelPriceDataClearsAllUserCharges(t *testing.T) {
+	price := forceFreeModelPriceData(types.PriceData{
+		ModelPrice: 2, ModelRatio: 3, CompletionRatio: 4, CacheRatio: 5,
+		Quota: 100, QuotaToPreConsume: 200,
+	})
+	require.True(t, price.FreeModel)
+	require.Zero(t, price.ModelPrice)
+	require.Zero(t, price.ModelRatio)
+	require.Zero(t, price.CompletionRatio)
+	require.Zero(t, price.CacheRatio)
+	require.Zero(t, price.Quota)
+	require.Zero(t, price.QuotaToPreConsume)
+}
+
 func TestDeepSeekV4RetryKeepsRequestTimeButRefreshesChannelMultiplier(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ratio_setting.InitRatioSettings()

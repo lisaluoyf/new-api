@@ -760,16 +760,18 @@ func verifyAndCredit(intentId string) {
 		}
 
 		topUp := &model.TopUp{
-			UserId:          current.UserId,
-			Amount:          int64(math.Round(creditUsd)),
-			CreditedAmount:  creditUsd,
-			Money:           usdValue,
-			TradeNo:         tradeNo,
-			PaymentMethod:   "crypto",
-			PaymentProvider: "crypto",
-			CreateTime:      now,
-			CompleteTime:    now,
-			Status:          common.TopUpStatusSuccess,
+			UserId:              current.UserId,
+			Amount:              int64(math.Round(creditUsd)),
+			CreditedAmount:      creditUsd,
+			PaidAmountUSD:       usdValue,
+			PaidAmountUSDSource: "settlement",
+			Money:               usdValue,
+			TradeNo:             tradeNo,
+			PaymentMethod:       "crypto",
+			PaymentProvider:     "crypto",
+			CreateTime:          now,
+			CompleteTime:        now,
+			Status:              common.TopUpStatusSuccess,
 		}
 		if err := tx.Create(topUp).Error; err != nil {
 			return err

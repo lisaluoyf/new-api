@@ -108,14 +108,16 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 
 	// 先创建订单记录，使用产品配置的金额和充值额度
 	topUp := &model.TopUp{
-		UserId:          id,
-		Amount:          selectedProduct.Quota, // 充值额度
-		Money:           selectedProduct.Price, // 支付金额
-		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodCreem,
-		PaymentProvider: model.PaymentProviderCreem,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+		UserId:              id,
+		Amount:              selectedProduct.Quota, // 充值额度
+		PaidAmountUSD:       selectedProduct.Price,
+		PaidAmountUSDSource: "order",
+		Money:               selectedProduct.Price, // 支付金额
+		TradeNo:             referenceId,
+		PaymentMethod:       model.PaymentMethodCreem,
+		PaymentProvider:     model.PaymentProviderCreem,
+		CreateTime:          time.Now().Unix(),
+		Status:              common.TopUpStatusPending,
 	}
 	err = topUp.FillCountryFromIP(c.ClientIP(), user.Country).Insert()
 	if err != nil {

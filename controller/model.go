@@ -187,6 +187,9 @@ func GetAccessibleOpenAIModels(c *gin.Context) ([]dto.OpenAIModels, error) {
 			tokenModelLimit = map[string]bool{}
 		}
 		for allowModel, _ := range tokenModelLimit {
+			if service.IsFreeModel(allowModel) {
+				continue
+			}
 			if !acceptUnsetRatioModel {
 				if !helper.HasModelBillingConfig(allowModel) {
 					continue
@@ -232,6 +235,9 @@ func GetAccessibleOpenAIModels(c *gin.Context) ([]dto.OpenAIModels, error) {
 			models = model.GetGroupEnabledModels(group)
 		}
 		for _, modelName := range models {
+			if service.IsFreeModel(modelName) {
+				continue
+			}
 			if service.ShouldHideGptImage2OfficialModel(modelName) {
 				continue
 			}

@@ -17,7 +17,7 @@ type ChannelModelPricing struct {
 	CacheCreationPrice float64 `json:"cache_creation_price"` // USD per 1M cache-write tokens
 	GroupRatio         float64 `json:"group_ratio"    gorm:"default:1"`
 	Currency           string  `json:"currency"       gorm:"size:8;default:'USD'"`
-	PricingSource      string  `json:"pricing_source" gorm:"size:16;default:'api'"` // "api" | "manual"
+	PricingSource      string  `json:"pricing_source" gorm:"size:16;default:'api'"` // "api" | "manual" | "free_model"
 	FetchedAt          int64   `json:"fetched_at"`
 	BillingMode        string  `json:"billing_mode" gorm:"size:32"`
 	BillingExpr        string  `json:"billing_expr" gorm:"type:text"`

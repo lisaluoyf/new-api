@@ -768,16 +768,18 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if err := tx.Where("trade_no = ?", order.TradeNo).First(&topup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			topup = TopUp{
-				UserId:          order.UserId,
-				Amount:          0,
-				CreditedAmount:  order.Money,
-				Money:           order.Money,
-				TradeNo:         order.TradeNo,
-				PaymentMethod:   order.PaymentMethod,
-				PaymentProvider: order.PaymentProvider,
-				CreateTime:      order.CreateTime,
-				CompleteTime:    now,
-				Status:          common.TopUpStatusSuccess,
+				UserId:              order.UserId,
+				Amount:              0,
+				CreditedAmount:      order.Money,
+				PaidAmountUSD:       order.Money,
+				PaidAmountUSDSource: "subscription",
+				Money:               order.Money,
+				TradeNo:             order.TradeNo,
+				PaymentMethod:       order.PaymentMethod,
+				PaymentProvider:     order.PaymentProvider,
+				CreateTime:          order.CreateTime,
+				CompleteTime:        now,
+				Status:              common.TopUpStatusSuccess,
 			}
 			return tx.Create(&topup).Error
 		}
@@ -785,6 +787,8 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	}
 	topup.Money = order.Money
 	topup.CreditedAmount = order.Money
+	topup.PaidAmountUSD = order.Money
+	topup.PaidAmountUSDSource = "subscription"
 	topup.PaymentProvider = order.PaymentProvider
 	if topup.PaymentMethod == "" {
 		topup.PaymentMethod = order.PaymentMethod
@@ -1073,6 +1077,22 @@ func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 // This is a lightweight existence check to avoid heavy pre-consume transactions.
 func HasActiveUserSubscription(userId int) (bool, error) {
 	return hasActiveUserSubscription(userId, nil)
+}
+
+// HasActiveSubscriptionAtPrice reports whether the user currently has an
+// active subscription whose purchase-time USD price snapshot reaches the
+// configured FreeModel threshold. Purchase snapshots are used so later plan
+// edits do not silently revoke or grant the entitlement.
+func HasActiveSubscriptionAtPrice(userId int, minimumPriceUSD float64) (bool, error) {
+	if userId <= 0 {
+		return false, errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	var count int64
+	err := DB.Model(&UserSubscription{}).
+		Where("user_id = ? AND status = ? AND end_time > ? AND price_amount_snapshot >= ?", userId, "active", now, minimumPriceUSD).
+		Count(&count).Error
+	return count > 0, err
 }
 
 // HasActiveUserSubscriptionExcludingPlanTitle returns whether the user has any

@@ -50,7 +50,7 @@ func streamResponsePaLM2OpenAI(palmResponse *PaLMChatResponse) *dto.ChatCompleti
 	return &response
 }
 
-func palmStreamHandler(c *gin.Context, resp *http.Response) (*types.NewAPIError, string) {
+func palmStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*types.NewAPIError, string) {
 	responseText := ""
 	responseId := helper.GetResponseID(c)
 	createdTime := common.GetTimestamp()
@@ -72,6 +72,7 @@ func palmStreamHandler(c *gin.Context, resp *http.Response) (*types.NewAPIError,
 			return
 		}
 		fullTextResponse := streamResponsePaLM2OpenAI(&palmResponse)
+		fullTextResponse.Model = service.FreeModelResponseName(info.OriginModelName, fullTextResponse.Model)
 		fullTextResponse.Id = responseId
 		fullTextResponse.Created = createdTime
 		if len(palmResponse.Candidates) > 0 {
@@ -121,6 +122,7 @@ func palmHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respons
 		}, resp.StatusCode)
 	}
 	fullTextResponse := responsePaLM2OpenAI(&palmResponse)
+	fullTextResponse.Model = service.FreeModelResponseName(info.OriginModelName, fullTextResponse.Model)
 	usage := service.ResponseText2Usage(c, palmResponse.Candidates[0].Content, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	fullTextResponse.Usage = *usage
 	jsonResponse, err := common.Marshal(fullTextResponse)

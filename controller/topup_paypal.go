@@ -217,14 +217,16 @@ func RequestPayPalPay(c *gin.Context) {
 			amount = amount / int64(common.QuotaPerUnit)
 		}
 		topUp := &model.TopUp{
-			UserId:          id,
-			Amount:          amount,
-			Money:           chargedMoney,
-			TradeNo:         referenceID,
-			PaymentMethod:   model.PaymentMethodPayPal,
-			PaymentProvider: model.PaymentProviderPayPal,
-			CreateTime:      time.Now().Unix(),
-			Status:          common.TopUpStatusPending,
+			UserId:              id,
+			Amount:              amount,
+			PaidAmountUSD:       chargedMoney,
+			PaidAmountUSDSource: "order",
+			Money:               chargedMoney,
+			TradeNo:             referenceID,
+			PaymentMethod:       model.PaymentMethodPayPal,
+			PaymentProvider:     model.PaymentProviderPayPal,
+			CreateTime:          time.Now().Unix(),
+			Status:              common.TopUpStatusPending,
 		}
 		if err := topUp.FillCountryFromIP(c.ClientIP(), user.Country).Insert(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("PayPal 创建充值订单失败 user_id=%d trade_no=%s amount=%d error=%q", id, referenceID, req.Amount, err.Error()))

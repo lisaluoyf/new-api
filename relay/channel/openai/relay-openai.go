@@ -33,6 +33,19 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 		return nil
 	}
 
+	if service.IsFreeModel(info.OriginModelName) {
+		var response dto.ChatCompletionsStreamResponse
+		if err := common.UnmarshalJsonStr(data, &response); err == nil {
+			response.Model = info.OriginModelName
+			dataBytes, marshalErr := common.Marshal(response)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			data = string(dataBytes)
+			forceFormat = true
+		}
+	}
+
 	if !forceFormat && !thinkToContent {
 		return helper.StringData(c, data)
 	}
@@ -117,7 +130,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 	defer service.CloseResponseBodyGracefully(resp)
 
-	model := info.UpstreamModelName
+	model := service.FreeModelResponseName(info.OriginModelName, info.UpstreamModelName)
 	var responseId string
 	var createAt int64 = 0
 	var systemFingerprint string
@@ -243,6 +256,10 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	forceFormat := false
 	if info.ChannelSetting.ForceFormat {
+		forceFormat = true
+	}
+	if service.IsFreeModel(info.OriginModelName) {
+		simpleResponse.Model = info.OriginModelName
 		forceFormat = true
 	}
 

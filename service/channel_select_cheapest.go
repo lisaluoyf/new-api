@@ -224,8 +224,10 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 	candidates := ModelPricingLookupNames(modelName)
 
 	modelsCol := "c.models"
+	abilityGroupCol := "a.`group`"
 	if common.UsingPostgreSQL {
 		modelsCol = `c."models"`
+		abilityGroupCol = `a."group"`
 	}
 	modelsMatchClause, modelsMatchArgs := ChannelsModelsCommaMatchSQL(modelsCol, candidates)
 
@@ -234,6 +236,7 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 		Setting             *string
 		ModelMapping        *string
 		PricingModelName    *string
+		PricingSource       *string
 		InputPrice          *float64
 		GroupRatio          *float64
 		RechargeRate        *float64
@@ -244,12 +247,12 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 	var rows []pricedCandidateRow
 
 	q := model.DB.Table("channels c").
-		Select(`c.id AS channel_id, c.setting, c.model_mapping, p.model_name AS pricing_model_name, p.input_price, p.group_ratio, c.recharge_rate, c.apimaster_price_ratio, c.model_price_ratios, c.priority`).
+		Select(`c.id AS channel_id, c.setting, c.model_mapping, p.model_name AS pricing_model_name, p.pricing_source, p.input_price, p.group_ratio, c.recharge_rate, c.apimaster_price_ratio, c.model_price_ratios, c.priority`).
 		// Join all pricing rows for eligible channels so a per-channel model_mapping
 		// target can be resolved in Go without database-specific JSON operators.
 		// applyPricedCandidateRow filters unrelated model rows below.
 		Joins("LEFT JOIN channel_model_pricings p ON p.channel_id = c.id AND p.input_price > 0").
-		Joins("LEFT JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND a.group = 'default'", modelName).
+		Joins("LEFT JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND "+abilityGroupCol+" = 'default'", modelName).
 		Where("c.status = 1").
 		Where(modelsMatchClause, modelsMatchArgs...).
 		Where("COALESCE(a.enabled, true) = true")
@@ -281,7 +284,11 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 			if row.PricingModelName != nil {
 				pricingModelName = *row.PricingModelName
 			}
-			applyPricedCandidateRow(&candidate, modelName, pricingModelName, *row.InputPrice, floatPointerOrDefault(row.GroupRatio, 1))
+			pricingSource := ""
+			if row.PricingSource != nil {
+				pricingSource = *row.PricingSource
+			}
+			applyPricedCandidateRow(&candidate, modelName, pricingModelName, pricingSource, *row.InputPrice, floatPointerOrDefault(row.GroupRatio, 1))
 		}
 		candidatesByChannel[row.ChannelID] = candidate
 	}
@@ -317,8 +324,19 @@ type pricedRouteCandidate struct {
 	Priority            int64
 }
 
-func applyPricedCandidateRow(candidate *pricedRouteCandidate, modelName, pricingModelName string, inputPrice, groupRatio float64) {
+func applyPricedCandidateRow(candidate *pricedRouteCandidate, modelName, pricingModelName, pricingSource string, inputPrice, groupRatio float64) {
 	if candidate == nil || inputPrice <= 0 {
+		return
+	}
+	if IsFreeModel(modelName) {
+		if pricingModelName != FreeModelID || pricingSource != "free_model" {
+			return
+		}
+		if !candidate.HasInputPrice || inputPrice < candidate.InputPrice {
+			candidate.InputPrice = inputPrice
+			candidate.GroupRatio = groupRatio
+			candidate.HasInputPrice = true
+		}
 		return
 	}
 	target := ModelMappingTarget(candidate.ModelMapping, modelName)

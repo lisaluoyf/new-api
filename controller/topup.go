@@ -456,14 +456,16 @@ func RequestEpay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
 	topUp := &model.TopUp{
-		UserId:          id,
-		Amount:          amount,
-		Money:           payMoney,
-		TradeNo:         tradeNo,
-		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: model.PaymentProviderEpay,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+		UserId:              id,
+		Amount:              amount,
+		PaidAmountUSD:       payMoney / operation_setting.Price,
+		PaidAmountUSDSource: "order",
+		Money:               payMoney,
+		TradeNo:             tradeNo,
+		PaymentMethod:       req.PaymentMethod,
+		PaymentProvider:     model.PaymentProviderEpay,
+		CreateTime:          time.Now().Unix(),
+		Status:              common.TopUpStatusPending,
 	}
 	err = topUp.FillCountryFromIP(c.ClientIP(), profileCountry).Insert()
 	if err != nil {

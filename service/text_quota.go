@@ -438,6 +438,18 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			summary.Quota = composeTieredTextQuota(relayInfo, summary, tieredQuota, tieredRes)
 		}
 	}
+	if IsFreeModel(relayInfo.OriginModelName) {
+		summary.Quota = 0
+		summary.ToolCallSurchargeQuota = decimal.Zero
+		summary.WebSearchPrice = 0
+		summary.ClaudeWebSearchPrice = 0
+		summary.FileSearchPrice = 0
+		summary.AudioInputPrice = 0
+		summary.ImageGenerationCallPrice = 0
+		tieredBillingApplied = false
+		tieredResult = nil
+		extraContent = append(extraContent, "FreeModel user charge: 0")
+	}
 
 	if summary.WebSearchCallCount > 0 {
 		extraContent = append(extraContent, fmt.Sprintf("Web Search 调用 %d 次，调用花费 %s", summary.WebSearchCallCount, decimal.NewFromFloat(summary.WebSearchPrice).Mul(decimal.NewFromInt(int64(summary.WebSearchCallCount))).Div(decimal.NewFromInt(1000)).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))

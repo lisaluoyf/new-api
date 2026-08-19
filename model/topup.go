@@ -17,17 +17,22 @@ import (
 )
 
 type TopUp struct {
-	Id              int     `json:"id"`
-	UserId          int     `json:"user_id" gorm:"index"`
-	Amount          int64   `json:"amount"`
-	CreditedAmount  float64 `json:"credited_amount" gorm:"type:decimal(18,6);default:0"`
-	Money           float64 `json:"money"`
-	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	Id             int     `json:"id"`
+	UserId         int     `json:"user_id" gorm:"index"`
+	Amount         int64   `json:"amount"`
+	CreditedAmount float64 `json:"credited_amount" gorm:"type:decimal(18,6);default:0"`
+	// PaidAmountUSD freezes the amount actually paid, normalized to USD. It is
+	// intentionally separate from CreditedAmount because promotions may credit
+	// more USD than the customer paid.
+	PaidAmountUSD       float64 `json:"paid_amount_usd" gorm:"type:decimal(18,6);default:0"`
+	PaidAmountUSDSource string  `json:"paid_amount_usd_source" gorm:"type:varchar(16);default:''"`
+	Money               float64 `json:"money"`
+	TradeNo             string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	PaymentMethod       string  `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider     string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	CreateTime          int64   `json:"create_time"`
+	CompleteTime        int64   `json:"complete_time"`
+	Status              string  `json:"status"`
 	// Country at order creation (from client IP); not updated when user.country changes.
 	Country string `json:"country,omitempty" gorm:"type:varchar(10);default:''"`
 	// Admin-only computed fields — not stored in DB
@@ -1008,6 +1013,37 @@ func IsFirstTopupPromoEligible(userId int) (bool, int64) {
 }
 
 const successfulTopupUSDTotalExpression = "COALESCE(SUM(CASE WHEN credited_amount > 0 THEN credited_amount ELSE amount END), 0)"
+
+// GetUserPaidAmountUSD returns lifetime successful cash payments normalized to
+// USD. New orders store paid_amount_usd exactly. Historical rows fall back to
+// the best USD-denominated value already present so existing paying users are
+// not unexpectedly excluded while the data is gradually backfilled.
+func GetUserPaidAmountUSD(userId int) (float64, error) {
+	if userId <= 0 {
+		return 0, errors.New("invalid userId")
+	}
+	var total float64
+	err := DB.Model(&TopUp{}).
+		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
+		Select(`COALESCE(SUM(CASE
+			WHEN paid_amount_usd > 0 THEN paid_amount_usd
+			WHEN payment_provider IN (?, ?, ?, ?) AND money > 0 THEN money
+			WHEN credited_amount > 0 THEN credited_amount
+			ELSE amount
+		END), 0)`, PaymentProviderStripe, PaymentProviderPayPal, PaymentProviderClink, PaymentProviderCrypto).
+		Scan(&total).Error
+	return total, err
+}
+
+func UpdateTopUpPaidAmountUSD(tradeNo string, amount float64, source string) error {
+	if strings.TrimSpace(tradeNo) == "" || amount <= 0 {
+		return errors.New("invalid paid USD snapshot")
+	}
+	return DB.Model(&TopUp{}).Where("trade_no = ?", tradeNo).Updates(map[string]any{
+		"paid_amount_usd":        amount,
+		"paid_amount_usd_source": strings.TrimSpace(source),
+	}).Error
+}
 
 // successfulTopupUSDTotal returns the total USD value credited for successful
 // top-ups. Money cannot be used here because it may be denominated in the
