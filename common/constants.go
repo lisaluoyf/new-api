@@ -120,6 +120,12 @@ var TurnstileSecretKey = ""
 var TelegramBotToken = ""
 var TelegramBotName = ""
 
+// TelegramGroupChatID is the chat ID used for optional group-membership
+// verification. It is intentionally kept separate from Telegram OAuth so
+// account binding can work without requiring group membership.
+var TelegramGroupChatID = ""
+var TelegramGroupURL = ""
+
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0

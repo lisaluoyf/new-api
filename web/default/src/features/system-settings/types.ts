@@ -84,6 +84,8 @@ export type AuthSettings = {
   TelegramOAuthEnabled: boolean
   TelegramBotToken: string
   TelegramBotName: string
+  TelegramGroupChatID: string
+  TelegramGroupURL: string
   LinuxDOOAuthEnabled: boolean
   LinuxDOClientId: string
   LinuxDOClientSecret: string

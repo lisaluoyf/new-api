@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useEffect, useMemo, useRef } from 'react'
 import { Send } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -44,6 +45,34 @@ export function TelegramBindDialog({
   botName,
 }: TelegramBindDialogProps) {
   const { t } = useTranslation()
+  const widgetRef = useRef<HTMLDivElement | null>(null)
+  const authUrl = useMemo(() => {
+    if (typeof window === 'undefined') return ''
+    const redirect = `${window.location.origin}/_panel/profile`
+    return `${window.location.origin}/api/oauth/telegram/bind?redirect=${encodeURIComponent(redirect)}`
+  }, [])
+
+  useEffect(() => {
+    if (!open || !botName || !widgetRef.current || !authUrl) return
+
+    widgetRef.current.innerHTML = ''
+    const script = document.createElement('script')
+    script.async = true
+    script.src = 'https://telegram.org/js/telegram-widget.js?22'
+    script.setAttribute('data-telegram-login', botName)
+    script.setAttribute('data-size', 'large')
+    script.setAttribute('data-auth-url', authUrl)
+    script.setAttribute('data-request-access', 'write')
+    script.setAttribute('data-radius', '10')
+    widgetRef.current.appendChild(script)
+
+    return () => {
+      if (widgetRef.current) {
+        widgetRef.current.innerHTML = ''
+      }
+    }
+  }, [authUrl, botName, open])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-md'>
@@ -81,9 +110,11 @@ export function TelegramBindDialog({
               </p>
             </div>
 
-            {/* Telegram Login Widget will be injected here by react-telegram-login */}
-            <div id='telegram-login-widget' className='flex justify-center'>
-              {/* This would require the react-telegram-login library */}
+            <div
+              ref={widgetRef}
+              className='flex min-h-12 justify-center'
+              aria-live='polite'
+            >
               <div className='text-muted-foreground rounded-lg border border-dashed px-6 py-3 text-sm'>
                 {t('Telegram Login Widget')}
               </div>

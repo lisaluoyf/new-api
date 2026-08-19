@@ -138,6 +138,37 @@ export interface CustomOAuthBinding {
   external_id?: string
 }
 
+export interface ApimasterTwitterBinding {
+  enabled: boolean
+  bound: boolean
+  username?: string | null
+  display_name?: string | null
+}
+
+export interface ApimasterBindingsResponse {
+  twitter?: ApimasterTwitterBinding
+}
+
+export interface TelegramGroupStatus {
+  configured: boolean
+  bound: boolean
+  joined: boolean
+  status: string
+  group_url?: string
+  checked_at?: string
+}
+
+/**
+ * Verify whether the current user's bound Telegram account is in the
+ * configured Telegram community.
+ */
+export async function getTelegramGroupStatus(): Promise<
+  ApiResponse<TelegramGroupStatus>
+> {
+  const res = await api.get('/api/oauth/telegram/group-status')
+  return res.data
+}
+
 /**
  * Get current user's custom OAuth bindings
  */
@@ -156,6 +187,43 @@ export async function unbindCustomOAuth(
 ): Promise<ApiResponse> {
   const res = await api.delete(`/api/user/oauth/bindings/${providerId}`)
   return res.data
+}
+
+/**
+ * Clear current user's built-in binding
+ */
+export async function clearSelfBinding(
+  bindingType: string
+): Promise<ApiResponse> {
+  const res = await api.delete(`/api/user/bindings/${bindingType}`)
+  return res.data
+}
+
+/**
+ * Get APIMaster-side social bindings from same-origin Next.js
+ */
+export async function getApimasterBindings(): Promise<
+  ApiResponse<ApimasterBindingsResponse>
+> {
+  const res = await fetch('/api/auth/bindings', {
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  const data = (await res.json()) as ApiResponse<ApimasterBindingsResponse>
+  return data
+}
+
+/**
+ * Unbind APIMaster-side social binding
+ */
+export async function unbindApimasterBinding(
+  provider: string
+): Promise<ApiResponse> {
+  const res = await fetch(`/api/auth/bindings/${provider}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  return (await res.json()) as ApiResponse
 }
 
 // ============================================================================

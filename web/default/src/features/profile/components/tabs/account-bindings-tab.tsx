@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Mail, Shield, Send, Link2, Unlink } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { SiGithub, SiWechat, SiLinux } from 'react-icons/si'
+import { SiGithub, SiWechat, SiLinux, SiX } from 'react-icons/si'
 import { toast } from 'sonner'
 import { IconDiscord } from '@/assets/brand-icons'
 import {
@@ -36,9 +36,15 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { StatusBadge } from '@/components/status-badge'
 import { OAUTH_BIND_STORAGE_KEY } from '@/features/auth/constants'
 import {
+  clearSelfBinding,
+  getApimasterBindings,
+  getTelegramGroupStatus,
   getSelfOAuthBindings,
+  unbindApimasterBinding,
   unbindCustomOAuth,
+  type ApimasterTwitterBinding,
   type CustomOAuthBinding,
+  type TelegramGroupStatus,
 } from '../../api'
 import type { UserProfile, BindingItem } from '../../types'
 import { EmailBindDialog } from '../dialogs/email-bind-dialog'
@@ -55,6 +61,11 @@ interface AccountBindingsTabProps {
 }
 
 type DialogKey = 'email' | 'wechat' | 'telegram'
+type ActionTarget = 'twitter' | 'telegram'
+type AccountBindingItem = BindingItem & {
+  onUnbind?: () => void
+  busy?: boolean
+}
 
 export function AccountBindingsTab({
   profile,
@@ -64,14 +75,30 @@ export function AccountBindingsTab({
   const dialogs = useDialogs<DialogKey>()
   const { status, loading } = useStatus()
   const [customBindings, setCustomBindings] = useState<CustomOAuthBinding[]>([])
+  const [twitterBinding, setTwitterBinding] =
+    useState<ApimasterTwitterBinding | null>(null)
   const [unbindTarget, setUnbindTarget] = useState<CustomOAuthBinding | null>(
     null
   )
   const [unbinding, setUnbinding] = useState(false)
+  const [pendingAction, setPendingAction] = useState<ActionTarget | null>(null)
+  const [telegramGroupStatus, setTelegramGroupStatus] =
+    useState<TelegramGroupStatus | null>(null)
 
   const customProviders = status?.custom_oauth_providers as
     | Array<{ id: string; name: string }>
     | undefined
+
+  const fetchApimasterBindings = useCallback(async () => {
+    try {
+      const res = await getApimasterBindings()
+      if (res.success && res.data) {
+        setTwitterBinding(res.data.twitter ?? null)
+      }
+    } catch {
+      setTwitterBinding(null)
+    }
+  }, [])
 
   const fetchCustomBindings = useCallback(async () => {
     if (!customProviders || customProviders.length === 0) return
@@ -88,6 +115,46 @@ export function AccountBindingsTab({
   useEffect(() => {
     fetchCustomBindings()
   }, [fetchCustomBindings])
+
+  useEffect(() => {
+    void fetchApimasterBindings()
+  }, [fetchApimasterBindings])
+
+  const fetchTelegramGroupStatus = useCallback(async (): Promise<boolean> => {
+    if (!profile?.telegram_id || !status?.telegram_group_enabled) {
+      setTelegramGroupStatus(null)
+      return false
+    }
+    try {
+      const res = await getTelegramGroupStatus()
+      const data = res.success ? res.data ?? null : null
+      setTelegramGroupStatus(data)
+      return Boolean(data?.joined)
+    } catch {
+      setTelegramGroupStatus(null)
+      return false
+    }
+  }, [profile?.telegram_id, status?.telegram_group_enabled])
+
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+
+    const poll = async () => {
+      if (cancelled) return
+      const joined = await fetchTelegramGroupStatus()
+      if (cancelled || joined) return
+      timer = window.setTimeout(() => {
+        void poll()
+      }, 10000)
+    }
+
+    void poll()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [fetchTelegramGroupStatus])
 
   const handleUnbindCustom = async () => {
     if (!unbindTarget) return
@@ -118,6 +185,57 @@ export function AccountBindingsTab({
     window.location.href = `/api/oauth/${provider.id}?redirect=${encodeURIComponent(redirectUrl)}`
   }
 
+  const handleStartTwitterBind = useCallback(() => {
+    setPendingAction('twitter')
+    const popup = window.open(
+      '/api/auth/twitter?bind=1&popup=1',
+      '_blank',
+      'popup=yes,width=640,height=760,resizable=yes,scrollbars=yes'
+    )
+    if (!popup) {
+      setPendingAction(null)
+      toast.error(t('Please allow popups and try again.'))
+      return
+    }
+    window.setTimeout(() => {
+      setPendingAction((current) => (current === 'twitter' ? null : current))
+    }, 60_000)
+  }, [t])
+
+  const handleUnbindTwitter = useCallback(async () => {
+    setPendingAction('twitter')
+    try {
+      const res = await unbindApimasterBinding('twitter')
+      if (res.success) {
+        toast.success(t('Unbound {{provider}}', { provider: 'Twitter' }))
+        await fetchApimasterBindings()
+      } else {
+        toast.error(res.message || t('Unbind failed'))
+      }
+    } catch {
+      toast.error(t('Unbind failed'))
+    } finally {
+      setPendingAction(null)
+    }
+  }, [fetchApimasterBindings, t])
+
+  const handleUnbindTelegram = useCallback(async () => {
+    setPendingAction('telegram')
+    try {
+      const res = await clearSelfBinding('telegram')
+      if (res.success) {
+        toast.success(t('Unbound {{provider}}', { provider: 'Telegram' }))
+        onUpdate()
+      } else {
+        toast.error(res.message || t('Unbind failed'))
+      }
+    } catch {
+      toast.error(t('Unbind failed'))
+    } finally {
+      setPendingAction(null)
+    }
+  }, [onUpdate, t])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -128,9 +246,19 @@ export function AccountBindingsTab({
           status?: string
           provider?: string
           timestamp?: number
+          message?: string
         }
         if (payload?.status === 'success') {
+          setPendingAction(null)
+          void fetchApimasterBindings()
+          void fetchCustomBindings()
           onUpdate()
+          if (payload.provider === 'twitter') {
+            toast.success(t('Binding successful!'))
+          }
+        } else if (payload?.status === 'error') {
+          setPendingAction(null)
+          toast.error(payload.message || t('Binding failed'))
         }
       } catch {
         // ignore malformed payloads
@@ -144,10 +272,10 @@ export function AccountBindingsTab({
 
     window.addEventListener('storage', handleStorage)
     return () => window.removeEventListener('storage', handleStorage)
-  }, [onUpdate])
+  }, [fetchApimasterBindings, fetchCustomBindings, onUpdate, t])
 
   // Memoize bindings to prevent unnecessary recalculations
-  const bindings: BindingItem[] = useMemo(() => {
+  const bindings: AccountBindingItem[] = useMemo(() => {
     if (!profile || !status) return []
 
     return [
@@ -226,6 +354,17 @@ export function AccountBindingsTab({
         },
       },
       {
+        id: 'twitter',
+        label: t('Twitter'),
+        icon: SiX as React.ComponentType<{ className?: string }>,
+        value: twitterBinding?.username || twitterBinding?.display_name || '',
+        isBound: Boolean(twitterBinding?.bound),
+        isEnabled: Boolean(twitterBinding?.enabled),
+        onBind: handleStartTwitterBind,
+        onUnbind: handleUnbindTwitter,
+        busy: pendingAction === 'twitter',
+      },
+      {
         id: 'telegram',
         label: t('Telegram'),
         icon: Send,
@@ -237,6 +376,8 @@ export function AccountBindingsTab({
         ),
         isEnabled: status?.telegram_oauth || false,
         onBind: () => dialogs.open('telegram'),
+        onUnbind: handleUnbindTelegram,
+        busy: pendingAction === 'telegram',
       },
       {
         id: 'linuxdo',
@@ -257,9 +398,25 @@ export function AccountBindingsTab({
       },
     ].filter((binding) => binding.isEnabled)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, status, t])
+  }, [
+    dialogs,
+    handleStartTwitterBind,
+    handleUnbindTelegram,
+    handleUnbindTwitter,
+    pendingAction,
+    profile,
+    status,
+    t,
+    twitterBinding,
+  ])
 
-  if (!profile || loading) return null
+  if (!profile || !status || loading) return null
+  const telegramGroupUrl =
+    typeof status.telegram_group_url === 'string'
+      ? status.telegram_group_url
+      : undefined
+  const resolvedTelegramGroupUrl =
+    telegramGroupStatus?.group_url || telegramGroupUrl
 
   return (
     <>
@@ -289,22 +446,81 @@ export function AccountBindingsTab({
                 </p>
               </div>
             </div>
-            <Button
-              variant='outline'
-              size='sm'
-              className='h-7 shrink-0 px-2.5 text-xs'
-              onClick={binding.onBind}
-              disabled={binding.isBound && binding.id !== 'email'}
-            >
-              {binding.isBound
-                ? binding.id === 'email'
-                  ? t('Change')
-                  : t('Bound')
-                : t('Bind')}
-            </Button>
+            {binding.onUnbind && binding.isBound ? (
+              <Button
+                variant='ghost'
+                size='sm'
+                className='text-destructive hover:text-destructive h-7 shrink-0 px-2.5 text-xs'
+                onClick={binding.onUnbind}
+                disabled={binding.busy}
+              >
+                {binding.busy ? t('Loading...') : t('Unbind')}
+              </Button>
+            ) : (
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-7 shrink-0 px-2.5 text-xs'
+                onClick={binding.onBind}
+                disabled={
+                  binding.busy ||
+                  (binding.isBound &&
+                    binding.id !== 'email' &&
+                    typeof binding.onUnbind !== 'function')
+                }
+              >
+                {binding.busy
+                  ? t('Loading...')
+                  : binding.isBound
+                    ? binding.id === 'email'
+                      ? t('Change')
+                      : t('Bound')
+                    : t('Bind')}
+              </Button>
+            )}
           </div>
         ))}
       </div>
+
+      {status.telegram_group_enabled && (
+        <div className='mt-3 rounded-lg border p-3'>
+          <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+            <div className='min-w-0'>
+              <div className='flex items-center gap-1.5'>
+                <p className='text-sm font-medium'>
+                  {t('Telegram Community')}
+                </p>
+                {telegramGroupStatus?.joined && (
+                  <StatusBadge
+                    label={t('Joined')}
+                    variant='success'
+                    copyable={false}
+                  />
+                )}
+              </div>
+              <p className='text-muted-foreground truncate text-xs'>
+                {profile.telegram_id
+                  ? telegramGroupStatus?.joined
+                    ? t('Membership verified')
+                    : t('Join the community; this page will update automatically')
+                  : t('Bind Telegram first')}
+              </p>
+            </div>
+            <div className='flex shrink-0 flex-wrap gap-2'>
+              {resolvedTelegramGroupUrl && (
+                <a
+                  href={resolvedTelegramGroupUrl}
+                  target='_blank'
+                  rel='noreferrer'
+                  className='border-input bg-background hover:bg-muted inline-flex h-7 items-center justify-center rounded-md border px-2.5 text-xs font-medium'
+                >
+                  {t('Join community')}
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Custom OAuth Bindings */}
       {customProviders && customProviders.length > 0 && (

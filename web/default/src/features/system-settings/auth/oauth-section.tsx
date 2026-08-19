@@ -59,6 +59,8 @@ const oauthSchema = z.object({
   TelegramOAuthEnabled: z.boolean(),
   TelegramBotToken: z.string().optional(),
   TelegramBotName: z.string().optional(),
+  TelegramGroupChatID: z.string().optional(),
+  TelegramGroupURL: z.string().optional(),
   LinuxDOOAuthEnabled: z.boolean(),
   LinuxDOClientId: z.string().optional(),
   LinuxDOClientSecret: z.string().optional(),
@@ -593,6 +595,50 @@ export function OAuthSection({ defaultValues }: OAuthSectionProps) {
                           {...field}
                         />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='TelegramGroupChatID'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Community Chat ID')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder={t('For example: -1001234567890')}
+                          autoComplete='off'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Used to verify whether a bound Telegram account has joined the community'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='TelegramGroupURL'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Community URL')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder='https://t.me/apimasterai'
+                          autoComplete='off'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Shown to users as the link to join the Telegram community')}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

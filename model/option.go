@@ -148,6 +148,8 @@ func InitOptionMap() {
 	common.OptionMap["GitHubClientSecret"] = ""
 	common.OptionMap["TelegramBotToken"] = ""
 	common.OptionMap["TelegramBotName"] = ""
+	common.OptionMap["TelegramGroupChatID"] = common.TelegramGroupChatID
+	common.OptionMap["TelegramGroupURL"] = common.TelegramGroupURL
 	common.OptionMap["WeChatServerAddress"] = ""
 	common.OptionMap["WeChatServerToken"] = ""
 	common.OptionMap["WeChatAccountQRCodeImageURL"] = ""
@@ -627,6 +629,10 @@ func updateOptionMap(key string, value string) (err error) {
 		common.TelegramBotToken = value
 	case "TelegramBotName":
 		common.TelegramBotName = value
+	case "TelegramGroupChatID":
+		common.TelegramGroupChatID = strings.TrimSpace(value)
+	case "TelegramGroupURL":
+		common.TelegramGroupURL = strings.TrimSpace(value)
 	case "TurnstileSiteKey":
 		common.TurnstileSiteKey = value
 	case "TurnstileSecretKey":
