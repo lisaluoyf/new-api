@@ -244,11 +244,11 @@ export function AccountBindingsTab({
   }, [onUpdate, t])
 
   const handleStartTelegramBind = useCallback(() => {
-    if (resolvedTelegramGroupUrl) {
-      window.open(resolvedTelegramGroupUrl, '_blank', 'noopener,noreferrer')
-    }
+    // Binding and community membership are two separate Telegram steps.
+    // Do not open the group first: that makes the user think the account was
+    // already bound and hides the Telegram Login Widget behind another tab.
     dialogs.open('telegram')
-  }, [dialogs, resolvedTelegramGroupUrl])
+  }, [dialogs])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
