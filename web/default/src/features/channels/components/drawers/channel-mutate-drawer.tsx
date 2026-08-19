@@ -146,6 +146,10 @@ import {
   hasModelConfigChanged,
   findMissingModelsInMapping,
   validateModelMappingJson,
+  FREE_MODEL_ID,
+  getFreeModelUpstreamModel,
+  setFreeModelUpstreamModel,
+  normalizeFreeModelChannelModels,
 } from '../../lib'
 import {
   collectInvalidStatusCodeEntries,
@@ -967,6 +971,19 @@ export function ChannelMutateDrawer({
     [currentModels]
   )
 
+  const freeModelUpstreamModel = useMemo(
+    () => getFreeModelUpstreamModel(currentModelMapping || ''),
+    [currentModelMapping]
+  )
+
+  const freeModelUpstreamOptions = useMemo(() => {
+    const models = new Set(
+      currentModelsArray.filter((model) => model !== FREE_MODEL_ID)
+    )
+    if (freeModelUpstreamModel) models.add(freeModelUpstreamModel)
+    return Array.from(models).map((model) => ({ value: model, label: model }))
+  }, [currentModelsArray, freeModelUpstreamModel])
+
   const currentTypeLabel = useMemo(
     () =>
       CHANNEL_TYPE_OPTIONS.find((option) => option.value === currentType)
@@ -1391,6 +1408,40 @@ export function ChannelMutateDrawer({
     [form]
   )
 
+  const handleFreeModelAssignment = useCallback(
+    (upstreamModel: string | null) => {
+      const previousUpstreamModel = getFreeModelUpstreamModel(
+        form.getValues('model_mapping') || ''
+      )
+      const nextMapping = setFreeModelUpstreamModel(
+        form.getValues('model_mapping') || '',
+        upstreamModel || ''
+      )
+      if (nextMapping === null) {
+        toast.error(
+          t('Fix the model mapping JSON before assigning a FreeModel')
+        )
+        return
+      }
+
+      const modelsWithPreviousUpstream = formatModelsArray(
+        Array.from(
+          new Set([
+            ...parseModelsString(form.getValues('models') || ''),
+            ...(previousUpstreamModel ? [previousUpstreamModel] : []),
+          ])
+        )
+      )
+      const nextModels = normalizeFreeModelChannelModels(
+        modelsWithPreviousUpstream,
+        nextMapping
+      )
+      form.setValue('model_mapping', nextMapping, { shouldDirty: true })
+      form.setValue('models', nextModels, { shouldDirty: true })
+    },
+    [form, t]
+  )
+
   // Handle successful submission
   const handleSuccess = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
@@ -1500,7 +1551,11 @@ export function ChannelMutateDrawer({
       }
 
       // Normalize models array
-      const normalizedModels = parseModelsString(data.models || '')
+      data.models = normalizeFreeModelChannelModels(
+        data.models || '',
+        data.model_mapping || ''
+      )
+      const normalizedModels = parseModelsString(data.models)
 
       // Check for missing models in model_mapping
       if (hasModelMapping) {
@@ -2830,6 +2885,41 @@ export function ChannelMutateDrawer({
                   </Button>
                 </div>
 
+                <div className='space-y-3 rounded-lg border border-orange-200 bg-orange-50/60 p-4 dark:border-orange-500/30 dark:bg-orange-500/10'>
+                  <div>
+                    <div className='font-medium'>
+                      {t('FreeModel assignment')}
+                    </div>
+                    <div className='text-muted-foreground mt-1 text-xs'>
+                      {t(
+                        'Select one upstream model. The system will assign it to API Master FreeModel and show this channel in FreeModel management.'
+                      )}
+                    </div>
+                  </div>
+                  <div className='grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]'>
+                    <Combobox
+                      options={freeModelUpstreamOptions}
+                      value={freeModelUpstreamModel}
+                      onValueChange={handleFreeModelAssignment}
+                      placeholder={t('Select upstream model')}
+                      searchPlaceholder={t('Search or enter upstream model ID')}
+                      emptyText={t('Add an upstream model above first')}
+                      allowCustomValue
+                    />
+                    <ArrowRight className='text-muted-foreground mx-auto h-4 w-4 rotate-90 sm:rotate-0' />
+                    <div className='bg-background flex h-10 items-center rounded-md border px-3 text-sm font-medium'>
+                      API Master FreeModel
+                    </div>
+                  </div>
+                  {freeModelUpstreamModel && (
+                    <div className='text-xs text-orange-800 dark:text-orange-200'>
+                      {t('Assigned: {{model}} → API Master FreeModel', {
+                        model: freeModelUpstreamModel,
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 <FormField
                   control={form.control}
                   name='model_mapping'
@@ -2890,7 +2980,32 @@ export function ChannelMutateDrawer({
                       <FormControl>
                         <ModelMappingEditor
                           value={field.value || ''}
-                          onChange={field.onChange}
+                          onChange={(value) => {
+                            const previousUpstreamModel =
+                              getFreeModelUpstreamModel(field.value || '')
+                            field.onChange(value)
+                            const modelsWithPreviousUpstream =
+                              formatModelsArray(
+                                Array.from(
+                                  new Set([
+                                    ...parseModelsString(
+                                      form.getValues('models') || ''
+                                    ),
+                                    ...(previousUpstreamModel
+                                      ? [previousUpstreamModel]
+                                      : []),
+                                  ])
+                                )
+                              )
+                            form.setValue(
+                              'models',
+                              normalizeFreeModelChannelModels(
+                                modelsWithPreviousUpstream,
+                                value
+                              ),
+                              { shouldDirty: true }
+                            )
+                          }}
                           disabled={isSubmitting}
                         />
                       </FormControl>

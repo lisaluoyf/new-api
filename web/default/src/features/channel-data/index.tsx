@@ -693,7 +693,7 @@ export function ChannelDataPage() {
 
   const editFreePrice = useCallback((item: ModelDataItem) => {
     const current = item.input_price ?? item.actual_price ?? 0
-    const raw = window.prompt(t('FreeModel route price ($/1M input tokens)'), String(current))
+    const raw = window.prompt(t('FreeModel route price (USD / 1M input tokens)'), String(current))
     if (raw == null) return
     const inputPrice = Number(raw)
     if (!Number.isFinite(inputPrice) || inputPrice <= 0) return
@@ -1021,7 +1021,7 @@ export function ChannelDataPage() {
                           : { border: `1.5px solid ${tab.accent}`, backgroundColor: 'transparent' }
                       }
                     />
-                    {tab.label}
+                    {t(tab.label)}
                   </button>
                 )
               })}
@@ -1041,7 +1041,7 @@ export function ChannelDataPage() {
               )}
               {isFreeModel && (
                 <span className='rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700'>
-                  {t('User billing: $0')}
+                  {t('User billing: Free')}
                 </span>
               )}
             <button
@@ -1302,7 +1302,7 @@ export function ChannelDataPage() {
                       {isFreeModel ? (
                         <div className='flex flex-col gap-0.5 text-xs'>
                           <span className='font-mono text-gray-700'>{item.upstream_model || '—'}</span>
-                          <span className='text-gray-400'>{t('mapped upstream model')}</span>
+                          <span className='text-gray-400'>{t('Mapped upstream model')}</span>
                         </div>
                       ) : (
                       <ChannelGroups value={item.group} />
