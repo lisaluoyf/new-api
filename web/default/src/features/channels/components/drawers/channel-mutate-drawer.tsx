@@ -163,6 +163,8 @@ import { ParamOverrideEditorDialog } from '../dialogs/param-override-editor-dial
 import { StatusCodeRiskDialog } from '../dialogs/status-code-risk-dialog'
 import { ModelMappingEditor } from '../model-mapping-editor'
 
+const MANUAL_PRICING_KEY_GROUP = '__manual_pricing__'
+
 type ChannelMutateDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -334,12 +336,20 @@ function KeyGroupField({
           <div className='flex gap-2'>
             {groupEntries.length > 0 ? (
               <Select
-                items={groupEntries.map(([k, v]) => ({
-                  value: k,
-                  label: `${k} (×${v})`,
-                }))}
-                value={field.value || ''}
-                onValueChange={field.onChange}
+                items={[
+                  {
+                    value: MANUAL_PRICING_KEY_GROUP,
+                    label: t('Manual pricing (skip upstream /api/pricing)'),
+                  },
+                  ...groupEntries.map(([k, v]) => ({
+                    value: k,
+                    label: `${k} (×${v})`,
+                  })),
+                ]}
+                value={field.value || MANUAL_PRICING_KEY_GROUP}
+                onValueChange={(value) =>
+                  field.onChange(value === MANUAL_PRICING_KEY_GROUP ? '' : value)
+                }
               >
                 <FormControl>
                   <SelectTrigger className='flex-1'>
@@ -348,6 +358,9 @@ function KeyGroupField({
                 </FormControl>
                 <SelectContent alignItemWithTrigger={false}>
                   <SelectGroup>
+                    <SelectItem value={MANUAL_PRICING_KEY_GROUP}>
+                      {t('Manual pricing (skip upstream /api/pricing)')}
+                    </SelectItem>
                     {groupEntries.map(([k, v]) => (
                       <SelectItem key={k} value={k}>
                         {k} <span className='text-muted-foreground ml-1 text-xs'>(×{v})</span>

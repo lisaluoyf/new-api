@@ -1695,6 +1695,7 @@
     "Fetch available models for:": "Fetch available models for:",
     "Fetch from Upstream": "Fetch from Upstream",
     "Fetch Groups": "Fetch Groups",
+    "Manual pricing (skip upstream /api/pricing)": "Manual pricing (skip upstream /api/pricing)",
     "Fetch Models": "Fetch Models",
     "Fetched {{count}} model(s) from upstream": "Fetched {{count}} model(s) from upstream",
     "Fetched {{count}} models": "Fetched {{count}} models",
