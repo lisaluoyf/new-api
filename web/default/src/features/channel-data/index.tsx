@@ -27,7 +27,6 @@ import {
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { parseGroupsList } from '@/features/channels/lib'
-import { handleUpdateChannelField } from '@/features/channels/lib/channel-actions'
 import { MODEL_TABS } from './constants'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -114,6 +113,13 @@ interface DetectConfig {
   uptime_interval_minutes: number
   next_fingerprint_at?: number  // unix sec; 0 means feature off
   next_uptime_at?: number
+}
+
+interface ChannelNumericEdit {
+  kind: 'route-price'
+  channelId: number
+  channelName: string
+  value: string
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -592,6 +598,8 @@ export function ChannelDataPage() {
     account_requests_per_minute: 10,
   })
   const [freeSettingsOpen, setFreeSettingsOpen] = useState(false)
+  const [numericEdit, setNumericEdit] = useState<ChannelNumericEdit | null>(null)
+  const [numericEditSaving, setNumericEditSaving] = useState(false)
   const isFreeModel = activeModel === 'apimaster-freemodel'
 
   // Fetch detect config for all tabs once on mount to show filled/hollow dots
@@ -691,28 +699,34 @@ export function ChannelDataPage() {
     api.put('/api/admin/free-model/settings', freeSettings).then(() => setFreeSettingsOpen(false))
   }, [freeSettings])
 
-  const editFreePrice = useCallback((item: ModelDataItem) => {
+  const openNumericEdit = useCallback((kind: ChannelNumericEdit['kind'], item: ModelDataItem) => {
     const current = item.input_price ?? item.actual_price ?? 0
-    const raw = window.prompt(t('FreeModel route price (USD / 1M input tokens)'), String(current))
-    if (raw == null) return
-    const inputPrice = Number(raw)
-    if (!Number.isFinite(inputPrice) || inputPrice <= 0) return
-    api.put(`/api/admin/free-model/channels/${item.channel_id}/route-price`, { input_price: inputPrice }).then(() => {
-      api.get('/api/admin/channel-data', { params: { model: activeModel } }).then((res) => {
-        if (res.data?.success) setData(res.data.data ?? [])
-      })
+    setNumericEdit({
+      kind,
+      channelId: item.channel_id,
+      channelName: item.channel_name,
+      value: String(current),
     })
-  }, [activeModel, t])
+  }, [])
 
-  const editPriority = useCallback((item: ModelDataItem) => {
-    const raw = window.prompt(t('Channel priority'), String(item.priority ?? 0))
-    if (raw == null) return
-    const priority = Number(raw)
-    if (!Number.isInteger(priority)) return
-    handleUpdateChannelField(item.channel_id, 'priority', priority, undefined, () => {
-      setData((current) => current.map((row) => row.channel_id === item.channel_id ? { ...row, priority } : row))
-    })
-  }, [t])
+  const saveNumericEdit = useCallback(async () => {
+    if (!numericEdit) return
+    const value = Number(numericEdit.value)
+    const valid = Number.isFinite(value) && value > 0
+    if (!valid) return
+
+    setNumericEditSaving(true)
+    try {
+      await api.put(`/api/admin/free-model/channels/${numericEdit.channelId}/route-price`, {
+        input_price: value,
+      })
+      const res = await api.get('/api/admin/channel-data', { params: { model: activeModel } })
+      if (res.data?.success) setData(res.data.data ?? [])
+      setNumericEdit(null)
+    } finally {
+      setNumericEditSaving(false)
+    }
+  }, [activeModel, numericEdit])
 
   // Fetch detect config when model changes, then poll every 30s so the
   // "下次 HH:MM" countdown stays fresh as auto-detect ticks fire.
@@ -1512,18 +1526,10 @@ export function ChannelDataPage() {
                         </button>
                         {isFreeModel && (
                           <button
-                            onClick={() => editFreePrice(item)}
+                            onClick={() => openNumericEdit('route-price', item)}
                             className='text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 border border-orange-200 rounded-md px-2.5 py-1 transition-colors whitespace-nowrap'
                           >
                             {t('Edit Route Price')}
-                          </button>
-                        )}
-                        {isFreeModel && (
-                          <button
-                            onClick={() => editPriority(item)}
-                            className='text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1 transition-colors whitespace-nowrap'
-                          >
-                            {t('Edit Priority')}
                           </button>
                         )}
                         <button
@@ -1560,6 +1566,41 @@ export function ChannelDataPage() {
         {analysis && (
           <AnalysisModal state={analysis} onClose={() => setAnalysis(null)} />
         )}
+        <Dialog open={numericEdit !== null} onOpenChange={(open) => !open && setNumericEdit(null)}>
+          <DialogContent className='max-w-sm'>
+            <DialogHeader>
+              <DialogTitle>
+                {t('Edit Route Price')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className='space-y-3 py-2'>
+              <p className='text-sm text-gray-500'>{numericEdit?.channelName}</p>
+              <label className='space-y-1 text-sm'>
+                <span>{t('Route Price')}</span>
+                <Input
+                  type='number'
+                  min='0.00000001'
+                  step='0.0001'
+                  value={numericEdit?.value ?? ''}
+                  autoFocus
+                  onChange={(event) => setNumericEdit((current) => current ? { ...current, value: event.target.value } : null)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void saveNumericEdit()
+                  }}
+                />
+              </label>
+              {numericEdit?.kind === 'route-price' && (
+                <p className='text-xs text-gray-500'>{t('Used only for FreeModel channel routing order; users are not charged.')}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant='outline' onClick={() => setNumericEdit(null)} disabled={numericEditSaving}>{t('Cancel')}</Button>
+              <Button onClick={() => void saveNumericEdit()} disabled={numericEditSaving || !numericEdit?.value}>
+                {numericEditSaving ? t('Saving...') : t('Save')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <Dialog open={freeSettingsOpen} onOpenChange={setFreeSettingsOpen}>
           <DialogContent>
             <DialogHeader><DialogTitle>{t('FreeModel Settings')}</DialogTitle></DialogHeader>

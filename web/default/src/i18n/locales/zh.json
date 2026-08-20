@@ -14,6 +14,7 @@
     "FreeModel assignment": "免费模型归类",
     "FreeModel route price (USD / 1M input tokens)": "免费模型路由排序价（美元 / 百万输入 Token）",
     "FreeModel Settings": "免费模型设置",
+    "Used only for FreeModel channel routing order; users are not charged.": "仅用于免费模型渠道路由排序，用户不会被收费。",
     "Minimum active subscription price USD": "最低有效订阅价格（美元）",
     "Minimum cumulative paid USD": "最低累计实付金额（美元）",
     "Mapped upstream model": "映射后的上游模型",

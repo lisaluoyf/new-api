@@ -14,6 +14,7 @@
     "FreeModel assignment": "FreeModel assignment",
     "FreeModel route price (USD / 1M input tokens)": "FreeModel route price (USD / 1M input tokens)",
     "FreeModel Settings": "FreeModel Settings",
+    "Used only for FreeModel channel routing order; users are not charged.": "Used only for FreeModel channel routing order; users are not charged.",
     "Minimum active subscription price USD": "Minimum active subscription price USD",
     "Minimum cumulative paid USD": "Minimum cumulative paid USD",
     "Mapped upstream model": "Mapped upstream model",
