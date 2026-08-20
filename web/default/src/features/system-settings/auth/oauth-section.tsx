@@ -61,6 +61,7 @@ const oauthSchema = z.object({
   TelegramBotName: z.string().optional(),
   TelegramGroupChatID: z.string().optional(),
   TelegramGroupURL: z.string().optional(),
+  TelegramWebhookSecret: z.string().optional(),
   LinuxDOOAuthEnabled: z.boolean(),
   LinuxDOClientId: z.string().optional(),
   LinuxDOClientSecret: z.string().optional(),
@@ -98,6 +99,7 @@ export function OAuthSection({ defaultValues }: OAuthSectionProps) {
     'oidc.user_info_endpoint': defaultValues['oidc.user_info_endpoint'] ?? '',
     TelegramBotToken: defaultValues.TelegramBotToken ?? '',
     TelegramBotName: defaultValues.TelegramBotName ?? '',
+    TelegramWebhookSecret: defaultValues.TelegramWebhookSecret ?? '',
     LinuxDOClientId: defaultValues.LinuxDOClientId ?? '',
     LinuxDOClientSecret: defaultValues.LinuxDOClientSecret ?? '',
     LinuxDOMinimumTrustLevel: defaultValues.LinuxDOMinimumTrustLevel ?? '',
@@ -637,8 +639,28 @@ export function OAuthSection({ defaultValues }: OAuthSectionProps) {
                         />
                       </FormControl>
                       <FormDescription>
-                        {t('Shown to users as the link to join the Telegram community')}
+                        {t(
+                          'Shown to users as the link to join the Telegram community'
+                        )}
                       </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='TelegramWebhookSecret'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Webhook Secret')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          type='password'
+                          autoComplete='new-password'
+                          {...field}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}

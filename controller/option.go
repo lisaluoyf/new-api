@@ -198,6 +198,14 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "TelegramWebhookSecret":
+		if !isValidTelegramWebhookSecret(option.Value.(string)) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "Telegram Webhook 密钥必须为 32-256 位，只能包含字母、数字、下划线和连字符",
+			})
+			return
+		}
 	case "theme.frontend":
 		if option.Value != "default" && option.Value != "classic" {
 			c.JSON(http.StatusOK, gin.H{

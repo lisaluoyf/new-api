@@ -36,10 +36,10 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { StatusBadge } from '@/components/status-badge'
 import { OAUTH_BIND_STORAGE_KEY } from '@/features/auth/constants'
 import {
-  clearSelfBinding,
   getApimasterBindings,
   getTelegramGroupStatus,
   getSelfOAuthBindings,
+  startTelegramGroupVerification,
   unbindApimasterBinding,
   unbindCustomOAuth,
   type ApimasterTwitterBinding,
@@ -48,7 +48,6 @@ import {
 } from '../../api'
 import type { UserProfile, BindingItem } from '../../types'
 import { EmailBindDialog } from '../dialogs/email-bind-dialog'
-import { TelegramBindDialog } from '../dialogs/telegram-bind-dialog'
 import { WeChatBindDialog } from '../dialogs/wechat-bind-dialog'
 
 // ============================================================================
@@ -60,8 +59,8 @@ interface AccountBindingsTabProps {
   onUpdate: () => void
 }
 
-type DialogKey = 'email' | 'wechat' | 'telegram'
-type ActionTarget = 'twitter' | 'telegram'
+type DialogKey = 'email' | 'wechat'
+type ActionTarget = 'twitter'
 type AccountBindingItem = BindingItem & {
   onUnbind?: () => void
   busy?: boolean
@@ -84,13 +83,7 @@ export function AccountBindingsTab({
   const [pendingAction, setPendingAction] = useState<ActionTarget | null>(null)
   const [telegramGroupStatus, setTelegramGroupStatus] =
     useState<TelegramGroupStatus | null>(null)
-
-  const telegramGroupUrl =
-    typeof status?.telegram_group_url === 'string'
-      ? status.telegram_group_url
-      : undefined
-  const resolvedTelegramGroupUrl =
-    telegramGroupStatus?.group_url || telegramGroupUrl
+  const [telegramStarting, setTelegramStarting] = useState(false)
 
   const customProviders = status?.custom_oauth_providers as
     | Array<{ id: string; name: string }>
@@ -127,41 +120,37 @@ export function AccountBindingsTab({
     void fetchApimasterBindings()
   }, [fetchApimasterBindings])
 
-  const fetchTelegramGroupStatus = useCallback(async (): Promise<boolean> => {
-    if (!profile?.telegram_id || !status?.telegram_group_enabled) {
-      setTelegramGroupStatus(null)
-      return false
-    }
-    try {
-      const res = await getTelegramGroupStatus()
-      const data = res.success ? (res.data ?? null) : null
-      setTelegramGroupStatus(data)
-      return Boolean(data?.joined)
-    } catch {
-      setTelegramGroupStatus(null)
-      return false
-    }
-  }, [profile?.telegram_id, status?.telegram_group_enabled])
+  const fetchTelegramGroupStatus =
+    useCallback(async (): Promise<TelegramGroupStatus | null> => {
+      if (!status?.telegram_group_enabled) {
+        setTelegramGroupStatus(null)
+        return null
+      }
+      try {
+        const res = await getTelegramGroupStatus()
+        const data = res.success ? (res.data ?? null) : null
+        setTelegramGroupStatus(data)
+        return data
+      } catch {
+        return null
+      }
+    }, [status?.telegram_group_enabled])
 
   useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-
-    const poll = async () => {
-      if (cancelled) return
-      const joined = await fetchTelegramGroupStatus()
-      if (cancelled || joined) return
-      timer = window.setTimeout(() => {
-        void poll()
-      }, 10000)
-    }
-
-    void poll()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
+    void fetchTelegramGroupStatus()
   }, [fetchTelegramGroupStatus])
+
+  useEffect(() => {
+    const shouldPoll =
+      telegramGroupStatus?.status === 'waiting_for_bot' ||
+      (telegramGroupStatus?.identified && !telegramGroupStatus.joined)
+    if (!shouldPoll) return
+
+    const timer = window.setInterval(() => {
+      void fetchTelegramGroupStatus()
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [fetchTelegramGroupStatus, telegramGroupStatus])
 
   const handleUnbindCustom = async () => {
     if (!unbindTarget) return
@@ -226,29 +215,33 @@ export function AccountBindingsTab({
     }
   }, [fetchApimasterBindings, t])
 
-  const handleUnbindTelegram = useCallback(async () => {
-    setPendingAction('telegram')
-    try {
-      const res = await clearSelfBinding('telegram')
-      if (res.success) {
-        toast.success(t('Unbound {{provider}}', { provider: 'Telegram' }))
-        onUpdate()
-      } else {
-        toast.error(res.message || t('Unbind failed'))
-      }
-    } catch {
-      toast.error(t('Unbind failed'))
-    } finally {
-      setPendingAction(null)
+  const handleTelegramCommunity = useCallback(async () => {
+    const telegramWindow = window.open('about:blank', '_blank')
+    if (!telegramWindow) {
+      toast.error(t('Please allow popups and try again.'))
+      return
     }
-  }, [onUpdate, t])
-
-  const handleStartTelegramBind = useCallback(() => {
-    // Binding and community membership are two separate Telegram steps.
-    // Do not open the group first: that makes the user think the account was
-    // already bound and hides the Telegram Login Widget behind another tab.
-    dialogs.open('telegram')
-  }, [dialogs])
+    telegramWindow.opener = null
+    setTelegramStarting(true)
+    try {
+      const res = await startTelegramGroupVerification()
+      const targetUrl = res.data?.identified
+        ? res.data.group_url
+        : res.data?.bot_url
+      if (!res.success || !targetUrl) {
+        throw new Error(
+          res.message || t('Unable to start Telegram verification')
+        )
+      }
+      telegramWindow.location.replace(targetUrl)
+      void fetchTelegramGroupStatus()
+    } catch {
+      telegramWindow.close()
+      toast.error(t('Unable to start Telegram verification'))
+    } finally {
+      setTelegramStarting(false)
+    }
+  }, [fetchTelegramGroupStatus, t])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -267,13 +260,7 @@ export function AccountBindingsTab({
           void fetchApimasterBindings()
           void fetchCustomBindings()
           onUpdate()
-          if (payload.provider === 'telegram') {
-            dialogs.close('telegram')
-          }
-          if (
-            payload.provider === 'twitter' ||
-            payload.provider === 'telegram'
-          ) {
+          if (payload.provider === 'twitter') {
             toast.success(t('Binding successful!'))
           }
         } else if (payload?.status === 'error') {
@@ -385,21 +372,6 @@ export function AccountBindingsTab({
         busy: pendingAction === 'twitter',
       },
       {
-        id: 'telegram',
-        label: t('Telegram'),
-        icon: Send,
-        value: (profile as unknown as Record<string, unknown>).telegram_id as
-          | string
-          | undefined,
-        isBound: Boolean(
-          (profile as unknown as Record<string, unknown>).telegram_id
-        ),
-        isEnabled: status?.telegram_oauth || false,
-        onBind: handleStartTelegramBind,
-        onUnbind: handleUnbindTelegram,
-        busy: pendingAction === 'telegram',
-      },
-      {
         id: 'linuxdo',
         label: t('LinuxDO'),
         icon: SiLinux as React.ComponentType<{ className?: string }>,
@@ -420,8 +392,6 @@ export function AccountBindingsTab({
   }, [
     dialogs,
     handleStartTwitterBind,
-    handleStartTelegramBind,
-    handleUnbindTelegram,
     handleUnbindTwitter,
     pendingAction,
     profile,
@@ -431,6 +401,40 @@ export function AccountBindingsTab({
   ])
 
   if (!profile || !status || loading) return null
+
+  let telegramDescription = t(
+    'Identify with the Bot, then join the Telegram community'
+  )
+  if (telegramGroupStatus?.status === 'waiting_for_bot') {
+    telegramDescription = t(
+      'Open Telegram and press Start; this page will update automatically'
+    )
+  }
+  if (telegramGroupStatus?.identified) {
+    telegramDescription = t(
+      'Join the community; this page will update automatically'
+    )
+  }
+  if (telegramGroupStatus?.joined) {
+    telegramDescription = t('Membership verified')
+  }
+
+  let telegramActionLabel = t('Join Telegram community')
+  if (telegramGroupStatus?.status === 'waiting_for_bot') {
+    telegramActionLabel = t('Open Telegram')
+  }
+  if (telegramGroupStatus?.status === 'expired') {
+    telegramActionLabel = t('Try again')
+  }
+  if (telegramGroupStatus?.identified) {
+    telegramActionLabel = t('Join community')
+  }
+  if (telegramGroupStatus?.joined) {
+    telegramActionLabel = t('Joined')
+  }
+  if (telegramStarting) {
+    telegramActionLabel = t('Loading...')
+  }
 
   return (
     <>
@@ -499,38 +503,38 @@ export function AccountBindingsTab({
       {status.telegram_group_enabled && (
         <div className='mt-3 rounded-lg border p-3'>
           <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-            <div className='min-w-0'>
-              <div className='flex items-center gap-1.5'>
-                <p className='text-sm font-medium'>{t('Telegram Community')}</p>
-                {telegramGroupStatus?.joined && (
-                  <StatusBadge
-                    label={t('Joined')}
-                    variant='success'
-                    copyable={false}
-                  />
-                )}
+            <div className='flex min-w-0 items-center gap-2.5 sm:gap-3'>
+              <div className='bg-muted shrink-0 rounded-md p-1.5 sm:p-2'>
+                <Send className='h-4 w-4' />
               </div>
-              <p className='text-muted-foreground truncate text-xs'>
-                {profile.telegram_id
-                  ? telegramGroupStatus?.joined
-                    ? t('Membership verified')
-                    : t(
-                        'Join the community; this page will update automatically'
-                      )
-                  : t('Bind Telegram first')}
-              </p>
+              <div className='min-w-0'>
+                <div className='flex items-center gap-1.5'>
+                  <p className='text-sm font-medium'>
+                    {t('Telegram Community')}
+                  </p>
+                  {telegramGroupStatus?.joined && (
+                    <StatusBadge
+                      label={t('Joined')}
+                      variant='success'
+                      copyable={false}
+                    />
+                  )}
+                </div>
+                <p className='text-muted-foreground text-xs'>
+                  {telegramDescription}
+                </p>
+              </div>
             </div>
             <div className='flex shrink-0 flex-wrap gap-2'>
-              {resolvedTelegramGroupUrl && (
-                <a
-                  href={resolvedTelegramGroupUrl}
-                  target='_blank'
-                  rel='noreferrer'
-                  className='border-input bg-background hover:bg-muted inline-flex h-7 items-center justify-center rounded-md border px-2.5 text-xs font-medium'
-                >
-                  {t('Join community')}
-                </a>
-              )}
+              <Button
+                variant={telegramGroupStatus?.joined ? 'outline' : 'default'}
+                size='sm'
+                className='h-7 px-2.5 text-xs'
+                onClick={handleTelegramCommunity}
+                disabled={telegramStarting || telegramGroupStatus?.joined}
+              >
+                {telegramActionLabel}
+              </Button>
             </div>
           </div>
         </div>
@@ -638,18 +642,6 @@ export function AccountBindingsTab({
         }
         onSuccess={onUpdate}
       />
-
-      {/* Telegram Bind Dialog */}
-      {status?.telegram_bot_name && (
-        <TelegramBindDialog
-          open={dialogs.isOpen('telegram')}
-          onOpenChange={(open) =>
-            open ? dialogs.open('telegram') : dialogs.close('telegram')
-          }
-          botName={status.telegram_bot_name as string}
-          onSuccess={onUpdate}
-        />
-      )}
     </>
   )
 }

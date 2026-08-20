@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -105,112 +107,49 @@ type telegramChatMemberResponse struct {
 	} `json:"result"`
 }
 
-// TelegramGroupStatus verifies the currently signed-in user's Telegram
-// membership in the configured community. Telegram account binding and group
-// membership are intentionally separate: a user may bind Telegram first and
-// verify membership later.
+var telegramAPIBaseURL = "https://api.telegram.org"
+var telegramHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
+func telegramBotAPIURL(method string) string {
+	return strings.TrimRight(telegramAPIBaseURL, "/") + "/bot" + common.TelegramBotToken + "/" + method
+}
+
+// TelegramGroupStatus is the legacy authenticated alias for the group-only
+// verification status endpoint.
 func TelegramGroupStatus(c *gin.Context) {
-	if !common.TelegramOAuthEnabled || common.TelegramBotToken == "" {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"success": false,
-			"message": "Telegram binding is not enabled",
-		})
-		return
-	}
-	if strings.TrimSpace(common.TelegramGroupChatID) == "" {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"success": false,
-			"message": "Telegram community verification is not configured",
-		})
-		return
-	}
+	telegramGroupStatus(c)
+}
 
-	user := model.User{Id: c.GetInt("id")}
-	if err := user.FillUserById(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Unable to load the current user's Telegram binding",
-		})
-		return
-	}
-	if user.TelegramId == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"data": gin.H{
-				"configured": true,
-				"bound":      false,
-				"joined":     false,
-				"status":     "not_bound",
-				"group_url":  common.TelegramGroupURL,
-			},
-		})
-		return
-	}
-
-	apiURL := "https://api.telegram.org/bot" + common.TelegramBotToken + "/getChatMember"
-	params := url.Values{}
-	params.Set("chat_id", strings.TrimSpace(common.TelegramGroupChatID))
-	params.Set("user_id", strings.TrimSpace(user.TelegramId))
-
-	req, err := http.NewRequestWithContext(
-		c.Request.Context(),
-		http.MethodGet,
-		apiURL+"?"+params.Encode(),
-		nil,
-	)
+func getTelegramGroupMembership(ctx context.Context, telegramID string) (string, bool, error) {
+	form := strings.NewReader("chat_id=" + url.QueryEscape(strings.TrimSpace(common.TelegramGroupChatID)) +
+		"&user_id=" + url.QueryEscape(strings.TrimSpace(telegramID)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, telegramBotAPIURL("getChatMember"), form)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{
-			"success": false,
-			"message": "Unable to prepare Telegram verification request",
-		})
-		return
+		return "", false, errors.New("Unable to prepare Telegram verification request")
 	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := telegramHTTPClient.Do(req)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{
-			"success": false,
-			"message": "Unable to reach Telegram for membership verification",
-		})
-		return
+		return "", false, errors.New("Unable to reach Telegram for membership verification")
 	}
 	defer resp.Body.Close()
 
 	var payload telegramChatMemberResponse
 	if err := common.DecodeJson(resp.Body, &payload); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{
-			"success": false,
-			"message": "Invalid response from Telegram",
-		})
-		return
+		return "", false, errors.New("Invalid response from Telegram")
 	}
 	if !payload.OK {
 		message := payload.Description
 		if message == "" {
 			message = "Telegram membership verification failed"
 		}
-		c.JSON(http.StatusBadGateway, gin.H{
-			"success": false,
-			"message": message,
-		})
-		return
+		return "", false, errors.New(message)
 	}
 
 	status := payload.Result.Status
 	joined := isTelegramGroupMember(status, payload.Result.IsMember)
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"configured": true,
-			"bound":      true,
-			"joined":     joined,
-			"status":     status,
-			"group_url":  common.TelegramGroupURL,
-			"checked_at": time.Now().UTC().Format(time.RFC3339),
-		},
-	})
+	return status, joined, nil
 }
 
 func isTelegramGroupMember(status string, isMember bool) bool {

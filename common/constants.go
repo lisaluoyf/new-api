@@ -125,6 +125,7 @@ var TelegramBotName = ""
 // account binding can work without requiring group membership.
 var TelegramGroupChatID = ""
 var TelegramGroupURL = ""
+var TelegramWebhookSecret = ""
 
 var QuotaForNewUser = 0
 var QuotaForInviter = 0

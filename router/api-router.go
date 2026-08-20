@@ -63,6 +63,8 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/telegram/login", middleware.CriticalRateLimit(), controller.TelegramLogin)
 		apiRouter.GET("/oauth/telegram/bind", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.TelegramBind)
 		apiRouter.GET("/oauth/telegram/group-status", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.TelegramGroupStatus)
+		apiRouter.POST("/telegram/webhook", controller.TelegramWebhook)
+		apiRouter.POST("/telegram/webhook/setup", middleware.AdminAuth(), middleware.CriticalRateLimit(), controller.SetupTelegramWebhook)
 		// Standard OAuth providers (GitHub, Discord, OIDC, LinuxDO) - unified route
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
@@ -97,6 +99,8 @@ func SetApiRouter(router *gin.Engine) {
 			selfRoute := userRoute.Group("/")
 			selfRoute.Use(middleware.UserAuth())
 			{
+				selfRoute.POST("/telegram-verification/start", middleware.CriticalRateLimit(), controller.StartTelegramGroupVerification)
+				selfRoute.GET("/telegram-verification/status", controller.TelegramGroupVerificationStatus)
 				selfRoute.GET("/self/groups", controller.GetUserGroups)
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)

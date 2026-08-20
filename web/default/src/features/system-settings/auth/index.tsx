@@ -49,6 +49,7 @@ const defaultAuthSettings: AuthSettings = {
   TelegramBotName: '',
   TelegramGroupChatID: '',
   TelegramGroupURL: '',
+  TelegramWebhookSecret: '',
   LinuxDOOAuthEnabled: false,
   LinuxDOClientId: '',
   LinuxDOClientSecret: '',

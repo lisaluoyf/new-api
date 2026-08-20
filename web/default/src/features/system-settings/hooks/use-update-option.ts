@@ -37,6 +37,11 @@ const STATUS_RELATED_KEYS = [
   'general_setting.custom_currency_symbol',
   'general_setting.custom_currency_exchange_rate',
   'AffRatio',
+  'TelegramBotToken',
+  'TelegramBotName',
+  'TelegramGroupChatID',
+  'TelegramGroupURL',
+  'TelegramWebhookSecret',
 ]
 
 export function useUpdateOption() {

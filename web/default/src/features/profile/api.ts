@@ -151,21 +151,35 @@ export interface ApimasterBindingsResponse {
 
 export interface TelegramGroupStatus {
   configured: boolean
-  bound: boolean
+  identified: boolean
   joined: boolean
   status: string
   group_url?: string
   checked_at?: string
 }
 
+export interface TelegramVerificationStart {
+  identified: boolean
+  bot_url?: string
+  group_url?: string
+  expires_at?: string
+}
+
 /**
- * Verify whether the current user's bound Telegram account is in the
+ * Verify whether the Telegram identity established through the Bot is in the
  * configured Telegram community.
  */
 export async function getTelegramGroupStatus(): Promise<
   ApiResponse<TelegramGroupStatus>
 > {
-  const res = await api.get('/api/oauth/telegram/group-status')
+  const res = await api.get('/api/user/telegram-verification/status')
+  return res.data
+}
+
+export async function startTelegramGroupVerification(): Promise<
+  ApiResponse<TelegramVerificationStart>
+> {
+  const res = await api.post('/api/user/telegram-verification/start')
   return res.data
 }
 
@@ -186,16 +200,6 @@ export async function unbindCustomOAuth(
   providerId: string
 ): Promise<ApiResponse> {
   const res = await api.delete(`/api/user/oauth/bindings/${providerId}`)
-  return res.data
-}
-
-/**
- * Clear current user's built-in binding
- */
-export async function clearSelfBinding(
-  bindingType: string
-): Promise<ApiResponse> {
-  const res = await api.delete(`/api/user/bindings/${bindingType}`)
   return res.data
 }
 
