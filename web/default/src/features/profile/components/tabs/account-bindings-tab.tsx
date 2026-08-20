@@ -267,7 +267,13 @@ export function AccountBindingsTab({
           void fetchApimasterBindings()
           void fetchCustomBindings()
           onUpdate()
-          if (payload.provider === 'twitter') {
+          if (payload.provider === 'telegram') {
+            dialogs.close('telegram')
+          }
+          if (
+            payload.provider === 'twitter' ||
+            payload.provider === 'telegram'
+          ) {
             toast.success(t('Binding successful!'))
           }
         } else if (payload?.status === 'error') {
@@ -641,8 +647,6 @@ export function AccountBindingsTab({
             open ? dialogs.open('telegram') : dialogs.close('telegram')
           }
           botName={status.telegram_bot_name as string}
-          groupUrl={resolvedTelegramGroupUrl}
-          onSuccess={onUpdate}
         />
       )}
     </>

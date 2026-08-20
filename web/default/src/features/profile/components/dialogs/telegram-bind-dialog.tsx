@@ -20,7 +20,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Send } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { buttonVariants } from '@/components/ui/button'
 import {
   Dialog,
@@ -38,18 +37,18 @@ interface TelegramBindDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   botName: string
-  groupUrl?: string
-  onSuccess: () => void
 }
 
 export function TelegramBindDialog({
   open,
   onOpenChange,
   botName,
-  groupUrl,
 }: TelegramBindDialogProps) {
   const { t } = useTranslation()
   const widgetRef = useRef<HTMLDivElement | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const renderTimerRef = useRef<number | null>(null)
+  const renderTimeoutRef = useRef<number | null>(null)
   const [widgetState, setWidgetState] = useState<'loading' | 'ready' | 'error'>(
     'loading'
   )
@@ -64,6 +63,29 @@ export function TelegramBindDialog({
 
     const widgetElement = widgetRef.current
     widgetElement.innerHTML = ''
+    setWidgetState('loading')
+
+    let settled = false
+    const clearTimers = () => {
+      if (renderTimerRef.current !== null) {
+        window.clearInterval(renderTimerRef.current)
+        renderTimerRef.current = null
+      }
+      if (renderTimeoutRef.current !== null) {
+        window.clearTimeout(renderTimeoutRef.current)
+        renderTimeoutRef.current = null
+      }
+    }
+    const hasRenderedWidget = () =>
+      Array.from(widgetElement.children).some(
+        (child) => child.tagName !== 'SCRIPT'
+      )
+    const markReady = () => {
+      if (settled) return
+      settled = true
+      clearTimers()
+      setWidgetState('ready')
+    }
     const script = document.createElement('script')
     script.async = true
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
@@ -72,89 +94,99 @@ export function TelegramBindDialog({
     script.setAttribute('data-auth-url', authUrl)
     script.setAttribute('data-request-access', 'write')
     script.setAttribute('data-radius', '10')
-    script.onload = () => setWidgetState('ready')
-    script.onerror = () => setWidgetState('error')
+    script.onload = () => {
+      if (hasRenderedWidget()) {
+        markReady()
+        return
+      }
+      renderTimerRef.current = window.setInterval(() => {
+        if (hasRenderedWidget()) {
+          markReady()
+        }
+      }, 100)
+    }
+    script.onerror = () => {
+      if (settled) return
+      settled = true
+      clearTimers()
+      setWidgetState('error')
+    }
     widgetElement.appendChild(script)
+    renderTimeoutRef.current = window.setTimeout(() => {
+      if (settled) return
+      settled = true
+      clearTimers()
+      setWidgetState('error')
+    }, 12000)
 
     return () => {
       script.onload = null
       script.onerror = null
+      settled = true
+      clearTimers()
       widgetElement.innerHTML = ''
     }
-  }, [authUrl, botName, open])
+  }, [authUrl, botName, open, reloadNonce])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
-          <DialogTitle>
-            {t('Bind Telegram Account')} · {t('Join community')}
-          </DialogTitle>
+          <DialogTitle>{t('Bind Telegram Account')}</DialogTitle>
           <DialogDescription>
             {t('Click the button below to bind your Telegram account')}
           </DialogDescription>
         </DialogHeader>
 
         <div className='space-y-4 py-4'>
-          <Alert>
-            <Send className='h-4 w-4' />
-            <AlertDescription>
-              {t(
-                'You will be redirected to Telegram to complete the binding process.'
-              )}
-            </AlertDescription>
-          </Alert>
-
-          {groupUrl && (
-            <a
-              href={groupUrl}
-              target='_blank'
-              rel='noreferrer'
-              className={cn(buttonVariants({ variant: 'outline' }), 'w-full')}
-            >
-              {t('Join community')}
-            </a>
-          )}
-
-          <div className='flex flex-col items-center justify-center gap-4 rounded-lg border p-6'>
-            <div className='flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900'>
-              <Send className='h-6 w-6 text-blue-600 dark:text-blue-400' />
+          <div className='border-border-default bg-background-surface flex items-center gap-3 rounded-2xl border px-4 py-3'>
+            <div className='flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-500/10'>
+              <Send className='h-5 w-5 text-cyan-400' />
             </div>
-
-            <div className='text-center'>
-              <p className='text-muted-foreground text-sm'>
+            <div className='min-w-0'>
+              <p className='text-text-primary text-sm font-medium'>
                 {t('Bot:')}{' '}
                 <span className='font-mono font-semibold'>@{botName}</span>
               </p>
-              <p className='text-muted-foreground mt-1 text-xs'>
+              <p className='text-muted-foreground truncate text-xs leading-5'>
                 {t(
-                  "After clicking the button, you'll be asked to authorize the bot"
+                  'The binding will complete automatically after authorization'
                 )}
               </p>
             </div>
+          </div>
 
-            <div
-              ref={widgetRef}
-              className='flex min-h-12 justify-center'
-              aria-live='polite'
-            />
-            <div className='flex min-h-12 justify-center' aria-live='polite'>
-              {widgetState === 'loading' && (
-                <div className='text-muted-foreground rounded-lg border border-dashed px-6 py-3 text-sm'>
-                  {t('Loading...')}
-                </div>
-              )}
+          <div className='border-border-default bg-background rounded-2xl border p-4'>
+            <div className='flex justify-center' aria-live='polite'>
+              <div ref={widgetRef} className='min-h-12' />
+            </div>
+
+            <div className='mt-3 flex items-center justify-between gap-3'>
+              <p className='text-muted-foreground text-xs'>
+                {widgetState === 'loading'
+                  ? t('Loading Telegram login widget...')
+                  : widgetState === 'error'
+                    ? t('Telegram Login Widget failed to load')
+                    : t('Click the button below to bind your Telegram account')}
+              </p>
+
               {widgetState === 'error' && (
-                <div className='text-destructive rounded-lg border border-dashed px-6 py-3 text-center text-sm'>
-                  {t('Telegram Login Widget')}
-                </div>
+                <button
+                  type='button'
+                  onClick={() => {
+                    setWidgetState('loading')
+                    setReloadNonce((value) => value + 1)
+                  }}
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'h-8 px-3 text-xs'
+                  )}
+                >
+                  {t('Retry')}
+                </button>
               )}
             </div>
           </div>
-
-          <p className='text-muted-foreground text-center text-xs'>
-            {t('The binding will complete automatically after authorization')}
-          </p>
         </div>
       </DialogContent>
     </Dialog>

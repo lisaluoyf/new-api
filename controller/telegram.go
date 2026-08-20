@@ -14,63 +14,78 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
 func TelegramBind(c *gin.Context) {
 	if !common.TelegramOAuthEnabled {
-		c.JSON(200, gin.H{
-			"message": "管理员未开启通过 Telegram 登录以及注册",
-			"success": false,
-		})
+		returnTelegramBindResult(c, "error", "管理员未开启通过 Telegram 登录以及注册")
 		return
 	}
 	params := c.Request.URL.Query()
 	if !checkTelegramAuthorization(params, common.TelegramBotToken) {
-		c.JSON(200, gin.H{
-			"message": "无效的请求",
-			"success": false,
-		})
+		returnTelegramBindResult(c, "error", "无效的请求")
 		return
 	}
-	telegramId := params["id"][0]
+	telegramIDs := params["id"]
+	if len(telegramIDs) == 0 || strings.TrimSpace(telegramIDs[0]) == "" {
+		returnTelegramBindResult(c, "error", "Telegram 账户信息缺失")
+		return
+	}
+	telegramId := telegramIDs[0]
 	if model.IsTelegramIdAlreadyTaken(telegramId) {
-		c.JSON(200, gin.H{
-			"message": "该 Telegram 账户已被绑定",
-			"success": false,
-		})
+		returnTelegramBindResult(c, "error", "该 Telegram 账户已被绑定")
 		return
 	}
 
-	session := sessions.Default(c)
-	id := session.Get("id")
-	user := model.User{Id: id.(int)}
+	user := model.User{Id: c.GetInt("id")}
 	if err := user.FillUserById(); err != nil {
-		c.JSON(200, gin.H{
-			"message": err.Error(),
-			"success": false,
-		})
+		returnTelegramBindResult(c, "error", err.Error())
 		return
 	}
 	if user.Id == 0 {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户已注销",
-		})
+		returnTelegramBindResult(c, "error", "用户已注销")
 		return
 	}
 	user.TelegramId = telegramId
 	if err := user.Update(false); err != nil {
-		c.JSON(200, gin.H{
-			"message": err.Error(),
-			"success": false,
-		})
+		returnTelegramBindResult(c, "error", err.Error())
 		return
 	}
 
+	returnTelegramBindResult(c, "success", "")
+}
+
+// returnTelegramBindResult completes the widget callback without exposing an
+// extra profile page. The parent profile tab receives the storage event and
+// refreshes its binding state; direct navigations fall back to the profile.
+func returnTelegramBindResult(c *gin.Context, status, message string) {
 	redirectTo := sanitizeTelegramRedirect(c.Query("redirect"))
-	c.Redirect(302, redirectTo)
+	payload, err := common.Marshal(gin.H{
+		"provider":  "telegram",
+		"status":    status,
+		"message":   message,
+		"timestamp": time.Now().UnixMilli(),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "无法完成绑定"})
+		return
+	}
+
+	html := `<!doctype html><html><head><meta charset="utf-8"><title>Telegram Binding</title></head><body><script>
+try { localStorage.setItem('oauth:binding:result', ` + string(payload) + `); } catch (_) {}
+window.close();
+setTimeout(function () { if (!window.closed) window.location.replace(` + mustMarshalString(redirectTo) + `); }, 200);
+</script></body></html>`
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
+}
+
+func mustMarshalString(value string) string {
+	payload, err := common.Marshal(value)
+	if err != nil {
+		return `"/console/personal"`
+	}
+	return string(payload)
 }
 
 type telegramChatMemberResponse struct {
@@ -228,6 +243,9 @@ func checkTelegramAuthorization(params map[string][]string, token string) bool {
 	strs := []string{}
 	var hash = ""
 	for k, v := range params {
+		if len(v) == 0 {
+			return false
+		}
 		if k == "hash" {
 			hash = v[0]
 			continue
@@ -236,6 +254,9 @@ func checkTelegramAuthorization(params map[string][]string, token string) bool {
 			continue
 		}
 		strs = append(strs, k+"="+v[0])
+	}
+	if hash == "" || token == "" {
+		return false
 	}
 	sort.Strings(strs)
 	var imploded = ""
