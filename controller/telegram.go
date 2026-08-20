@@ -60,6 +60,14 @@ func TelegramBind(c *gin.Context) {
 // extra profile page. The parent profile tab receives the storage event and
 // refreshes its binding state; direct navigations fall back to the profile.
 func returnTelegramBindResult(c *gin.Context, status, message string) {
+	if c.Query("format") == "json" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": status == "success",
+			"message": message,
+		})
+		return
+	}
+
 	redirectTo := sanitizeTelegramRedirect(c.Query("redirect"))
 	payload, err := common.Marshal(gin.H{
 		"provider":  "telegram",
@@ -250,7 +258,7 @@ func checkTelegramAuthorization(params map[string][]string, token string) bool {
 			hash = v[0]
 			continue
 		}
-		if k == "redirect" {
+		if k == "redirect" || k == "format" {
 			continue
 		}
 		strs = append(strs, k+"="+v[0])

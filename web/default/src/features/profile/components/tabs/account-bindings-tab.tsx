@@ -647,6 +647,7 @@ export function AccountBindingsTab({
             open ? dialogs.open('telegram') : dialogs.close('telegram')
           }
           botName={status.telegram_bot_name as string}
+          onSuccess={onUpdate}
         />
       )}
     </>
