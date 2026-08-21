@@ -19,6 +19,8 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 
 	"github.com/samber/lo"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // TaskBillingAdaptor is the minimal interface for async task completion billing.
@@ -357,6 +359,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		logger.LogError(ctx, fmt.Sprintf("Task %s not found in taskM", taskId))
 		return fmt.Errorf("task %s not found", taskId)
 	}
+	previousTaskData := task.Data
 	key := ch.Key
 
 	privateData := task.PrivateData
@@ -396,7 +399,12 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 	}
 
-	task.Data = redactVideoResponseBody(responseBody)
+	task.Data = preserveTaskUpstreamCost(
+		task.Platform,
+		taskResult.Status,
+		previousTaskData,
+		redactVideoResponseBody(responseBody),
+	)
 
 	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask taskResult: %+v", taskResult))
 
@@ -508,6 +516,36 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 
 	return nil
+}
+
+// preserveTaskUpstreamCost keeps the positive APIMart cost first reported while
+// a task is processing. Some successful terminal responses omit cost fields;
+// without this merge they overwrite the stored value and channel-cost
+// accounting falls back to the base tier.
+func preserveTaskUpstreamCost(
+	platform constant.TaskPlatform,
+	status string,
+	previousData, currentData []byte,
+) []byte {
+	if platform != constant.TaskPlatformApimartVideo || status == string(model.TaskStatusFailure) {
+		return currentData
+	}
+	result := currentData
+	for _, path := range []string{"data.cost", "data.credits_cost"} {
+		if gjson.GetBytes(result, path).Float() > 0 {
+			continue
+		}
+		previous := gjson.GetBytes(previousData, path).Float()
+		if previous <= 0 {
+			continue
+		}
+		updated, err := sjson.SetBytes(result, path, previous)
+		if err != nil {
+			continue
+		}
+		result = updated
+	}
+	return result
 }
 
 func redactVideoResponseBody(body []byte) []byte {
