@@ -18,6 +18,8 @@ func TestFormatUserLogsRemovesProviderDiagnostics(t *testing.T) {
 			"upstream_actual_cost_usd":3.61,
 			"upstream_model_name":"provider-model",
 			"channel_type":47,
+			"fallback_winner_channel_name":"APIMart",
+			"loser_channel_id":99,
 			"base_model_price":0.14,
 			"is_model_mapped":true,
 			"admin_info":{"key":"secret"},
@@ -32,7 +34,7 @@ func TestFormatUserLogsRemovesProviderDiagnostics(t *testing.T) {
 	require.Zero(t, logs[0].ChannelId)
 	require.Empty(t, logs[0].ChannelName)
 	require.Equal(t, 5, logs[0].Id)
-	for _, forbidden := range []string{"upstream_", "provider-model", "channel_type", "base_model_price", "is_model_mapped", "admin_info", "stream_status", "secret"} {
+	for _, forbidden := range []string{"upstream_", "provider-model", "channel", "APIMart", "base_model_price", "is_model_mapped", "admin_info", "stream_status", "secret"} {
 		require.False(t, strings.Contains(logs[0].Other, forbidden), logs[0].Other)
 	}
 	require.Contains(t, logs[0].Other, "model_price")
