@@ -6,7 +6,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestPreserveTaskUpstreamCost(t *testing.T) {
@@ -20,6 +19,13 @@ func TestPreserveTaskUpstreamCost(t *testing.T) {
 		current  string
 		wantCost float64
 	}{
+		{
+			name:     "top-level successful response preserves top-level cost",
+			platform: constant.TaskPlatformApimartVideo,
+			status:   string(model.TaskStatusSuccess),
+			current:  `{"status":"completed"}`,
+			wantCost: 1.28568,
+		},
 		{
 			name:     "successful response omits cost",
 			platform: constant.TaskPlatformApimartVideo,
@@ -53,9 +59,9 @@ func TestPreserveTaskUpstreamCost(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := preserveTaskUpstreamCost(tc.platform, tc.status, previous, []byte(tc.current))
-			require.InDelta(t, tc.wantCost, gjson.GetBytes(got, "data.cost").Float(), 1e-9)
+			require.InDelta(t, tc.wantCost, apimartTaskDataNumber(got, "cost"), 1e-9)
 			if tc.wantCost == 1.28568 {
-				require.InDelta(t, 12.8568, gjson.GetBytes(got, "data.credits_cost").Float(), 1e-9)
+				require.InDelta(t, 12.8568, apimartTaskDataNumber(got, "credits_cost"), 1e-9)
 			}
 		})
 	}

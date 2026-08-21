@@ -187,7 +187,7 @@ func taskActualChannelCostUSD(task *model.Task) float64 {
 		return 0
 	}
 	if task.Platform == constant.TaskPlatformApimartVideo {
-		if cost := gjson.GetBytes(task.Data, "data.cost").Float(); cost > 0 {
+		if cost := apimartTaskDataNumber(task.Data, "cost"); cost > 0 {
 			return cost
 		}
 	}

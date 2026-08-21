@@ -531,13 +531,17 @@ func preserveTaskUpstreamCost(
 		return currentData
 	}
 	result := currentData
-	for _, path := range []string{"data.cost", "data.credits_cost"} {
-		if gjson.GetBytes(result, path).Float() > 0 {
+	for _, field := range []string{"cost", "credits_cost"} {
+		if apimartTaskDataNumber(result, field) > 0 {
 			continue
 		}
-		previous := gjson.GetBytes(previousData, path).Float()
+		previous := apimartTaskDataNumber(previousData, field)
 		if previous <= 0 {
 			continue
+		}
+		path := field
+		if gjson.GetBytes(result, "data").IsObject() {
+			path = "data." + field
 		}
 		updated, err := sjson.SetBytes(result, path, previous)
 		if err != nil {
@@ -546,6 +550,15 @@ func preserveTaskUpstreamCost(
 		result = updated
 	}
 	return result
+}
+
+func apimartTaskDataNumber(data []byte, field string) float64 {
+	for _, path := range []string{"data." + field, field} {
+		if value := gjson.GetBytes(data, path).Float(); value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func redactVideoResponseBody(body []byte) []byte {

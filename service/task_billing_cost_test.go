@@ -17,4 +17,10 @@ func TestTaskActualChannelCostUSD(t *testing.T) {
 		Data:     []byte(`{"data":{"cost":0.11472}}`),
 	}
 	require.InDelta(t, 0.11472, taskActualChannelCostUSD(apimartTask), 1e-9)
+
+	apimartTopLevelTask := &model.Task{
+		Platform: constant.TaskPlatformApimartVideo,
+		Data:     []byte(`{"cost":1.28568,"status":"completed"}`),
+	}
+	require.InDelta(t, 1.28568, taskActualChannelCostUSD(apimartTopLevelTask), 1e-9)
 }
