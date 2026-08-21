@@ -17,6 +17,19 @@ type PricingRow = {
 
 const DEFAULT_PRICING = {
   'minimax-h3': { unit: 'second', prices: { '768P': 0.08, '2K': 0.13 } },
+  'kling-v3-omni': {
+    unit: 'second',
+    prices: {
+      base: 0.084,
+      sound: 0.112,
+      video: 0.126,
+      pro: 0.112,
+      'pro-sound': 0.14,
+      'pro-video': 0.168,
+      '4k': 0.5357,
+      '4k-sound': 0.5357,
+    },
+  },
 }
 
 function parsePricing(

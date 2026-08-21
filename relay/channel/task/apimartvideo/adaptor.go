@@ -16,19 +16,23 @@ import (
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 )
 
 type submitPayload struct {
-	Model       string   `json:"model"`
-	Prompt      string   `json:"prompt"`
-	Duration    int      `json:"duration,omitempty"`
-	Resolution  string   `json:"resolution,omitempty"`
-	AspectRatio string   `json:"aspect_ratio,omitempty"`
-	ImageURLs   []string `json:"image_urls,omitempty"`
-	Webhook     string   `json:"webhook,omitempty"`
+	Model       string        `json:"model"`
+	Prompt      string        `json:"prompt"`
+	Duration    int           `json:"duration,omitempty"`
+	Resolution  string        `json:"resolution,omitempty"`
+	Mode        string        `json:"mode,omitempty"`
+	AspectRatio string        `json:"aspect_ratio,omitempty"`
+	ImageURLs   []string      `json:"image_urls,omitempty"`
+	Audio       *bool         `json:"audio,omitempty"`
+	VideoList   []interface{} `json:"video_list,omitempty"`
+	Webhook     string        `json:"webhook,omitempty"`
 }
 
 type motionControlPayload struct {
@@ -146,7 +150,15 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported model %q", body.Model), "invalid_model", http.StatusBadRequest)
 	}
 	body.Duration = normalizeVideoDuration(body.Model, body.Duration)
-	if body.Resolution == "" {
+	if body.Model == ModelKlingV3Omni {
+		body.Mode = strings.ToLower(strings.TrimSpace(body.Mode))
+		if body.Mode == "" {
+			body.Mode = "std"
+		}
+		if body.Mode != "std" && body.Mode != "pro" && body.Mode != "4k" {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("mode must be std, pro, or 4k"), "invalid_request", http.StatusBadRequest)
+		}
+	} else if body.Resolution == "" {
 		body.Resolution = "720p"
 	}
 	if body.AspectRatio == "" {
@@ -164,6 +176,9 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 		Webhook:  resolveWebhook(body.Webhook),
 		Metadata: map[string]interface{}{
 			"resolution":   body.Resolution,
+			"mode":         body.Mode,
+			"audio":        body.Audio != nil && *body.Audio,
+			"has_video":    len(body.VideoList) > 0,
 			"aspect_ratio": body.AspectRatio,
 		},
 	}
@@ -247,6 +262,30 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		}
 	}
 	seconds = normalizeVideoDuration(req.Model, seconds)
+	if normalizeModel(req.Model) == ModelKlingV3Omni {
+		mode := "std"
+		audio := false
+		hasVideo := false
+		if req.Metadata != nil {
+			if v, ok := req.Metadata["mode"].(string); ok && strings.TrimSpace(v) != "" {
+				mode = v
+			}
+			if v, ok := req.Metadata["audio"].(bool); ok {
+				audio = v
+			}
+			if v, ok := req.Metadata["has_video"].(bool); ok {
+				hasVideo = v
+			}
+			if v, ok := req.Metadata["video_list"].([]interface{}); ok && len(v) > 0 {
+				hasVideo = true
+			}
+		}
+		variant := klingOmniBillingVariant(mode, audio, hasVideo)
+		return map[string]float64{
+			"seconds": float64(seconds),
+			"variant": ratio_setting.GetVideoModelPriceRatio(ModelKlingV3Omni, variant),
+		}
+	}
 	resolution := "720p"
 	if req.Metadata != nil {
 		if v, ok := req.Metadata["resolution"].(string); ok && v != "" {
@@ -316,7 +355,35 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			body.Model = publicModel
 		}
 		body.Duration = normalizeVideoDuration(publicModel, body.Duration)
-		if body.Resolution == "" {
+		if publicModel == ModelKlingV3Omni {
+			body.Mode = strings.ToLower(strings.TrimSpace(body.Mode))
+			if body.Mode == "" {
+				body.Mode = "std"
+			}
+			// Preserve the complete Omni request (image roles, multi-shot,
+			// elements, video_list, and future upstream fields) while applying
+			// the normalized routing/billing fields.
+			var passthrough map[string]interface{}
+			if err := common.Unmarshal(raw, &passthrough); err != nil {
+				return nil, err
+			}
+			passthrough["model"] = body.Model
+			passthrough["duration"] = body.Duration
+			passthrough["mode"] = body.Mode
+			if body.AspectRatio == "" {
+				body.AspectRatio = "16:9"
+			}
+			passthrough["aspect_ratio"] = body.AspectRatio
+			delete(passthrough, "resolution")
+			if webhook := resolveWebhook(body.Webhook); webhook != "" {
+				passthrough["webhook"] = webhook
+			}
+			out, err := common.Marshal(passthrough)
+			if err != nil {
+				return nil, err
+			}
+			return bytes.NewReader(out), nil
+		} else if body.Resolution == "" {
 			body.Resolution = "720p"
 		}
 		if body.AspectRatio == "" {
@@ -365,7 +432,7 @@ func openAIToApimart(req relaycommon.TaskSubmitReq, upstreamModel string) submit
 	if req.InputReference != "" {
 		imageURLs = append(imageURLs, req.InputReference)
 	}
-	return submitPayload{
+	payload := submitPayload{
 		Model:       model,
 		Prompt:      req.Prompt,
 		Duration:    duration,
@@ -374,6 +441,25 @@ func openAIToApimart(req relaycommon.TaskSubmitReq, upstreamModel string) submit
 		ImageURLs:   imageURLs,
 		Webhook:     resolveWebhook(req.Webhook),
 	}
+	if normalizeModel(req.Model) == ModelKlingV3Omni {
+		payload.Resolution = ""
+		payload.Mode = "std"
+		if req.Metadata != nil {
+			if v, ok := req.Metadata["mode"].(string); ok {
+				mode := strings.ToLower(strings.TrimSpace(v))
+				if mode == "std" || mode == "pro" || mode == "4k" {
+					payload.Mode = mode
+				}
+			}
+			if v, ok := req.Metadata["audio"].(bool); ok {
+				payload.Audio = &v
+			}
+			if v, ok := req.Metadata["video_list"].([]interface{}); ok {
+				payload.VideoList = v
+			}
+		}
+	}
+	return payload
 }
 
 func resolveWebhook(raw string) string {
