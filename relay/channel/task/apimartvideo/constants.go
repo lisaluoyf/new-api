@@ -63,8 +63,8 @@ func normalizeModel(model string) string {
 
 func normalizeVideoDuration(model string, seconds int) int {
 	if normalizeModel(model) == ModelKlingV3Omni {
-		if seconds == 10 {
-			return 10
+		if seconds >= 3 && seconds <= 15 {
+			return seconds
 		}
 		return 5
 	}

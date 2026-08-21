@@ -58,8 +58,12 @@ func TestNormalizeVideoDuration(t *testing.T) {
 	require.Equal(t, 15, normalizeVideoDuration(ModelGrokVideo15s, 10))
 	require.Equal(t, 4, normalizeVideoDuration("sora-2", 0))
 	require.Equal(t, 5, normalizeVideoDuration(ModelKlingV3Omni, 0))
-	require.Equal(t, 5, normalizeVideoDuration(ModelKlingV3Omni, 6))
+	require.Equal(t, 5, normalizeVideoDuration(ModelKlingV3Omni, 2))
+	require.Equal(t, 3, normalizeVideoDuration(ModelKlingV3Omni, 3))
+	require.Equal(t, 6, normalizeVideoDuration(ModelKlingV3Omni, 6))
 	require.Equal(t, 10, normalizeVideoDuration(ModelKlingV3Omni, 10))
+	require.Equal(t, 15, normalizeVideoDuration(ModelKlingV3Omni, 15))
+	require.Equal(t, 5, normalizeVideoDuration(ModelKlingV3Omni, 16))
 }
 
 func TestKlingOmniEstimateBillingUsesModeAndMedia(t *testing.T) {
@@ -110,7 +114,7 @@ func TestKlingOmniBuildRequestPreservesMultimodalFields(t *testing.T) {
 		"model":"kling-v3-omni",
 		"prompt":"scene",
 		"mode":"pro",
-		"duration":10,
+		"duration":6,
 		"audio":true,
 		"negative_prompt":"blur",
 		"multi_shot":true,
@@ -128,7 +132,7 @@ func TestKlingOmniBuildRequestPreservesMultimodalFields(t *testing.T) {
 
 	require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
 	ratios := adaptor.EstimateBilling(c, info)
-	require.Equal(t, 10.0, ratios["seconds"])
+	require.Equal(t, 6.0, ratios["seconds"])
 	require.InDelta(
 		t,
 		ratio_setting.GetVideoModelPriceRatio(ModelKlingV3Omni, "pro-video"),
@@ -144,7 +148,7 @@ func TestKlingOmniBuildRequestPreservesMultimodalFields(t *testing.T) {
 	for _, expected := range []string{
 		`"model":"kling-v3-omni"`,
 		`"mode":"pro"`,
-		`"duration":10`,
+		`"duration":6`,
 		`"audio":true`,
 		`"negative_prompt":"blur"`,
 		`"multi_shot":true`,
