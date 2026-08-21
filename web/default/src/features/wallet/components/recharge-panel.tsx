@@ -47,7 +47,7 @@ import type { TopupInfo } from '../types'
 const HINT_LS_KEY = 'payment_hint_shown'
 const HINT_COOLDOWN_MS = 24 * 60 * 60 * 1000
 const LIMITED_AMOUNT_DISCOUNT_END_DATES: Record<number, string> = {
-  50: '2026-09-01',
+  100: '2026-09-01',
 }
 
 const PRESET_AMOUNTS_DEFAULT  = [10, 50, 100, 500, 1000]
@@ -61,7 +61,7 @@ interface RechargePanelProps {
 
 export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled }: RechargePanelProps) {
   const { t } = useTranslation()
-  const [selectedAmount, setSelectedAmount] = useState<number>(50)
+  const [selectedAmount, setSelectedAmount] = useState<number>(100)
   const [customAmount, setCustomAmount] = useState('')
   const [cryptoOpen, setCryptoOpen] = useState(false)
   const [topupInfo, setTopupInfo] = useState<TopupInfo | null>(null)
