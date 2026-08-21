@@ -83,7 +83,7 @@ func ValidateFreeModelOpenAIResponse(c *gin.Context, response *dto.OpenAITextRes
 			}
 			if requirements.JSONSchema && requirements.Schema != nil {
 				if err := validateJSONSchemaValue(document, requirements.Schema, requirements.Schema, "$"); err != nil {
-					return freeModelValidationError(types.ErrorCode("invalid_json"), "free model JSON did not match the requested schema: "+err.Error())
+					return freeModelValidationError(types.ErrorCode("schema_validation_failed"), "free model JSON did not match the requested schema: "+err.Error())
 				}
 			}
 		}
@@ -130,7 +130,7 @@ func ValidateFreeModelResponsesResponse(c *gin.Context, response *dto.OpenAIResp
 		}
 		if requirements.JSONSchema && requirements.Schema != nil {
 			if err := validateJSONSchemaValue(document, requirements.Schema, requirements.Schema, "$"); err != nil {
-				return freeModelValidationError(types.ErrorCode("invalid_json"), "free model JSON did not match the requested schema: "+err.Error())
+				return freeModelValidationError(types.ErrorCode("schema_validation_failed"), "free model JSON did not match the requested schema: "+err.Error())
 			}
 		}
 	}

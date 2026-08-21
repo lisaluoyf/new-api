@@ -31,7 +31,7 @@ func TestValidateFreeModelResponseJSONSchema(t *testing.T) {
 	req := FreeModelRequirements{Text: true, JSONObject: true, JSONSchema: true, Schema: map[string]any{"type": "object", "required": []any{"name"}, "properties": map[string]any{"name": map[string]any{"type": "string"}}, "additionalProperties": false}}
 	require.Nil(t, ValidateFreeModelOpenAIResponse(freeResponseContext(req), responseWith(`{"name":"ok"}`, "stop", "")))
 	err := ValidateFreeModelOpenAIResponse(freeResponseContext(req), responseWith(`{"wrong":1}`, "stop", ""))
-	require.Equal(t, "invalid_json", string(err.GetErrorCode()))
+	require.Equal(t, "schema_validation_failed", string(err.GetErrorCode()))
 }
 
 func TestValidateFreeModelResponseToolArgumentsAndEmpty(t *testing.T) {
@@ -41,6 +41,24 @@ func TestValidateFreeModelResponseToolArgumentsAndEmpty(t *testing.T) {
 	require.Equal(t, "empty_response", string(err.GetErrorCode()))
 	err = ValidateFreeModelOpenAIResponse(freeResponseContext(FreeModelRequirements{Text: true, Tools: true, RequiredToolCall: true}), responseWith("not a tool", "stop", ""))
 	require.Equal(t, "missing_required_tool_call", string(err.GetErrorCode()))
+}
+
+func TestValidateFreeModelResponseContentFilterIsTerminal(t *testing.T) {
+	require.Nil(t, ValidateFreeModelOpenAIResponse(
+		freeResponseContext(FreeModelRequirements{Text: true}),
+		responseWith("", "content_filter", ""),
+	))
+}
+
+func TestValidateFreeModelResponsesResponseSchemaFailure(t *testing.T) {
+	req := FreeModelRequirements{Text: true, JSONObject: true, JSONSchema: true, Schema: map[string]any{
+		"type": "object", "required": []any{"answer"}, "properties": map[string]any{"answer": map[string]any{"type": "integer"}},
+	}}
+	response := &dto.OpenAIResponsesResponse{Output: []dto.ResponsesOutput{{
+		Type: "message", Content: []dto.ResponsesOutputContent{{Type: "output_text", Text: `{"answer":"wrong"}`}},
+	}}}
+	err := ValidateFreeModelResponsesResponse(freeResponseContext(req), response)
+	require.Equal(t, "schema_validation_failed", string(err.GetErrorCode()))
 }
 
 func TestFreeModelMemberExplicitFalsePersists(t *testing.T) {
