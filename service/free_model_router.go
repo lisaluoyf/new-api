@@ -163,7 +163,8 @@ func freeModelConfigMismatch(cfg model.FreeModelMember, req FreeModelRequirement
 	if !cfg.Enabled {
 		reasons = append(reasons, "member_disabled")
 	}
-	if req.Text && !cfg.Text {
+	plainTextRequest := !req.Vision && !req.Tools && !req.JSONObject && !req.JSONSchema
+	if plainTextRequest && !cfg.Text {
 		reasons = append(reasons, "text_unsupported")
 	}
 	if req.Vision && !cfg.Vision {

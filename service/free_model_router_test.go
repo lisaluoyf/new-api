@@ -63,6 +63,22 @@ func TestBuildFreeModelCandidatePlanCapabilityAndContextFiltering(t *testing.T) 
 	require.ErrorIs(t, err, ErrFreeModelCapabilityUnavailable)
 }
 
+func TestFreeModelVisionOnlyMemberNeverReceivesPlainText(t *testing.T) {
+	db := setupFreeModelRouterDB(t)
+	visionOnly := model.DefaultFreeModelMember(1)
+	visionOnly.Text = false
+	visionOnly.Vision = true
+	addFreeMember(t, db, 1, visionOnly)
+
+	_, err := BuildFreeModelCandidatePlan(FreeModelRequirements{Text: true}, rand.New(rand.NewSource(7)))
+	require.ErrorIs(t, err, ErrFreeModelCapabilityUnavailable)
+
+	plan, err := BuildFreeModelCandidatePlan(FreeModelRequirements{Text: true, Vision: true}, rand.New(rand.NewSource(7)))
+	require.NoError(t, err)
+	require.Len(t, plan.Candidates, 1)
+	require.Equal(t, 1, plan.Candidates[0].ChannelID)
+}
+
 func TestFreeModelPriorityWeightStableWithoutReplacement(t *testing.T) {
 	db := setupFreeModelRouterDB(t)
 	for _, data := range []struct {
