@@ -24,8 +24,14 @@ func setupFreeModelRouterDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	common.RedisEnabled = false
 	resetFreeModelHealthForTest()
+	resetFreeModelDailyLimitForTest()
 	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}, &model.FreeModelMember{}))
-	t.Cleanup(func() { model.DB = oldDB; common.RedisEnabled = oldRedis; resetFreeModelHealthForTest() })
+	t.Cleanup(func() {
+		model.DB = oldDB
+		common.RedisEnabled = oldRedis
+		resetFreeModelHealthForTest()
+		resetFreeModelDailyLimitForTest()
+	})
 	return db
 }
 
@@ -77,6 +83,52 @@ func TestFreeModelVisionOnlyMemberNeverReceivesPlainText(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, plan.Candidates, 1)
 	require.Equal(t, 1, plan.Candidates[0].ChannelID)
+}
+
+func TestFreeModelDailyLimitFiltersExhaustedMember(t *testing.T) {
+	db := setupFreeModelRouterDB(t)
+	limited := fullMember()
+	limited.DailyRequestLimit = 2
+	addFreeMember(t, db, 1, limited)
+	unlimited := fullMember()
+	addFreeMember(t, db, 2, unlimited)
+
+	allowed, used, err := ReserveFreeModelDailyRequest(1, 2)
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Equal(t, 1, used)
+	allowed, used, err = ReserveFreeModelDailyRequest(1, 2)
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Equal(t, 2, used)
+
+	plan, err := BuildFreeModelCandidatePlan(FreeModelRequirements{Text: true}, rand.New(rand.NewSource(7)))
+	require.NoError(t, err)
+	require.Len(t, plan.Candidates, 1)
+	require.Equal(t, 2, plan.Candidates[0].ChannelID)
+	require.Contains(t, plan.Filtered[0].Reasons, "daily_request_limit_exhausted")
+}
+
+func TestFreeModelDailyLimitRaceSkipsToNextCandidate(t *testing.T) {
+	db := setupFreeModelRouterDB(t)
+	limited := fullMember()
+	limited.Priority = 200
+	limited.DailyRequestLimit = 1
+	addFreeMember(t, db, 1, limited)
+	unlimited := fullMember()
+	unlimited.Priority = 100
+	addFreeMember(t, db, 2, unlimited)
+
+	plan, err := BuildFreeModelCandidatePlan(FreeModelRequirements{Text: true}, rand.New(rand.NewSource(7)))
+	require.NoError(t, err)
+	allowed, _, err := ReserveFreeModelDailyRequest(1, 1)
+	require.NoError(t, err)
+	require.True(t, allowed)
+
+	candidate, err := plan.Next()
+	require.NoError(t, err)
+	require.Equal(t, 2, candidate.ChannelID)
+	require.Contains(t, plan.Trace.FilteredCandidates[len(plan.Trace.FilteredCandidates)-1].Reasons, "daily_request_limit_exhausted")
 }
 
 func TestFreeModelPriorityWeightStableWithoutReplacement(t *testing.T) {

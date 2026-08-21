@@ -106,6 +106,7 @@ interface FreeModelMemberConfig {
   }
   max_context_tokens: number
   timeout_ms: number
+  daily_request_limit: number
 }
 
 interface FreeModelHealth {
@@ -1743,6 +1744,10 @@ export function ChannelDataPage() {
                   <label className='space-y-1 text-sm'>
                     <span>{t('Timeout (ms)')}</span>
                     <Input type='number' min='100' value={freeMemberEdit.config.timeout_ms} onChange={(event) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, timeout_ms: Number(event.target.value) } } : null)} />
+                  </label>
+                  <label className='space-y-1 text-sm'>
+                    <span>{t('Daily request limit (0 = unlimited)')}</span>
+                    <Input type='number' min='0' value={freeMemberEdit.config.daily_request_limit} onChange={(event) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, daily_request_limit: Number(event.target.value) } } : null)} />
                   </label>
                 </div>
                 <div className='grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3'>

@@ -109,17 +109,18 @@ type FreeModelCapabilitiesView struct {
 }
 
 type FreeModelMemberConfigView struct {
-	ChannelID        int                       `json:"channel_id"`
-	Enabled          bool                      `json:"enabled"`
-	Priority         int64                     `json:"priority"`
-	Weight           uint                      `json:"weight"`
-	Capabilities     FreeModelCapabilitiesView `json:"capabilities"`
-	MaxContextTokens int                       `json:"max_context_tokens"`
-	TimeoutMS        int                       `json:"timeout_ms"`
+	ChannelID         int                       `json:"channel_id"`
+	Enabled           bool                      `json:"enabled"`
+	Priority          int64                     `json:"priority"`
+	Weight            uint                      `json:"weight"`
+	Capabilities      FreeModelCapabilitiesView `json:"capabilities"`
+	MaxContextTokens  int                       `json:"max_context_tokens"`
+	TimeoutMS         int                       `json:"timeout_ms"`
+	DailyRequestLimit int                       `json:"daily_request_limit"`
 }
 
 func freeModelMemberConfigView(member model.FreeModelMember) FreeModelMemberConfigView {
-	return FreeModelMemberConfigView{ChannelID: member.ChannelID, Enabled: member.Enabled, Priority: member.Priority, Weight: member.Weight, Capabilities: FreeModelCapabilitiesView{Text: member.Text, Vision: member.Vision, Tools: member.Tools, JSONObject: member.JSONObject, JSONSchema: member.JSONSchema}, MaxContextTokens: member.MaxContextTokens, TimeoutMS: member.TimeoutMS}
+	return FreeModelMemberConfigView{ChannelID: member.ChannelID, Enabled: member.Enabled, Priority: member.Priority, Weight: member.Weight, Capabilities: FreeModelCapabilitiesView{Text: member.Text, Vision: member.Vision, Tools: member.Tools, JSONObject: member.JSONObject, JSONSchema: member.JSONSchema}, MaxContextTokens: member.MaxContextTokens, TimeoutMS: member.TimeoutMS, DailyRequestLimit: member.DailyRequestLimit}
 }
 
 const (
@@ -250,7 +251,11 @@ func SaveFreeModelMember(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "timeout_ms must be between 100 and 600000"})
 		return
 	}
-	member := model.FreeModelMember{ChannelID: channelID, Enabled: req.Enabled, Priority: req.Priority, Weight: req.Weight, Text: req.Capabilities.Text, Vision: req.Capabilities.Vision, Tools: req.Capabilities.Tools, JSONObject: req.Capabilities.JSONObject, JSONSchema: req.Capabilities.JSONSchema, MaxContextTokens: req.MaxContextTokens, TimeoutMS: req.TimeoutMS}
+	if req.DailyRequestLimit < 0 || req.DailyRequestLimit > 10000000 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "daily_request_limit is out of range"})
+		return
+	}
+	member := model.FreeModelMember{ChannelID: channelID, Enabled: req.Enabled, Priority: req.Priority, Weight: req.Weight, Text: req.Capabilities.Text, Vision: req.Capabilities.Vision, Tools: req.Capabilities.Tools, JSONObject: req.Capabilities.JSONObject, JSONSchema: req.Capabilities.JSONSchema, MaxContextTokens: req.MaxContextTokens, TimeoutMS: req.TimeoutMS, DailyRequestLimit: req.DailyRequestLimit}
 	if err := model.UpsertFreeModelMember(member); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return

@@ -71,6 +71,7 @@ type FreeModelCandidatePlan struct {
 	Filtered     []FreeModelFilteredCandidate
 	MaxAttempts  int
 	next         int
+	attempts     int
 	Trace        FreeModelRouteTrace
 }
 
@@ -123,6 +124,14 @@ func BuildFreeModelCandidatePlan(requirements FreeModelRequirements, rng FreeMod
 		cfg := configs[channel.Id]
 		upstream := ModelMappingTarget(channel.ModelMapping, FreeModelID)
 		reasons := freeModelConfigMismatch(cfg, requirements)
+		if len(reasons) == 0 && cfg.DailyRequestLimit > 0 {
+			available, _, limitErr := FreeModelDailyRequestAvailable(channel.Id, cfg.DailyRequestLimit)
+			if limitErr != nil {
+				reasons = append(reasons, "daily_request_limit_unavailable")
+			} else if !available {
+				reasons = append(reasons, "daily_request_limit_exhausted")
+			}
+		}
 		if len(reasons) > 0 {
 			plan.Filtered = append(plan.Filtered, FreeModelFilteredCandidate{ChannelID: channel.Id, UpstreamModel: upstream, Reasons: reasons})
 			continue
@@ -230,14 +239,26 @@ func (p *FreeModelCandidatePlan) Next() (*FreeModelCandidate, error) {
 	if limit <= 0 {
 		limit = GetFreeModelSettings().MaxAttempts
 	}
-	if p.next >= len(p.Candidates) || p.next >= limit {
-		return nil, fmt.Errorf("free model candidate plan exhausted")
+	for p.next < len(p.Candidates) && p.attempts < limit {
+		candidate := p.Candidates[p.next]
+		p.next++
+		allowed, _, err := ReserveFreeModelDailyRequest(candidate.ChannelID, candidate.Config.DailyRequestLimit)
+		if err != nil || !allowed {
+			reason := "daily_request_limit_exhausted"
+			if err != nil {
+				reason = "daily_request_limit_unavailable"
+			}
+			filtered := FreeModelFilteredCandidate{ChannelID: candidate.ChannelID, UpstreamModel: candidate.UpstreamModel, Reasons: []string{reason}}
+			p.Filtered = append(p.Filtered, filtered)
+			p.Trace.FilteredCandidates = append(p.Trace.FilteredCandidates, filtered)
+			continue
+		}
+		p.attempts++
+		p.Trace.SelectedChannelID = candidate.ChannelID
+		p.Trace.ResolvedUpstreamModel = candidate.UpstreamModel
+		return &candidate, nil
 	}
-	candidate := p.Candidates[p.next]
-	p.next++
-	p.Trace.SelectedChannelID = candidate.ChannelID
-	p.Trace.ResolvedUpstreamModel = candidate.UpstreamModel
-	return &candidate, nil
+	return nil, fmt.Errorf("free model candidate plan exhausted")
 }
 
 func (p *FreeModelCandidatePlan) HasNext() bool {
@@ -247,7 +268,7 @@ func (p *FreeModelCandidatePlan) HasNext() bool {
 	if limit <= 0 {
 		limit = GetFreeModelSettings().MaxAttempts
 	}
-	return p.next < len(p.Candidates) && p.next < limit
+	return p.next < len(p.Candidates) && p.attempts < limit
 }
 
 func FreeModelPlanHasNext(c *gin.Context) bool {
