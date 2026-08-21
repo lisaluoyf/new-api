@@ -340,7 +340,12 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	// 3. 冲销用户已用额度（提交任务时已计入 used_quota）
 	model.DecreaseUserUsedQuota(task.UserId, quota)
 
-	// 4. 记录日志
+	// 4. 将原消费日志标记为已退款，避免失败任务继续计入平台收入和渠道成本。
+	if err := model.MarkTaskConsumeLogRefunded(task.UserId, task.TaskID); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("标记任务消费日志退款失败 task %s: %s", task.TaskID, err.Error()))
+	}
+
+	// 5. 记录日志
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason

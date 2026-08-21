@@ -157,3 +157,36 @@ func TestKlingOmniBuildRequestPreservesMultimodalFields(t *testing.T) {
 		require.True(t, strings.Contains(text, expected), "body missing %s: %s", expected, text)
 	}
 }
+
+func TestKlingOmniRejectsInvalidVideoURLs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name      string
+		videoList string
+		wantError bool
+	}{
+		{name: "empty", videoList: `[{"video_url":""}]`, wantError: true},
+		{name: "whitespace", videoList: `[{"video_url":"   "}]`, wantError: true},
+		{name: "relative URL", videoList: `[{"video_url":"/v1/videos/task/content"}]`, wantError: true},
+		{name: "unsupported scheme", videoList: `[{"video_url":"ftp://example.com/ref.mp4"}]`, wantError: true},
+		{name: "more than one", videoList: `[{"video_url":"https://example.com/a.mp4"},{"video_url":"https://example.com/b.mp4"}]`, wantError: true},
+		{name: "public HTTPS URL", videoList: `[{"video_url":"https://example.com/ref.mp4"}]`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := []byte(`{"model":"kling-v3-omni","prompt":"scene","duration":3,"video_list":` + tc.videoList + `}`)
+			req := httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(raw))
+			req.Header.Set("Content-Type", "application/json")
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = req
+			info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+
+			taskErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info)
+			if tc.wantError {
+				require.NotNil(t, taskErr)
+				return
+			}
+			require.Nil(t, taskErr)
+		})
+	}
+}

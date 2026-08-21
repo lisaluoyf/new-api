@@ -99,14 +99,14 @@ func runBillingSummaryOnce() {
 		Select(hourExpr+` as hour_bucket,
 		         model_name,
 		         channel_id,
-		         SUM(accounting_channel_cost_amount_usd) as cost_usd,
-		         SUM(CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE accounting_user_final_amount_usd END) as revenue_usd,
-		         SUM(CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as subscription_cost_usd,
-		         SUM(CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as subscription_billing_usd,
-		         SUM(CASE WHEN other LIKE '%"subscription_type":"gpt_subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
-		         SUM(CASE WHEN other LIKE '%"subscription_type":"gpt_subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
-		         COUNT(*) as request_count`).
-		Where("type = ? AND quota > 0 AND accounting_status = ? AND created_at >= ?", model.LogTypeConsume, "ok", since).
+		         SUM(CASE WHEN accounting_status = 'ok' THEN accounting_channel_cost_amount_usd ELSE 0 END) as cost_usd,
+		         SUM(CASE WHEN accounting_status = 'ok' THEN CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE accounting_user_final_amount_usd END ELSE 0 END) as revenue_usd,
+		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as subscription_cost_usd,
+		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as subscription_billing_usd,
+		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"gpt_subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
+		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"gpt_subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
+		         SUM(CASE WHEN accounting_status = 'ok' THEN 1 ELSE 0 END) as request_count`).
+		Where("type = ? AND quota > 0 AND accounting_status <> '' AND created_at >= ?", model.LogTypeConsume, since).
 		Group(hourExpr + ", model_name, channel_id").
 		Scan(&rows).Error
 	if err != nil {

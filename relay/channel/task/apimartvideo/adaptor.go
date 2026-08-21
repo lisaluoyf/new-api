@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -157,6 +158,21 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 		}
 		if body.Mode != "std" && body.Mode != "pro" && body.Mode != "4k" {
 			return service.TaskErrorWrapperLocal(fmt.Errorf("mode must be std, pro, or 4k"), "invalid_request", http.StatusBadRequest)
+		}
+		if len(body.VideoList) > 1 {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("video_list supports at most one video"), "invalid_request", http.StatusBadRequest)
+		}
+		for _, video := range body.VideoList {
+			videoMap, ok := video.(map[string]interface{})
+			if !ok {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("video_list items must be objects"), "invalid_request", http.StatusBadRequest)
+			}
+			rawVideoURL, ok := videoMap["video_url"].(string)
+			videoURL := strings.TrimSpace(rawVideoURL)
+			parsed, parseErr := url.ParseRequestURI(videoURL)
+			if !ok || videoURL == "" || parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("video_list.video_url must be a valid public HTTP(S) URL"), "invalid_request", http.StatusBadRequest)
+			}
 		}
 	} else if body.Resolution == "" {
 		body.Resolution = "720p"
