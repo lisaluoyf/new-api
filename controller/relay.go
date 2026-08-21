@@ -884,7 +884,8 @@ func evaluateFreeModelRetry(c *gin.Context, openaiErr *types.NewAPIError, retryI
 	// Some OpenAI-compatible providers return an error object with HTTP 200.
 	// It is still an upstream failure and must never become a successful client
 	// response if the free candidate plan is exhausted.
-	if openaiErr.StatusCode >= http.StatusOK && openaiErr.StatusCode < http.StatusMultipleChoices {
+	if (openaiErr.StatusCode >= http.StatusOK && openaiErr.StatusCode < http.StatusMultipleChoices) ||
+		openaiErr.StatusCode == http.StatusNotFound || openaiErr.GetErrorCode() == types.ErrorCodeModelNotFound {
 		openaiErr.StatusCode = http.StatusBadGateway
 	}
 	decision.StatusCode = openaiErr.StatusCode
@@ -909,11 +910,6 @@ func evaluateFreeModelRetry(c *gin.Context, openaiErr *types.NewAPIError, retryI
 	case types.ErrorCode("invalid_json"), types.ErrorCode("invalid_tool_arguments"), types.ErrorCode("empty_response"), types.ErrorCode("missing_required_tool_call"), types.ErrorCode("invalid_finish_reason"), types.ErrorCode("schema_validation_failed"):
 		decision.ShouldRetry = true
 		decision.Reason = "invalid_free_model_response"
-		return decision
-	}
-	if openaiErr.GetErrorCode() == types.ErrorCodeModelNotFound || openaiErr.StatusCode == http.StatusNotFound {
-		decision.ShouldRetry = true
-		decision.Reason = "upstream_route_not_found"
 		return decision
 	}
 	temporaryMarker := strings.ToLower(string(openaiErr.GetErrorCode()) + " " + string(openaiErr.GetErrorType()) + " " + openaiErr.Error())

@@ -55,6 +55,20 @@ func TestEvaluateFreeModelRetryNormalizesErrorObjectSuccessStatus(t *testing.T) 
 	require.Equal(t, http.StatusBadGateway, err.StatusCode)
 }
 
+func TestEvaluateFreeModelRetryNormalizesExhaustedRouteNotFound(t *testing.T) {
+	for _, err := range []*types.NewAPIError{
+		types.NewOpenAIError(errors.New("missing endpoint"), types.ErrorCodeBadResponseStatusCode, http.StatusNotFound),
+		types.NewOpenAIError(errors.New("missing model"), types.ErrorCodeModelNotFound, http.StatusBadRequest),
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		decision := evaluateFreeModelRetry(c, err, 2, 0)
+		require.False(t, decision.ShouldRetry)
+		require.Equal(t, http.StatusBadGateway, decision.StatusCode)
+		require.Equal(t, http.StatusBadGateway, err.StatusCode)
+	}
+}
+
 func TestEvaluateFreeModelRetryStopsAfterStreamStarted(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
