@@ -295,8 +295,27 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	if common2.DebugEnabled {
 		println("fullRequestURL:", fullRequestURL)
 	}
-	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
+	requestContext := c.Request.Context()
+	var timeoutCancel context.CancelFunc
+	var connectTimer *time.Timer
+	if info != nil && service.IsFreeModel(info.OriginModelName) {
+		if candidate, ok := service.FreeModelCandidateForChannel(c, c.GetInt("channel_id")); ok && candidate.TimeoutMS > 0 {
+			if info.IsStream {
+				requestContext, timeoutCancel = context.WithCancel(requestContext)
+				connectTimer = time.AfterFunc(time.Duration(candidate.TimeoutMS)*time.Millisecond, timeoutCancel)
+			} else {
+				requestContext, timeoutCancel = context.WithTimeout(requestContext, time.Duration(candidate.TimeoutMS)*time.Millisecond)
+			}
+		}
+	}
+	req, err := http.NewRequestWithContext(requestContext, c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
+		if connectTimer != nil {
+			connectTimer.Stop()
+		}
+		if timeoutCancel != nil {
+			timeoutCancel()
+		}
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
 	headers := req.Header
@@ -313,9 +332,55 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	applyHeaderOverrideToRequest(req, headerOverride)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
+		if connectTimer != nil {
+			connectTimer.Stop()
+		}
+		if timeoutCancel != nil {
+			timeoutCancel()
+		}
 		return nil, fmt.Errorf("do request failed: %w", err)
 	}
+	if timeoutCancel != nil && resp != nil && resp.Body != nil {
+		resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: timeoutCancel, firstByteTimer: connectTimer}
+	} else if connectTimer != nil {
+		connectTimer.Stop()
+		if timeoutCancel != nil {
+			timeoutCancel()
+		}
+	}
 	return resp, nil
+}
+
+type cancelOnCloseReadCloser struct {
+	io.ReadCloser
+	cancel         context.CancelFunc
+	firstByteTimer *time.Timer
+	firstByteOnce  sync.Once
+}
+
+func (r *cancelOnCloseReadCloser) Read(p []byte) (int, error) {
+	n, err := r.ReadCloser.Read(p)
+	if n > 0 {
+		r.firstByteOnce.Do(func() {
+			if r.firstByteTimer != nil {
+				r.firstByteTimer.Stop()
+			}
+		})
+	}
+	return n, err
+}
+
+func (r *cancelOnCloseReadCloser) Close() error {
+	r.firstByteOnce.Do(func() {
+		if r.firstByteTimer != nil {
+			r.firstByteTimer.Stop()
+		}
+	})
+	err := r.ReadCloser.Close()
+	if r.cancel != nil {
+		r.cancel()
+	}
+	return err
 }
 
 func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {

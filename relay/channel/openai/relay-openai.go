@@ -145,7 +145,12 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
 
-	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		var envelope map[string]any
+		if common.UnmarshalJsonStr(data, &envelope) == nil && envelope["error"] != nil {
+			sr.Stop(fmt.Errorf("upstream returned an error event"))
+			return
+		}
 		if lastStreamData != "" {
 			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
 				common.SysLog("error handling stream format: " + err.Error())
@@ -162,6 +167,21 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			streamItems = append(streamItems, data)
 		}
 	})
+	terminalFrame := false
+	if lastStreamData != "" {
+		var terminal dto.ChatCompletionsStreamResponse
+		if common.UnmarshalJsonStr(lastStreamData, &terminal) == nil {
+			for _, choice := range terminal.Choices {
+				if choice.FinishReason != nil && strings.TrimSpace(*choice.FinishReason) != "" {
+					terminalFrame = true
+					break
+				}
+			}
+		}
+	}
+	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame); streamErr != nil {
+		return nil, streamErr
+	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
@@ -243,8 +263,11 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
-	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
+	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || oaiError.Message != "" || oaiError.Code != nil) {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	}
+	if validationErr := service.ValidateFreeModelOpenAIResponse(c, &simpleResponse); validationErr != nil {
+		return nil, validationErr
 	}
 
 	for _, choice := range simpleResponse.Choices {

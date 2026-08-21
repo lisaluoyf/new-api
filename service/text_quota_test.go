@@ -68,6 +68,22 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	require.Equal(t, 1488, chatSummary.Quota)
 }
 
+func TestApplyFreeModelSettlementAlwaysZerosDirectAndFallbackCharges(t *testing.T) {
+	for _, name := range []string{"first_attempt", "after_fallback"} {
+		t.Run(name, func(t *testing.T) {
+			summary := textQuotaSummary{Quota: 999, WebSearchPrice: 1, ClaudeWebSearchPrice: 2, FileSearchPrice: 3, AudioInputPrice: 4, ImageGenerationCallPrice: 5}
+			tiered := true
+			tieredResult := &billingexpr.TieredResult{}
+			applyFreeModelSettlement(&summary, &tiered, &tieredResult)
+			require.Zero(t, summary.Quota)
+			require.Zero(t, summary.WebSearchPrice)
+			require.Zero(t, summary.FileSearchPrice)
+			require.False(t, tiered)
+			require.Nil(t, tieredResult)
+		})
+	}
+}
+
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

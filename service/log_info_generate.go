@@ -74,6 +74,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 
 	AppendChannelAffinityAdminInfo(ctx, adminInfo)
 	appendOfficialFallbackAdminInfo(ctx, adminInfo)
+	AppendFreeModelRouteAdminInfo(ctx, adminInfo)
 
 	other["admin_info"] = adminInfo
 	appendChannelRetryFallbackInfo(ctx, other, useChannels)

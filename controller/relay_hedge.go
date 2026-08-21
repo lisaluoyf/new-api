@@ -37,6 +37,9 @@ func shouldClientGoneHedge(c *gin.Context, info *relaycommon.RelayInfo, relayFor
 	if c == nil || info == nil || retryIndex != 0 {
 		return model_setting.ClientGoneFallbackPolicy{}, false
 	}
+	if service.IsFreeModel(info.OriginModelName) {
+		return model_setting.ClientGoneFallbackPolicy{}, false
+	}
 	if !info.IsStream || info.IsPlayground || info.IsChannelTest {
 		return model_setting.ClientGoneFallbackPolicy{}, false
 	}

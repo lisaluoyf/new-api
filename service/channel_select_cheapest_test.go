@@ -35,9 +35,9 @@ func TestPricingRefreshDeletionPreservesFreeModelRows(t *testing.T) {
 	require.Equal(t, FreeModelID, rows[0].ModelName)
 }
 
-func TestFreeModelAlwaysUsesAutoCheapest(t *testing.T) {
-	if !usesAutoCheapest("paid-premium-group", FreeModelID) {
-		t.Fatal("FreeModel must use Auto Cheapest independently of the token group")
+func TestFreeModelDoesNotUseAutoCheapest(t *testing.T) {
+	if usesAutoCheapest("paid-premium-group", FreeModelID) {
+		t.Fatal("FreeModel must use its isolated candidate plan")
 	}
 	if usesAutoCheapest("paid-premium-group", "gpt-5.4") {
 		t.Fatal("ordinary models must preserve their existing group routing")

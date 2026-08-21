@@ -808,6 +808,14 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 			// message_start, 获取usage
 			if claudeResponse.Message != nil {
 				info.UpstreamModelName = claudeResponse.Message.Model
+				if service.IsFreeModel(info.OriginModelName) {
+					claudeResponse.Message.Model = info.OriginModelName
+					if encoded, marshalErr := common.Marshal(claudeResponse); marshalErr == nil {
+						data = string(encoded)
+					} else {
+						return types.NewError(marshalErr, types.ErrorCodeBadResponseBody)
+					}
+				}
 			}
 		} else if claudeResponse.Type == "message_delta" {
 			// 确保 message_delta 的 usage 包含完整的 input_tokens 和 cache 相关字段
@@ -880,7 +888,7 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		Usage:        &dto.Usage{},
 	}
 	var err *types.NewAPIError
-	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		err = HandleStreamResponseData(c, info, claudeInfo, data)
 		if err != nil {
 			sr.Stop(err)
@@ -888,6 +896,9 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	})
 	if err != nil {
 		return nil, err
+	}
+	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, claudeInfo.Done); streamErr != nil {
+		return nil, streamErr
 	}
 
 	HandleStreamFinalResponse(c, info, claudeInfo)
@@ -904,6 +915,13 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		return types.WithClaudeError(*claudeError, http.StatusInternalServerError)
 	}
 	maybeMarkClaudeRefusal(c, claudeResponse.StopReason)
+	if service.IsFreeModel(info.OriginModelName) {
+		validationResponse := ResponseClaude2OpenAI(&claudeResponse)
+		if validationErr := service.ValidateFreeModelOpenAIResponse(c, validationResponse); validationErr != nil {
+			return validationErr
+		}
+		claudeResponse.Model = info.OriginModelName
+	}
 	if claudeInfo.Usage == nil {
 		claudeInfo.Usage = &dto.Usage{}
 	}
@@ -923,12 +941,19 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		openaiResponse := ResponseClaude2OpenAI(&claudeResponse)
 		openaiResponse.Model = service.FreeModelResponseName(info.OriginModelName, openaiResponse.Model)
 		openaiResponse.Usage = buildOpenAIStyleUsageFromClaudeUsage(claudeInfo.Usage)
-		responseData, err = json.Marshal(openaiResponse)
+		responseData, err = common.Marshal(openaiResponse)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeBadResponseBody)
 		}
 	case types.RelayFormatClaude:
-		responseData = data
+		if service.IsFreeModel(info.OriginModelName) {
+			responseData, err = common.Marshal(claudeResponse)
+			if err != nil {
+				return types.NewError(err, types.ErrorCodeBadResponseBody)
+			}
+		} else {
+			responseData = data
+		}
 	}
 
 	if claudeResponse.Usage != nil && claudeResponse.Usage.ServerToolUse != nil && claudeResponse.Usage.ServerToolUse.WebSearchRequests > 0 {

@@ -123,18 +123,30 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				recordFailedRequestSnapshot(c, relayInfo, relayFormat, newAPIError)
 			}
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
-			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			if relayInfo != nil && relayInfo.IsStream && c.Writer.Written() {
+				// A normal JSON error would corrupt an already-started SSE response.
+				return
+			}
+			responseError := newAPIError
+			if relayInfo != nil && service.IsFreeModel(relayInfo.OriginModelName) {
+				message := "FreeModel request failed"
+				if newAPIError.StatusCode == http.StatusTooManyRequests || newAPIError.StatusCode >= 500 {
+					message = "FreeModel is temporarily unavailable"
+				}
+				responseError = types.NewOpenAIError(errors.New(message), types.ErrorCode("free_model_upstream_error"), newAPIError.StatusCode)
+			}
+			responseError.SetMessage(common.MessageWithRequestId(responseError.Error(), requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
-				helper.WssError(c, ws, newAPIError.ToOpenAIError())
+				helper.WssError(c, ws, responseError.ToOpenAIError())
 			case types.RelayFormatClaude:
-				c.JSON(newAPIError.StatusCode, gin.H{
+				c.JSON(responseError.StatusCode, gin.H{
 					"type":  "error",
-					"error": newAPIError.ToClaudeError(),
+					"error": responseError.ToClaudeError(),
 				})
 			default:
-				c.JSON(newAPIError.StatusCode, gin.H{
-					"error": newAPIError.ToOpenAIError(),
+				c.JSON(responseError.StatusCode, gin.H{
+					"error": responseError.ToOpenAIError(),
 				})
 			}
 		}
@@ -253,7 +265,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	maxRetries := common.RetryTimes
+	if service.IsFreeModel(relayInfo.OriginModelName) {
+		maxRetries = service.GetFreeModelSettings().MaxAttempts - 1
+	}
+	for ; retryParam.GetRetry() <= maxRetries; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		isFallbackAttempt := relayInfo.ChannelMeta != nil
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
@@ -273,9 +289,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				break
 			}
 		}
+		attemptStartedAt := time.Now()
+		if service.IsFreeModel(relayInfo.OriginModelName) {
+			service.BeginFreeModelAttempt(c, retryParam.GetRetry()+1, attemptStartedAt)
+		}
 
 		addUsedChannel(c, channel.Id)
 		setFingerprintRouteTrace(c, channel.Id)
+		if service.IsFreeModel(relayInfo.OriginModelName) && relayInfo.IsStream {
+			// A keepalive frame would commit the client response before an upstream
+			// model has produced a valid first frame, making safe fallback impossible.
+			relayInfo.DisablePing = true
+		}
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
 			// Ensure consistent 413 for oversized bodies even when error occurs later (e.g., retry path)
@@ -314,6 +339,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				successChannelId = winnerId
 			}
 			service.RecordChannelSuccess(successChannelId)
+			if service.IsFreeModel(relayInfo.OriginModelName) {
+				service.RecordFreeModelSuccess(channel.Id, time.Since(attemptStartedAt))
+				service.MarkFreeModelAttemptSuccessForLog(c)
+			}
 			notifyOfficialFallbackResult(c, relayInfo, nil)
 			service.MaybeEnqueueShadowBenchmark(c, relayInfo, relayFormat, nil)
 			return
@@ -321,8 +350,29 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
+		if relayInfo.IsStream && c.Writer.Written() {
+			writeStartedStreamError(c, relayFormat, newAPIError)
+		}
 
-		retryDecision := evaluateRetry(c, newAPIError, retryParam.GetRetry(), common.RetryTimes-retryParam.GetRetry())
+		remainingRetries := maxRetries - retryParam.GetRetry()
+		retryDecision := evaluateRetry(c, newAPIError, retryParam.GetRetry(), remainingRetries)
+		if service.IsFreeModel(relayInfo.OriginModelName) {
+			retryDecision = evaluateFreeModelRetry(c, newAPIError, retryParam.GetRetry(), remainingRetries)
+			if retryDecision.ShouldRetry && !service.FreeModelPlanHasNext(c) {
+				retryDecision.ShouldRetry = false
+				retryDecision.Reason = "free_model_candidates_exhausted"
+			}
+			candidate, _ := service.FreeModelCandidateForChannel(c, channel.Id)
+			service.RecordFreeModelFailure(channel.Id, newAPIError.StatusCode, retryDecision.ShouldRetry)
+			result := "failed"
+			if retryDecision.ShouldRetry {
+				result = "fallback"
+			}
+			service.AppendFreeModelAttempt(c, service.FreeModelAttempt{Attempt: retryParam.GetRetry() + 1, ChannelID: channel.Id, UpstreamModel: candidate.UpstreamModel, StatusCode: newAPIError.StatusCode, ErrorCode: string(newAPIError.GetErrorCode()), DurationMS: time.Since(attemptStartedAt).Milliseconds(), Result: result})
+			if !retryDecision.ShouldRetry {
+				service.SetFreeModelFinalResult(c, "failed")
+			}
+		}
 		setRetryDecision(c, retryDecision)
 		if c.GetBool("clientgone_hedge_error_accounted") {
 			// clientgone fallback 竞速内部已按真实失败渠道计过账，避免误记到 primary 渠道
@@ -342,11 +392,35 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		logger.LogInfo(c, retryLogStr)
 	}
 	if newAPIError != nil {
+		if service.IsFreeModel(relayInfo.OriginModelName) {
+			service.SetFreeModelFinalResult(c, "failed")
+		}
 		service.MaybeEnqueueShadowBenchmark(c, relayInfo, relayFormat, newAPIError)
 		notifyFinalRelayFailure(c, relayInfo, newAPIError)
 		gopool.Go(func() {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
 		})
+	}
+}
+
+func writeStartedStreamError(c *gin.Context, relayFormat types.RelayFormat, relayErr *types.NewAPIError) {
+	if c == nil || relayErr == nil || c.GetBool("stream_terminal_error_written") {
+		return
+	}
+	c.Set("stream_terminal_error_written", true)
+	code := string(relayErr.GetErrorCode())
+	if service.IsFreeModel(c.GetString("original_model")) {
+		code = "free_model_stream_error"
+	}
+	message := "The stream ended unexpectedly"
+	if relayFormat == types.RelayFormatClaude {
+		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: gin.H{"type": code, "message": message}})
+		return
+	}
+	payload, err := common.Marshal(gin.H{"error": gin.H{"code": code, "message": message, "type": "stream_error"}})
+	if err == nil {
+		c.Render(-1, common.CustomEvent{Data: "event: error\ndata: " + string(payload) + "\n"})
+		_ = helper.FlushWriter(c)
 	}
 }
 
@@ -727,6 +801,10 @@ func evaluateRetry(c *gin.Context, openaiErr *types.NewAPIError, retryIndex int,
 		decision.Reason = "client_canceled"
 		return decision
 	}
+	if c != nil && c.Writer != nil && c.Writer.Written() && common.GetContextKeyBool(c, constant.ContextKeyIsStream) {
+		decision.Reason = "stream_already_started"
+		return decision
+	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		decision.Reason = "channel_affinity_skip_retry"
 		return decision
@@ -792,6 +870,56 @@ func evaluateRetry(c *gin.Context, openaiErr *types.NewAPIError, retryIndex int,
 	}
 	decision.ShouldRetry = true
 	decision.Reason = "default_fallback_all_models"
+	return decision
+}
+
+// evaluateFreeModelRetry is intentionally narrower than the legacy paid-model
+// retry policy. In particular there is no catch-all fallback for 4xx errors.
+func evaluateFreeModelRetry(c *gin.Context, openaiErr *types.NewAPIError, retryIndex int, retryTimes int) retryDecision {
+	decision := retryDecision{RetryIndex: retryIndex, AttemptIndex: retryIndex + 1, RetryTimes: retryTimes}
+	if openaiErr == nil {
+		decision.Reason = "nil_error"
+		return decision
+	}
+	decision.StatusCode = openaiErr.StatusCode
+	decision.ErrorCode = string(openaiErr.GetErrorCode())
+	if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
+		decision.Reason = "client_canceled"
+		return decision
+	}
+	if c != nil && c.Writer != nil && c.Writer.Written() && (common.GetContextKeyBool(c, constant.ContextKeyIsStream) || c.GetBool("stream_terminal_error_written")) {
+		decision.Reason = "stream_already_started"
+		return decision
+	}
+	if retryTimes <= 0 {
+		decision.Reason = "max_attempts_exhausted"
+		return decision
+	}
+	if types.IsSkipRetryError(openaiErr) {
+		decision.Reason = "skip_retry_error"
+		return decision
+	}
+	switch openaiErr.GetErrorCode() {
+	case types.ErrorCode("invalid_json"), types.ErrorCode("invalid_tool_arguments"), types.ErrorCode("empty_response"), types.ErrorCode("missing_required_tool_call"), types.ErrorCode("invalid_finish_reason"):
+		decision.ShouldRetry = true
+		decision.Reason = "invalid_free_model_response"
+		return decision
+	}
+	temporaryMarker := strings.ToLower(string(openaiErr.GetErrorCode()) + " " + string(openaiErr.GetErrorType()) + " " + openaiErr.Error())
+	for _, marker := range []string{"rate_limit", "too_many_requests", "temporarily_unavailable", "temporary_unavailable", "overloaded", "timeout"} {
+		if strings.Contains(temporaryMarker, marker) {
+			decision.ShouldRetry = true
+			decision.Reason = "temporary_upstream_error_code"
+			return decision
+		}
+	}
+	status := openaiErr.StatusCode
+	if status == http.StatusRequestTimeout || status == http.StatusTooManyRequests || status == 524 || status >= 500 || status <= 0 {
+		decision.ShouldRetry = true
+		decision.Reason = "temporary_upstream_failure"
+		return decision
+	}
+	decision.Reason = "non_retryable_client_or_policy_error"
 	return decision
 }
 
@@ -993,6 +1121,15 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		other["channel_id"] = channelId
 		other["channel_name"] = c.GetString("channel_name")
 		other["channel_type"] = c.GetInt("channel_type")
+		if value, exists := c.Get("stream_status"); exists {
+			if status, ok := value.(*relaycommon.StreamStatus); ok && status != nil {
+				streamStatus := map[string]interface{}{"status": "error", "end_reason": string(status.EndReason), "error_count": status.TotalErrorCount(), "summary": status.Summary()}
+				if status.EndError != nil {
+					streamStatus["end_error"] = status.EndError.Error()
+				}
+				other["stream_status"] = streamStatus
+			}
+		}
 		if taskID := c.GetString("image_poll_task_id"); taskID != "" {
 			other["task_id"] = taskID
 		}
@@ -1008,6 +1145,7 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
+		service.AppendFreeModelRouteAdminInfo(c, adminInfo)
 		other["admin_info"] = adminInfo
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {

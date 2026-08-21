@@ -292,6 +292,7 @@ func migrateDB() error {
 
 	err := DB.AutoMigrate(
 		&Channel{},
+		&FreeModelMember{},
 		&ChannelDetectLog{},
 		&ChannelModelPricing{},
 		&PublicModelPrice{},

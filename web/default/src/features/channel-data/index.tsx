@@ -88,6 +88,33 @@ interface ModelDataItem {
   status_reason?: string  // why auto-disabled; empty when status !== 3
   status_time?: number    // unix ts of disable event; 0 if unknown
   base_url?: string
+  free_model_config?: FreeModelMemberConfig
+  free_model_health?: FreeModelHealth
+}
+
+interface FreeModelMemberConfig {
+  channel_id: number
+  enabled: boolean
+  priority: number
+  weight: number
+  capabilities: {
+    text: boolean
+    vision: boolean
+    tools: boolean
+    json_object: boolean
+    json_schema: boolean
+  }
+  max_context_tokens: number
+  timeout_ms: number
+}
+
+interface FreeModelHealth {
+  status: 'healthy' | 'cooldown' | 'circuit_open'
+  cooldown_remaining_ms: number
+  circuit_remaining_ms: number
+  consecutive_failures: number
+  recent_success_rate: number
+  latency_ms: number
 }
 
 interface ProcurementAuditItem {
@@ -596,8 +623,15 @@ export function ChannelDataPage() {
     active_subscription_enabled: true,
     minimum_subscription_price_usd: 20,
     account_requests_per_minute: 10,
+    max_attempts: 3,
+    allow_paid_fallback: false,
   })
   const [freeSettingsOpen, setFreeSettingsOpen] = useState(false)
+  const [freeMemberEdit, setFreeMemberEdit] = useState<{
+    channelName: string
+    config: FreeModelMemberConfig
+  } | null>(null)
+  const [freeMemberSaving, setFreeMemberSaving] = useState(false)
   const [numericEdit, setNumericEdit] = useState<ChannelNumericEdit | null>(null)
   const [numericEditSaving, setNumericEditSaving] = useState(false)
   const isFreeModel = activeModel === 'apimaster-freemodel'
@@ -673,6 +707,14 @@ export function ChannelDataPage() {
           // then disabled by user_price asc, then no-price last.
           // 与公开市场页一致，按用户最终价格排序。
           const sorted = [...raw].sort((a, b) => {
+            if (activeModel === 'apimaster-freemodel') {
+              const aEnabled = a.free_model_config?.enabled !== false
+              const bEnabled = b.free_model_config?.enabled !== false
+              if (aEnabled !== bEnabled) return aEnabled ? -1 : 1
+              const priorityDiff = (b.free_model_config?.priority ?? 100) - (a.free_model_config?.priority ?? 100)
+              if (priorityDiff !== 0) return priorityDiff
+              return (b.free_model_config?.weight ?? 100) - (a.free_model_config?.weight ?? 100)
+            }
             const aOn = a.model_enabled !== false && a.status === 1
             const bOn = b.model_enabled !== false && b.status === 1
             if (aOn !== bOn) return aOn ? -1 : 1
@@ -698,6 +740,25 @@ export function ChannelDataPage() {
   const saveFreeSettings = useCallback(() => {
     api.put('/api/admin/free-model/settings', freeSettings).then(() => setFreeSettingsOpen(false))
   }, [freeSettings])
+
+  const saveFreeMember = useCallback(async () => {
+    if (!freeMemberEdit) return
+    setFreeMemberSaving(true)
+    try {
+      await api.put(
+        `/api/admin/free-model/channels/${freeMemberEdit.config.channel_id}/config`,
+        freeMemberEdit.config,
+      )
+      setData((current) => current.map((item) => (
+        item.channel_id === freeMemberEdit.config.channel_id
+          ? { ...item, free_model_config: freeMemberEdit.config }
+          : item
+      )))
+      setFreeMemberEdit(null)
+    } finally {
+      setFreeMemberSaving(false)
+    }
+  }, [freeMemberEdit])
 
   const openNumericEdit = useCallback((kind: ChannelNumericEdit['kind'], item: ModelDataItem) => {
     const current = item.input_price ?? item.actual_price ?? 0
@@ -1218,7 +1279,7 @@ export function ChannelDataPage() {
                 </th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16'>
                   <div className='flex flex-col items-end leading-tight gap-0.5'>
-                    <span>{isFreeModel ? t('Sort Price') : t('User Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
+                    <span>{isFreeModel ? t('Compat Price') : t('User Price')}</span><span className='normal-case font-normal'>{activePriceUnit}</span>
                   </div>
                 </th>
                 <th className='text-right px-2 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16'>
@@ -1316,7 +1377,15 @@ export function ChannelDataPage() {
                       {isFreeModel ? (
                         <div className='flex flex-col gap-0.5 text-xs'>
                           <span className='font-mono text-gray-700'>{item.upstream_model || '—'}</span>
-                          <span className='text-gray-400'>{t('Mapped upstream model')}</span>
+                          <span className='text-gray-400'>
+                            {t('Mapped upstream model')}
+                            {item.free_model_config && ` · P${item.free_model_config.priority} · W${item.free_model_config.weight}`}
+                          </span>
+                          {item.free_model_health && (
+                            <span className={item.free_model_health.status === 'healthy' ? 'text-emerald-600' : 'text-amber-600'}>
+                              {item.free_model_health.status} · {(item.free_model_health.recent_success_rate * 100).toFixed(1)}% · {item.free_model_health.latency_ms.toFixed(0)} ms
+                            </span>
+                          )}
                         </div>
                       ) : (
                       <ChannelGroups value={item.group} />
@@ -1329,7 +1398,9 @@ export function ChannelDataPage() {
                     <td className={`px-3 py-2.5 text-right text-gray-500 tabular-nums text-xs ${dim}`}>
                       {item.recharge_rate != null ? item.recharge_rate.toFixed(4) : <span className='text-gray-300'>—</span>}
                     </td>
-                    <td className={`px-3 py-2.5 text-right text-gray-500 tabular-nums text-xs ${dim}`}>{item.priority ?? 0}</td>
+                    <td className={`px-3 py-2.5 text-right text-gray-500 tabular-nums text-xs ${dim}`}>
+                      {isFreeModel ? (item.free_model_config?.priority ?? 100) : (item.priority ?? 0)}
+                    </td>
                     <td className={`px-2 py-3.5 text-right text-gray-500 tabular-nums text-xs ${dim}`}>
                       {item.group_ratio != null ? item.group_ratio.toFixed(3) : <span className='text-gray-300'>—</span>}
                     </td>
@@ -1524,6 +1595,14 @@ export function ChannelDataPage() {
                         >
                           {pingingChannels[`${item.channel_id}-${activeModel}`] ? t('Pinging…') : t('Manual Ping')}
                         </button>
+                        {isFreeModel && item.free_model_config && (
+                          <button
+                            onClick={() => setFreeMemberEdit({ channelName: item.channel_name, config: { ...item.free_model_config! } })}
+                            className='text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50 border border-violet-200 rounded-md px-2.5 py-1 transition-colors whitespace-nowrap'
+                          >
+                            {t('Routing Config')}
+                          </button>
+                        )}
                         {isFreeModel && (
                           <button
                             onClick={() => openNumericEdit('route-price', item)}
@@ -1590,7 +1669,7 @@ export function ChannelDataPage() {
                 />
               </label>
               {numericEdit?.kind === 'route-price' && (
-                <p className='text-xs text-gray-500'>{t('Used only for FreeModel channel routing order; users are not charged.')}</p>
+                <p className='text-xs text-gray-500'>{t('Retained for compatibility only; capability, health, priority, and weight now control routing. Users are not charged.')}</p>
               )}
             </div>
             <DialogFooter>
@@ -1625,10 +1704,69 @@ export function ChannelDataPage() {
                 <span>{t('Requests per account per minute')}</span>
                 <Input type='number' min='1' step='1' value={freeSettings.account_requests_per_minute} onChange={(event) => setFreeSettings((current) => ({ ...current, account_requests_per_minute: Number(event.target.value) }))} />
               </label>
+              <label className='space-y-1 text-sm'>
+                <span>{t('Maximum attempts per request')}</span>
+                <Input type='number' min='1' max='20' step='1' value={freeSettings.max_attempts} onChange={(event) => setFreeSettings((current) => ({ ...current, max_attempts: Number(event.target.value) }))} />
+              </label>
+              <div className='rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600'>
+                {t('Routing policy: higher priority first; channels at the same priority are selected by weighted random without replacement. Route Price is retained for compatibility only. Paid fallback is disabled.')}
+              </div>
             </div>
             <DialogFooter>
               <Button variant='outline' onClick={() => setFreeSettingsOpen(false)}>{t('Cancel')}</Button>
               <Button onClick={saveFreeSettings}>{t('Save')}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={!!freeMemberEdit} onOpenChange={(open) => !open && setFreeMemberEdit(null)}>
+          <DialogContent className='max-w-xl'>
+            <DialogHeader><DialogTitle>{t('FreeModel Routing Config')} · {freeMemberEdit?.channelName}</DialogTitle></DialogHeader>
+            {freeMemberEdit && (
+              <div className='space-y-4 py-2'>
+                <label className='flex items-center justify-between text-sm'>
+                  <span>{t('Member enabled')}</span>
+                  <Switch checked={freeMemberEdit.config.enabled} onCheckedChange={(value) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, enabled: value } } : null)} />
+                </label>
+                <div className='grid grid-cols-2 gap-3'>
+                  <label className='space-y-1 text-sm'>
+                    <span>{t('Priority (higher first)')}</span>
+                    <Input type='number' value={freeMemberEdit.config.priority} onChange={(event) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, priority: Number(event.target.value) } } : null)} />
+                  </label>
+                  <label className='space-y-1 text-sm'>
+                    <span>{t('Weight')}</span>
+                    <Input type='number' min='1' value={freeMemberEdit.config.weight} onChange={(event) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, weight: Number(event.target.value) } } : null)} />
+                  </label>
+                  <label className='space-y-1 text-sm'>
+                    <span>{t('Maximum context tokens')}</span>
+                    <Input type='number' min='1' value={freeMemberEdit.config.max_context_tokens} onChange={(event) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, max_context_tokens: Number(event.target.value) } } : null)} />
+                  </label>
+                  <label className='space-y-1 text-sm'>
+                    <span>{t('Timeout (ms)')}</span>
+                    <Input type='number' min='100' value={freeMemberEdit.config.timeout_ms} onChange={(event) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, timeout_ms: Number(event.target.value) } } : null)} />
+                  </label>
+                </div>
+                <div className='grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3'>
+                  {(['text', 'vision', 'tools', 'json_object', 'json_schema'] as const).map((capability) => (
+                    <label key={capability} className='flex items-center justify-between gap-3 text-sm'>
+                      <span>{capability}</span>
+                      <Switch checked={freeMemberEdit.config.capabilities[capability]} onCheckedChange={(value) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, capabilities: { ...current.config.capabilities, [capability]: value } } } : null)} />
+                    </label>
+                  ))}
+                </div>
+                {(() => {
+                  const health = data.find((item) => item.channel_id === freeMemberEdit.config.channel_id)?.free_model_health
+                  if (!health) return null
+                  return (
+                    <div className='rounded-md bg-gray-50 p-3 text-xs text-gray-600'>
+                      {t('Health')}: {health.status} · {t('Success rate')}: {(health.recent_success_rate * 100).toFixed(1)}% · {t('Latency')}: {health.latency_ms.toFixed(0)} ms · {t('Cooldown')}: {Math.ceil(Math.max(health.cooldown_remaining_ms, health.circuit_remaining_ms) / 1000)} s
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant='outline' onClick={() => setFreeMemberEdit(null)}>{t('Cancel')}</Button>
+              <Button onClick={() => void saveFreeMember()} disabled={freeMemberSaving}>{freeMemberSaving ? t('Saving...') : t('Save')}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

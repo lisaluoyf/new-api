@@ -56,37 +56,70 @@ type ModelDataItem struct {
 	ClientExclusive string `json:"client_exclusive"` // "" | codex | claude_code
 	// Pricing fields: nil = no pricing row (upstream 401/404 / cookie-only auth / no endpoint).
 	// Frontend renders nil as "—".
-	ModelPrice                 *float64      `json:"model_price"`                  // 渠道原价/计费基准价 ($/1M); nil = unknown
-	OfficialInputPrice         *float64      `json:"official_input_price"`         // 官方原价 (unified official list price, 系统设置→模型定价); nil = not configured
-	OfficialOutputPrice        *float64      `json:"official_output_price"`        // 官方原价 output side; nil = not configured
-	BasePriceMismatchPct       *float64      `json:"base_price_mismatch_pct"`      // |渠道原价 − 官方原价| / 官方原价 × 100; nil when either side unknown
-	SuggestedGroupRatio        *float64      `json:"suggested_group_ratio"`        // input_price ÷ 官方原价 — gratio that reconciles 渠道原价 to 官方原价
-	GroupRatio                 *float64      `json:"group_ratio"`                  // upstream group multiplier (e.g. 1.05 for CC); nil = unknown
-	RechargeRate               float64       `json:"recharge_rate"`                // platform recharge multiplier
-	InputPrice                 *float64      `json:"input_price"`                  // model_price × group_ratio ($/1M); nil = unknown
-	ActualPrice                *float64      `json:"actual_price"`                 // input_price × recharge_rate (采购价); nil = unknown
-	UserPrice                  *float64      `json:"user_price"`                   // actual_price × apimaster_price_ratio (用户最终价格); nil = unknown
-	ApimasterPriceRatio        float64       `json:"apimaster_price_ratio"`        // per-channel markup multiplier; 1.0 when unset
-	PricingSource              string        `json:"pricing_source"`               // "api" | "manual" | "" (no pricing data)
-	HubPrice                   *float64      `json:"hub_price"`                    // hub.romaapi.com listed input price ($/1M), matched by key_group; nil = no hub data / group mismatch
-	OutputPrice                *float64      `json:"output_price"`                 // raw upstream output price ($/1M); nil = unknown
-	ActualOutputPrice          *float64      `json:"actual_output_price"`          // output_price × recharge_rate (采购价); nil = unknown
-	ActualOutputUserPrice      *float64      `json:"actual_output_user_price"`     // actual_output_price × apimaster_price_ratio (用户最终价格); nil = unknown
-	CachePrice                 *float64      `json:"cache_price"`                  // cache-read price ($/1M); nil = unknown
-	ActualCachePrice           *float64      `json:"actual_cache_price"`           // cache_price × recharge_rate; nil = unknown
-	CacheCreationPrice         *float64      `json:"cache_creation_price"`         // cache-write price ($/1M); nil = unknown
-	ActualCacheCreationPrice   *float64      `json:"actual_cache_creation_price"`  // cache_creation_price × recharge_rate; nil = unknown
-	FingerprintHistory         []DetectPoint `json:"fingerprint_history"`          // last 24 fingerprint runs (newest first)
-	UptimeHistory              []DetectPoint `json:"uptime_history"`               // last 24 uptime probes (newest first)
-	LatencyMedianMs            float64       `json:"latency_median_ms"`            // median latency over last modelDataLatencyMax pass probes; 0 if no samples
-	LatencyP95Ms               float64       `json:"latency_p95_ms"`               // 95th-percentile latency over same pass probes; 0 if no samples
-	LatencyCVPct               float64       `json:"latency_cv_pct"`               // stddev/median ×100 (relative jitter); 0 if <2 samples or median=0
-	Status                     int           `json:"status"`                       // 1 enabled / 2 manual-disabled / 3 auto-disabled (routing algorithm 0.1)
-	ConsecutiveFingerprintPass int           `json:"consecutive_fingerprint_pass"` // recovery counter; only meaningful when status=3
-	ModelEnabled               bool          `json:"model_enabled"`                // abilities.enabled for this (channel, model) — false = disabled for this model only
-	StatusReason               string        `json:"status_reason"`                // why auto-disabled; empty when status != 3
-	StatusTime                 int64         `json:"status_time"`                  // unix ts of disable event; 0 if unknown
-	BaseURL                    string        `json:"base_url"`                     // channel base URL, used for analysis lookup
+	ModelPrice                 *float64                   `json:"model_price"`                  // 渠道原价/计费基准价 ($/1M); nil = unknown
+	OfficialInputPrice         *float64                   `json:"official_input_price"`         // 官方原价 (unified official list price, 系统设置→模型定价); nil = not configured
+	OfficialOutputPrice        *float64                   `json:"official_output_price"`        // 官方原价 output side; nil = not configured
+	BasePriceMismatchPct       *float64                   `json:"base_price_mismatch_pct"`      // |渠道原价 − 官方原价| / 官方原价 × 100; nil when either side unknown
+	SuggestedGroupRatio        *float64                   `json:"suggested_group_ratio"`        // input_price ÷ 官方原价 — gratio that reconciles 渠道原价 to 官方原价
+	GroupRatio                 *float64                   `json:"group_ratio"`                  // upstream group multiplier (e.g. 1.05 for CC); nil = unknown
+	RechargeRate               float64                    `json:"recharge_rate"`                // platform recharge multiplier
+	InputPrice                 *float64                   `json:"input_price"`                  // model_price × group_ratio ($/1M); nil = unknown
+	ActualPrice                *float64                   `json:"actual_price"`                 // input_price × recharge_rate (采购价); nil = unknown
+	UserPrice                  *float64                   `json:"user_price"`                   // actual_price × apimaster_price_ratio (用户最终价格); nil = unknown
+	ApimasterPriceRatio        float64                    `json:"apimaster_price_ratio"`        // per-channel markup multiplier; 1.0 when unset
+	PricingSource              string                     `json:"pricing_source"`               // "api" | "manual" | "" (no pricing data)
+	HubPrice                   *float64                   `json:"hub_price"`                    // hub.romaapi.com listed input price ($/1M), matched by key_group; nil = no hub data / group mismatch
+	OutputPrice                *float64                   `json:"output_price"`                 // raw upstream output price ($/1M); nil = unknown
+	ActualOutputPrice          *float64                   `json:"actual_output_price"`          // output_price × recharge_rate (采购价); nil = unknown
+	ActualOutputUserPrice      *float64                   `json:"actual_output_user_price"`     // actual_output_price × apimaster_price_ratio (用户最终价格); nil = unknown
+	CachePrice                 *float64                   `json:"cache_price"`                  // cache-read price ($/1M); nil = unknown
+	ActualCachePrice           *float64                   `json:"actual_cache_price"`           // cache_price × recharge_rate; nil = unknown
+	CacheCreationPrice         *float64                   `json:"cache_creation_price"`         // cache-write price ($/1M); nil = unknown
+	ActualCacheCreationPrice   *float64                   `json:"actual_cache_creation_price"`  // cache_creation_price × recharge_rate; nil = unknown
+	FingerprintHistory         []DetectPoint              `json:"fingerprint_history"`          // last 24 fingerprint runs (newest first)
+	UptimeHistory              []DetectPoint              `json:"uptime_history"`               // last 24 uptime probes (newest first)
+	LatencyMedianMs            float64                    `json:"latency_median_ms"`            // median latency over last modelDataLatencyMax pass probes; 0 if no samples
+	LatencyP95Ms               float64                    `json:"latency_p95_ms"`               // 95th-percentile latency over same pass probes; 0 if no samples
+	LatencyCVPct               float64                    `json:"latency_cv_pct"`               // stddev/median ×100 (relative jitter); 0 if <2 samples or median=0
+	Status                     int                        `json:"status"`                       // 1 enabled / 2 manual-disabled / 3 auto-disabled (routing algorithm 0.1)
+	ConsecutiveFingerprintPass int                        `json:"consecutive_fingerprint_pass"` // recovery counter; only meaningful when status=3
+	ModelEnabled               bool                       `json:"model_enabled"`                // abilities.enabled for this (channel, model) — false = disabled for this model only
+	StatusReason               string                     `json:"status_reason"`                // why auto-disabled; empty when status != 3
+	StatusTime                 int64                      `json:"status_time"`                  // unix ts of disable event; 0 if unknown
+	BaseURL                    string                     `json:"base_url"`                     // channel base URL, used for analysis lookup
+	FreeModelConfig            *FreeModelMemberConfigView `json:"free_model_config,omitempty"`
+	FreeModelHealth            *FreeModelHealthView       `json:"free_model_health,omitempty"`
+}
+
+type FreeModelHealthView struct {
+	Status              string  `json:"status"`
+	CooldownRemainingMS int64   `json:"cooldown_remaining_ms"`
+	CircuitRemainingMS  int64   `json:"circuit_remaining_ms"`
+	ConsecutiveFailures int     `json:"consecutive_failures"`
+	RecentSuccessRate   float64 `json:"recent_success_rate"`
+	LatencyMS           float64 `json:"latency_ms"`
+}
+
+type FreeModelCapabilitiesView struct {
+	Text       bool `json:"text"`
+	Vision     bool `json:"vision"`
+	Tools      bool `json:"tools"`
+	JSONObject bool `json:"json_object"`
+	JSONSchema bool `json:"json_schema"`
+}
+
+type FreeModelMemberConfigView struct {
+	ChannelID        int                       `json:"channel_id"`
+	Enabled          bool                      `json:"enabled"`
+	Priority         int64                     `json:"priority"`
+	Weight           uint                      `json:"weight"`
+	Capabilities     FreeModelCapabilitiesView `json:"capabilities"`
+	MaxContextTokens int                       `json:"max_context_tokens"`
+	TimeoutMS        int                       `json:"timeout_ms"`
+}
+
+func freeModelMemberConfigView(member model.FreeModelMember) FreeModelMemberConfigView {
+	return FreeModelMemberConfigView{ChannelID: member.ChannelID, Enabled: member.Enabled, Priority: member.Priority, Weight: member.Weight, Capabilities: FreeModelCapabilitiesView{Text: member.Text, Vision: member.Vision, Tools: member.Tools, JSONObject: member.JSONObject, JSONSchema: member.JSONSchema}, MaxContextTokens: member.MaxContextTokens, TimeoutMS: member.TimeoutMS}
 }
 
 const (
@@ -179,6 +212,52 @@ func SaveFreeModelRoutePrice(c *gin.Context) {
 	}
 	service.InvalidateChannelRoutingCache()
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": row})
+}
+
+func SaveFreeModelMember(c *gin.Context) {
+	channelID, err := strconv.Atoi(c.Param("channel_id"))
+	if err != nil || channelID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid channel_id"})
+		return
+	}
+	var req FreeModelMemberConfigView
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	channel, err := model.GetChannelById(channelID, true)
+	if err != nil || channel == nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "channel not found"})
+		return
+	}
+	if !common.StringsContains(channel.GetModels(), service.FreeModelID) || service.ModelMappingTarget(channel.ModelMapping, service.FreeModelID) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "channel is not a mapped FreeModel member"})
+		return
+	}
+	if req.Weight == 0 || req.Weight > 1000000 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "weight must be between 1 and 1000000"})
+		return
+	}
+	if req.Priority < -1000000 || req.Priority > 1000000 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "priority is out of range"})
+		return
+	}
+	if req.MaxContextTokens <= 0 || req.MaxContextTokens > 10000000 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "max_context_tokens is out of range"})
+		return
+	}
+	if req.TimeoutMS < 100 || req.TimeoutMS > 600000 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "timeout_ms must be between 100 and 600000"})
+		return
+	}
+	member := model.FreeModelMember{ChannelID: channelID, Enabled: req.Enabled, Priority: req.Priority, Weight: req.Weight, Text: req.Capabilities.Text, Vision: req.Capabilities.Vision, Tools: req.Capabilities.Tools, JSONObject: req.Capabilities.JSONObject, JSONSchema: req.Capabilities.JSONSchema, MaxContextTokens: req.MaxContextTokens, TimeoutMS: req.TimeoutMS}
+	if err := model.UpsertFreeModelMember(member); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	service.InvalidateChannelRoutingCache()
+	stored, _, _ := model.GetFreeModelMember(channelID)
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": freeModelMemberConfigView(stored)})
 }
 
 func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, bool, float64, float64) {
@@ -496,6 +575,24 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		upstreamModel := service.ModelMappingTarget(r.ModelMapping, modelName)
 
 		statusReason, statusTime, recoveryPassCount := modelDataStatusMetadata(r.Status, r.ModelEnabled, r.OtherInfo, modelName, r.ConsecutiveFingerprintPass)
+		var freeConfig *FreeModelMemberConfigView
+		var freeHealth *FreeModelHealthView
+		if service.IsFreeModel(modelName) {
+			cfg, _, cfgErr := model.GetFreeModelMember(r.ChannelID)
+			if cfgErr == nil {
+				view := freeModelMemberConfigView(cfg)
+				freeConfig = &view
+			}
+			health := service.GetFreeModelHealth(r.ChannelID)
+			nowMS := time.Now().UnixMilli()
+			status := "healthy"
+			if health.CircuitOpenUntil > nowMS {
+				status = "circuit_open"
+			} else if health.CooldownUntil > nowMS {
+				status = "cooldown"
+			}
+			freeHealth = &FreeModelHealthView{Status: status, CooldownRemainingMS: max(int64(0), health.CooldownUntil-nowMS), CircuitRemainingMS: max(int64(0), health.CircuitOpenUntil-nowMS), ConsecutiveFailures: health.ConsecutiveFailure, RecentSuccessRate: health.SuccessRate(), LatencyMS: health.EWLatencyMS}
+		}
 
 		items = append(items, ModelDataItem{
 			ChannelID:     r.ChannelID,
@@ -546,6 +643,8 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 				}
 				return ""
 			}(),
+			FreeModelConfig: freeConfig,
+			FreeModelHealth: freeHealth,
 		})
 	}
 
