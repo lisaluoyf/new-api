@@ -130,7 +130,7 @@ func VideoProxy(c *gin.Context) {
 	fetchSetting := system_setting.GetFetchSetting()
 	if err := common.ValidateURLWithFetchSetting(videoURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Video URL blocked for task %s: %v", taskID, err))
-		videoProxyError(c, http.StatusForbidden, "server_error", fmt.Sprintf("request blocked: %v", err))
+		videoProxyError(c, http.StatusForbidden, "server_error", "Video source is unavailable")
 		return
 	}
 
@@ -156,21 +156,32 @@ func VideoProxy(c *gin.Context) {
 				"Video has expired or been removed from upstream storage")
 			return
 		}
-		videoProxyError(c, http.StatusBadGateway, "server_error",
-			fmt.Sprintf("Upstream service returned status %d", resp.StatusCode))
+		videoProxyError(c, http.StatusBadGateway, "server_error", "Video source is unavailable")
 		return
 	}
 
-	for key, values := range resp.Header {
-		for _, value := range values {
-			c.Writer.Header().Add(key, value)
-		}
-	}
+	copySafeVideoHeaders(c.Writer.Header(), resp.Header)
 
 	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
 	c.Writer.WriteHeader(resp.StatusCode)
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))
+	}
+}
+
+var safeVideoResponseHeaders = []string{
+	"Content-Type",
+	"Content-Length",
+	"Accept-Ranges",
+	"ETag",
+	"Last-Modified",
+}
+
+func copySafeVideoHeaders(dst, src http.Header) {
+	for _, key := range safeVideoResponseHeaders {
+		if value := src.Get(key); value != "" {
+			dst.Set(key, value)
+		}
 	}
 }
 

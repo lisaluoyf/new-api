@@ -67,14 +67,21 @@ const AccountingStatusRefunded = "refunded"
 
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
+		logs[i].ChannelId = 0
 		logs[i].ChannelName = ""
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
 		if otherMap != nil {
-			// Remove admin-only debug fields.
+			// Remove provider routing, cost and admin-only diagnostics.
+			for key := range otherMap {
+				if strings.HasPrefix(key, "upstream_") || strings.HasPrefix(key, "channel_") {
+					delete(otherMap, key)
+				}
+			}
 			delete(otherMap, "admin_info")
-			// delete(otherMap, "reject_reason")
 			delete(otherMap, "stream_status")
+			delete(otherMap, "base_model_price")
+			delete(otherMap, "is_model_mapped")
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 		logs[i].Id = startIdx + i + 1

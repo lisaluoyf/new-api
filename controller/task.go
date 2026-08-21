@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 
@@ -62,8 +63,58 @@ func GetUserTask(c *gin.Context) {
 	items := model.TaskGetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllUserTask(userId, queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, false))
+	pageInfo.SetItems(tasksToUserDto(items))
 	common.ApiSuccess(c, pageInfo)
+}
+
+func tasksToUserDto(tasks []*model.Task) []*dto.UserTaskDto {
+	result := make([]*dto.UserTaskDto, len(tasks))
+	for i, task := range tasks {
+		failReason := ""
+		if task.Status == model.TaskStatusFailure {
+			failReason = "Task failed"
+		}
+		resultURL := task.GetResultURL()
+		platform := string(task.Platform)
+		if task.Platform == constant.TaskPlatformApimartVideo {
+			platform = "video"
+		}
+		if isVideoTaskAction(task.Action) && task.Status == model.TaskStatusSuccess && resultURL != "" {
+			resultURL = taskcommon.BuildProxyURL(task.TaskID)
+		} else if task.Status != model.TaskStatusSuccess {
+			resultURL = ""
+		}
+		result[i] = &dto.UserTaskDto{
+			ID:         task.ID,
+			CreatedAt:  task.CreatedAt,
+			UpdatedAt:  task.UpdatedAt,
+			TaskID:     task.TaskID,
+			Platform:   platform,
+			Model:      task.Properties.OriginModelName,
+			Action:     task.Action,
+			Status:     string(task.Status),
+			FailReason: failReason,
+			ResultURL:  resultURL,
+			SubmitTime: task.SubmitTime,
+			StartTime:  task.StartTime,
+			FinishTime: task.FinishTime,
+			Progress:   task.Progress,
+		}
+	}
+	return result
+}
+
+func isVideoTaskAction(action string) bool {
+	switch action {
+	case constant.TaskActionGenerate,
+		constant.TaskActionTextGenerate,
+		constant.TaskActionFirstTailGenerate,
+		constant.TaskActionReferenceGenerate,
+		constant.TaskActionRemix:
+		return true
+	default:
+		return false
+	}
 }
 
 func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {

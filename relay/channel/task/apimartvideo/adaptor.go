@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -517,7 +518,8 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 
 	var env submitEnvelope
 	if err := common.Unmarshal(responseBody, &env); err != nil {
-		taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("APIMart video returned an invalid response: %.2048s", string(responseBody)))
+		taskErr = service.TaskErrorWrapper(errors.New("video service returned an invalid response"), "invalid_response", http.StatusBadGateway)
 		return
 	}
 	if env.Code != 0 && env.Code != http.StatusOK {
@@ -525,7 +527,8 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		if env.Error != nil && env.Error.Message != "" {
 			msg = env.Error.Message
 		}
-		taskErr = service.TaskErrorWrapper(errors.New(msg), "upstream_error", http.StatusBadGateway)
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("APIMart video rejected task submission: %s", msg))
+		taskErr = service.TaskErrorWrapper(errors.New("video service rejected the request"), "upstream_error", http.StatusBadGateway)
 		return
 	}
 	if len(env.Data) == 0 || strings.TrimSpace(env.Data[0].TaskID) == "" {
@@ -555,7 +558,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	c.JSON(http.StatusOK, openAIResp{
 		ID:     info.PublicTaskID,
 		Object: "video",
-		Model:  info.UpstreamModelName,
+		Model:  info.OriginModelName,
 		Status: "queued",
 	})
 	taskData = responseBody
@@ -641,23 +644,6 @@ func extractVideoURL(env *taskEnvelope) string {
 	return ""
 }
 
-func failureMessageFromTask(task *model.Task) string {
-	if msg := strings.TrimSpace(task.FailReason); msg != "" {
-		return msg
-	}
-	var env taskEnvelope
-	if err := common.Unmarshal(task.Data, &env); err != nil {
-		return ""
-	}
-	if env.Data.Error != nil && strings.TrimSpace(env.Data.Error.Message) != "" {
-		return strings.TrimSpace(env.Data.Error.Message)
-	}
-	if env.Error != nil && strings.TrimSpace(env.Error.Message) != "" {
-		return strings.TrimSpace(env.Error.Message)
-	}
-	return ""
-}
-
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	out := map[string]any{
 		"id":     task.TaskID,
@@ -669,14 +655,12 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 		out["progress"] = task.Progress
 	}
 	if task.Status == model.TaskStatusSuccess {
-		out["url"] = task.GetResultURL()
+		out["url"] = taskcommon.BuildProxyURL(task.TaskID)
 	}
 	if task.Status == model.TaskStatusFailure {
-		if msg := failureMessageFromTask(task); msg != "" {
-			out["error"] = map[string]string{
-				"code":    "task_failed",
-				"message": msg,
-			}
+		out["error"] = map[string]string{
+			"code":    "task_failed",
+			"message": "Video generation failed",
 		}
 	}
 	return common.Marshal(out)

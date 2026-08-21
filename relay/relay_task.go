@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -223,7 +224,8 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	if resp != nil && resp.StatusCode != http.StatusOK {
 		responseBody, _ := io.ReadAll(resp.Body)
-		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("task upstream request failed with status %d: %.2048s", resp.StatusCode, string(responseBody)))
+		return nil, service.TaskErrorWrapper(errors.New("video service request failed"), "upstream_error", resp.StatusCode)
 	}
 
 	// 10. 返回 OtherRatios 给下游（header 必须在 DoResponse 写 body 之前设置）
@@ -404,14 +406,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	// 通用 TaskDto 格式
-	respBody, err = common.Marshal(dto.TaskResponse[any]{
-		Code: "success",
-		Data: TaskModel2Dto(originTask),
-	})
-	if err != nil {
-		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
-	}
+	respBody = buildSafeVideoTaskResponse(originTask, nil)
 	return
 }
 
@@ -524,15 +519,30 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		return nil
 	}
 
-	// 非 OpenAI Video API: 构建自定义格式响应
-	format := detectVideoFormat(body)
+	return buildSafeVideoTaskResponse(task, body)
+}
+
+// buildSafeVideoTaskResponse returns the stable compatibility response without
+// serializing provider payloads, identifiers, URLs, routing or billing data.
+func buildSafeVideoTaskResponse(task *model.Task, rawBody []byte) []byte {
+	format := detectVideoFormat(rawBody)
+	resultURL := ""
+	if task.Status == model.TaskStatusSuccess && task.GetResultURL() != "" {
+		resultURL = taskcommon.BuildProxyURL(task.TaskID)
+	}
 	out := map[string]any{
 		"error":    nil,
 		"format":   format,
 		"metadata": nil,
 		"status":   mapTaskStatusToSimple(task.Status),
 		"task_id":  task.TaskID,
-		"url":      task.GetResultURL(),
+		"url":      resultURL,
+	}
+	if task.Status == model.TaskStatusFailure {
+		out["error"] = map[string]string{
+			"code":    "task_failed",
+			"message": "Video generation failed",
+		}
 	}
 	respBody, _ := common.Marshal(dto.TaskResponse[any]{
 		Code: "success",

@@ -33,6 +33,53 @@ func TestParseTaskResultCompleted(t *testing.T) {
 	require.Equal(t, "https://upload.apib.ai/f/demo.mp4", info.Url)
 }
 
+func TestConvertToOpenAIVideoHidesProviderFailure(t *testing.T) {
+	task := &model.Task{
+		TaskID:     "task_public",
+		Status:     model.TaskStatusFailure,
+		FailReason: "The video width should not be less than 700px",
+		Data:       []byte(`{"error":{"message":"provider rejected width"}}`),
+	}
+	body, err := (&TaskAdaptor{}).ConvertToOpenAIVideo(task)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "Video generation failed")
+	require.NotContains(t, string(body), "700px")
+	require.NotContains(t, string(body), "provider rejected")
+}
+
+func TestConvertToOpenAIVideoProxiesProviderResult(t *testing.T) {
+	task := &model.Task{
+		TaskID: "task_public",
+		Status: model.TaskStatusSuccess,
+		PrivateData: model.TaskPrivateData{
+			ResultURL: "https://upload.apib.ai/provider-task.mp4",
+		},
+	}
+	body, err := (&TaskAdaptor{}).ConvertToOpenAIVideo(task)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "/v1/videos/task_public/content")
+	require.NotContains(t, string(body), "apib.ai")
+	require.NotContains(t, string(body), "provider-task")
+}
+
+func TestDoResponseHidesProviderSubmissionError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(`{
+			"code":422,
+			"error":{"message":"provider-specific validation details"}
+		}`)),
+	}
+
+	_, _, taskErr := (&TaskAdaptor{}).DoResponse(c, resp, &relaycommon.RelayInfo{})
+	require.NotNil(t, taskErr)
+	require.Equal(t, "video service rejected the request", taskErr.Message)
+	require.NotContains(t, taskErr.Message, "provider-specific")
+}
+
 func TestNormalizeModel(t *testing.T) {
 	require.Equal(t, "sora-2", normalizeModel("sora"))
 	require.True(t, IsVideoModel("sora"))
