@@ -28,6 +28,10 @@ type ModelRequest struct {
 	Group string `json:"group,omitempty"`
 }
 
+func isSupportedFreeModelPath(path string) bool {
+	return path == "/v1/chat/completions" || path == "/v1/responses" || path == "/v1/messages"
+}
+
 // normalizeDistributorUsingGroup returns the token/user routing group, falling back to
 // "default" when the context holds a stale or pricing-only label (e.g. key_group "image").
 func normalizeDistributorUsingGroup(c *gin.Context) string {
@@ -63,8 +67,8 @@ func Distribute() func(c *gin.Context) {
 		}
 		if service.IsFreeModel(modelRequest.Model) {
 			modelRequest.Model = service.FreeModelID
-			if c.Request.URL.Path != "/v1/chat/completions" {
-				abortWithOpenAiMessage(c, http.StatusBadRequest, "apimaster-freemodel is only available on /v1/chat/completions")
+			if !isSupportedFreeModelPath(c.Request.URL.Path) {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, "apimaster-freemodel is only available on /v1/chat/completions, /v1/responses, and /v1/messages")
 				return
 			}
 			if ok, source, eligibilityErr := service.FreeModelEligibility(c.GetInt("id")); eligibilityErr != nil {

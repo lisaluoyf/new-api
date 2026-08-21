@@ -45,12 +45,30 @@ func TestFreeModelRejectsUnsupportedEndpointBeforeCounting(t *testing.T) {
 	freeModelMemoryLimiter.Unlock()
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"`+service.FreeModelID+`"}`))
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/embeddings", strings.NewReader(`{"model":"`+service.FreeModelID+`"}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 	Distribute()(ctx)
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "/v1/chat/completions")
+	require.Contains(t, recorder.Body.String(), "/v1/messages")
 	freeModelMemoryLimiter.Lock()
 	require.Empty(t, freeModelMemoryLimiter.buckets)
 	freeModelMemoryLimiter.Unlock()
+}
+
+func TestSupportedFreeModelPaths(t *testing.T) {
+	testCases := []struct {
+		path    string
+		allowed bool
+	}{
+		{path: "/v1/chat/completions", allowed: true},
+		{path: "/v1/responses", allowed: true},
+		{path: "/v1/messages", allowed: true},
+		{path: "/v1/embeddings", allowed: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.path, func(t *testing.T) {
+			require.Equal(t, tc.allowed, isSupportedFreeModelPath(tc.path))
+		})
+	}
 }
