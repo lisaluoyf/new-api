@@ -46,6 +46,29 @@ func TestEnrichVideoRequestDataFromStoredPayload(t *testing.T) {
 	require.NotContains(t, data, "size")
 }
 
+func TestBuildKlingOmniRequestDataForLog(t *testing.T) {
+	t.Parallel()
+
+	req := &relaycommon.TaskSubmitReq{
+		Model:    "kling-v3-omni",
+		Prompt:   "cinematic scene",
+		Duration: 6,
+		Metadata: map[string]interface{}{
+			"mode":         "pro",
+			"aspect_ratio": "9:16",
+			"audio":        true,
+			"has_video":    true,
+		},
+	}
+	data := BuildVideoRequestDataForLog(req)
+	require.Equal(t, "pro", data["mode"])
+	require.Equal(t, "9:16", data["aspect_ratio"])
+	require.Equal(t, "1080p", data["resolution"])
+	require.Equal(t, "1080P", data["effective_resolution"])
+	require.Equal(t, true, data["audio"])
+	require.Equal(t, true, data["has_video"])
+}
+
 func TestVideoResolutionFromSizeRatio(t *testing.T) {
 	t.Parallel()
 

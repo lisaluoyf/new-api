@@ -30,6 +30,8 @@ export class MediaLoadError extends Error {
 export interface LoadedMediaUrl {
   url: string
   revoke: boolean
+  contentType?: string
+  sizeBytes?: number
 }
 
 function isDirectMediaUrl(url: string): boolean {
@@ -43,10 +45,7 @@ function isDirectMediaUrl(url: string): boolean {
 
 function isProxiedMediaUrl(url: string): boolean {
   const trimmed = url.trim()
-  if (
-    trimmed.startsWith('/v1/videos/') ||
-    trimmed.startsWith('/v1/images/')
-  ) {
+  if (trimmed.startsWith('/v1/videos/') || trimmed.startsWith('/v1/images/')) {
     return true
   }
   try {
@@ -97,5 +96,10 @@ export async function loadAuthenticatedMediaUrl(
   }
 
   const blob = await res.blob()
-  return { url: URL.createObjectURL(blob), revoke: true }
+  return {
+    url: URL.createObjectURL(blob),
+    revoke: true,
+    contentType: blob.type || contentType,
+    sizeBytes: blob.size,
+  }
 }

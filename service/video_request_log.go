@@ -41,6 +41,8 @@ func BuildVideoRequestDataForLog(req *relaycommon.TaskSubmitReq) map[string]inte
 
 	if modelName := strings.TrimSpace(req.Model); modelName == "kling-v3-motion-control" {
 		appendKlingMotionRequestData(data, req)
+	} else if strings.EqualFold(modelName, "kling-v3-omni") {
+		appendKlingOmniRequestData(data, req)
 	}
 
 	size := normalizedVideoSize(req.Size)
@@ -64,6 +66,39 @@ func BuildVideoRequestDataForLog(req *relaycommon.TaskSubmitReq) map[string]inte
 		return nil
 	}
 	return EnrichVideoRequestData(data)
+}
+
+func appendKlingOmniRequestData(data map[string]interface{}, req *relaycommon.TaskSubmitReq) {
+	if req == nil {
+		return
+	}
+	mode := "std"
+	if req.Metadata != nil {
+		if v, ok := req.Metadata["mode"].(string); ok && strings.TrimSpace(v) != "" {
+			mode = strings.ToLower(strings.TrimSpace(v))
+		}
+		if v, ok := req.Metadata["aspect_ratio"].(string); ok && strings.TrimSpace(v) != "" {
+			data["aspect_ratio"] = strings.TrimSpace(v)
+		}
+		if v, ok := req.Metadata["audio"].(bool); ok {
+			data["audio"] = v
+		}
+		if v, ok := req.Metadata["has_video"].(bool); ok {
+			data["has_video"] = v
+		}
+	}
+	data["mode"] = mode
+	switch mode {
+	case "pro":
+		data["resolution"] = "1080p"
+		data["effective_resolution"] = "1080P"
+	case "4k":
+		data["resolution"] = "4k"
+		data["effective_resolution"] = "4K"
+	default:
+		data["resolution"] = "720p"
+		data["effective_resolution"] = "720P"
+	}
 }
 
 // EnrichVideoRequestData fills derived video preview fields on stored or backfilled rows.

@@ -19,22 +19,25 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { CopyButton } from '@/components/copy-button'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { cn } from '@/lib/utils'
+import { CopyButton } from '@/components/copy-button'
 
 const META_FIELDS: Array<{ key: string; labelKey: string }> = [
   { key: 'model', labelKey: 'Model' },
   { key: 'quality', labelKey: 'Quality' },
+  { key: 'mode', labelKey: 'Mode' },
   { key: 'duration', labelKey: 'Duration (seconds)' },
   { key: 'aspect_ratio', labelKey: 'Aspect ratio' },
   { key: 'resolution', labelKey: 'Resolution' },
   { key: 'effective_resolution', labelKey: 'Effective resolution' },
+  { key: 'audio', labelKey: 'Audio' },
+  { key: 'has_video', labelKey: 'Video' },
   { key: 'n', labelKey: 'Count' },
   { key: 'actual_image_count', labelKey: 'Image count' },
 ]
@@ -55,7 +58,8 @@ function formatSummaryValue(value: unknown): string | null {
       (item): item is string =>
         typeof item === 'string' && /^https?:\/\//.test(item)
     )
-    if (urls.length > 0) return `${urls.length} URL${urls.length > 1 ? 's' : ''}`
+    if (urls.length > 0)
+      return `${urls.length} URL${urls.length > 1 ? 's' : ''}`
     return JSON.stringify(value)
   }
   return JSON.stringify(value)
@@ -110,7 +114,9 @@ export function RequestDataPanel({
             open && 'rotate-180'
           )}
         />
-        <span className='shrink-0 text-sm font-medium'>{t('Request Data')}</span>
+        <span className='shrink-0 text-sm font-medium'>
+          {t('Request Data')}
+        </span>
         {!open && previewLine ? (
           <span className='text-muted-foreground min-w-0 flex-1 truncate text-xs'>
             {previewLine}
@@ -168,7 +174,7 @@ export function RequestDataPanel({
                 className='absolute top-1.5 right-1.5 z-10'
                 tooltip={t('Copy to clipboard')}
               />
-              <pre className='bg-muted max-h-32 overflow-auto rounded-md p-3 pr-10 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words'>
+              <pre className='bg-muted max-h-32 overflow-auto rounded-md p-3 pr-10 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap'>
                 {rawJson}
               </pre>
             </div>
