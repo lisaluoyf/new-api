@@ -8,20 +8,29 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
+type FreeModelEndpoint string
+
+const (
+	FreeModelEndpointChatCompletions FreeModelEndpoint = "chat_completions"
+	FreeModelEndpointResponses       FreeModelEndpoint = "responses"
+	FreeModelEndpointMessages        FreeModelEndpoint = "messages"
+)
+
 type FreeModelRequirements struct {
-	Text             bool           `json:"text"`
-	Vision           bool           `json:"vision"`
-	Tools            bool           `json:"tools"`
-	JSONObject       bool           `json:"json_object"`
-	JSONSchema       bool           `json:"json_schema"`
-	RequiredToolCall bool           `json:"required_tool_call"`
-	EstimatedInput   int            `json:"estimated_input_tokens"`
-	RequestedOutput  int            `json:"requested_output_tokens"`
-	Schema           map[string]any `json:"-"`
+	Endpoint         FreeModelEndpoint `json:"endpoint"`
+	Text             bool              `json:"text"`
+	Vision           bool              `json:"vision"`
+	Tools            bool              `json:"tools"`
+	JSONObject       bool              `json:"json_object"`
+	JSONSchema       bool              `json:"json_schema"`
+	RequiredToolCall bool              `json:"required_tool_call"`
+	EstimatedInput   int               `json:"estimated_input_tokens"`
+	RequestedOutput  int               `json:"requested_output_tokens"`
+	Schema           map[string]any    `json:"-"`
 }
 
 func (r FreeModelRequirements) Names() []string {
-	names := []string{"text"}
+	names := []string{"text", "endpoint:" + string(r.Endpoint)}
 	if r.Vision {
 		names = append(names, "vision")
 	}
@@ -44,7 +53,7 @@ func (r FreeModelRequirements) TotalContextTokens() int {
 // ParseFreeModelRequirements parses only routing-relevant fields. It never
 // stores the request body in the route trace.
 func ParseFreeModelRequirements(path string, body []byte) (FreeModelRequirements, error) {
-	req := FreeModelRequirements{Text: true}
+	req := FreeModelRequirements{Text: true, Endpoint: freeModelEndpointForPath(path)}
 	var root map[string]any
 	if err := common.Unmarshal(body, &root); err != nil {
 		return req, fmt.Errorf("invalid JSON request: %w", err)
@@ -111,6 +120,17 @@ func ParseFreeModelRequirements(path string, body []byte) (FreeModelRequirements
 	}
 	req.EstimatedInput = CountTextToken(string(encoded), "gpt-4o")
 	return req, nil
+}
+
+func freeModelEndpointForPath(path string) FreeModelEndpoint {
+	switch {
+	case strings.HasSuffix(path, "/responses"):
+		return FreeModelEndpointResponses
+	case strings.HasSuffix(path, "/messages"):
+		return FreeModelEndpointMessages
+	default:
+		return FreeModelEndpointChatCompletions
+	}
 }
 
 // Image bytes are not language-model text tokens. Keeping a short marker still

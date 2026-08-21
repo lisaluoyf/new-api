@@ -103,7 +103,7 @@ func TestSaveFreeModelMemberConfigPersistsCapabilities(t *testing.T) {
 	mapping := `{"apimaster-freemodel":"provider/free"}`
 	channel := model.Channel{Name: "free", Key: "secret", Models: service.FreeModelID, ModelMapping: &mapping, Status: common.ChannelStatusEnabled}
 	require.NoError(t, db.Create(&channel).Error)
-	body := `{"enabled":false,"priority":0,"weight":25,"capabilities":{"text":true,"vision":true,"tools":false,"json_object":true,"json_schema":false},"max_context_tokens":65536,"timeout_ms":12000}`
+	body := `{"enabled":false,"priority":0,"weight":25,"capabilities":{"text":true,"vision":true,"tools":false,"required_tool_call":false,"json_object":true,"json_schema":false},"endpoints":{"chat_completions":true,"responses":false,"messages":true},"max_context_tokens":65536,"timeout_ms":12000}`
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPut, "/api/admin/free-model/channels/1/config", strings.NewReader(body))
@@ -118,4 +118,8 @@ func TestSaveFreeModelMemberConfigPersistsCapabilities(t *testing.T) {
 	require.Equal(t, uint(25), stored.Weight)
 	require.True(t, stored.Vision)
 	require.False(t, stored.Tools)
+	require.False(t, stored.SupportsRequiredToolCall())
+	require.True(t, stored.SupportsChatCompletions())
+	require.False(t, stored.SupportsResponses())
+	require.True(t, stored.SupportsMessages())
 }

@@ -101,8 +101,14 @@ interface FreeModelMemberConfig {
     text: boolean
     vision: boolean
     tools: boolean
+    required_tool_call: boolean
     json_object: boolean
     json_schema: boolean
+  }
+  endpoints: {
+    chat_completions: boolean
+    responses: boolean
+    messages: boolean
   }
   max_context_tokens: number
   timeout_ms: number
@@ -1751,10 +1757,23 @@ export function ChannelDataPage() {
                   </label>
                 </div>
                 <div className='grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3'>
-                  {(['text', 'vision', 'tools', 'json_object', 'json_schema'] as const).map((capability) => (
+                  {(['text', 'vision', 'tools', 'required_tool_call', 'json_object', 'json_schema'] as const).map((capability) => (
                     <label key={capability} className='flex items-center justify-between gap-3 text-sm'>
                       <span>{capability}</span>
                       <Switch checked={freeMemberEdit.config.capabilities[capability]} onCheckedChange={(value) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, capabilities: { ...current.config.capabilities, [capability]: value } } } : null)} />
+                    </label>
+                  ))}
+                </div>
+                <div className='space-y-2 rounded-md border border-gray-200 p-3'>
+                  <div className='text-xs font-semibold text-gray-500'>{t('Endpoints')}</div>
+                  {([
+                    ['chat_completions', 'Chat Completions'],
+                    ['responses', 'Responses API'],
+                    ['messages', 'Messages API'],
+                  ] as const).map(([endpoint, label]) => (
+                    <label key={endpoint} className='flex items-center justify-between gap-3 text-sm'>
+                      <span>{label}</span>
+                      <Switch checked={freeMemberEdit.config.endpoints[endpoint]} onCheckedChange={(value) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, endpoints: { ...current.config.endpoints, [endpoint]: value } } } : null)} />
                     </label>
                   ))}
                 </div>

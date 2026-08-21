@@ -101,14 +101,6 @@ func BuildFreeModelCandidatePlan(requirements FreeModelRequirements, rng FreeMod
 			plan.Filtered = append(plan.Filtered, FreeModelFilteredCandidate{ChannelID: channel.Id, Reasons: []string{"missing_model_mapping"}})
 			continue
 		}
-		var count int64
-		if err := model.DB.Model(&model.Ability{}).Where("channel_id = ? AND model = ? AND enabled = ?", channel.Id, FreeModelID, true).Count(&count).Error; err != nil {
-			return nil, err
-		}
-		if count == 0 {
-			plan.Filtered = append(plan.Filtered, FreeModelFilteredCandidate{ChannelID: channel.Id, UpstreamModel: upstream, Reasons: []string{"ability_disabled"}})
-			continue
-		}
 		memberChannels = append(memberChannels, *channel)
 		channelIDs = append(channelIDs, channel.Id)
 	}
@@ -182,11 +174,28 @@ func freeModelConfigMismatch(cfg model.FreeModelMember, req FreeModelRequirement
 	if req.Tools && !cfg.Tools {
 		reasons = append(reasons, "tools_unsupported")
 	}
+	if req.RequiredToolCall && !cfg.SupportsRequiredToolCall() {
+		reasons = append(reasons, "required_tool_call_unsupported")
+	}
 	if req.JSONObject && !cfg.JSONObject {
 		reasons = append(reasons, "json_object_unsupported")
 	}
 	if req.JSONSchema && !cfg.JSONSchema {
 		reasons = append(reasons, "json_schema_unsupported")
+	}
+	switch req.Endpoint {
+	case FreeModelEndpointResponses:
+		if !cfg.SupportsResponses() {
+			reasons = append(reasons, "responses_unsupported")
+		}
+	case FreeModelEndpointMessages:
+		if !cfg.SupportsMessages() {
+			reasons = append(reasons, "messages_unsupported")
+		}
+	default:
+		if !cfg.SupportsChatCompletions() {
+			reasons = append(reasons, "chat_completions_unsupported")
+		}
 	}
 	if cfg.MaxContextTokens > 0 && req.TotalContextTokens() > cfg.MaxContextTokens {
 		reasons = append(reasons, "context_length_exceeded")

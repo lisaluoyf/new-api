@@ -69,6 +69,48 @@ func TestBuildFreeModelCandidatePlanCapabilityAndContextFiltering(t *testing.T) 
 	require.ErrorIs(t, err, ErrFreeModelCapabilityUnavailable)
 }
 
+func TestBuildFreeModelCandidatePlanFiltersEndpointCompatibility(t *testing.T) {
+	db := setupFreeModelRouterDB(t)
+	chatOnly := fullMember()
+	responsesDisabled := false
+	chatOnly.Responses = &responsesDisabled
+	addFreeMember(t, db, 1, chatOnly)
+	responses := fullMember()
+	addFreeMember(t, db, 2, responses)
+
+	plan, err := BuildFreeModelCandidatePlan(FreeModelRequirements{Endpoint: FreeModelEndpointResponses, Text: true, Tools: true}, rand.New(rand.NewSource(7)))
+	require.NoError(t, err)
+	require.Len(t, plan.Candidates, 1)
+	require.Equal(t, 2, plan.Candidates[0].ChannelID)
+	require.Contains(t, plan.Filtered[0].Reasons, "responses_unsupported")
+}
+
+func TestBuildFreeModelCandidatePlanFiltersRequiredToolChoice(t *testing.T) {
+	db := setupFreeModelRouterDB(t)
+	autoOnly := fullMember()
+	requiredDisabled := false
+	autoOnly.RequiredToolCall = &requiredDisabled
+	addFreeMember(t, db, 1, autoOnly)
+	addFreeMember(t, db, 2, fullMember())
+
+	plan, err := BuildFreeModelCandidatePlan(FreeModelRequirements{Endpoint: FreeModelEndpointResponses, Text: true, Tools: true, RequiredToolCall: true}, rand.New(rand.NewSource(7)))
+	require.NoError(t, err)
+	require.Len(t, plan.Candidates, 1)
+	require.Equal(t, 2, plan.Candidates[0].ChannelID)
+	require.Contains(t, plan.Filtered[0].Reasons, "required_tool_call_unsupported")
+}
+
+func TestFreeModelDedicatedMembershipIgnoresOrdinaryAbilityState(t *testing.T) {
+	db := setupFreeModelRouterDB(t)
+	addFreeMember(t, db, 1, fullMember())
+	require.NoError(t, db.Model(&model.Ability{}).Where("channel_id = ? AND model = ?", 1, FreeModelID).Update("enabled", false).Error)
+
+	plan, err := BuildFreeModelCandidatePlan(FreeModelRequirements{Endpoint: FreeModelEndpointResponses, Text: true, Tools: true}, rand.New(rand.NewSource(7)))
+	require.NoError(t, err)
+	require.Len(t, plan.Candidates, 1)
+	require.Equal(t, 1, plan.Candidates[0].ChannelID)
+}
+
 func TestFreeModelVisionOnlyMemberNeverReceivesPlainText(t *testing.T) {
 	db := setupFreeModelRouterDB(t)
 	visionOnly := model.DefaultFreeModelMember(1)
