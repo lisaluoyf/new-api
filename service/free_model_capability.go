@@ -21,11 +21,13 @@ type FreeModelRequirements struct {
 	Text             bool              `json:"text"`
 	Vision           bool              `json:"vision"`
 	Tools            bool              `json:"tools"`
+	CodexClient      bool              `json:"codex_client"`
 	JSONObject       bool              `json:"json_object"`
 	JSONSchema       bool              `json:"json_schema"`
 	RequiredToolCall bool              `json:"required_tool_call"`
 	EstimatedInput   int               `json:"estimated_input_tokens"`
 	RequestedOutput  int               `json:"requested_output_tokens"`
+	AffinityKey      string            `json:"-"`
 	Schema           map[string]any    `json:"-"`
 }
 
@@ -36,6 +38,9 @@ func (r FreeModelRequirements) Names() []string {
 	}
 	if r.Tools {
 		names = append(names, "tools")
+	}
+	if r.CodexClient {
+		names = append(names, "client:codex")
 	}
 	if r.JSONObject {
 		names = append(names, "json_object")
@@ -65,6 +70,7 @@ func ParseFreeModelRequirements(path string, body []byte) (FreeModelRequirements
 	if functions, ok := root["functions"].([]any); ok && len(functions) > 0 {
 		req.Tools = true
 	}
+	req.AffinityKey = stringValue(root["prompt_cache_key"])
 	req.RequiredToolCall = isRequiredToolChoice(root["tool_choice"]) || isRequiredToolChoice(root["function_call"])
 
 	format := mapValue(root["response_format"])

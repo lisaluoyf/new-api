@@ -43,3 +43,10 @@ func TestParseFreeModelRequirementsDoesNotCountBase64ImageAsText(t *testing.T) {
 	require.True(t, requirements.Vision)
 	require.Less(t, requirements.EstimatedInput, 1000)
 }
+
+func TestParseFreeModelRequirementsExtractsAffinityKey(t *testing.T) {
+	requirements, err := ParseFreeModelRequirements("/v1/responses", []byte(`{"prompt_cache_key":"codex-session-123","tools":[{"type":"function","name":"shell"}]}`))
+	require.NoError(t, err)
+	require.Equal(t, "codex-session-123", requirements.AffinityKey)
+	require.True(t, requirements.Tools)
+}

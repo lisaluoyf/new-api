@@ -222,6 +222,63 @@ func TestFreeModelWeightInfluencesFirstChoiceWithDeterministicSeeds(t *testing.T
 	require.Greater(t, heavyFirst, 800)
 }
 
+func TestFreeModelCodexRoutingOverridesAndCapability(t *testing.T) {
+	db := setupFreeModelRouterDB(t)
+	generalFirst := fullMember()
+	generalFirst.Priority = 200
+	generalFirst.CodexPriority = common.GetPointer(int64(100))
+	addFreeMember(t, db, 1, generalFirst)
+
+	codexFirst := fullMember()
+	codexFirst.Priority = 100
+	codexFirst.Tools = false
+	codexFirst.CodexTools = common.GetPointer(true)
+	codexFirst.CodexPriority = common.GetPointer(int64(300))
+	codexFirst.CodexWeight = common.GetPointer(uint(7))
+	addFreeMember(t, db, 2, codexFirst)
+
+	codexDisabled := fullMember()
+	codexDisabled.Priority = 400
+	codexDisabled.CodexTools = common.GetPointer(false)
+	addFreeMember(t, db, 3, codexDisabled)
+
+	general, err := BuildFreeModelCandidatePlan(FreeModelRequirements{Endpoint: FreeModelEndpointResponses, Text: true, Tools: true}, rand.New(rand.NewSource(1)))
+	require.NoError(t, err)
+	require.Equal(t, 3, general.Candidates[0].ChannelID)
+
+	codex, err := BuildFreeModelCandidatePlan(FreeModelRequirements{Endpoint: FreeModelEndpointResponses, Text: true, Tools: true, CodexClient: true}, rand.New(rand.NewSource(1)))
+	require.NoError(t, err)
+	require.Equal(t, 2, codex.Candidates[0].ChannelID)
+	require.Equal(t, int64(300), codex.Candidates[0].Priority)
+	require.Equal(t, uint(7), codex.Candidates[0].Weight)
+	require.Contains(t, codex.Trace.RequiredCapabilities, "client:codex")
+	require.Contains(t, codex.Filtered[len(codex.Filtered)-1].Reasons, "codex_tools_unsupported")
+}
+
+func TestFreeModelAffinityKeyProducesStablePrivateOrdering(t *testing.T) {
+	db := setupFreeModelRouterDB(t)
+	for id := 1; id <= 6; id++ {
+		addFreeMember(t, db, id, fullMember())
+	}
+	requirements := FreeModelRequirements{Text: true, AffinityKey: "private-codex-session"}
+	planA, err := BuildFreeModelCandidatePlan(requirements, nil)
+	require.NoError(t, err)
+	planB, err := BuildFreeModelCandidatePlan(requirements, nil)
+	require.NoError(t, err)
+
+	ids := func(plan *FreeModelCandidatePlan) []int {
+		result := make([]int, 0, len(plan.Candidates))
+		for _, candidate := range plan.Candidates {
+			result = append(result, candidate.ChannelID)
+		}
+		return result
+	}
+	require.Equal(t, ids(planA), ids(planB))
+	require.True(t, planA.Trace.AffinityApplied)
+	require.NotEmpty(t, planA.Trace.AffinityKeyFingerprint)
+	require.NotContains(t, fmt.Sprintf("%+v", planA.Trace), requirements.AffinityKey)
+}
+
 func TestFreeModelNeverIncludesNonMemberPaidChannel(t *testing.T) {
 	db := setupFreeModelRouterDB(t)
 	cfg := fullMember()

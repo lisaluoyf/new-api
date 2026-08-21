@@ -99,6 +99,7 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, requirementErr.Error(), types.ErrorCodeInvalidRequest)
 				return
 			}
+			requirements.CodexClient = service.DetectCodexClient(c)
 			plan, planErr := service.BuildFreeModelCandidatePlan(requirements, nil)
 			if planErr != nil {
 				if errors.Is(planErr, service.ErrFreeModelCapabilityUnavailable) {

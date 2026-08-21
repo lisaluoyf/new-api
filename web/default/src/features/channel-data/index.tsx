@@ -97,10 +97,13 @@ interface FreeModelMemberConfig {
   enabled: boolean
   priority: number
   weight: number
+  codex_priority: number | null
+  codex_weight: number | null
   capabilities: {
     text: boolean
     vision: boolean
     tools: boolean
+    codex_tools: boolean | null
     required_tool_call: boolean
     json_object: boolean
     json_schema: boolean
@@ -1744,6 +1747,14 @@ export function ChannelDataPage() {
                     <Input type='number' min='1' value={freeMemberEdit.config.weight} onChange={(event) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, weight: Number(event.target.value) } } : null)} />
                   </label>
                   <label className='space-y-1 text-sm'>
+                    <span>{t('Codex priority (empty = inherit)')}</span>
+                    <Input type='number' value={freeMemberEdit.config.codex_priority ?? ''} placeholder={String(freeMemberEdit.config.priority)} onChange={(event) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, codex_priority: event.target.value === '' ? null : Number(event.target.value) } } : null)} />
+                  </label>
+                  <label className='space-y-1 text-sm'>
+                    <span>{t('Codex weight (empty = inherit)')}</span>
+                    <Input type='number' min='1' value={freeMemberEdit.config.codex_weight ?? ''} placeholder={String(freeMemberEdit.config.weight)} onChange={(event) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, codex_weight: event.target.value === '' ? null : Number(event.target.value) } } : null)} />
+                  </label>
+                  <label className='space-y-1 text-sm'>
                     <span>{t('Maximum context tokens')}</span>
                     <Input type='number' min='1' value={freeMemberEdit.config.max_context_tokens} onChange={(event) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, max_context_tokens: Number(event.target.value) } } : null)} />
                   </label>
@@ -1763,6 +1774,10 @@ export function ChannelDataPage() {
                       <Switch checked={freeMemberEdit.config.capabilities[capability]} onCheckedChange={(value) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, capabilities: { ...current.config.capabilities, [capability]: value } } } : null)} />
                     </label>
                   ))}
+                  <label className='flex items-center justify-between gap-3 text-sm'>
+                    <span>{t('Codex tools')}</span>
+                    <Switch checked={freeMemberEdit.config.capabilities.codex_tools ?? freeMemberEdit.config.capabilities.tools} onCheckedChange={(value) => setFreeMemberEdit((current) => current ? { ...current, config: { ...current.config, capabilities: { ...current.config.capabilities, codex_tools: value } } } : null)} />
+                  </label>
                 </div>
                 <div className='space-y-2 rounded-md border border-gray-200 p-3'>
                   <div className='text-xs font-semibold text-gray-500'>{t('Endpoints')}</div>

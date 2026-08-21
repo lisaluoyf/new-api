@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"math/rand"
 	"sort"
 	"sync"
@@ -54,14 +55,16 @@ type FreeModelAttempt struct {
 }
 
 type FreeModelRouteTrace struct {
-	RequestedModel        string                       `json:"requested_model"`
-	RequiredCapabilities  []string                     `json:"required_capabilities"`
-	CandidateModels       []FreeModelCandidate         `json:"candidate_models"`
-	FilteredCandidates    []FreeModelFilteredCandidate `json:"filtered_candidates"`
-	SelectedChannelID     int                          `json:"selected_channel_id,omitempty"`
-	ResolvedUpstreamModel string                       `json:"resolved_upstream_model,omitempty"`
-	Attempts              []FreeModelAttempt           `json:"attempts"`
-	FinalResult           string                       `json:"final_result,omitempty"`
+	RequestedModel         string                       `json:"requested_model"`
+	RequiredCapabilities   []string                     `json:"required_capabilities"`
+	AffinityApplied        bool                         `json:"affinity_applied,omitempty"`
+	AffinityKeyFingerprint string                       `json:"affinity_key_fingerprint,omitempty"`
+	CandidateModels        []FreeModelCandidate         `json:"candidate_models"`
+	FilteredCandidates     []FreeModelFilteredCandidate `json:"filtered_candidates"`
+	SelectedChannelID      int                          `json:"selected_channel_id,omitempty"`
+	ResolvedUpstreamModel  string                       `json:"resolved_upstream_model,omitempty"`
+	Attempts               []FreeModelAttempt           `json:"attempts"`
+	FinalResult            string                       `json:"final_result,omitempty"`
 }
 
 type FreeModelCandidatePlan struct {
@@ -79,7 +82,11 @@ type FreeModelRandom interface{ Int63n(n int64) int64 }
 
 func BuildFreeModelCandidatePlan(requirements FreeModelRequirements, rng FreeModelRandom) (*FreeModelCandidatePlan, error) {
 	if rng == nil {
-		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+		seed := time.Now().UnixNano()
+		if requirements.AffinityKey != "" {
+			seed = freeModelAffinitySeed(requirements.AffinityKey)
+		}
+		rng = rand.New(rand.NewSource(seed))
 	}
 	var channels []model.Channel
 	if err := model.DB.Where("status = ?", common.ChannelStatusEnabled).Find(&channels).Error; err != nil {
@@ -88,6 +95,10 @@ func BuildFreeModelCandidatePlan(requirements FreeModelRequirements, rng FreeMod
 	plan := &FreeModelCandidatePlan{Requirements: requirements, MaxAttempts: GetFreeModelSettings().MaxAttempts}
 	plan.Trace.RequestedModel = FreeModelID
 	plan.Trace.RequiredCapabilities = requirements.Names()
+	if requirements.AffinityKey != "" {
+		plan.Trace.AffinityApplied = true
+		plan.Trace.AffinityKeyFingerprint = affinityFingerprint(requirements.AffinityKey)
+	}
 
 	memberChannels := make([]model.Channel, 0)
 	channelIDs := make([]int, 0)
@@ -129,7 +140,11 @@ func BuildFreeModelCandidatePlan(requirements FreeModelRequirements, rng FreeMod
 			continue
 		}
 		health := GetFreeModelHealth(channel.Id)
-		candidate := FreeModelCandidate{ChannelID: channel.Id, ChannelName: channel.Name, UpstreamModel: upstream, Priority: cfg.Priority, Weight: cfg.Weight, TimeoutMS: cfg.TimeoutMS, Health: health, RecoveryAt: health.AvoidUntil(), Channel: channel, Config: cfg}
+		priority, weight := cfg.Priority, cfg.Weight
+		if requirements.CodexClient && requirements.Tools {
+			priority, weight = cfg.CodexRouting()
+		}
+		candidate := FreeModelCandidate{ChannelID: channel.Id, ChannelName: channel.Name, UpstreamModel: upstream, Priority: priority, Weight: weight, TimeoutMS: cfg.TimeoutMS, Health: health, RecoveryAt: health.AvoidUntil(), Channel: channel, Config: cfg}
 		if health.IsAvoided(now) {
 			avoided = append(avoided, candidate)
 		} else {
@@ -153,6 +168,9 @@ func BuildFreeModelCandidatePlan(requirements FreeModelRequirements, rng FreeMod
 		plan.Trace.FilteredCandidates = plan.Filtered
 		return plan, ErrFreeModelCapabilityUnavailable
 	}
+	// Database row order is not a routing contract. A stable base order makes
+	// prompt_cache_key affinity deterministic across requests and instances.
+	sort.Slice(capable, func(i, j int) bool { return capable[i].ChannelID < capable[j].ChannelID })
 	plan.Candidates = orderFreeModelCandidates(capable, rng)
 	plan.Trace.CandidateModels = append([]FreeModelCandidate(nil), plan.Candidates...)
 	plan.Trace.FilteredCandidates = append([]FreeModelFilteredCandidate(nil), plan.Filtered...)
@@ -171,8 +189,14 @@ func freeModelConfigMismatch(cfg model.FreeModelMember, req FreeModelRequirement
 	if req.Vision && !cfg.Vision {
 		reasons = append(reasons, "vision_unsupported")
 	}
-	if req.Tools && !cfg.Tools {
-		reasons = append(reasons, "tools_unsupported")
+	if req.Tools {
+		if req.CodexClient {
+			if !cfg.SupportsCodexTools() {
+				reasons = append(reasons, "codex_tools_unsupported")
+			}
+		} else if !cfg.Tools {
+			reasons = append(reasons, "tools_unsupported")
+		}
 	}
 	if req.RequiredToolCall && !cfg.SupportsRequiredToolCall() {
 		reasons = append(reasons, "required_tool_call_unsupported")
@@ -201,6 +225,12 @@ func freeModelConfigMismatch(cfg model.FreeModelMember, req FreeModelRequirement
 		reasons = append(reasons, "context_length_exceeded")
 	}
 	return reasons
+}
+
+func freeModelAffinitySeed(key string) int64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(key))
+	return int64(h.Sum64())
 }
 
 func orderFreeModelCandidates(candidates []FreeModelCandidate, rng FreeModelRandom) []FreeModelCandidate {
