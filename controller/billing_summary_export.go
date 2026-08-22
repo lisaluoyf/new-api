@@ -3,6 +3,7 @@ package controller
 import (
 	"crypto/subtle"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -100,12 +101,23 @@ func billingExportCredentials(c *gin.Context) (secret string, provided string) {
 	return secret, provided
 }
 
+func billingExportChannel(c *gin.Context) int {
+	channel, err := strconv.Atoi(c.Query("channel"))
+	if err != nil || channel <= 0 {
+		return 0
+	}
+	return channel
+}
+
 // BillingSummaryExport returns every available daily Platform Billing row,
 // newest first. It is intended for service-to-service reads by Roma.
 //
 // Authentication prefers X-Billing-Export-Secret/BILLING_EXPORT_SECRET. When
 // no dedicated secret is configured, Roma may reuse its existing
 // X-Catalog-Export-Secret/CATALOG_EXPORT_SECRET credentials.
+// The optional channel query parameter applies the same channel-id filter as
+// the Platform Billing page; zero or an invalid value keeps the all-channel
+// view for backward compatibility.
 func BillingSummaryExport(c *gin.Context) {
 	secret, provided := billingExportCredentials(c)
 	if secret == "" {
@@ -117,12 +129,13 @@ func BillingSummaryExport(c *gin.Context) {
 		return
 	}
 
-	rows, err := service.GetBillingDaily(0, 0, "", 0, "", "", "")
+	channel := billingExportChannel(c)
+	rows, err := service.GetBillingDaily(0, 0, "", channel, "", "", "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	userCounts, err := service.GetBillingUserCountsTotal(0, 0, "", 0, "", "", "")
+	userCounts, err := service.GetBillingUserCountsTotal(0, 0, "", channel, "", "", "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
