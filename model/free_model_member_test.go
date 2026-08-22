@@ -37,6 +37,7 @@ func TestFreeModelMemberMigrationAcrossSupportedDatabases(t *testing.T) {
 			require.NoError(t, db.AutoMigrate(&FreeModelMember{}))
 			row := DefaultFreeModelMember(910001)
 			row.Enabled, row.Text, row.Priority, row.DailyRequestLimit = false, false, 0, 190
+			row.DailyRequestLimitGroup = "requesty"
 			row.Responses = boolPointer(false)
 			row.RequiredToolCall = boolPointer(false)
 			old := DB
@@ -50,6 +51,7 @@ func TestFreeModelMemberMigrationAcrossSupportedDatabases(t *testing.T) {
 			require.False(t, stored.Text)
 			require.Zero(t, stored.Priority)
 			require.Equal(t, 190, stored.DailyRequestLimit)
+			require.Equal(t, "requesty", stored.DailyRequestLimitGroup)
 			require.False(t, stored.SupportsResponses())
 			require.True(t, stored.SupportsChatCompletions())
 			require.False(t, stored.SupportsRequiredToolCall())

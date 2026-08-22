@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,8 +28,12 @@ var freeModelDailyMemory = struct {
 	counts map[string]int
 }{counts: make(map[string]int)}
 
-func freeModelDailyRequestKey(channelID int, now time.Time) string {
-	return fmt.Sprintf("free_model:daily:%d:%s", channelID, now.UTC().Format("20060102"))
+func freeModelDailyRequestKey(channelID int, group string, now time.Time) string {
+	identity := fmt.Sprintf("channel:%d", channelID)
+	if group = strings.TrimSpace(group); group != "" {
+		identity = fmt.Sprintf("group:%x", sha256.Sum256([]byte(group)))
+	}
+	return fmt.Sprintf("free_model:daily:%s:%s", identity, now.UTC().Format("20060102"))
 }
 
 func freeModelNextUTCMidnight(now time.Time) time.Time {
@@ -35,12 +41,16 @@ func freeModelNextUTCMidnight(now time.Time) time.Time {
 	return time.Date(utc.Year(), utc.Month(), utc.Day()+1, 0, 0, 0, 0, time.UTC)
 }
 
-func FreeModelDailyRequestAvailable(channelID, limit int) (bool, int, error) {
+func FreeModelDailyRequestAvailable(channelID, limit int, groups ...string) (bool, int, error) {
 	if limit <= 0 {
 		return true, 0, nil
 	}
 	now := freeModelDailyLimitNow()
-	key := freeModelDailyRequestKey(channelID, now)
+	group := ""
+	if len(groups) > 0 {
+		group = groups[0]
+	}
+	key := freeModelDailyRequestKey(channelID, group, now)
 	if common.RedisEnabled && common.RDB != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 		value, err := common.RDB.Get(ctx, key).Result()
@@ -64,12 +74,16 @@ func FreeModelDailyRequestAvailable(channelID, limit int) (bool, int, error) {
 	return used < limit, used, nil
 }
 
-func ReserveFreeModelDailyRequest(channelID, limit int) (bool, int, error) {
+func ReserveFreeModelDailyRequest(channelID, limit int, groups ...string) (bool, int, error) {
 	if limit <= 0 {
 		return true, 0, nil
 	}
 	now := freeModelDailyLimitNow()
-	key := freeModelDailyRequestKey(channelID, now)
+	group := ""
+	if len(groups) > 0 {
+		group = groups[0]
+	}
+	key := freeModelDailyRequestKey(channelID, group, now)
 	if common.RedisEnabled && common.RDB != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 		result, err := common.RDB.Eval(ctx, freeModelDailyLimitLua, []string{key}, limit, freeModelNextUTCMidnight(now).Unix()).Result()

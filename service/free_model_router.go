@@ -128,7 +128,7 @@ func BuildFreeModelCandidatePlan(requirements FreeModelRequirements, rng FreeMod
 		upstream := ModelMappingTarget(channel.ModelMapping, FreeModelID)
 		reasons := freeModelConfigMismatch(cfg, requirements)
 		if len(reasons) == 0 && cfg.DailyRequestLimit > 0 {
-			available, _, limitErr := FreeModelDailyRequestAvailable(channel.Id, cfg.DailyRequestLimit)
+			available, _, limitErr := FreeModelDailyRequestAvailable(channel.Id, cfg.DailyRequestLimit, cfg.DailyRequestLimitGroup)
 			if limitErr != nil {
 				reasons = append(reasons, "daily_request_limit_unavailable")
 			} else if !available {
@@ -281,7 +281,7 @@ func (p *FreeModelCandidatePlan) Next() (*FreeModelCandidate, error) {
 	for p.next < len(p.Candidates) && p.attempts < limit {
 		candidate := p.Candidates[p.next]
 		p.next++
-		allowed, _, err := ReserveFreeModelDailyRequest(candidate.ChannelID, candidate.Config.DailyRequestLimit)
+		allowed, _, err := ReserveFreeModelDailyRequest(candidate.ChannelID, candidate.Config.DailyRequestLimit, candidate.Config.DailyRequestLimitGroup)
 		if err != nil || !allowed {
 			reason := "daily_request_limit_exhausted"
 			if err != nil {

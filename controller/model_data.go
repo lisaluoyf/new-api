@@ -119,22 +119,23 @@ type FreeModelEndpointsView struct {
 }
 
 type FreeModelMemberConfigView struct {
-	ChannelID         int                       `json:"channel_id"`
-	Enabled           bool                      `json:"enabled"`
-	Priority          int64                     `json:"priority"`
-	Weight            uint                      `json:"weight"`
-	CodexPriority     *int64                    `json:"codex_priority"`
-	CodexWeight       *uint                     `json:"codex_weight"`
-	Capabilities      FreeModelCapabilitiesView `json:"capabilities"`
-	Endpoints         FreeModelEndpointsView    `json:"endpoints"`
-	MaxContextTokens  int                       `json:"max_context_tokens"`
-	TimeoutMS         int                       `json:"timeout_ms"`
-	DailyRequestLimit int                       `json:"daily_request_limit"`
+	ChannelID              int                       `json:"channel_id"`
+	Enabled                bool                      `json:"enabled"`
+	Priority               int64                     `json:"priority"`
+	Weight                 uint                      `json:"weight"`
+	CodexPriority          *int64                    `json:"codex_priority"`
+	CodexWeight            *uint                     `json:"codex_weight"`
+	Capabilities           FreeModelCapabilitiesView `json:"capabilities"`
+	Endpoints              FreeModelEndpointsView    `json:"endpoints"`
+	MaxContextTokens       int                       `json:"max_context_tokens"`
+	TimeoutMS              int                       `json:"timeout_ms"`
+	DailyRequestLimit      int                       `json:"daily_request_limit"`
+	DailyRequestLimitGroup string                    `json:"daily_request_limit_group"`
 }
 
 func freeModelMemberConfigView(member model.FreeModelMember) FreeModelMemberConfigView {
 	chatCompletions, responses, messages, requiredToolCall := member.SupportsChatCompletions(), member.SupportsResponses(), member.SupportsMessages(), member.SupportsRequiredToolCall()
-	return FreeModelMemberConfigView{ChannelID: member.ChannelID, Enabled: member.Enabled, Priority: member.Priority, Weight: member.Weight, CodexPriority: member.CodexPriority, CodexWeight: member.CodexWeight, Capabilities: FreeModelCapabilitiesView{Text: member.Text, Vision: member.Vision, Tools: member.Tools, CodexTools: member.CodexTools, RequiredToolCall: &requiredToolCall, JSONObject: member.JSONObject, JSONSchema: member.JSONSchema}, Endpoints: FreeModelEndpointsView{ChatCompletions: &chatCompletions, Responses: &responses, Messages: &messages}, MaxContextTokens: member.MaxContextTokens, TimeoutMS: member.TimeoutMS, DailyRequestLimit: member.DailyRequestLimit}
+	return FreeModelMemberConfigView{ChannelID: member.ChannelID, Enabled: member.Enabled, Priority: member.Priority, Weight: member.Weight, CodexPriority: member.CodexPriority, CodexWeight: member.CodexWeight, Capabilities: FreeModelCapabilitiesView{Text: member.Text, Vision: member.Vision, Tools: member.Tools, CodexTools: member.CodexTools, RequiredToolCall: &requiredToolCall, JSONObject: member.JSONObject, JSONSchema: member.JSONSchema}, Endpoints: FreeModelEndpointsView{ChatCompletions: &chatCompletions, Responses: &responses, Messages: &messages}, MaxContextTokens: member.MaxContextTokens, TimeoutMS: member.TimeoutMS, DailyRequestLimit: member.DailyRequestLimit, DailyRequestLimitGroup: member.DailyRequestLimitGroup}
 }
 
 const (
@@ -277,7 +278,12 @@ func SaveFreeModelMember(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "daily_request_limit is out of range"})
 		return
 	}
-	member := model.FreeModelMember{ChannelID: channelID, Enabled: req.Enabled, Priority: req.Priority, Weight: req.Weight, CodexPriority: req.CodexPriority, CodexWeight: req.CodexWeight, Text: req.Capabilities.Text, Vision: req.Capabilities.Vision, Tools: req.Capabilities.Tools, CodexTools: req.Capabilities.CodexTools, RequiredToolCall: req.Capabilities.RequiredToolCall, JSONObject: req.Capabilities.JSONObject, JSONSchema: req.Capabilities.JSONSchema, ChatCompletions: req.Endpoints.ChatCompletions, Responses: req.Endpoints.Responses, Messages: req.Endpoints.Messages, MaxContextTokens: req.MaxContextTokens, TimeoutMS: req.TimeoutMS, DailyRequestLimit: req.DailyRequestLimit}
+	req.DailyRequestLimitGroup = strings.TrimSpace(req.DailyRequestLimitGroup)
+	if len(req.DailyRequestLimitGroup) > 128 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "daily_request_limit_group is too long"})
+		return
+	}
+	member := model.FreeModelMember{ChannelID: channelID, Enabled: req.Enabled, Priority: req.Priority, Weight: req.Weight, CodexPriority: req.CodexPriority, CodexWeight: req.CodexWeight, Text: req.Capabilities.Text, Vision: req.Capabilities.Vision, Tools: req.Capabilities.Tools, CodexTools: req.Capabilities.CodexTools, RequiredToolCall: req.Capabilities.RequiredToolCall, JSONObject: req.Capabilities.JSONObject, JSONSchema: req.Capabilities.JSONSchema, ChatCompletions: req.Endpoints.ChatCompletions, Responses: req.Endpoints.Responses, Messages: req.Endpoints.Messages, MaxContextTokens: req.MaxContextTokens, TimeoutMS: req.TimeoutMS, DailyRequestLimit: req.DailyRequestLimit, DailyRequestLimitGroup: req.DailyRequestLimitGroup}
 	if err := model.UpsertFreeModelMember(member); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return

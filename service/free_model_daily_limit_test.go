@@ -33,3 +33,31 @@ func TestFreeModelDailyLimitResetsOnUTCDate(t *testing.T) {
 	require.True(t, allowed)
 	require.Equal(t, 1, used)
 }
+
+func TestFreeModelDailyLimitGroupIsSharedAcrossChannels(t *testing.T) {
+	oldRedis := common.RedisEnabled
+	common.RedisEnabled = false
+	resetFreeModelDailyLimitForTest()
+	t.Cleanup(func() {
+		common.RedisEnabled = oldRedis
+		resetFreeModelDailyLimitForTest()
+	})
+
+	allowed, used, err := ReserveFreeModelDailyRequest(91, 2, "requesty")
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Equal(t, 1, used)
+	allowed, used, err = ReserveFreeModelDailyRequest(92, 2, "requesty")
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Equal(t, 2, used)
+	allowed, used, err = ReserveFreeModelDailyRequest(93, 2, "requesty")
+	require.NoError(t, err)
+	require.False(t, allowed)
+	require.Equal(t, 2, used)
+
+	allowed, used, err = ReserveFreeModelDailyRequest(93, 2, "another-provider")
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Equal(t, 1, used)
+}
