@@ -13,6 +13,7 @@ const (
 	freeModelHealthTTL       = 24 * time.Hour
 	freeModelCooldown        = 15 * time.Second
 	freeModelCircuitDuration = 60 * time.Second
+	freeModelQuarantine      = 6 * time.Hour
 	freeModelCircuitFailures = 3
 )
 
@@ -21,6 +22,8 @@ type FreeModelHealth struct {
 	ConsecutiveFailure int     `json:"consecutive_failures"`
 	CooldownUntil      int64   `json:"cooldown_until"`
 	CircuitOpenUntil   int64   `json:"circuit_open_until"`
+	QuarantineUntil    int64   `json:"quarantine_until"`
+	LastFailureReason  string  `json:"last_failure_reason,omitempty"`
 	Successes          int64   `json:"successes"`
 	Failures           int64   `json:"failures"`
 	EWLatencyMS        float64 `json:"latency_ms"`
@@ -28,10 +31,14 @@ type FreeModelHealth struct {
 }
 
 func (h FreeModelHealth) AvoidUntil() int64 {
-	if h.CircuitOpenUntil > h.CooldownUntil {
-		return h.CircuitOpenUntil
+	until := h.CooldownUntil
+	if h.CircuitOpenUntil > until {
+		until = h.CircuitOpenUntil
 	}
-	return h.CooldownUntil
+	if h.QuarantineUntil > until {
+		until = h.QuarantineUntil
+	}
+	return until
 }
 
 func (h FreeModelHealth) IsAvoided(now time.Time) bool { return h.AvoidUntil() > now.UnixMilli() }
@@ -86,14 +93,25 @@ func saveFreeModelHealth(health FreeModelHealth) {
 }
 
 func RecordFreeModelFailure(channelID, statusCode int, transient bool) FreeModelHealth {
+	return RecordFreeModelFailureDisposition(channelID, statusCode, FreeModelFailureDisposition{Transient: transient})
+}
+
+func RecordFreeModelFailureDisposition(channelID, statusCode int, disposition FreeModelFailureDisposition) FreeModelHealth {
 	now := freeModelHealthNow()
 	health := GetFreeModelHealth(channelID)
 	health.ChannelID = channelID
 	health.Failures++
 	health.UpdatedAt = now.UnixMilli()
+	health.LastFailureReason = disposition.Reason
+	if disposition.Permanent {
+		health.ConsecutiveFailure++
+		health.QuarantineUntil = now.Add(freeModelQuarantine).UnixMilli()
+		saveFreeModelHealth(health)
+		return health
+	}
 	if statusCode == 429 {
 		health.CooldownUntil = now.Add(freeModelCooldown).UnixMilli()
-	} else if transient {
+	} else if disposition.Transient {
 		health.ConsecutiveFailure++
 		if health.ConsecutiveFailure >= freeModelCircuitFailures {
 			health.CircuitOpenUntil = now.Add(freeModelCircuitDuration).UnixMilli()
@@ -114,6 +132,8 @@ func RecordFreeModelSuccess(channelID int, duration time.Duration) FreeModelHeal
 	if health.ConsecutiveFailure == 0 {
 		health.CooldownUntil = 0
 		health.CircuitOpenUntil = 0
+		health.QuarantineUntil = 0
+		health.LastFailureReason = ""
 	}
 	latency := float64(duration.Milliseconds())
 	if health.EWLatencyMS == 0 {

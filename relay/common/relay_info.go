@@ -563,7 +563,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		TokenGroup:     tokenGroup,
 
 		isFirstResponse: true,
-		RelayMode:       relayconstant.Path2RelayMode(c.Request.URL.Path),
+		RelayMode:       relayconstant.Request2RelayMode(c.Request.URL.Path, c.GetHeader("Content-Type")),
 		RequestURLPath:  c.Request.URL.String(),
 		RequestHeaders:  cloneRequestHeaders(c),
 		IsStream:        isStream,

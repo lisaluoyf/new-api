@@ -308,14 +308,16 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 			}
 		}
 	}
-	req, err := http.NewRequestWithContext(requestContext, c.Request.Method, fullRequestURL, requestBody)
-	if err != nil {
+	defer func() {
 		if connectTimer != nil {
 			connectTimer.Stop()
 		}
 		if timeoutCancel != nil {
 			timeoutCancel()
 		}
+	}()
+	req, err := http.NewRequestWithContext(requestContext, c.Request.Method, fullRequestURL, requestBody)
+	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
 	headers := req.Header
@@ -332,21 +334,12 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	applyHeaderOverrideToRequest(req, headerOverride)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
-		if connectTimer != nil {
-			connectTimer.Stop()
-		}
-		if timeoutCancel != nil {
-			timeoutCancel()
-		}
 		return nil, fmt.Errorf("do request failed: %w", err)
 	}
 	if timeoutCancel != nil && resp != nil && resp.Body != nil {
 		resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: timeoutCancel, firstByteTimer: connectTimer}
-	} else if connectTimer != nil {
-		connectTimer.Stop()
-		if timeoutCancel != nil {
-			timeoutCancel()
-		}
+		timeoutCancel = nil
+		connectTimer = nil
 	}
 	return resp, nil
 }

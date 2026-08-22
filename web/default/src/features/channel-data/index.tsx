@@ -119,9 +119,11 @@ interface FreeModelMemberConfig {
 }
 
 interface FreeModelHealth {
-  status: 'healthy' | 'cooldown' | 'circuit_open'
+  status: 'healthy' | 'cooldown' | 'circuit_open' | 'quarantined'
   cooldown_remaining_ms: number
   circuit_remaining_ms: number
+  quarantine_remaining_ms: number
+  last_failure_reason?: string
   consecutive_failures: number
   recent_success_rate: number
   latency_ms: number
@@ -1393,7 +1395,7 @@ export function ChannelDataPage() {
                           </span>
                           {item.free_model_health && (
                             <span className={item.free_model_health.status === 'healthy' ? 'text-emerald-600' : 'text-amber-600'}>
-                              {item.free_model_health.status} · {(item.free_model_health.recent_success_rate * 100).toFixed(1)}% · {item.free_model_health.latency_ms.toFixed(0)} ms
+                              {item.free_model_health.status} · {(item.free_model_health.recent_success_rate * 100).toFixed(1)}% · {item.free_model_health.latency_ms.toFixed(0)} ms{item.free_model_health.last_failure_reason ? ` · ${item.free_model_health.last_failure_reason}` : ''}
                             </span>
                           )}
                         </div>
@@ -1797,7 +1799,7 @@ export function ChannelDataPage() {
                   if (!health) return null
                   return (
                     <div className='rounded-md bg-gray-50 p-3 text-xs text-gray-600'>
-                      {t('Health')}: {health.status} · {t('Success rate')}: {(health.recent_success_rate * 100).toFixed(1)}% · {t('Latency')}: {health.latency_ms.toFixed(0)} ms · {t('Cooldown')}: {Math.ceil(Math.max(health.cooldown_remaining_ms, health.circuit_remaining_ms) / 1000)} s
+                      {t('Health')}: {health.status} · {t('Success rate')}: {(health.recent_success_rate * 100).toFixed(1)}% · {t('Latency')}: {health.latency_ms.toFixed(0)} ms · {t('Cooldown')}: {Math.ceil(Math.max(health.cooldown_remaining_ms, health.circuit_remaining_ms, health.quarantine_remaining_ms) / 1000)} s{health.last_failure_reason ? ` · ${health.last_failure_reason}` : ''}
                     </div>
                   )
                 })()}

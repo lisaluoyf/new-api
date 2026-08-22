@@ -1,10 +1,13 @@
 package claude
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -380,6 +383,32 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 						}
 					default:
 						source := mediaMessage.ToFileSource()
+						if mediaMessage.Type == dto.ContentTypeFile {
+							file := mediaMessage.GetFile()
+							if file == nil {
+								continue
+							}
+							fileMimeType := mime.TypeByExtension(strings.ToLower(filepath.Ext(file.FileName)))
+							if strings.HasPrefix(fileMimeType, "text/") {
+								encoded := file.FileData
+								if comma := strings.Index(encoded, ","); strings.HasPrefix(encoded, "data:") && comma >= 0 {
+									encoded = encoded[comma+1:]
+								}
+								decoded, decodeErr := base64.StdEncoding.DecodeString(encoded)
+								if decodeErr != nil {
+									return nil, fmt.Errorf("decode text file %q failed: %w", file.FileName, decodeErr)
+								}
+								claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{
+									Type: "text",
+									Text: common.GetPointer(string(decoded)),
+								})
+								continue
+							}
+							if fileMimeType != "application/pdf" && !strings.HasPrefix(fileMimeType, "image/") {
+								continue
+							}
+							source = types.NewFileSourceFromData(file.FileData, fileMimeType)
+						}
 						if source == nil {
 							continue
 						}

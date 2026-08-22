@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,10 +17,13 @@ import (
 	"gorm.io/gorm"
 )
 
+var freeModelRouterTestDBID atomic.Uint64
+
 func setupFreeModelRouterDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	oldDB, oldRedis := model.DB, common.RedisEnabled
-	db, err := gorm.Open(sqlite.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared"), &gorm.Config{})
+	dsn := fmt.Sprintf("file:%s_%d?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"), freeModelRouterTestDBID.Add(1))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
 	common.RedisEnabled = false
@@ -31,6 +35,9 @@ func setupFreeModelRouterDB(t *testing.T) *gorm.DB {
 		common.RedisEnabled = oldRedis
 		resetFreeModelHealthForTest()
 		resetFreeModelDailyLimitForTest()
+		if sqlDB, sqlErr := db.DB(); sqlErr == nil {
+			_ = sqlDB.Close()
+		}
 	})
 	return db
 }

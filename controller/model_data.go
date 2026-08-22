@@ -92,12 +92,14 @@ type ModelDataItem struct {
 }
 
 type FreeModelHealthView struct {
-	Status              string  `json:"status"`
-	CooldownRemainingMS int64   `json:"cooldown_remaining_ms"`
-	CircuitRemainingMS  int64   `json:"circuit_remaining_ms"`
-	ConsecutiveFailures int     `json:"consecutive_failures"`
-	RecentSuccessRate   float64 `json:"recent_success_rate"`
-	LatencyMS           float64 `json:"latency_ms"`
+	Status                string  `json:"status"`
+	CooldownRemainingMS   int64   `json:"cooldown_remaining_ms"`
+	CircuitRemainingMS    int64   `json:"circuit_remaining_ms"`
+	QuarantineRemainingMS int64   `json:"quarantine_remaining_ms"`
+	LastFailureReason     string  `json:"last_failure_reason,omitempty"`
+	ConsecutiveFailures   int     `json:"consecutive_failures"`
+	RecentSuccessRate     float64 `json:"recent_success_rate"`
+	LatencyMS             float64 `json:"latency_ms"`
 }
 
 type FreeModelCapabilitiesView struct {
@@ -616,7 +618,10 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			} else if health.CooldownUntil > nowMS {
 				status = "cooldown"
 			}
-			freeHealth = &FreeModelHealthView{Status: status, CooldownRemainingMS: max(int64(0), health.CooldownUntil-nowMS), CircuitRemainingMS: max(int64(0), health.CircuitOpenUntil-nowMS), ConsecutiveFailures: health.ConsecutiveFailure, RecentSuccessRate: health.SuccessRate(), LatencyMS: health.EWLatencyMS}
+			if health.QuarantineUntil > nowMS {
+				status = "quarantined"
+			}
+			freeHealth = &FreeModelHealthView{Status: status, CooldownRemainingMS: max(int64(0), health.CooldownUntil-nowMS), CircuitRemainingMS: max(int64(0), health.CircuitOpenUntil-nowMS), QuarantineRemainingMS: max(int64(0), health.QuarantineUntil-nowMS), LastFailureReason: health.LastFailureReason, ConsecutiveFailures: health.ConsecutiveFailure, RecentSuccessRate: health.SuccessRate(), LatencyMS: health.EWLatencyMS}
 		}
 
 		items = append(items, ModelDataItem{

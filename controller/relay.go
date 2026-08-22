@@ -358,12 +358,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		retryDecision := evaluateRetry(c, newAPIError, retryParam.GetRetry(), remainingRetries)
 		if service.IsFreeModel(relayInfo.OriginModelName) {
 			retryDecision = evaluateFreeModelRetry(c, newAPIError, retryParam.GetRetry(), remainingRetries)
+			failureDisposition := service.ClassifyFreeModelFailure(newAPIError)
 			if retryDecision.ShouldRetry && !service.FreeModelPlanHasNext(c) {
 				retryDecision.ShouldRetry = false
 				retryDecision.Reason = "free_model_candidates_exhausted"
 			}
 			candidate, _ := service.FreeModelCandidateForChannel(c, channel.Id)
-			service.RecordFreeModelFailure(channel.Id, newAPIError.StatusCode, retryDecision.ShouldRetry)
+			service.RecordFreeModelFailureDisposition(channel.Id, newAPIError.StatusCode, failureDisposition)
 			result := "failed"
 			if retryDecision.ShouldRetry {
 				result = "fallback"

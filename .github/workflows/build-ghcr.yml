@@ -6,7 +6,55 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install frontend dependencies
+        working-directory: web/default
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck frontend
+        working-directory: web/default
+        run: bun run typecheck
+
+      - name: Lint frontend
+        working-directory: web/default
+        run: bun run lint
+
+      - name: Build frontend
+        working-directory: web/default
+        env:
+          VITE_REACT_APP_VERSION: ${{ github.sha }}
+        run: bun run build
+
+      - name: Prepare classic frontend assets
+        run: |
+          mkdir -p web/classic/dist
+          printf '%s\n' '<!doctype html><html><body>classic disabled</body></html>' > web/classic/dist/index.html
+
+      - name: Test Go packages
+        run: go test -count=1 ./...
+
+      - name: Vet Go packages
+        run: go vet ./...
+
   build-and-push:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -14,25 +62,28 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
           tags: |
             ghcr.io/lisaluoyf/new-api:latest
             ghcr.io/lisaluoyf/new-api:${{ github.sha }}
+          build-args: |
+            BUILD_VERSION=${{ github.sha }}
+            VCS_REF=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
