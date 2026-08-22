@@ -104,3 +104,27 @@ func TestBillingExportCredentialsFallsBackToCatalogSecret(t *testing.T) {
 	assert.Equal(t, "catalog-secret", secret)
 	assert.Equal(t, "catalog-secret", provided)
 }
+
+func TestBillingExportChannel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name     string
+		query    string
+		expected int
+	}{
+		{name: "selected channel", query: "?channel=42", expected: 42},
+		{name: "missing channel", expected: 0},
+		{name: "invalid channel", query: "?channel=invalid", expected: 0},
+		{name: "negative channel", query: "?channel=-1", expected: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/internal/billing-summary-export"+test.query, nil)
+
+			assert.Equal(t, test.expected, billingExportChannel(c))
+		})
+	}
+}
