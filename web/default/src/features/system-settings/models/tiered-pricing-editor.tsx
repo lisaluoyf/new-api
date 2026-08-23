@@ -144,6 +144,21 @@ const PRESET_GROUPS: PresetGroup[] = [
         label: 'GPT-5.4',
         expr: 'len <= 272000 ? tier("standard", p * 2.5 + c * 15 + cr * 0.25) : tier("long_context", p * 5 + c * 22.5 + cr * 0.5)',
       },
+      {
+        key: 'gpt-5.6-sol',
+        label: 'GPT-5.6 Sol',
+        expr: 'len <= 272000 ? tier("standard", p * 4 + c * 20 + cr * 0.4 + cc * 5) : tier("long_context", p * 8 + c * 30 + cr * 0.8 + cc * 10)',
+      },
+      {
+        key: 'gpt-5.6-terra',
+        label: 'GPT-5.6 Terra',
+        expr: 'len <= 272000 ? tier("standard", p * 2 + c * 12 + cr * 0.2 + cc * 2.5) : tier("long_context", p * 4 + c * 18 + cr * 0.4 + cc * 5)',
+      },
+      {
+        key: 'gpt-5.6-luna',
+        label: 'GPT-5.6 Luna',
+        expr: 'len <= 272000 ? tier("standard", p * 0.2 + c * 1.2 + cr * 0.02 + cc * 0.25) : tier("long_context", p * 0.4 + c * 1.8 + cr * 0.04 + cc * 0.5)',
+      },
     ],
   },
   {
