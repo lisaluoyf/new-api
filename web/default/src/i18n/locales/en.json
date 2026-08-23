@@ -2368,6 +2368,8 @@
     "Minimum recharge amount to qualify for this discount.": "Minimum recharge amount to qualify for this discount.",
     "Minimum top-up (optional)": "Minimum top-up (optional)",
     "Minimum top-up (USD)": "Minimum top-up (USD)",
+    "Top-up amount too low": "Top-up amount too low",
+    "The minimum top-up amount is ${{amount}} USD.": "The minimum top-up amount is ${{amount}} USD.",
     "Minimum top-up amount must be at least 1": "Minimum top-up amount must be at least 1",
     "Minimum top-up quantity": "Minimum top-up quantity",
     "Minimum topup amount: {{amount}}": "Minimum topup amount: {{amount}}",

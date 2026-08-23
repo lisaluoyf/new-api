@@ -21,6 +21,7 @@ import { Bitcoin, CreditCard, Globe, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -53,6 +54,11 @@ const LIMITED_AMOUNT_DISCOUNT_END_DATES: Record<number, string> = {
 const PRESET_AMOUNTS_DEFAULT  = [5, 10, 50, 100, 500, 1000]
 const PRESET_AMOUNTS_NEW_USER = [1, 5, 10, 50, 100, 500, 1000]
 
+function formatUsdAmount(amount: number) {
+  if (Number.isInteger(amount)) return String(amount)
+  return amount.toFixed(2).replace(/\.?0+$/, '')
+}
+
 interface RechargePanelProps {
   onSuccess: () => void
   onPaymentAttempted?: () => void
@@ -75,6 +81,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
   const [promoInfo, setPromoInfo] = useState<FirstTopupPromoInfo | null>(null)
   const [isNewUser, setIsNewUser] = useState(false)
   const [countdown, setCountdown] = useState('')
+  const [minTopupDialog, setMinTopupDialog] = useState<{ min: number } | null>(null)
 
   const requestAmount = customAmount ? parseFloat(customAmount) || 0 : selectedAmount
   const amountDiscount = requestAmount > 0 ? topupInfo?.discount?.[requestAmount] ?? 1 : 1
@@ -157,8 +164,22 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
     setSelectedMethod(method)
   }
 
+  function ensureMinimumTopup(amount: number, minTopup: number) {
+    if (amount < minTopup) {
+      setMinTopupDialog({ min: minTopup })
+      return false
+    }
+    return true
+  }
+
   async function handleEpayPay(method: string) {
     if (requestAmount <= 0) return
+    const minTopup =
+      topupInfo?.pay_methods?.find((m) => m.type === method)?.min_topup ??
+      topupInfo?.min_topup ??
+      1
+    if (!ensureMinimumTopup(requestAmount, minTopup)) return
+    handleMethodSelect(method)
     setEpayLoading(method)
     try {
       const res = await requestPayment({
@@ -195,10 +216,8 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
 
   async function handlePayPalPay() {
     const minTopup = topupInfo?.paypal_min_topup ?? 1
-    if (requestAmount < minTopup) {
-      toast.error(`${t('Minimum top-up')}: $${minTopup}`)
-      return
-    }
+    if (!ensureMinimumTopup(requestAmount, minTopup)) return
+    handleMethodSelect('paypal')
     setPaypalLoading(true)
     try {
       const res = await requestPayPalPayment({
@@ -221,10 +240,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
 
   async function handlePancakePay() {
     const minTopup = topupInfo?.waffo_pancake_min_topup ?? 1
-    if (requestAmount < minTopup) {
-      toast.error(`${t('Minimum top-up')}: $${minTopup}`)
-      return
-    }
+    if (!ensureMinimumTopup(requestAmount, minTopup)) return
     handleMethodSelect('waffo_pancake')
     const ok = await processWaffoPancakePayment(Math.round(requestAmount))
     if (ok) onPaymentAttempted?.()
@@ -232,10 +248,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
 
   async function handlePlategaPay() {
     const minTopup = topupInfo?.platega_min_topup ?? 1
-    if (requestAmount < minTopup) {
-      toast.error(`${t('Minimum top-up')}: $${minTopup}`)
-      return
-    }
+    if (!ensureMinimumTopup(requestAmount, minTopup)) return
     handleMethodSelect('platega')
     const ok = await processPlategaPayment(Math.round(requestAmount))
     if (ok) onPaymentAttempted?.()
@@ -243,10 +256,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
 
   async function handleClinkPay() {
     const minTopup = topupInfo?.clink_min_topup ?? 1
-    if (requestAmount < minTopup) {
-      toast.error(`${t('Minimum top-up')}: $${minTopup}`)
-      return
-    }
+    if (!ensureMinimumTopup(requestAmount, minTopup)) return
     handleMethodSelect('clink')
     const ok = await processClinkPayment(Math.round(requestAmount))
     if (ok) onPaymentAttempted?.()
@@ -254,10 +264,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
 
   function handleCryptoPay() {
     const minTopup = topupInfo?.min_topup ?? 1
-    if (effectiveAmount < minTopup) {
-      toast.error(`${t('Minimum top-up')}: $${minTopup}`)
-      return
-    }
+    if (!ensureMinimumTopup(effectiveAmount, minTopup)) return
     handleMethodSelect('crypto')
     setCryptoOpen(true)
   }
@@ -384,7 +391,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
                 <button
                   type='button'
                   disabled={requestAmount <= 0 || paypalLoading}
-                  onClick={() => { handleMethodSelect('paypal'); handlePayPalPay() }}
+                  onClick={handlePayPalPay}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
                     selectedMethod === 'paypal'
@@ -526,7 +533,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
                 <button
                   type='button'
                   disabled={requestAmount <= 0 || epayLoading === 'alipay'}
-                  onClick={() => { handleMethodSelect('alipay'); handleEpayPay('alipay') }}
+                  onClick={() => handleEpayPay('alipay')}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
                     selectedMethod === 'alipay'
@@ -550,7 +557,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
                 <button
                   type='button'
                   disabled={requestAmount <= 0 || epayLoading === 'wxpay'}
-                  onClick={() => { handleMethodSelect('wxpay'); handleEpayPay('wxpay') }}
+                  onClick={() => handleEpayPay('wxpay')}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
                     selectedMethod === 'wxpay'
@@ -636,6 +643,29 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
         }}
         onSettled={onPaymentSettled}
       />
+
+      <Dialog
+        open={!!minTopupDialog}
+        onOpenChange={(open) => {
+          if (!open) setMinTopupDialog(null)
+        }}
+      >
+        <DialogContent className='max-w-sm text-center' showCloseButton={false}>
+          <DialogHeader className='items-center gap-2 text-center'>
+            <DialogTitle className='text-base'>{t('Top-up amount too low')}</DialogTitle>
+            <DialogDescription className='text-sm'>
+              {t('The minimum top-up amount is ${{amount}} USD.', {
+                amount: formatUsdAmount(minTopupDialog?.min ?? 1),
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className='mt-2 flex justify-center'>
+            <Button className='min-w-24' onClick={() => setMinTopupDialog(null)}>
+              {t('OK')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showHint} onOpenChange={setShowHint}>
         <DialogContent className='max-w-sm text-center' showCloseButton>

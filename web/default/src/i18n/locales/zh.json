@@ -2371,6 +2371,8 @@
     "Minimum recharge amount to qualify for this discount.": "符合此折扣的最低充值金额。",
     "Minimum top-up (optional)": "最低充值（可选）",
     "Minimum top-up (USD)": "最低充值（美元）",
+    "Top-up amount too low": "充值金额过低",
+    "The minimum top-up amount is ${{amount}} USD.": "最低充值金额为 ${{amount}} 美金。",
     "Minimum top-up amount must be at least 1": "最低充值金额至少为 1",
     "Minimum top-up quantity": "最低充值数量",
     "Minimum topup amount: {{amount}}": "最低充值金额：{{amount}}",
