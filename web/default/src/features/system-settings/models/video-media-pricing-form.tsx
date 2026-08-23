@@ -12,6 +12,7 @@ type PricingRow = {
   id: number
   model: string
   unit: string
+  basePrice?: number
   prices: Record<string, number>
 }
 
@@ -30,19 +31,41 @@ const DEFAULT_PRICING = {
       '4k-sound': 0.5357,
     },
   },
+  'doubao-seedance-2.0': {
+    unit: 'second',
+    base_price: 0.142,
+    prices: {
+      '480P': 0.066,
+      '480P-input': 0.04,
+      '720P': 0.142,
+      '720P-input': 0.08584,
+      '1080P': 0.3544,
+      '1080P-input': 0.21568,
+      '4K': 0.722,
+      '4K-input': 0.44432,
+    },
+  },
 }
 
 function parsePricing(
   raw: string | undefined
-): Record<string, { unit?: string; prices?: Record<string, number> }> {
+): Record<
+  string,
+  { unit?: string; base_price?: number; prices?: Record<string, number> }
+> {
   if (!raw) return DEFAULT_PRICING
   try {
     const parsed = JSON.parse(raw) as unknown
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
-      return parsed as Record<
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const pricing = parsed as Record<
         string,
-        { unit?: string; prices?: Record<string, number> }
+        { unit?: string; base_price?: number; prices?: Record<string, number> }
       >
+      if (!pricing['doubao-seedance-2.0']) {
+        pricing['doubao-seedance-2.0'] = DEFAULT_PRICING['doubao-seedance-2.0']
+      }
+      return pricing
+    }
   } catch {
     // fall through to defaults
   }
@@ -50,12 +73,16 @@ function parsePricing(
 }
 
 function objectToRows(
-  value: Record<string, { unit?: string; prices?: Record<string, number> }>
+  value: Record<
+    string,
+    { unit?: string; base_price?: number; prices?: Record<string, number> }
+  >
 ): PricingRow[] {
   return Object.entries(value).map(([model, config], index) => ({
     id: index + 1,
     model,
     unit: config.unit || 'second',
+    basePrice: config.base_price,
     prices: config.prices || {},
   }))
 }
@@ -63,12 +90,19 @@ function objectToRows(
 function rowsToObject(rows: PricingRow[]) {
   const result: Record<
     string,
-    { unit: string; prices: Record<string, number> }
+    { unit: string; base_price?: number; prices: Record<string, number> }
   > = {}
   rows.forEach((row) => {
     const model = row.model.trim()
-    if (model)
-      result[model] = { unit: row.unit || 'second', prices: row.prices }
+    if (model) {
+      result[model] = {
+        unit: row.unit || 'second',
+        prices: row.prices,
+      }
+      if (row.basePrice && row.basePrice > 0) {
+        result[model].base_price = row.basePrice
+      }
+    }
   })
   return result
 }
@@ -149,7 +183,11 @@ export function VideoMediaPricingForm({
       const next = objectToRows(
         parsed as Record<
           string,
-          { unit?: string; prices?: Record<string, number> }
+          {
+            unit?: string
+            base_price?: number
+            prices?: Record<string, number>
+          }
         >
       )
       setRows(next)
@@ -187,7 +225,7 @@ export function VideoMediaPricingForm({
           </div>
           <div>
             {t(
-              'The first price is used as the base price; other resolution prices are converted into billing ratios automatically.'
+              'When a base price is set, it is used as the billing calculation base; resolution prices are converted into ratios automatically.'
             )}
           </div>
         </AlertDescription>
@@ -262,6 +300,31 @@ export function VideoMediaPricingForm({
                 >
                   <Trash2 className='text-destructive h-4 w-4' />
                 </Button>
+              </div>
+              <div className='mt-3 grid gap-2 md:grid-cols-[1fr_180px_auto]'>
+                <label
+                  className='flex items-center text-sm font-medium'
+                  htmlFor={`media-base-price-${row.id}`}
+                >
+                  {t('Base Price')}
+                </label>
+                <Input
+                  id={`media-base-price-${row.id}`}
+                  type='number'
+                  min={0}
+                  step='0.0001'
+                  value={row.basePrice ?? ''}
+                  placeholder='0.142'
+                  onChange={(e) =>
+                    updateRow(row.id, {
+                      basePrice:
+                        e.target.value === ''
+                          ? undefined
+                          : Number(e.target.value),
+                    })
+                  }
+                />
+                <span />
               </div>
               <div className='mt-3 space-y-2'>
                 {Object.entries(row.prices).map(([resolution, price]) => (

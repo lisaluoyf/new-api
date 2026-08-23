@@ -32,6 +32,7 @@ type submitPayload struct {
 	Mode        string        `json:"mode,omitempty"`
 	AspectRatio string        `json:"aspect_ratio,omitempty"`
 	ImageURLs   []string      `json:"image_urls,omitempty"`
+	VideoURLs   []string      `json:"video_urls,omitempty"`
 	Audio       *bool         `json:"audio,omitempty"`
 	VideoList   []interface{} `json:"video_list,omitempty"`
 	Webhook     string        `json:"webhook,omitempty"`
@@ -195,7 +196,7 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 			"resolution":   body.Resolution,
 			"mode":         body.Mode,
 			"audio":        body.Audio != nil && *body.Audio,
-			"has_video":    len(body.VideoList) > 0,
+			"has_video":    len(body.VideoList) > 0 || len(body.VideoURLs) > 0,
 			"aspect_ratio": body.AspectRatio,
 		},
 	}
@@ -304,12 +305,23 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		}
 	}
 	resolution := "720p"
+	hasVideo := false
 	if req.Metadata != nil {
 		if v, ok := req.Metadata["resolution"].(string); ok && v != "" {
 			resolution = v
 		}
+		if v, ok := req.Metadata["has_video"].(bool); ok {
+			hasVideo = v
+		}
+	}
+	variant := resolution
+	if normalizeModel(req.Model) == ModelDoubaoSeedance20 && hasVideo {
+		variant += "-input"
 	}
 	ratio := taskcommon.VideoResolutionSizeRatio(resolution)
+	if _, ok := ratio_setting.GetVideoModelBasePrice(req.Model); ok {
+		ratio = ratio_setting.GetVideoModelResolutionRatio(req.Model, variant)
+	}
 	return map[string]float64{
 		"seconds": float64(seconds),
 		"size":    ratio,
@@ -392,6 +404,28 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			}
 			passthrough["aspect_ratio"] = body.AspectRatio
 			delete(passthrough, "resolution")
+			if webhook := resolveWebhook(body.Webhook); webhook != "" {
+				passthrough["webhook"] = webhook
+			}
+			out, err := common.Marshal(passthrough)
+			if err != nil {
+				return nil, err
+			}
+			return bytes.NewReader(out), nil
+		} else if publicModel == ModelDoubaoSeedance20 {
+			// Seedance 2.0 evolves quickly and supports fields such as video_urls,
+			// audio_urls, image_with_roles, size, and generate_audio. Preserve the
+			// complete request so reference-video inputs are not silently dropped.
+			var passthrough map[string]interface{}
+			if err := common.Unmarshal(raw, &passthrough); err != nil {
+				return nil, err
+			}
+			passthrough["model"] = body.Model
+			passthrough["duration"] = body.Duration
+			if body.Resolution == "" {
+				body.Resolution = "720p"
+			}
+			passthrough["resolution"] = body.Resolution
 			if webhook := resolveWebhook(body.Webhook); webhook != "" {
 				passthrough["webhook"] = webhook
 			}

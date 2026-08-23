@@ -79,6 +79,46 @@ func TestForceFreeModelPriceDataClearsAllUserCharges(t *testing.T) {
 	require.Zero(t, price.QuotaToPreConsume)
 }
 
+func TestModelPriceHelperPerCallUsesExplicitMediaBasePrice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
+
+	common.OptionMapRWMutex.Lock()
+	mapWasNil := common.OptionMap == nil
+	if mapWasNil {
+		common.OptionMap = make(map[string]string)
+	}
+	previous, hadPrevious := common.OptionMap[ratio_setting.VideoModelPricingOption]
+	common.OptionMap[ratio_setting.VideoModelPricingOption] = ratio_setting.DefaultVideoModelPricingJSON()
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if mapWasNil {
+			common.OptionMap = nil
+			return
+		}
+		if hadPrevious {
+			common.OptionMap[ratio_setting.VideoModelPricingOption] = previous
+		} else {
+			delete(common.OptionMap, ratio_setting.VideoModelPricingOption)
+		}
+	})
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "doubao-seedance-2.0",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	price, err := ModelPriceHelperPerCall(ctx, info)
+	require.NoError(t, err)
+	require.InDelta(t, 0.142, price.ModelPrice, 1e-9)
+	require.Equal(t, int(0.142*common.QuotaPerUnit*price.GroupRatioInfo.GroupRatio), price.Quota)
+}
+
 func TestDeepSeekV4RetryKeepsRequestTimeButRefreshesChannelMultiplier(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ratio_setting.InitRatioSettings()

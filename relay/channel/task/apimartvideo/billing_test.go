@@ -1,11 +1,38 @@
 package apimartvideo
 
 import (
+	"math"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSeedanceActualQuotaUsesUpstreamCost(t *testing.T) {
+	task := &model.Task{
+		Data: []byte(`{"data":{"cost":1.4176}}`),
+		PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{
+			OriginModelName: ModelDoubaoSeedance20,
+			GroupRatio:      1.05,
+		}},
+	}
+	got := (&TaskAdaptor{}).AdjustBillingOnComplete(task, &relaycommon.TaskInfo{})
+	require.Equal(t, int(math.Round(1.4176*common.QuotaPerUnit*1.05)), got)
+}
+
+func TestSeedanceActualQuotaFallsBackToCredits(t *testing.T) {
+	task := &model.Task{
+		Data: []byte(`{"data":{"credits_cost":5.68}}`),
+		PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{
+			OriginModelName: ModelDoubaoSeedance20,
+			GroupRatio:      1,
+		}},
+	}
+	got := (&TaskAdaptor{}).AdjustBillingOnComplete(task, &relaycommon.TaskInfo{})
+	require.Equal(t, int(math.Round(0.568*common.QuotaPerUnit)), got)
+}
 
 func TestRecalcMotionControlQuotaAdjustsSeconds(t *testing.T) {
 	task := &model.Task{

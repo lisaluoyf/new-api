@@ -320,8 +320,13 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 		}
 	}
 
-	// Prefer channel user price (input × recharge × apimaster) for per-unit tasks like video/image.
-	if channelID := c.GetInt("channel_id"); channelID > 0 {
+	// An explicit media base price is authoritative for per-second/per-request
+	// task billing. Entries without base_price keep the legacy channel-price path.
+	if mediaBasePrice, ok := ratio_setting.GetVideoModelBasePrice(info.OriginModelName); ok {
+		modelPrice = mediaBasePrice
+		usePrice = true
+	} else if channelID := c.GetInt("channel_id"); channelID > 0 {
+		// Prefer channel user price (input × recharge × apimaster) for per-unit tasks like video/image.
 		if resolved, err := service.ChannelActualPricesResolved(channelID, info.OriginModelName); err == nil && resolved != nil && resolved.InputPrice > 0 {
 			modelPrice = resolved.InputPrice
 			usePrice = true

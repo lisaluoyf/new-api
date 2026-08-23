@@ -155,6 +155,84 @@ func TestKlingOmniEstimateBillingUsesModeAndMedia(t *testing.T) {
 	}
 }
 
+func TestSeedanceEstimateBillingUsesConfiguredResolutionPrices(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		resolution string
+		hasVideo   bool
+		price      float64
+	}{
+		{resolution: "480P", price: 0.066},
+		{resolution: "720P", price: 0.142},
+		{resolution: "1080P", price: 0.3544},
+		{resolution: "4K", price: 0.722},
+		{resolution: "480P", hasVideo: true, price: 0.04},
+		{resolution: "720P", hasVideo: true, price: 0.08584},
+		{resolution: "1080P", hasVideo: true, price: 0.21568},
+		{resolution: "4K", hasVideo: true, price: 0.44432},
+	}
+	for _, tc := range tests {
+		name := tc.resolution
+		if tc.hasVideo {
+			name += "-input"
+		}
+		t.Run(name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Set("task_request", relaycommon.TaskSubmitReq{
+				Model:    ModelDoubaoSeedance20,
+				Duration: 4,
+				Metadata: map[string]interface{}{
+					"resolution": tc.resolution,
+					"has_video":  tc.hasVideo,
+				},
+			})
+			got := (&TaskAdaptor{}).EstimateBilling(c, &relaycommon.RelayInfo{})
+			require.Equal(t, 4.0, got["seconds"])
+			require.InDelta(t, tc.price/0.142, got["size"], 1e-9)
+		})
+	}
+}
+
+func TestSeedanceBuildRequestPreservesReferenceMediaFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	raw := []byte(`{
+		"model":"doubao-seedance-2.0",
+		"prompt":"scene",
+		"duration":8,
+		"resolution":"1080p",
+		"size":"9:16",
+		"generate_audio":true,
+		"video_urls":["https://example.com/ref.mp4"],
+		"audio_urls":["https://example.com/ref.mp3"]
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = req
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{UpstreamModelName: ModelDoubaoSeedance20},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+	a := &TaskAdaptor{}
+	require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+	ratios := a.EstimateBilling(c, info)
+	require.InDelta(t, 0.21568/0.142, ratios["size"], 1e-9)
+
+	reader, err := a.BuildRequestBody(c, info)
+	require.NoError(t, err)
+	body, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	text := string(body)
+	for _, expected := range []string{
+		`"video_urls":["https://example.com/ref.mp4"]`,
+		`"audio_urls":["https://example.com/ref.mp3"]`,
+		`"generate_audio":true`,
+		`"size":"9:16"`,
+	} {
+		require.Contains(t, text, expected)
+	}
+}
+
 func TestKlingOmniBuildRequestPreservesMultimodalFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	raw := []byte(`{
