@@ -260,6 +260,32 @@ type InputTokenDetails struct {
 	ImageTokens          int `json:"image_tokens"`
 }
 
+func (d *InputTokenDetails) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		CachedTokens             int `json:"cached_tokens"`
+		CachedCreationTokens     int `json:"cached_creation_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		TextTokens               int `json:"text_tokens"`
+		AudioTokens              int `json:"audio_tokens"`
+		ImageTokens              int `json:"image_tokens"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	cacheCreationTokens := raw.CachedCreationTokens
+	if cacheCreationTokens == 0 {
+		cacheCreationTokens = raw.CacheCreationInputTokens
+	}
+	*d = InputTokenDetails{
+		CachedTokens:         raw.CachedTokens,
+		CachedCreationTokens: cacheCreationTokens,
+		TextTokens:           raw.TextTokens,
+		AudioTokens:          raw.AudioTokens,
+		ImageTokens:          raw.ImageTokens,
+	}
+	return nil
+}
+
 type OutputTokenDetails struct {
 	TextTokens      int `json:"text_tokens"`
 	AudioTokens     int `json:"audio_tokens"`
