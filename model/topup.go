@@ -982,10 +982,55 @@ func OnTopupSucceeded(userId int, quotaAdded int, paymentMethod string, tradeNo 
 	SendGAPurchase(userId, quotaAdded, tradeNo)
 }
 
-// HasSuccessfulTopUp 该用户是否有过成功充值（用于「首次充值」判定）。
+// HasSuccessfulTopUp 该用户是否有过成功充值。
 func HasSuccessfulTopUp(userId int) bool {
 	var count int64
 	DB.Model(&TopUp{}).Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).Limit(1).Count(&count)
+	return count > 0
+}
+
+// HasSuccessfulPaidTopUp 该用户是否有过真实付费记录。
+// 真实付费包括钱包充值和付费订阅；体验金、免费额度、管理员直接加额度和 $0 Trial 不计入。
+func HasSuccessfulPaidTopUp(userId int) bool {
+	if userId <= 0 {
+		return false
+	}
+	paidProviders := []string{
+		PaymentProviderEpay,
+		PaymentProviderStripe,
+		PaymentProviderPayPal,
+		PaymentProviderCreem,
+		PaymentProviderWaffo,
+		PaymentProviderWaffoPancake,
+		PaymentProviderPlatega,
+		PaymentProviderClink,
+		PaymentProviderCrypto,
+	}
+	paidMethods := []string{
+		"alipay",
+		"wxpay",
+		PaymentMethodStripe,
+		PaymentMethodPayPal,
+		PaymentMethodCreem,
+		PaymentMethodWaffo,
+		PaymentMethodWaffoPancake,
+		PaymentMethodPlatega,
+		PaymentMethodClink,
+		PaymentMethodCrypto,
+	}
+	var count int64
+	err := DB.Model(&TopUp{}).
+		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
+		Where("(payment_provider IN ? OR payment_method IN ?)", paidProviders, paidMethods).
+		Where("COALESCE(payment_provider, '') NOT IN ?", []string{PaymentProviderFree, "admin"}).
+		Where("COALESCE(payment_method, '') NOT IN ?", []string{PaymentMethodFree, "admin"}).
+		Where("(COALESCE(paid_amount_usd, 0) > 0 OR COALESCE(money, 0) > 0 OR COALESCE(credited_amount, 0) > 0 OR COALESCE(amount, 0) > 0)").
+		Limit(1).
+		Count(&count).Error
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to check paid topup history user_id=%d: %v", userId, err))
+		return false
+	}
 	return count > 0
 }
 
@@ -1006,7 +1051,7 @@ func IsFirstTopupPromoEligible(userId int) (bool, int64) {
 	if common.GetTimestamp() > expiresAt {
 		return false, expiresAt
 	}
-	if HasSuccessfulTopUp(userId) {
+	if HasSuccessfulPaidTopUp(userId) {
 		return false, expiresAt
 	}
 	return true, expiresAt

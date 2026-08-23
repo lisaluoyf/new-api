@@ -715,6 +715,12 @@ func verifyAndCredit(intentId string) {
 		return
 	}
 
+	minPaidUSD := float64(getWalletMinTopupUSDForUser(intent.UserId, operation_setting.MinTopUp))
+	if usdValue+0.005 < minPaidUSD {
+		markCryptoIntentFailed(intentId, fmt.Errorf("payment amount too low: minimum %.2f USD, received %.4f USD", minPaidUSD, usdValue))
+		return
+	}
+
 	creditUsd := usdValue
 	if matchedTier, matchedDiscount, ok := matchCryptoAmountDiscountTier(usdValue); ok {
 		creditUsd = usdValue / matchedDiscount

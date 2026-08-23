@@ -158,6 +158,14 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
  * Generate preset amounts based on minimum topup
  */
 export function generatePresetAmounts(minAmount: number): PresetAmount[] {
+  if (minAmount <= 1) {
+    return [1, 5, 10, 50, 100, 500, 1000].map((value) => ({ value }))
+  }
+
+  if (minAmount <= 5) {
+    return [5, 10, 50, 100, 500, 1000].map((value) => ({ value }))
+  }
+
   return DEFAULT_PRESET_MULTIPLIERS.map((multiplier) => ({
     value: minAmount * multiplier,
   }))
@@ -168,16 +176,19 @@ export function generatePresetAmounts(minAmount: number): PresetAmount[] {
  */
 export function mergePresetAmounts(
   amountOptions: number[],
-  discounts: Record<number, number>
+  discounts: Record<number, number>,
+  minAmount = 0
 ): PresetAmount[] {
   if (!amountOptions || amountOptions.length === 0) {
     return []
   }
 
-  return amountOptions.map((amount) => ({
-    value: amount,
-    discount: discounts[amount] || 1.0,
-  }))
+  return amountOptions
+    .filter((amount) => amount >= minAmount)
+    .map((amount) => ({
+      value: amount,
+      discount: discounts[amount] || 1.0,
+    }))
 }
 
 /** User-facing payment errors — always use frontend i18n, not raw backend strings. */

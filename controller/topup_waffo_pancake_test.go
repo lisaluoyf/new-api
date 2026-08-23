@@ -132,7 +132,9 @@ func TestGetWaffoPancakePayMoneyAppliesFirstTopupPromoOnlyOnce(t *testing.T) {
 	require.InDelta(t, 7.5, getWaffoPancakePayMoney(10, "default", 1), 0.000001)
 	require.InDelta(t, 20.0, getWaffoPancakePayMoney(20, "default", 1), 0.000001)
 	require.NoError(t, db.Create(&model.TopUp{
-		UserId: 1, Amount: 10, Money: 7.5, TradeNo: "waffo-promo-success", Status: common.TopUpStatusSuccess,
+		UserId: 1, Amount: 10, PaidAmountUSD: 7.5, Money: 7.5, TradeNo: "waffo-promo-success",
+		PaymentMethod: model.PaymentMethodWaffoPancake, PaymentProvider: model.PaymentProviderWaffoPancake,
+		Status: common.TopUpStatusSuccess,
 	}).Error)
 	require.InDelta(t, 10.0, getWaffoPancakePayMoney(10, "default", 1), 0.000001)
 }

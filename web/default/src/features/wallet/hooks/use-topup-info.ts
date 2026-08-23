@@ -194,14 +194,15 @@ export function useTopupInfo() {
 
       setTopupInfo(processedData)
 
+      const minTopup = getMinTopupAmount(processedData)
       if (processedData.amount_options.length > 0) {
         const customPresets = mergePresetAmounts(
           processedData.amount_options,
-          processedData.discount || {}
+          processedData.discount || {},
+          minTopup
         )
         setPresetAmounts(customPresets)
       } else {
-        const minTopup = getMinTopupAmount(processedData)
         const defaultPresets = generatePresetAmounts(minTopup)
         setPresetAmounts(defaultPresets)
       }

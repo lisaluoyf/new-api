@@ -51,7 +51,9 @@ func TestPlategaFirstTopupPromoOnlyAppliesToEligibleTier(t *testing.T) {
 
 	// Once any successful top-up exists, the same $10 tier is full price too.
 	require.NoError(t, db.Create(&model.TopUp{
-		UserId: 1, Amount: 10, Money: 7.5, TradeNo: "promo-test-success", Status: common.TopUpStatusSuccess,
+		UserId: 1, Amount: 10, PaidAmountUSD: 7.5, Money: 7.5, TradeNo: "promo-test-success",
+		PaymentMethod: model.PaymentMethodPlatega, PaymentProvider: model.PaymentProviderPlatega,
+		Status: common.TopUpStatusSuccess,
 	}).Error)
 	require.InDelta(t, 10*83.55, getPlategaPayRubAmount(10, "default", 1), 0.0001)
 }

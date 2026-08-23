@@ -26,6 +26,7 @@ import (
 )
 
 const topupForbiddenMessage = "Top-up is disabled for this account"
+const repeatWalletTopupMinUSD = 5
 
 func isCurrentUserTopupForbidden(c *gin.Context) bool {
 	userID := c.GetInt("id")
@@ -63,9 +64,72 @@ func applyTopupRestriction(data gin.H) {
 	data["creem_products"] = []interface{}{}
 }
 
+func effectiveWalletMinTopupUSD(configuredMin int, hasSuccessfulTopup bool) int {
+	if hasSuccessfulTopup && configuredMin < repeatWalletTopupMinUSD {
+		return repeatWalletTopupMinUSD
+	}
+	return configuredMin
+}
+
+func walletMinTopupForDisplay(configuredMin int, hasSuccessfulTopup bool) int64 {
+	minTopup := effectiveWalletMinTopupUSD(configuredMin, hasSuccessfulTopup)
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		dMinTopup := decimal.NewFromInt(int64(minTopup))
+		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		minTopup = int(dMinTopup.Mul(dQuotaPerUnit).IntPart())
+	}
+	return int64(minTopup)
+}
+
+func hasSuccessfulPaidTopup(userId int) bool {
+	return userId > 0 && model.HasSuccessfulPaidTopUp(userId)
+}
+
+func getWalletMinTopupUSDForUser(userId int, configuredMin int) int {
+	return effectiveWalletMinTopupUSD(configuredMin, hasSuccessfulPaidTopup(userId))
+}
+
+func getWalletMinTopupForUser(userId int, configuredMin int) int64 {
+	return walletMinTopupForDisplay(configuredMin, hasSuccessfulPaidTopup(userId))
+}
+
+func clonePayMethodsWithMinTopup(payMethods []map[string]string, minTopups map[string]int64) []map[string]string {
+	cloned := make([]map[string]string, 0, len(payMethods))
+	for _, method := range payMethods {
+		copied := make(map[string]string, len(method)+1)
+		for key, value := range method {
+			copied[key] = value
+		}
+		if minTopup, ok := minTopups[copied["type"]]; ok {
+			copied["min_topup"] = strconv.FormatInt(minTopup, 10)
+		}
+		cloned = append(cloned, copied)
+	}
+	return cloned
+}
+
 func GetTopUpInfo(c *gin.Context) {
+	userId := c.GetInt("id")
+	hasSuccessfulTopup := hasSuccessfulPaidTopup(userId)
+	minTopup := walletMinTopupForDisplay(operation_setting.MinTopUp, hasSuccessfulTopup)
+	stripeMinTopup := walletMinTopupForDisplay(setting.StripeMinTopUp, hasSuccessfulTopup)
+	paypalMinTopup := walletMinTopupForDisplay(setting.PayPalMinTopUp, hasSuccessfulTopup)
+	waffoMinTopup := walletMinTopupForDisplay(setting.WaffoMinTopUp, hasSuccessfulTopup)
+	waffoPancakeMinTopup := walletMinTopupForDisplay(setting.WaffoPancakeMinTopUp, hasSuccessfulTopup)
+	plategaMinTopup := walletMinTopupForDisplay(setting.PlategaMinTopUp, hasSuccessfulTopup)
+	clinkMinTopup := walletMinTopupForDisplay(setting.ClinkMinTopUp, hasSuccessfulTopup)
+	methodMinTopups := map[string]int64{
+		"alipay":                        minTopup,
+		"wxpay":                         minTopup,
+		model.PaymentMethodStripe:       stripeMinTopup,
+		model.PaymentMethodPayPal:       paypalMinTopup,
+		model.PaymentMethodWaffo:        waffoMinTopup,
+		model.PaymentMethodWaffoPancake: waffoPancakeMinTopup,
+		model.PaymentMethodPlatega:      plategaMinTopup,
+		model.PaymentMethodClink:        clinkMinTopup,
+	}
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	payMethods := clonePayMethodsWithMinTopup(operation_setting.PayMethods, methodMinTopups)
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
 	if isStripeTopUpEnabled() {
@@ -83,7 +147,7 @@ func GetTopUpInfo(c *gin.Context) {
 				"name":      "Stripe",
 				"type":      "stripe",
 				"color":     "rgba(var(--semi-purple-5), 1)",
-				"min_topup": strconv.Itoa(setting.StripeMinTopUp),
+				"min_topup": strconv.FormatInt(stripeMinTopup, 10),
 			}
 			payMethods = append(payMethods, stripeMethod)
 		}
@@ -105,7 +169,7 @@ func GetTopUpInfo(c *gin.Context) {
 				"name":      "Waffo (Global Payment)",
 				"type":      model.PaymentMethodWaffo,
 				"color":     "rgba(var(--semi-blue-5), 1)",
-				"min_topup": strconv.Itoa(setting.WaffoMinTopUp),
+				"min_topup": strconv.FormatInt(waffoMinTopup, 10),
 			}
 			payMethods = append(payMethods, waffoMethod)
 		}
@@ -126,7 +190,7 @@ func GetTopUpInfo(c *gin.Context) {
 				"name":      "Waffo Pancake",
 				"type":      model.PaymentMethodWaffoPancake,
 				"color":     "rgba(var(--semi-orange-5), 1)",
-				"min_topup": strconv.Itoa(setting.WaffoPancakeMinTopUp),
+				"min_topup": strconv.FormatInt(waffoPancakeMinTopup, 10),
 			})
 		}
 	}
@@ -145,7 +209,7 @@ func GetTopUpInfo(c *gin.Context) {
 				"name":      "Russian SBP QR",
 				"type":      model.PaymentMethodPlatega,
 				"color":     "rgba(var(--semi-blue-5), 1)",
-				"min_topup": strconv.Itoa(setting.PlategaMinTopUp),
+				"min_topup": strconv.FormatInt(plategaMinTopup, 10),
 			})
 		}
 	}
@@ -164,7 +228,7 @@ func GetTopUpInfo(c *gin.Context) {
 				"name":      "Clink (Global Payment)",
 				"type":      model.PaymentMethodClink,
 				"color":     "rgba(var(--semi-green-5), 1)",
-				"min_topup": strconv.Itoa(setting.ClinkMinTopUp),
+				"min_topup": strconv.FormatInt(clinkMinTopup, 10),
 			})
 		}
 	}
@@ -184,19 +248,20 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 			return nil
 		}(),
-		"creem_products":          setting.CreemProducts,
-		"pay_methods":             payMethods,
-		"min_topup":               operation_setting.MinTopUp,
-		"stripe_min_topup":        setting.StripeMinTopUp,
-		"paypal_min_topup":        setting.PayPalMinTopUp,
-		"waffo_min_topup":         setting.WaffoMinTopUp,
-		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
-		"platega_min_topup":       setting.PlategaMinTopUp,
-		"platega_usd_rate":        setting.PlategaUSDRate,
-		"clink_min_topup":         setting.ClinkMinTopUp,
-		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
-		"topup_link":              common.TopUpLink,
+		"creem_products":            setting.CreemProducts,
+		"pay_methods":               payMethods,
+		"min_topup":                 minTopup,
+		"stripe_min_topup":          stripeMinTopup,
+		"paypal_min_topup":          paypalMinTopup,
+		"waffo_min_topup":           waffoMinTopup,
+		"waffo_pancake_min_topup":   waffoPancakeMinTopup,
+		"platega_min_topup":         plategaMinTopup,
+		"platega_usd_rate":          setting.PlategaUSDRate,
+		"clink_min_topup":           clinkMinTopup,
+		"amount_options":            operation_setting.GetPaymentSetting().AmountOptions,
+		"discount":                  operation_setting.GetPaymentSetting().AmountDiscount,
+		"topup_link":                common.TopUpLink,
+		"has_successful_paid_topup": hasSuccessfulTopup,
 	}
 	if isCurrentUserTopupForbidden(c) {
 		applyTopupRestriction(data)
@@ -276,8 +341,8 @@ func GetFirstTopupPromo(c *gin.Context) {
 	amount := common.FirstTopupPromoAmount
 	discount := common.FirstTopupPromoDiscount
 	userId := c.GetInt("id")
-	// never_recharged: 只判断是否曾经充值成功，不受时间窗口限制，用于始终展示 $1 档位
-	neverRecharged := userId == 0 || !model.HasSuccessfulTopUp(userId)
+	// never_recharged: 只判断是否曾有真实付费记录，不受时间窗口限制，用于始终展示 $1 档位。
+	neverRecharged := userId == 0 || !model.HasSuccessfulPaidTopUp(userId)
 	if !common.FirstTopupPromoEnabled {
 		common.ApiSuccess(c, gin.H{
 			"enabled":         false,
@@ -378,13 +443,11 @@ func GetSignupGift(c *gin.Context) {
 }
 
 func getMinTopup() int64 {
-	minTopup := operation_setting.MinTopUp
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dMinTopup := decimal.NewFromInt(int64(minTopup))
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		minTopup = int(dMinTopup.Mul(dQuotaPerUnit).IntPart())
-	}
-	return int64(minTopup)
+	return getWalletMinTopupForUser(0, operation_setting.MinTopUp)
+}
+
+func getMinTopupForUser(userId int) int64 {
+	return getWalletMinTopupForUser(userId, operation_setting.MinTopUp)
 }
 
 func RequestEpay(c *gin.Context) {
@@ -397,12 +460,13 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgInvalidParams)})
 		return
 	}
-	if req.Amount < getMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", getMinTopup())})
+	id := c.GetInt("id")
+	minTopup := getMinTopupForUser(id)
+	if req.Amount < minTopup {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", minTopup)})
 		return
 	}
 
-	id := c.GetInt("id")
 	TouchUserCountry(id, c.ClientIP())
 	user, _ := model.GetUserById(id, false)
 	profileCountry := ""
@@ -635,11 +699,12 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 
-	if req.Amount < getMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", getMinTopup())})
+	id := c.GetInt("id")
+	minTopup := getMinTopupForUser(id)
+	if req.Amount < minTopup {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", minTopup)})
 		return
 	}
-	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})

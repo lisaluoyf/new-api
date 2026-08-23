@@ -33,12 +33,8 @@ type ClinkConfirmRequest struct {
 	SessionID string `json:"session_id"`
 }
 
-func getClinkMinTopup() int64 {
-	minTopup := setting.ClinkMinTopUp
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		minTopup = minTopup * int(common.QuotaPerUnit)
-	}
-	return int64(minTopup)
+func getClinkMinTopup(userId int) int64 {
+	return getWalletMinTopupForUser(userId, setting.ClinkMinTopUp)
 }
 
 func getClinkSuccessURL(custom string) string {
@@ -79,9 +75,11 @@ func RequestClinkPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentMethodNotExists)})
 		return
 	}
+	id := c.GetInt("id")
 	if req.PlanId <= 0 {
-		if req.Amount < getClinkMinTopup() {
-			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMin, map[string]any{"Min": getClinkMinTopup()})})
+		minTopup := getClinkMinTopup(id)
+		if req.Amount < minTopup {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMin, map[string]any{"Min": minTopup})})
 			return
 		}
 		if req.Amount > 10000 {
@@ -98,7 +96,6 @@ func RequestClinkPay(c *gin.Context) {
 		return
 	}
 
-	id := c.GetInt("id")
 	TouchUserCountry(id, c.ClientIP())
 	user, err := model.GetUserById(id, false)
 	if err != nil {

@@ -50,8 +50,8 @@ const LIMITED_AMOUNT_DISCOUNT_END_DATES: Record<number, string> = {
   50: '2026-09-01',
 }
 
-const PRESET_AMOUNTS_DEFAULT  = [10, 50, 100, 500, 1000]
-const PRESET_AMOUNTS_NEW_USER = [1, 10, 50, 100, 500, 1000]
+const PRESET_AMOUNTS_DEFAULT  = [5, 10, 50, 100, 500, 1000]
+const PRESET_AMOUNTS_NEW_USER = [1, 5, 10, 50, 100, 500, 1000]
 
 interface RechargePanelProps {
   onSuccess: () => void
@@ -108,7 +108,14 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
 
   useEffect(() => {
     getTopupInfo()
-      .then((res) => { if (res.success && res.data) setTopupInfo(res.data) })
+      .then((res) => {
+        if (res.success && res.data) {
+          setTopupInfo(res.data)
+          if (typeof res.data.has_successful_paid_topup === 'boolean') {
+            setIsNewUser(!res.data.has_successful_paid_topup)
+          }
+        }
+      })
       .catch(() => {})
   }, [])
 
@@ -243,6 +250,16 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
     handleMethodSelect('clink')
     const ok = await processClinkPayment(Math.round(requestAmount))
     if (ok) onPaymentAttempted?.()
+  }
+
+  function handleCryptoPay() {
+    const minTopup = topupInfo?.min_topup ?? 1
+    if (effectiveAmount < minTopup) {
+      toast.error(`${t('Minimum top-up')}: $${minTopup}`)
+      return
+    }
+    handleMethodSelect('crypto')
+    setCryptoOpen(true)
   }
 
   const epayEnabled = topupInfo?.enable_online_topup ?? false
@@ -487,7 +504,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
                 <button
                   type='button'
                   disabled={requestAmount <= 0}
-                  onClick={() => { handleMethodSelect('crypto'); setCryptoOpen(true) }}
+                  onClick={handleCryptoPay}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
                     selectedMethod === 'crypto'

@@ -46,11 +46,12 @@ type StripeAdaptor struct {
 }
 
 func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
-	if req.Amount < getStripeMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", getStripeMinTopup())})
+	id := c.GetInt("id")
+	minTopup := getStripeMinTopup(id)
+	if req.Amount < minTopup {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", minTopup)})
 		return
 	}
-	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
@@ -69,8 +70,10 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentMethodNotExists)})
 		return
 	}
-	if req.Amount < getStripeMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Top-up amount cannot be less than %d", getStripeMinTopup()), "data": 10})
+	id := c.GetInt("id")
+	minTopup := getStripeMinTopup(id)
+	if req.Amount < minTopup {
+		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Top-up amount cannot be less than %d", minTopup), "data": 10})
 		return
 	}
 	if req.Amount > 10000 {
@@ -88,7 +91,6 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		return
 	}
 
-	id := c.GetInt("id")
 	TouchUserCountry(id, c.ClientIP())
 	user, _ := model.GetUserById(id, false)
 	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
@@ -529,10 +531,6 @@ func getStripePayMoney(amount float64, group string) float64 {
 	return payMoney
 }
 
-func getStripeMinTopup() int64 {
-	minTopup := setting.StripeMinTopUp
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		minTopup = minTopup * int(common.QuotaPerUnit)
-	}
-	return int64(minTopup)
+func getStripeMinTopup(userId int) int64 {
+	return getWalletMinTopupForUser(userId, setting.StripeMinTopUp)
 }

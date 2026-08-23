@@ -111,13 +111,13 @@ func RequestWaffoAmount(c *gin.Context) {
 		return
 	}
 
-	waffoMinTopup := int64(setting.WaffoMinTopUp)
+	id := c.GetInt("id")
+	waffoMinTopup := getWalletMinTopupForUser(id, setting.WaffoMinTopUp)
 	if req.Amount < waffoMinTopup {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", waffoMinTopup)})
 		return
 	}
 
-	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
@@ -148,13 +148,13 @@ func RequestWaffoPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgInvalidParams)})
 		return
 	}
-	waffoMinTopup := int64(setting.WaffoMinTopUp)
+	id := c.GetInt("id")
+	waffoMinTopup := getWalletMinTopupForUser(id, setting.WaffoMinTopUp)
 	if req.Amount < waffoMinTopup {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", waffoMinTopup)})
 		return
 	}
 
-	id := c.GetInt("id")
 	TouchUserCountry(id, c.ClientIP())
 	user, err := model.GetUserById(id, false)
 	if err != nil || user == nil {

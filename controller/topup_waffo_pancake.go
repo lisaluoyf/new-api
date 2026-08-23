@@ -36,12 +36,13 @@ func RequestWaffoPancakeAmount(c *gin.Context) {
 		return
 	}
 
-	if req.PlanId <= 0 && req.Amount < int64(setting.WaffoPancakeMinTopUp) {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", setting.WaffoPancakeMinTopUp)})
+	id := c.GetInt("id")
+	minTopup := getWalletMinTopupForUser(id, setting.WaffoPancakeMinTopUp)
+	if req.PlanId <= 0 && req.Amount < minTopup {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", minTopup)})
 		return
 	}
 
-	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
@@ -143,12 +144,13 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Invalid parameters"})
 		return
 	}
-	if req.PlanId <= 0 && req.Amount < int64(setting.WaffoPancakeMinTopUp) {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", setting.WaffoPancakeMinTopUp)})
+	id := c.GetInt("id")
+	minTopup := getWalletMinTopupForUser(id, setting.WaffoPancakeMinTopUp)
+	if req.PlanId <= 0 && req.Amount < minTopup {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", minTopup)})
 		return
 	}
 
-	id := c.GetInt("id")
 	user, err := model.GetUserById(id, false)
 	if err != nil || user == nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "User does not exist"})
