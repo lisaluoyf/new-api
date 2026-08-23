@@ -1088,6 +1088,30 @@ func TestApplyTokenPriceScaleDoesNotChangeTierLength(t *testing.T) {
 	}
 }
 
+func TestGPT55Official272KPriceSchedule(t *testing.T) {
+	const expr = `len <= 272000 ? tier("standard", p * 5 + c * 30 + cr * 0.5) : tier("long_context", p * 10 + c * 45 + cr * 1)`
+
+	standardCost, standardTrace, err := billingexpr.RunExpr(expr, billingexpr.TokenParams{
+		P: 1000, C: 100, CR: 100, Len: 272000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if standardCost != 8050 || standardTrace.MatchedTier != "standard" {
+		t.Fatalf("standard tier = (%v, %q), want (8050, standard)", standardCost, standardTrace.MatchedTier)
+	}
+
+	longCost, longTrace, err := billingexpr.RunExpr(expr, billingexpr.TokenParams{
+		P: 1000, C: 100, CR: 100, Len: 272001,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if longCost != 14600 || longTrace.MatchedTier != "long_context" {
+		t.Fatalf("long tier = (%v, %q), want (14600, long_context)", longCost, longTrace.MatchedTier)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Benchmarks: compile vs cached execution
 // ---------------------------------------------------------------------------

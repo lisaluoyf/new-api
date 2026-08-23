@@ -765,6 +765,7 @@ const PRESET_GROUPS = [
       { key: 'flat', label: 'Flat', expr: 'tier("base", p * 2 + c * 4)' },
       { key: 'claude-opus', label: 'Claude Opus 4.6', expr: 'tier("base", p * 5 + c * 25 + cr * 0.5 + cc * 6.25 + cc1h * 10)' },
       { key: 'gpt-5.4', label: 'GPT-5.4', expr: 'len <= 272000 ? tier("standard", p * 2.5 + c * 15 + cr * 0.25) : tier("long_context", p * 5 + c * 22.5 + cr * 0.5)' },
+      { key: 'gpt-5.5', label: 'GPT-5.5', expr: 'len <= 272000 ? tier("standard", p * 5 + c * 30 + cr * 0.5) : tier("long_context", p * 10 + c * 45 + cr * 1)' },
       { key: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', expr: 'len <= 272000 ? tier("standard", p * 5 + c * 30 + cr * 0.5 + cc * 6.25) : tier("long_context", p * 10 + c * 45 + cr * 1 + cc * 12.5)' },
       { key: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', expr: 'len <= 272000 ? tier("standard", p * 2 + c * 12 + cr * 0.2 + cc * 2.5) : tier("long_context", p * 4 + c * 18 + cr * 0.4 + cc * 5)' },
       { key: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', expr: 'len <= 272000 ? tier("standard", p * 0.2 + c * 1.2 + cr * 0.02 + cc * 0.25) : tier("long_context", p * 0.4 + c * 1.8 + cr * 0.04 + cc * 0.5)' },

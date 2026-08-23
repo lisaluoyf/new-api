@@ -145,6 +145,11 @@ const PRESET_GROUPS: PresetGroup[] = [
         expr: 'len <= 272000 ? tier("standard", p * 2.5 + c * 15 + cr * 0.25) : tier("long_context", p * 5 + c * 22.5 + cr * 0.5)',
       },
       {
+        key: 'gpt-5.5',
+        label: 'GPT-5.5',
+        expr: 'len <= 272000 ? tier("standard", p * 5 + c * 30 + cr * 0.5) : tier("long_context", p * 10 + c * 45 + cr * 1)',
+      },
+      {
         key: 'gpt-5.6-sol',
         label: 'GPT-5.6 Sol',
         expr: 'len <= 272000 ? tier("standard", p * 5 + c * 30 + cr * 0.5 + cc * 6.25) : tier("long_context", p * 10 + c * 45 + cr * 1 + cc * 12.5)',
