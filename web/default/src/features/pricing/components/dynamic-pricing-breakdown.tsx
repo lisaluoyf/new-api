@@ -40,6 +40,7 @@ import {
   MATCH_RANGE,
   SOURCE_TIME,
   normalizeTierLabel,
+  getTieredPriceScaleForVar,
   parseTiersFromExpr,
   splitBillingExprAndRequestRules,
   tryParseRequestRuleExpr,
@@ -47,6 +48,7 @@ import {
   type RequestCondition,
   type RequestRuleGroup,
   type TierCondition,
+  type TieredPriceScale,
 } from '../lib/billing-expr'
 
 type DynamicPricingBreakdownProps = {
@@ -64,6 +66,8 @@ type DynamicPricingBreakdownProps = {
    * call they are inspecting. Defaults to false (show all configured prices).
    */
   hideCacheColumns?: boolean
+  /** Optional frozen wallet scale used only by usage-log details. */
+  priceScale?: TieredPriceScale | null
 }
 
 const VAR_LABELS: Record<string, string> = {
@@ -157,6 +161,7 @@ export function DynamicPricingBreakdown({
   billingExpr,
   matchedTierLabel,
   hideCacheColumns = false,
+  priceScale,
 }: DynamicPricingBreakdownProps) {
   const { t } = useTranslation()
   const expr = billingExpr || ''
@@ -286,9 +291,10 @@ export function DynamicPricingBreakdown({
                   )}
                   <div className='grid grid-cols-2 gap-x-3 gap-y-1.5'>
                     {visiblePriceFields.map((v) => {
-                      const value = Number(
-                        tier[v.field as string as keyof ParsedTier] || 0
-                      )
+                      const value =
+                        Number(
+                          tier[v.field as string as keyof ParsedTier] || 0
+                        ) * getTieredPriceScaleForVar(v, priceScale)
                       return (
                         <div key={v.field} className='min-w-0'>
                           <div className='text-muted-foreground truncate text-[10px] font-medium tracking-wider uppercase'>
@@ -363,9 +369,10 @@ export function DynamicPricingBreakdown({
                         )}
                       </TableCell>
                       {visiblePriceFields.map((v) => {
-                        const value = Number(
-                          tier[v.field as string as keyof ParsedTier] || 0
-                        )
+                        const value =
+                          Number(
+                            tier[v.field as string as keyof ParsedTier] || 0
+                          ) * getTieredPriceScaleForVar(v, priceScale)
                         return (
                           <TableCell
                             key={v.field}

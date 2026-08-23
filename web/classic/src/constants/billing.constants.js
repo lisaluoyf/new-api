@@ -27,6 +27,24 @@ export const BILLING_VAR_KEYS = BILLING_VARS.map((v) => v.key);
 
 export const BILLING_PRICING_VARS = BILLING_VARS.filter((v) => !v.isConditionOnly);
 
+export const getTieredPriceScaleForVar = (variable, scale) => {
+  if (!scale) return 1;
+  let raw;
+  switch (variable.key) {
+    case 'cr':
+      raw = scale.cache_read;
+      break;
+    case 'cc':
+    case 'cc1h':
+      raw = scale.cache_write;
+      break;
+    default:
+      raw = variable.side === 'output' ? scale.output : scale.input;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1;
+};
+
 export const BILLING_EXTRA_VARS = BILLING_VARS.filter((v) => !v.isBase && !v.isConditionOnly);
 
 export const BILLING_VAR_KEY_TO_FIELD = Object.fromEntries(
