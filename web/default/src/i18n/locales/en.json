@@ -496,6 +496,7 @@
     "Base Limits": "Base Limits",
     "Base multipliers applied when users select specific groups.": "Base multipliers applied when users select specific groups.",
     "Base Price": "Base Price",
+    "Base Variant": "Base Variant",
     "When a base price is set, it is used as the billing calculation base; resolution prices are converted into ratios automatically.": "When a base price is set, it is used as the billing calculation base; resolution prices are converted into ratios automatically.",
     "Base rate limit windows for this account.": "Base rate limit windows for this account.",
     "Base URL": "Base URL",

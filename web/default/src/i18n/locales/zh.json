@@ -496,6 +496,7 @@
     "Base Limits": "基础额度",
     "Base multipliers applied when users select specific groups.": "当用户选择特定分组时应用的基础乘数。",
     "Base Price": "基础价格",
+    "Base Variant": "基础规格",
     "When a base price is set, it is used as the billing calculation base; resolution prices are converted into ratios automatically.": "设置基础价格后，结算将以该价格为计算基础，并自动将各分辨率价格换算为倍率。",
     "Base rate limit windows for this account.": "当前账号的基础额度窗口。",
     "Base URL": "API 地址",

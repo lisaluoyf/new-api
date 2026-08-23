@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -37,5 +38,24 @@ func TestPublicMarketplaceItemDoesNotExposeInternalChannelData(t *testing.T) {
 		if strings.Contains(jsonText, `"`+forbidden+`"`) {
 			t.Fatalf("public marketplace response exposed %q: %s", forbidden, jsonText)
 		}
+	}
+}
+
+func TestBuildVideoMediaPricingViewUsesEightSeedanceTiers(t *testing.T) {
+	view := buildVideoMediaPricingView("doubao-seedance-2.0", 0.8)
+	if view == nil {
+		t.Fatal("expected Seedance media pricing")
+	}
+	if len(view.OfficialPrices) != 8 || len(view.ProcurementPrices) != 8 || len(view.BillingPrices) != 8 {
+		t.Fatalf("unexpected tier counts: official=%d procurement=%d billing=%d", len(view.OfficialPrices), len(view.ProcurementPrices), len(view.BillingPrices))
+	}
+	if got := view.OfficialPrices["720P"]; got != 0.1775 {
+		t.Fatalf("official 720P=%v", got)
+	}
+	if got := view.ProcurementPrices["720P"]; math.Abs(got-0.142*0.8) > 1e-9 {
+		t.Fatalf("procurement 720P=%v", got)
+	}
+	if got := view.BillingPrices["720P-input"]; got != 0.08584 {
+		t.Fatalf("billing 720P-input=%v", got)
 	}
 }

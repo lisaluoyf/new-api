@@ -76,6 +76,7 @@ type ModelDataItem struct {
 	ActualCachePrice           *float64                   `json:"actual_cache_price"`           // cache_price × recharge_rate; nil = unknown
 	CacheCreationPrice         *float64                   `json:"cache_creation_price"`         // cache-write price ($/1M); nil = unknown
 	ActualCacheCreationPrice   *float64                   `json:"actual_cache_creation_price"`  // cache_creation_price × recharge_rate; nil = unknown
+	MediaPricing               *VideoMediaPricingView     `json:"media_pricing,omitempty"`      // tiered media official, procurement, and billing prices
 	FingerprintHistory         []DetectPoint              `json:"fingerprint_history"`          // last 24 fingerprint runs (newest first)
 	UptimeHistory              []DetectPoint              `json:"uptime_history"`               // last 24 uptime probes (newest first)
 	LatencyMedianMs            float64                    `json:"latency_median_ms"`            // median latency over last modelDataLatencyMax pass probes; 0 if no samples
@@ -89,6 +90,21 @@ type ModelDataItem struct {
 	BaseURL                    string                     `json:"base_url"`                     // channel base URL, used for analysis lookup
 	FreeModelConfig            *FreeModelMemberConfigView `json:"free_model_config,omitempty"`
 	FreeModelHealth            *FreeModelHealthView       `json:"free_model_health,omitempty"`
+}
+
+type VideoMediaPricingView struct {
+	Unit              string             `json:"unit"`
+	BaseVariant       string             `json:"base_variant"`
+	OfficialPrices    map[string]float64 `json:"official_prices"`
+	ProcurementPrices map[string]float64 `json:"procurement_prices"`
+	BillingPrices     map[string]float64 `json:"billing_prices"`
+}
+
+type PublicVideoMediaPricingView struct {
+	Unit           string             `json:"unit"`
+	BaseVariant    string             `json:"base_variant"`
+	OfficialPrices map[string]float64 `json:"official_prices"`
+	BillingPrices  map[string]float64 `json:"billing_prices"`
 }
 
 type FreeModelHealthView struct {
@@ -605,6 +621,26 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		if r.PricingSource != nil {
 			pricingSource = *r.PricingSource
 		}
+		mediaPricing := buildVideoMediaPricingView(modelName, rechargeRate)
+		if mediaPricing != nil {
+			baseVariant := mediaPricing.BaseVariant
+			billingBase := mediaPricing.BillingPrices[baseVariant]
+			officialBase := mediaPricing.OfficialPrices[baseVariant]
+			procurementBase := mediaPricing.ProcurementPrices[baseVariant]
+			if billingBase > 0 {
+				modelPricePtr, inputPricePtr, userPricePtr = &billingBase, &billingBase, &billingBase
+				one := 1.0
+				groupRatioPtr = &one
+			}
+			if officialBase > 0 {
+				officialInPtr = &officialBase
+			}
+			if procurementBase > 0 {
+				actualPricePtr = &procurementBase
+			}
+			mismatchPtr, suggestedPtr = nil, nil
+			pricingSource = "media"
+		}
 		upstreamModel := service.ModelMappingTarget(r.ModelMapping, modelName)
 
 		statusReason, statusTime, recoveryPassCount := modelDataStatusMetadata(r.Status, r.ModelEnabled, r.OtherInfo, modelName, r.ConsecutiveFingerprintPass)
@@ -661,6 +697,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			ActualCachePrice:           actualCachePricePtr,
 			CacheCreationPrice:         cacheCreationPricePtr,
 			ActualCacheCreationPrice:   actualCacheCreationPricePtr,
+			MediaPricing:               mediaPricing,
 			RechargeRate:               rechargeRate,
 			PricingSource:              pricingSource,
 			FingerprintHistory:         fp,
@@ -715,6 +752,36 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 
 func modelDataExtractKeyGroup(setting *string) string {
 	return service.ExtractKeyGroup(setting)
+}
+
+func buildVideoMediaPricingView(modelName string, rechargeRate float64) *VideoMediaPricingView {
+	pricing, ok := service.GlobalVideoMediaPricingUSD(modelName)
+	if !ok || pricing.BasePrice <= 0 || len(pricing.Prices) == 0 {
+		return nil
+	}
+	if rechargeRate <= 0 {
+		rechargeRate = 1
+	}
+	procurement := make(map[string]float64, len(pricing.Prices))
+	billing := make(map[string]float64, len(pricing.Prices))
+	for variant, price := range pricing.Prices {
+		if price <= 0 {
+			continue
+		}
+		billing[variant] = price
+		procurement[variant] = price * rechargeRate
+	}
+	baseVariant := strings.TrimSpace(pricing.BaseVariant)
+	if baseVariant == "" {
+		baseVariant = "base"
+	}
+	return &VideoMediaPricingView{
+		Unit:              pricing.Unit,
+		BaseVariant:       baseVariant,
+		OfficialPrices:    pricing.OfficialPrices,
+		ProcurementPrices: procurement,
+		BillingPrices:     billing,
+	}
 }
 
 func modelDataExtractClientExclusive(setting *string) string {
@@ -924,16 +991,17 @@ type PublicDetectPoint struct {
 // Keep this as an explicit allowlist: upstream identity, procurement pricing, and
 // channel configuration must never cross the public API boundary.
 type PublicMarketplaceItem struct {
-	ChannelID             int                 `json:"channel_id"`
-	ClientExclusive       string              `json:"client_exclusive"` // "" | "codex" | "claude_code"
-	UserPrice             *float64            `json:"user_price"`
-	ActualOutputUserPrice *float64            `json:"actual_output_user_price"`
-	OfficialInputPrice    *float64            `json:"official_input_price"`
-	OfficialOutputPrice   *float64            `json:"official_output_price"`
-	FingerprintHistory    []PublicDetectPoint `json:"fingerprint_history"`
-	UptimeHistory         []PublicDetectPoint `json:"uptime_history"`
-	LatencyMedianMs       float64             `json:"latency_median_ms"`
-	Status                int                 `json:"status"`
+	ChannelID             int                          `json:"channel_id"`
+	ClientExclusive       string                       `json:"client_exclusive"` // "" | "codex" | "claude_code"
+	UserPrice             *float64                     `json:"user_price"`
+	ActualOutputUserPrice *float64                     `json:"actual_output_user_price"`
+	OfficialInputPrice    *float64                     `json:"official_input_price"`
+	OfficialOutputPrice   *float64                     `json:"official_output_price"`
+	MediaPricing          *PublicVideoMediaPricingView `json:"media_pricing,omitempty"`
+	FingerprintHistory    []PublicDetectPoint          `json:"fingerprint_history"`
+	UptimeHistory         []PublicDetectPoint          `json:"uptime_history"`
+	LatencyMedianMs       float64                      `json:"latency_median_ms"`
+	Status                int                          `json:"status"`
 }
 
 // publicMarketplaceCache is a simple per-model TTL cache.
@@ -1142,6 +1210,7 @@ func GetPublicMarketplace(c *gin.Context) {
 		apimasterRatio := service.EffectiveModelPriceRatio(r.ModelPriceRatios, &marketChannelRatio, modelName)
 
 		var userPricePtr, actualOutputUserPricePtr *float64
+		itemOfficialInPtr := officialInPtr
 		if r.InputPrice != nil {
 			in := *r.InputPrice
 			actualIn := in * rechargeRate
@@ -1166,14 +1235,32 @@ func GetPublicMarketplace(c *gin.Context) {
 			userPricePtr = &userIn
 			actualOutputUserPricePtr = &userOut
 		}
+		var publicMediaPricing *PublicVideoMediaPricingView
+		if mediaPricing := buildVideoMediaPricingView(modelName, rechargeRate); mediaPricing != nil {
+			publicMediaPricing = &PublicVideoMediaPricingView{
+				Unit:           mediaPricing.Unit,
+				BaseVariant:    mediaPricing.BaseVariant,
+				OfficialPrices: mediaPricing.OfficialPrices,
+				BillingPrices:  mediaPricing.BillingPrices,
+			}
+			if current := mediaPricing.BillingPrices[mediaPricing.BaseVariant]; current > 0 {
+				currentCopy := current
+				userPricePtr = &currentCopy
+			}
+			if official := mediaPricing.OfficialPrices[mediaPricing.BaseVariant]; official > 0 {
+				officialCopy := official
+				itemOfficialInPtr = &officialCopy
+			}
+		}
 
 		items = append(items, PublicMarketplaceItem{
 			ChannelID:             r.ChannelID,
 			ClientExclusive:       modelDataExtractClientExclusive(r.Setting),
 			UserPrice:             userPricePtr,
 			ActualOutputUserPrice: actualOutputUserPricePtr,
-			OfficialInputPrice:    officialInPtr,
+			OfficialInputPrice:    itemOfficialInPtr,
 			OfficialOutputPrice:   officialOutPtr,
+			MediaPricing:          publicMediaPricing,
 			FingerprintHistory:    fp,
 			UptimeHistory:         up,
 			LatencyMedianMs:       medianFloat64(latencies),

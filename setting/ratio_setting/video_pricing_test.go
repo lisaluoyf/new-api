@@ -46,4 +46,18 @@ func TestDefaultVideoModelPricingIncludesSeedanceResolutionPrices(t *testing.T) 
 		require.InDelta(t, want, got, 1e-9, resolution)
 		require.InDelta(t, want/base, GetVideoModelResolutionRatio("doubao-seedance-2.0", resolution), 1e-9, resolution)
 	}
+
+	details, found := GetVideoModelPricingDetails("doubao-seedance-2.0")
+	require.True(t, found)
+	require.Equal(t, "second", details.Unit)
+	require.Equal(t, "720P", details.BaseVariant)
+	official := map[string]float64{
+		"480P": 0.0825, "480P-input": 0.05,
+		"720P": 0.1775, "720P-input": 0.1073,
+		"1080P": 0.443, "1080P-input": 0.2696,
+		"4K": 0.9025, "4K-input": 0.5554,
+	}
+	for variant, want := range official {
+		require.InDelta(t, want, details.OfficialPrices[variant], 1e-9, variant)
+	}
 }
