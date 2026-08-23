@@ -147,7 +147,7 @@ const PRESET_GROUPS: PresetGroup[] = [
       {
         key: 'gpt-5.6-sol',
         label: 'GPT-5.6 Sol',
-        expr: 'len <= 272000 ? tier("standard", p * 4 + c * 20 + cr * 0.4 + cc * 5) : tier("long_context", p * 8 + c * 30 + cr * 0.8 + cc * 10)',
+        expr: 'len <= 272000 ? tier("standard", p * 5 + c * 30 + cr * 0.5 + cc * 6.25) : tier("long_context", p * 10 + c * 45 + cr * 1 + cc * 12.5)',
       },
       {
         key: 'gpt-5.6-terra',
