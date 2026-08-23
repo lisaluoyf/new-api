@@ -52,6 +52,25 @@ type TaskDto struct {
 	Data       json.RawMessage `json:"data"`
 }
 
+// UserTaskDto is the customer-facing task representation. Keep provider
+// payloads, channel identifiers and internal billing fields out of this DTO.
+type UserTaskDto struct {
+	ID         int64  `json:"id"`
+	CreatedAt  int64  `json:"created_at"`
+	UpdatedAt  int64  `json:"updated_at"`
+	TaskID     string `json:"task_id"`
+	Platform   string `json:"platform"`
+	Model      string `json:"model,omitempty"`
+	Action     string `json:"action"`
+	Status     string `json:"status"`
+	FailReason string `json:"fail_reason,omitempty"`
+	ResultURL  string `json:"result_url,omitempty"`
+	SubmitTime int64  `json:"submit_time"`
+	StartTime  int64  `json:"start_time"`
+	FinishTime int64  `json:"finish_time"`
+	Progress   string `json:"progress"`
+}
+
 type FetchReq struct {
 	IDs []string `json:"ids"`
 }

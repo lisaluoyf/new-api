@@ -30,8 +30,18 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
-	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
+	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || oaiError.Message != "" || oaiError.Code != nil) {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	}
+	if validationErr := service.ValidateFreeModelResponsesResponse(c, &responsesResponse); validationErr != nil {
+		return nil, validationErr
+	}
+	if service.IsFreeModel(info.OriginModelName) {
+		responsesResponse.Model = info.OriginModelName
+		responseBody, err = common.Marshal(responsesResponse)
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
 	}
 
 	if responsesResponse.HasImageGenerationCall() {
@@ -79,7 +89,8 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
 
-	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+	terminalFrame := false
+	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
 		// 检查当前数据是否包含 completed 状态和 usage 信息
 		var streamResponse dto.ResponsesStreamResponse
@@ -88,9 +99,23 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
+		if streamResponse.Type == "error" || streamResponse.Type == "response.failed" || (streamResponse.Response != nil && streamResponse.Response.Error != nil) {
+			sr.Stop(fmt.Errorf("upstream returned an error event"))
+			return
+		}
+		if service.IsFreeModel(info.OriginModelName) && streamResponse.Response != nil {
+			streamResponse.Response.Model = info.OriginModelName
+			if encoded, marshalErr := common.Marshal(streamResponse); marshalErr == nil {
+				data = string(encoded)
+			} else {
+				sr.Error(marshalErr)
+				return
+			}
+		}
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed":
+			terminalFrame = true
 			if streamResponse.Response != nil {
 				if streamResponse.Response.Usage != nil {
 					if streamResponse.Response.Usage.InputTokens != 0 {
@@ -129,6 +154,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
+	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame); streamErr != nil {
+		return nil, streamErr
+	}
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量

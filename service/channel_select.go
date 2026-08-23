@@ -87,6 +87,14 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 	pickFilter := ChannelPickFilter(param.Ctx, param.ModelName)
 
+	// FreeModel owns a stable request-level plan. This branch is deliberately
+	// before all normal selectors so a virtual request can never enter a paid
+	// default/auto/trial pool.
+	if IsFreeModel(param.ModelName) {
+		channel, selectErr := SelectFreeModelChannel(param.Ctx)
+		return channel, "free_model", selectErr
+	}
+
 	// Routing algorithm 0.1 (auto-cheapest / token group "default"):
 	//   every retry: cheapest among remaining enabled channels (price ascending).
 	//   Failed channels are excluded via use_channel before each pick.
@@ -199,5 +207,5 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 }
 
 func usesAutoCheapest(tokenGroup, modelName string) bool {
-	return tokenGroup == AutoCheapestGroup || IsFreeModel(modelName)
+	return tokenGroup == AutoCheapestGroup
 }

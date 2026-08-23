@@ -584,6 +584,52 @@ func TestBuildTieredTokenParams_ParityWithRatio(t *testing.T) {
 	}
 }
 
+func TestBuildTieredTokenParams_GPT56LongContextPricesAllInputClasses(t *testing.T) {
+	expr := `len <= 272000 ? tier("standard", p * 2 + c * 12 + cr * 0.2 + cc * 2.5) : tier("long_context", p * 4 + c * 18 + cr * 0.4 + cc * 5)`
+	usage := &dto.Usage{
+		PromptTokens:     300000,
+		CompletionTokens: 10000,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:         100000,
+			CachedCreationTokens: 50000,
+		},
+	}
+
+	params := BuildTieredTokenParams(usage, true, billingexpr.UsedVars(expr))
+	if params.Len != 300000 {
+		t.Fatalf("Len = %f, want 300000", params.Len)
+	}
+	if params.P != 150000 {
+		t.Fatalf("P = %f, want 150000", params.P)
+	}
+
+	result, trace, err := billingexpr.RunExpr(expr, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := 150000*4.0 + 100000*0.4 + 50000*5.0 + 10000*18.0
+	if math.Abs(result-want) > 0.01 {
+		t.Fatalf("cost = %f, want %f", result, want)
+	}
+	if trace.MatchedTier != "long_context" {
+		t.Fatalf("tier = %q, want long_context", trace.MatchedTier)
+	}
+}
+
+func TestBuildTieredTokenParams_GPT56BoundaryUsesStandardTier(t *testing.T) {
+	expr := `len <= 272000 ? tier("standard", p * 0.2 + c * 1.2 + cr * 0.02 + cc * 0.25) : tier("long_context", p * 0.4 + c * 1.8 + cr * 0.04 + cc * 0.5)`
+	usage := &dto.Usage{PromptTokens: 272000, CompletionTokens: 1000}
+	params := BuildTieredTokenParams(usage, true, billingexpr.UsedVars(expr))
+
+	_, trace, err := billingexpr.RunExpr(expr, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trace.MatchedTier != "standard" {
+		t.Fatalf("tier = %q, want standard", trace.MatchedTier)
+	}
+}
+
 func TestBuildTieredTokenParams_ParityWithRatio_Image(t *testing.T) {
 	// gpt-image-1-mini prices: input=$2, output=$8, image=$2.5
 	// Ratio equivalents: modelRatio=1, completionRatio=4, imageRatio=1.25

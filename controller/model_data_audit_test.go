@@ -3,10 +3,12 @@ package controller
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBuildChannelDataAuditDetectsMissingCacheWrite(t *testing.T) {
+	ratio_setting.InitRatioSettings()
 	items, summary, groups := buildChannelDataAudit("claude-opus-4-6", []ModelDataItem{
 		{
 			ChannelID:                4,

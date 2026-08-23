@@ -23,6 +23,8 @@ type ConsumeAccountingInput struct {
 	DurationSeconds          int
 	GroupRatio               float64
 	Quota                    int
+	ZeroUserCharge           bool
+	UseQuotaForUserAmounts   bool
 	BillingAt                time.Time
 }
 
@@ -153,12 +155,19 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		tuple := tupleFromChannelPrices(userPrice)
 		snap.Prices["user_price"] = tuple
 		fields.UserPriceAmountUSD, fields.UserFinalAmountUSD = userAmountsUSD(tuple, input)
-		snap.Prices["user_final_price"] = accountingPriceTuple{
+		if input.UseQuotaForUserAmounts {
+			snap.Prices["user_amount_source"] = "settled_quota"
+		}
+		finalPrice := accountingPriceTuple{
 			InputPrice:         tuple.InputPrice * input.GroupRatio,
 			OutputPrice:        tuple.OutputPrice * input.GroupRatio,
 			CachePrice:         tuple.CachePrice * input.GroupRatio,
 			CacheCreationPrice: tuple.CacheCreationPrice * input.GroupRatio,
 		}
+		if input.ZeroUserCharge {
+			finalPrice = accountingPriceTuple{}
+		}
+		snap.Prices["user_final_price"] = finalPrice
 		snap.AmountsUSD["user_price"] = fields.UserPriceAmountUSD
 		snap.AmountsUSD["user_final"] = fields.UserFinalAmountUSD
 	}
@@ -261,6 +270,16 @@ func amountUSD(prices accountingPriceTuple, input ConsumeAccountingInput) float6
 }
 
 func userAmountsUSD(prices accountingPriceTuple, input ConsumeAccountingInput) (userPriceAmountUSD float64, userFinalAmountUSD float64) {
+	if input.ZeroUserCharge {
+		return 0, 0
+	}
+	if input.UseQuotaForUserAmounts {
+		userFinalAmountUSD = quotaAmountUSD(input.Quota)
+		if input.GroupRatio <= 0 {
+			return userFinalAmountUSD, userFinalAmountUSD
+		}
+		return userFinalAmountUSD / input.GroupRatio, userFinalAmountUSD
+	}
 	switch normalizedAccountingBillingMode(input) {
 	case accountingBillingModeImageCount, accountingBillingModeDurationSeconds:
 		userFinalAmountUSD = quotaAmountUSD(input.Quota)

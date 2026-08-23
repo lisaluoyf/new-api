@@ -164,7 +164,10 @@ function BillingBreakdown(props: {
   if (isTieredExpr) {
     rows.push({
       label: t('Billing Mode'),
-      value: t('Dynamic Pricing'),
+      value:
+        other.tiered_price_source === 'wallet'
+          ? `${t('Dynamic Pricing')} (${t('User Price')})`
+          : t('Dynamic Pricing'),
     })
     if (tieredSummary) {
       if (tieredSummary.tier.label) {
@@ -889,6 +892,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
                   billingExpr={decodeBillingExprB64(other.expr_b64)}
                   matchedTierLabel={other.matched_tier}
                   hideCacheColumns={!hasAnyCacheTokens(other)}
+                  priceScale={
+                    other.tiered_price_source === 'wallet'
+                      ? other.tiered_price_scale
+                      : undefined
+                  }
                 />
               </div>
             )}

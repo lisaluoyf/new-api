@@ -17,6 +17,32 @@ func GlobalModelPricingUSD(canonical string) (input, output, cache, cacheCreatio
 	return GlobalModelPricingUSDAt(canonical, time.Now())
 }
 
+type VideoMediaPricingUSD struct {
+	Unit           string
+	BasePrice      float64
+	BaseVariant    string
+	Prices         map[string]float64
+	OfficialPrices map[string]float64
+}
+
+// GlobalVideoMediaPricingUSD resolves the tiered per-unit price table used by
+// both task billing and price presentation. It is the authoritative source for
+// media models that have resolution/input variants.
+func GlobalVideoMediaPricingUSD(canonical string) (VideoMediaPricingUSD, bool) {
+	for _, name := range ModelPricingLookupNames(canonical) {
+		if pricing, ok := ratio_setting.GetVideoModelPricingDetails(name); ok {
+			return VideoMediaPricingUSD{
+				Unit:           pricing.Unit,
+				BasePrice:      pricing.BasePrice,
+				BaseVariant:    pricing.BaseVariant,
+				Prices:         pricing.Prices,
+				OfficialPrices: pricing.OfficialPrices,
+			}, true
+		}
+	}
+	return VideoMediaPricingUSD{}, false
+}
+
 // GlobalModelPricingUSDAt is the time-aware form used by tests and request
 // snapshots. DeepSeek V4 has an official peak/off-peak schedule; all other
 // models continue to resolve from the operator's static global settings.

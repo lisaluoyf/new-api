@@ -94,6 +94,18 @@ func Path2RelayMode(path string) int {
 	return relayMode
 }
 
+func EffectiveImageRequestPath(path string, contentType string) string {
+	if strings.HasPrefix(path, "/v1/images/generations/async") &&
+		strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "multipart/form-data") {
+		return "/v1/images/edits"
+	}
+	return path
+}
+
+func Request2RelayMode(path string, contentType string) int {
+	return Path2RelayMode(EffectiveImageRequestPath(path, contentType))
+}
+
 func Path2RelayModeMidjourney(path string) int {
 	relayMode := RelayModeUnknown
 	if strings.HasSuffix(path, "/mj/submit/action") {

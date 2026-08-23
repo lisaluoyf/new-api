@@ -188,6 +188,11 @@ func GetAccessibleOpenAIModels(c *gin.Context) ([]dto.OpenAIModels, error) {
 		}
 		for allowModel, _ := range tokenModelLimit {
 			if service.IsFreeModel(allowModel) {
+				eligible, _, eligibilityErr := service.FreeModelEligibility(c.GetInt("id"))
+				if eligibilityErr != nil || !eligible || !common.StringsContains(model.GetEnabledModels(), service.FreeModelID) {
+					continue
+				}
+				userOpenAiModels = append(userOpenAiModels, dto.OpenAIModels{Id: service.FreeModelID, Object: "model", Created: 1626777600, OwnedBy: "apimaster", SupportedEndpointTypes: model.GetModelSupportEndpointTypes(service.FreeModelID)})
 				continue
 			}
 			if !acceptUnsetRatioModel {
@@ -236,6 +241,10 @@ func GetAccessibleOpenAIModels(c *gin.Context) ([]dto.OpenAIModels, error) {
 		}
 		for _, modelName := range models {
 			if service.IsFreeModel(modelName) {
+				eligible, _, eligibilityErr := service.FreeModelEligibility(userId)
+				if eligibilityErr == nil && eligible {
+					userOpenAiModels = append(userOpenAiModels, dto.OpenAIModels{Id: service.FreeModelID, Object: "model", Created: 1626777600, OwnedBy: "apimaster", SupportedEndpointTypes: model.GetModelSupportEndpointTypes(service.FreeModelID)})
+				}
 				continue
 			}
 			if service.ShouldHideGptImage2OfficialModel(modelName) {

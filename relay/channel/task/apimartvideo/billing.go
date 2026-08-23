@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
@@ -129,7 +130,14 @@ func recalcMotionControlQuota(task *model.Task, seconds int) int {
 }
 
 func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
-	if task == nil || taskResult == nil || !IsMotionControlModel(motionControlModelName(task)) {
+	if task == nil || taskResult == nil {
+		return 0
+	}
+	modelName := motionControlModelName(task)
+	if normalizeModel(modelName) == ModelDoubaoSeedance20 {
+		return seedanceActualQuota(task)
+	}
+	if !IsMotionControlModel(modelName) {
 		return 0
 	}
 
@@ -155,6 +163,39 @@ func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *rela
 		return 0
 	}
 	return recalcMotionControlQuota(task, actualSeconds)
+}
+
+// seedanceActualQuota reconciles the estimate with APIMart's terminal cost.
+// This is especially important for the four "-input" tiers, whose billable
+// duration is reference-video duration plus generated-video duration. The
+// request only contains URLs, so the provider's measured cost is authoritative.
+func seedanceActualQuota(task *model.Task) int {
+	if task == nil || task.PrivateData.BillingContext == nil {
+		return 0
+	}
+	cost := taskDataPositiveNumber(task.Data, "cost")
+	if cost <= 0 {
+		// APIMart credits use 10 credits per USD (for example 1.42 credits/s
+		// corresponds to $0.142/s on the Seedance pricing page).
+		cost = taskDataPositiveNumber(task.Data, "credits_cost") / 10
+	}
+	if cost <= 0 {
+		return 0
+	}
+	groupRatio := task.PrivateData.BillingContext.GroupRatio
+	if groupRatio <= 0 {
+		groupRatio = 1
+	}
+	return int(math.Round(cost * common.QuotaPerUnit * groupRatio))
+}
+
+func taskDataPositiveNumber(data []byte, field string) float64 {
+	for _, path := range []string{"data." + field, field} {
+		if value := gjson.GetBytes(data, path).Float(); value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func motionVideoURLFromTask(task *model.Task) string {

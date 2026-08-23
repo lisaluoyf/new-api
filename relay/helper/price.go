@@ -106,7 +106,7 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 
 	// Check if this model uses tiered_expr billing
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
-		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
+		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo, !useTrialPricing)
 	}
 
 	var preConsumedQuota int
@@ -283,11 +283,22 @@ func BuildGPTTrialPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptT
 }
 
 // RefreshModelPriceForRetry recalculates channel-dependent pricing after a
-// fallback selects a different channel. Tiered billing is model-scoped and its
-// snapshot must remain frozen at pre-consume time.
+// fallback selects a different channel. A tiered snapshot stays frozen within
+// one attempt, but wallet price scales must be rebuilt for the new channel.
 func RefreshModelPriceForRetry(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
-		return info.PriceData, nil
+		channelID := selectedPricingChannelID(c, info)
+		if info.WalletTieredBillingSnapshot != nil && info.WalletTieredBillingSnapshot.PricingChannelID == channelID {
+			return info.PriceData, nil
+		}
+		walletPriceData, err := ModelPriceHelper(c, info, promptTokens, meta)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		if info.PriceDataSource != string(priceResolutionModeWallet) {
+			return info.PriceData, nil
+		}
+		return walletPriceData, nil
 	}
 	if info != nil && (info.PriceDataSource == string(priceResolutionModeGPTTrial) || info.PriceDataSource == model.SubscriptionPlanTypeGPTReferralReward || info.PriceDataSource == model.SubscriptionPlanTypeGPTSubscription) {
 		priceSource := info.PriceDataSource
@@ -320,8 +331,13 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 		}
 	}
 
-	// Prefer channel user price (input × recharge × apimaster) for per-unit tasks like video/image.
-	if channelID := c.GetInt("channel_id"); channelID > 0 {
+	// An explicit media base price is authoritative for per-second/per-request
+	// task billing. Entries without base_price keep the legacy channel-price path.
+	if mediaBasePrice, ok := ratio_setting.GetVideoModelBasePrice(info.OriginModelName); ok {
+		modelPrice = mediaBasePrice
+		usePrice = true
+	} else if channelID := c.GetInt("channel_id"); channelID > 0 {
+		// Prefer channel user price (input × recharge × apimaster) for per-unit tasks like video/image.
 		if resolved, err := service.ChannelActualPricesResolved(channelID, info.OriginModelName); err == nil && resolved != nil && resolved.InputPrice > 0 {
 			modelPrice = resolved.InputPrice
 			usePrice = true
@@ -407,7 +423,7 @@ func HasModelBillingConfig(modelName string) bool {
 	return ok && strings.TrimSpace(expr) != ""
 }
 
-func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo) (types.PriceData, error) {
+func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo, useChannelUserPrice bool) (types.PriceData, error) {
 	exprStr, ok := billing_setting.GetBillingExpr(info.OriginModelName)
 	if !ok {
 		return types.PriceData{}, fmt.Errorf("model %s is configured as tiered_expr but has no billing expression", info.OriginModelName)
@@ -423,11 +439,16 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 		return types.PriceData{}, err
 	}
 
-	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{
+	priceScale := billingexpr.TokenPriceScale{}
+	if useChannelUserPrice {
+		priceScale = resolveTieredWalletPriceScale(c, info)
+	}
+	estimatedParams := billingexpr.ApplyTokenPriceScale(billingexpr.TokenParams{
 		P:   float64(promptTokens),
 		C:   float64(estimatedCompletionTokens),
 		Len: float64(promptTokens),
-	}, requestInput)
+	}, priceScale)
+	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, estimatedParams, requestInput)
 	if err != nil {
 		return types.PriceData{}, fmt.Errorf("model %s tiered expr run failed: %w", info.OriginModelName, err)
 	}
@@ -445,6 +466,10 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 	}
 
 	exprHash := billingexpr.ExprHashString(exprStr)
+	pricingChannelID := 0
+	if useChannelUserPrice {
+		pricingChannelID = selectedPricingChannelID(c, info)
+	}
 	snapshot := &billingexpr.BillingSnapshot{
 		BillingMode:               billing_setting.BillingModeTieredExpr,
 		ModelName:                 info.OriginModelName,
@@ -458,6 +483,8 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 		EstimatedTier:             trace.MatchedTier,
 		QuotaPerUnit:              common.QuotaPerUnit,
 		ExprVersion:               billingexpr.ExprVersion(exprStr),
+		PricingChannelID:          pricingChannelID,
+		PriceScale:                priceScale,
 	}
 	info.TieredBillingSnapshot = snapshot
 	info.BillingRequestInput = &requestInput
@@ -474,4 +501,51 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 
 	info.PriceData = priceData
 	return priceData, nil
+}
+
+func resolveTieredWalletPriceScale(c *gin.Context, info *relaycommon.RelayInfo) billingexpr.TokenPriceScale {
+	if model.DB == nil {
+		return billingexpr.TokenPriceScale{}
+	}
+	channelID := selectedPricingChannelID(c, info)
+	if channelID <= 0 {
+		return billingexpr.TokenPriceScale{}
+	}
+
+	userPrice, err := service.ChannelActualPricesResolved(channelID, info.OriginModelName)
+	if err != nil || userPrice == nil {
+		return billingexpr.TokenPriceScale{}
+	}
+	officialInput, officialOutput, officialCache, officialCacheWrite, ok := service.GlobalModelPricingUSDAt(info.OriginModelName, info.StartTime)
+	if !ok || officialInput <= 0 {
+		return billingexpr.TokenPriceScale{}
+	}
+
+	inputScale := userPrice.InputPrice / officialInput
+	return billingexpr.TokenPriceScale{
+		Enabled:    true,
+		Input:      inputScale,
+		Output:     tieredPriceScale(userPrice.OutputPrice, officialOutput, inputScale),
+		CacheRead:  tieredPriceScale(userPrice.CachePrice, officialCache, inputScale),
+		CacheWrite: tieredPriceScale(userPrice.CacheCreationPrice, officialCacheWrite, inputScale),
+	}
+}
+
+func selectedPricingChannelID(c *gin.Context, info *relaycommon.RelayInfo) int {
+	if c != nil {
+		if channelID := c.GetInt("channel_id"); channelID > 0 {
+			return channelID
+		}
+	}
+	if info != nil && info.ChannelMeta != nil {
+		return info.ChannelMeta.ChannelId
+	}
+	return 0
+}
+
+func tieredPriceScale(userPrice, officialPrice, fallback float64) float64 {
+	if userPrice > 0 && officialPrice > 0 {
+		return userPrice / officialPrice
+	}
+	return fallback
 }

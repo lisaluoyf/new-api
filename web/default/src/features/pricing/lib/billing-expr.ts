@@ -44,6 +44,40 @@ export type BillingVar = {
   group?: string
 }
 
+export type TieredPriceScale = {
+  input?: number
+  output?: number
+  cache_read?: number
+  cache_write?: number
+}
+
+/**
+ * Resolve the frozen wallet-price scale for an expression variable. Model
+ * pricing pages omit the scale and therefore keep showing official prices.
+ */
+export function getTieredPriceScaleForVar(
+  variable: BillingVar,
+  scale?: TieredPriceScale | null
+): number {
+  if (!scale) return 1
+
+  let raw: number | undefined
+  switch (variable.key) {
+    case 'cr':
+      raw = scale.cache_read
+      break
+    case 'cc':
+    case 'cc1h':
+      raw = scale.cache_write
+      break
+    default:
+      raw = variable.side === 'output' ? scale.output : scale.input
+  }
+
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1
+}
+
 export const BILLING_VARS: BillingVar[] = [
   {
     key: 'p',

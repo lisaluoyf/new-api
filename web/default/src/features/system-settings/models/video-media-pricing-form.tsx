@@ -12,24 +12,95 @@ type PricingRow = {
   id: number
   model: string
   unit: string
+  basePrice?: number
+  baseVariant?: string
   prices: Record<string, number>
+  officialPrices: Record<string, number>
 }
 
 const DEFAULT_PRICING = {
   'minimax-h3': { unit: 'second', prices: { '768P': 0.08, '2K': 0.13 } },
+  'kling-v3-omni': {
+    unit: 'second',
+    prices: {
+      base: 0.084,
+      sound: 0.112,
+      video: 0.126,
+      pro: 0.112,
+      'pro-sound': 0.14,
+      'pro-video': 0.168,
+      '4k': 0.5357,
+      '4k-sound': 0.5357,
+    },
+  },
+  'doubao-seedance-2.0': {
+    unit: 'second',
+    base_price: 0.142,
+    base_variant: '720P',
+    prices: {
+      '480P': 0.066,
+      '480P-input': 0.04,
+      '720P': 0.142,
+      '720P-input': 0.08584,
+      '1080P': 0.3544,
+      '1080P-input': 0.21568,
+      '4K': 0.722,
+      '4K-input': 0.44432,
+    },
+    official_prices: {
+      '480P': 0.0825,
+      '480P-input': 0.05,
+      '720P': 0.1775,
+      '720P-input': 0.1073,
+      '1080P': 0.443,
+      '1080P-input': 0.2696,
+      '4K': 0.9025,
+      '4K-input': 0.5554,
+    },
+  },
 }
 
-function parsePricing(
-  raw: string | undefined
-): Record<string, { unit?: string; prices?: Record<string, number> }> {
+function parsePricing(raw: string | undefined): Record<
+  string,
+  {
+    unit?: string
+    base_price?: number
+    base_variant?: string
+    prices?: Record<string, number>
+    official_prices?: Record<string, number>
+  }
+> {
   if (!raw) return DEFAULT_PRICING
   try {
     const parsed = JSON.parse(raw) as unknown
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
-      return parsed as Record<
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const pricing = parsed as Record<
         string,
-        { unit?: string; prices?: Record<string, number> }
+        {
+          unit?: string
+          base_price?: number
+          base_variant?: string
+          prices?: Record<string, number>
+          official_prices?: Record<string, number>
+        }
       >
+      if (!pricing['doubao-seedance-2.0']) {
+        pricing['doubao-seedance-2.0'] = DEFAULT_PRICING['doubao-seedance-2.0']
+      } else {
+        const configured = pricing['doubao-seedance-2.0']
+        const defaults = DEFAULT_PRICING['doubao-seedance-2.0']
+        pricing['doubao-seedance-2.0'] = {
+          ...defaults,
+          ...configured,
+          prices: { ...defaults.prices, ...configured.prices },
+          official_prices: {
+            ...defaults.official_prices,
+            ...configured.official_prices,
+          },
+        }
+      }
+      return pricing
+    }
   } catch {
     // fall through to defaults
   }
@@ -37,25 +108,54 @@ function parsePricing(
 }
 
 function objectToRows(
-  value: Record<string, { unit?: string; prices?: Record<string, number> }>
+  value: Record<
+    string,
+    {
+      unit?: string
+      base_price?: number
+      base_variant?: string
+      prices?: Record<string, number>
+      official_prices?: Record<string, number>
+    }
+  >
 ): PricingRow[] {
   return Object.entries(value).map(([model, config], index) => ({
     id: index + 1,
     model,
     unit: config.unit || 'second',
+    basePrice: config.base_price,
+    baseVariant: config.base_variant,
     prices: config.prices || {},
+    officialPrices: config.official_prices || {},
   }))
 }
 
 function rowsToObject(rows: PricingRow[]) {
   const result: Record<
     string,
-    { unit: string; prices: Record<string, number> }
+    {
+      unit: string
+      base_price?: number
+      base_variant?: string
+      prices: Record<string, number>
+      official_prices?: Record<string, number>
+    }
   > = {}
   rows.forEach((row) => {
     const model = row.model.trim()
-    if (model)
-      result[model] = { unit: row.unit || 'second', prices: row.prices }
+    if (model) {
+      result[model] = {
+        unit: row.unit || 'second',
+        prices: row.prices,
+        official_prices: row.officialPrices,
+      }
+      if (row.basePrice && row.basePrice > 0) {
+        result[model].base_price = row.basePrice
+      }
+      if (row.baseVariant?.trim()) {
+        result[model].base_variant = row.baseVariant.trim()
+      }
+    }
   })
   return result
 }
@@ -100,11 +200,25 @@ export function VideoMediaPricingForm({
       },
     })
 
+  const updateOfficialPrice = (id: number, resolution: string, price: number) =>
+    updateRow(id, {
+      officialPrices: {
+        ...rows.find((row) => row.id === id)?.officialPrices,
+        [resolution]: price,
+      },
+    })
+
   const addModel = () => {
     setNextId((id) => id + 1)
     syncRows([
       ...rows,
-      { id: nextId, model: '', unit: 'second', prices: { '768P': 0 } },
+      {
+        id: nextId,
+        model: '',
+        unit: 'second',
+        prices: { '768P': 0 },
+        officialPrices: { '768P': 0 },
+      },
     ])
   }
 
@@ -124,7 +238,9 @@ export function VideoMediaPricingForm({
     if (!row) return
     const prices = { ...row.prices }
     delete prices[resolution]
-    updateRow(id, { prices })
+    const officialPrices = { ...row.officialPrices }
+    delete officialPrices[resolution]
+    updateRow(id, { prices, officialPrices })
   }
 
   const handleJsonChange = (value: string) => {
@@ -136,7 +252,13 @@ export function VideoMediaPricingForm({
       const next = objectToRows(
         parsed as Record<
           string,
-          { unit?: string; prices?: Record<string, number> }
+          {
+            unit?: string
+            base_price?: number
+            base_variant?: string
+            prices?: Record<string, number>
+            official_prices?: Record<string, number>
+          }
         >
       )
       setRows(next)
@@ -174,7 +296,7 @@ export function VideoMediaPricingForm({
           </div>
           <div>
             {t(
-              'The first price is used as the base price; other resolution prices are converted into billing ratios automatically.'
+              'When a base price is set, it is used as the billing calculation base; resolution prices are converted into ratios automatically.'
             )}
           </div>
         </AlertDescription>
@@ -250,20 +372,63 @@ export function VideoMediaPricingForm({
                   <Trash2 className='text-destructive h-4 w-4' />
                 </Button>
               </div>
+              <div className='mt-3 grid gap-2 md:grid-cols-[1fr_160px_160px_auto]'>
+                <label
+                  className='flex items-center text-sm font-medium'
+                  htmlFor={`media-base-price-${row.id}`}
+                >
+                  {t('Base Price')}
+                </label>
+                <Input
+                  id={`media-base-price-${row.id}`}
+                  type='number'
+                  min={0}
+                  step='0.0001'
+                  value={row.basePrice ?? ''}
+                  placeholder='0.142'
+                  onChange={(e) =>
+                    updateRow(row.id, {
+                      basePrice:
+                        e.target.value === ''
+                          ? undefined
+                          : Number(e.target.value),
+                    })
+                  }
+                />
+                <Input
+                  value={row.baseVariant ?? ''}
+                  placeholder='720P'
+                  aria-label={t('Base Variant')}
+                  onChange={(e) =>
+                    updateRow(row.id, { baseVariant: e.target.value })
+                  }
+                />
+                <span />
+              </div>
               <div className='mt-3 space-y-2'>
+                <div className='text-muted-foreground hidden gap-2 text-xs md:grid md:grid-cols-[1fr_160px_160px_auto]'>
+                  <span>{t('Resolution')}</span>
+                  <span>{t('Procurement Price')}</span>
+                  <span>{t('Official Price')}</span>
+                  <span />
+                </div>
                 {Object.entries(row.prices).map(([resolution, price]) => (
                   <div
                     key={resolution}
-                    className='grid gap-2 md:grid-cols-[1fr_180px_auto]'
+                    className='grid gap-2 md:grid-cols-[1fr_160px_160px_auto]'
                   >
                     <Input
                       value={resolution}
                       aria-label={t('Resolution')}
                       onChange={(e) => {
                         const prices = { ...row.prices }
+                        const officialPrices = { ...row.officialPrices }
                         delete prices[resolution]
+                        delete officialPrices[resolution]
                         prices[e.target.value] = price
-                        updateRow(row.id, { prices })
+                        officialPrices[e.target.value] =
+                          row.officialPrices[resolution] || 0
+                        updateRow(row.id, { prices, officialPrices })
                       }}
                     />
                     <Input
@@ -274,6 +439,20 @@ export function VideoMediaPricingForm({
                       aria-label={t('Price')}
                       onChange={(e) =>
                         updatePrice(
+                          row.id,
+                          resolution,
+                          Number(e.target.value) || 0
+                        )
+                      }
+                    />
+                    <Input
+                      type='number'
+                      min={0}
+                      step='0.0001'
+                      value={row.officialPrices[resolution] ?? 0}
+                      aria-label={t('Official Price')}
+                      onChange={(e) =>
+                        updateOfficialPrice(
                           row.id,
                           resolution,
                           Number(e.target.value) || 0

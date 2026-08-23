@@ -63,16 +63,26 @@ const (
 	LogTypeRefund  = 6
 )
 
+const AccountingStatusRefunded = "refunded"
+
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
+		logs[i].ChannelId = 0
 		logs[i].ChannelName = ""
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
 		if otherMap != nil {
-			// Remove admin-only debug fields.
+			// Remove provider routing, cost and admin-only diagnostics.
+			for key := range otherMap {
+				normalizedKey := strings.ToLower(key)
+				if strings.HasPrefix(normalizedKey, "upstream_") || strings.Contains(normalizedKey, "channel") {
+					delete(otherMap, key)
+				}
+			}
 			delete(otherMap, "admin_info")
-			// delete(otherMap, "reject_reason")
 			delete(otherMap, "stream_status")
+			delete(otherMap, "base_model_price")
+			delete(otherMap, "is_model_mapped")
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 		logs[i].Id = startIdx + i + 1
@@ -284,6 +294,55 @@ func UpdateLogChannelCostByTaskID(userID int, taskID string, costUSD float64) er
 	updates := map[string]interface{}{
 		"accounting_channel_cost_amount_usd": costUSD,
 		"other":                              common.MapToJsonStr(otherMap),
+	}
+	if snapshotMap != nil {
+		updates["accounting_snapshot"] = common.MapToJsonStr(snapshotMap)
+	}
+	return LOG_DB.Model(&Log{}).Where("id = ?", row.Id).Updates(updates).Error
+}
+
+// MarkTaskConsumeLogRefunded removes a failed async task from financial
+// revenue/cost aggregation while preserving its original consume/refund audit
+// trail. Wallet/subscription quota is restored separately by RefundTaskQuota.
+func MarkTaskConsumeLogRefunded(userID int, taskID string) error {
+	row, err := findConsumeLogRowForTask(userID, taskID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	if row.AccountingStatus == AccountingStatusRefunded {
+		return nil
+	}
+
+	otherMap, _ := common.StrToMap(row.Other)
+	if otherMap == nil {
+		otherMap = map[string]interface{}{}
+	}
+	otherMap["billing_refunded"] = true
+
+	snapshotMap, _ := common.StrToMap(row.AccountingSnapshot)
+	if snapshotMap != nil {
+		snapshotMap["status"] = AccountingStatusRefunded
+		if amounts, ok := snapshotMap["amounts_usd"].(map[string]interface{}); ok {
+			snapshotMap["refunded_amounts_usd"] = amounts
+		}
+		snapshotMap["amounts_usd"] = map[string]interface{}{
+			"channel_cost":  0,
+			"user_price":    0,
+			"reseller_cost": 0,
+			"user_final":    0,
+		}
+	}
+
+	updates := map[string]interface{}{
+		"accounting_channel_cost_amount_usd":  0,
+		"accounting_user_price_amount_usd":    0,
+		"accounting_reseller_cost_amount_usd": 0,
+		"accounting_user_final_amount_usd":    0,
+		"accounting_status":                   AccountingStatusRefunded,
+		"other":                               common.MapToJsonStr(otherMap),
 	}
 	if snapshotMap != nil {
 		updates["accounting_snapshot"] = common.MapToJsonStr(snapshotMap)

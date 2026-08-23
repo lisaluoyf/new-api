@@ -242,14 +242,15 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
 	accounting := BuildConsumeAccountingFields(ConsumeAccountingInput{
-		UserId:       relayInfo.UserId,
-		ChannelId:    relayInfo.ChannelId,
-		ModelName:    modelName,
-		InputTokens:  usage.InputTokens,
-		OutputTokens: usage.OutputTokens,
-		GroupRatio:   groupRatio,
-		Quota:        quota,
-		BillingAt:    relayInfo.StartTime,
+		UserId:                 relayInfo.UserId,
+		ChannelId:              relayInfo.ChannelId,
+		ModelName:              modelName,
+		InputTokens:            usage.InputTokens,
+		OutputTokens:           usage.OutputTokens,
+		GroupRatio:             groupRatio,
+		Quota:                  quota,
+		UseQuotaForUserAmounts: tieredOk && relayInfo.PriceDataSource == "wallet",
+		BillingAt:              relayInfo.StartTime,
 	})
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
@@ -374,16 +375,17 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
 	accounting := BuildConsumeAccountingFields(ConsumeAccountingInput{
-		UserId:           relayInfo.UserId,
-		ChannelId:        relayInfo.ChannelId,
-		ModelName:        relayInfo.OriginModelName,
-		InputTokens:      usage.PromptTokens,
-		OutputTokens:     usage.CompletionTokens,
-		CacheReadTokens:  usage.PromptTokensDetails.CachedTokens,
-		CacheWriteTokens: usage.PromptTokensDetails.CachedCreationTokens,
-		GroupRatio:       groupRatio,
-		Quota:            quota,
-		BillingAt:        relayInfo.StartTime,
+		UserId:                 relayInfo.UserId,
+		ChannelId:              relayInfo.ChannelId,
+		ModelName:              relayInfo.OriginModelName,
+		InputTokens:            usage.PromptTokens,
+		OutputTokens:           usage.CompletionTokens,
+		CacheReadTokens:        usage.PromptTokensDetails.CachedTokens,
+		CacheWriteTokens:       usage.PromptTokensDetails.CachedCreationTokens,
+		GroupRatio:             groupRatio,
+		Quota:                  quota,
+		UseQuotaForUserAmounts: tieredOk && relayInfo.PriceDataSource == "wallet",
+		BillingAt:              relayInfo.StartTime,
 	})
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,

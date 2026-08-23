@@ -53,10 +53,10 @@ import {
   invalidateUserSubscription,
   deleteUserSubscription,
   getUserGPTSubscriptionDetails,
+  type GPTUserSubscriptionDetails,
 } from '../../api'
 import { formatTimestamp } from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
-import type { GPTUserSubscriptionDetails } from '../../api'
 
 interface Props {
   open: boolean

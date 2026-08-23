@@ -258,6 +258,13 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
+	if result := normalizeGLM53Reasoning(info.UpstreamModelName, request); result.Changed {
+		logger.LogInfo(c, fmt.Sprintf(
+			"glm-5.3 compatibility: normalized reasoning to thinking.type=enabled effort=%s source=%s",
+			result.Effort,
+			result.Source,
+		))
+	}
 	if info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeAzure {
 		request.StreamOptions = nil
 	}

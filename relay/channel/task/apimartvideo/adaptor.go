@@ -5,30 +5,37 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 )
 
 type submitPayload struct {
-	Model       string   `json:"model"`
-	Prompt      string   `json:"prompt"`
-	Duration    int      `json:"duration,omitempty"`
-	Resolution  string   `json:"resolution,omitempty"`
-	AspectRatio string   `json:"aspect_ratio,omitempty"`
-	ImageURLs   []string `json:"image_urls,omitempty"`
-	Webhook     string   `json:"webhook,omitempty"`
+	Model       string        `json:"model"`
+	Prompt      string        `json:"prompt"`
+	Duration    int           `json:"duration,omitempty"`
+	Resolution  string        `json:"resolution,omitempty"`
+	Mode        string        `json:"mode,omitempty"`
+	AspectRatio string        `json:"aspect_ratio,omitempty"`
+	ImageURLs   []string      `json:"image_urls,omitempty"`
+	VideoURLs   []string      `json:"video_urls,omitempty"`
+	Audio       *bool         `json:"audio,omitempty"`
+	VideoList   []interface{} `json:"video_list,omitempty"`
+	Webhook     string        `json:"webhook,omitempty"`
 }
 
 type motionControlPayload struct {
@@ -146,7 +153,30 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported model %q", body.Model), "invalid_model", http.StatusBadRequest)
 	}
 	body.Duration = normalizeVideoDuration(body.Model, body.Duration)
-	if body.Resolution == "" {
+	if body.Model == ModelKlingV3Omni {
+		body.Mode = strings.ToLower(strings.TrimSpace(body.Mode))
+		if body.Mode == "" {
+			body.Mode = "std"
+		}
+		if body.Mode != "std" && body.Mode != "pro" && body.Mode != "4k" {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("mode must be std, pro, or 4k"), "invalid_request", http.StatusBadRequest)
+		}
+		if len(body.VideoList) > 1 {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("video_list supports at most one video"), "invalid_request", http.StatusBadRequest)
+		}
+		for _, video := range body.VideoList {
+			videoMap, ok := video.(map[string]interface{})
+			if !ok {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("video_list items must be objects"), "invalid_request", http.StatusBadRequest)
+			}
+			rawVideoURL, ok := videoMap["video_url"].(string)
+			videoURL := strings.TrimSpace(rawVideoURL)
+			parsed, parseErr := url.ParseRequestURI(videoURL)
+			if !ok || videoURL == "" || parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("video_list.video_url must be a valid public HTTP(S) URL"), "invalid_request", http.StatusBadRequest)
+			}
+		}
+	} else if body.Resolution == "" {
 		body.Resolution = "720p"
 	}
 	if body.AspectRatio == "" {
@@ -164,6 +194,9 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 		Webhook:  resolveWebhook(body.Webhook),
 		Metadata: map[string]interface{}{
 			"resolution":   body.Resolution,
+			"mode":         body.Mode,
+			"audio":        body.Audio != nil && *body.Audio,
+			"has_video":    len(body.VideoList) > 0 || len(body.VideoURLs) > 0,
 			"aspect_ratio": body.AspectRatio,
 		},
 	}
@@ -247,13 +280,48 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		}
 	}
 	seconds = normalizeVideoDuration(req.Model, seconds)
+	if normalizeModel(req.Model) == ModelKlingV3Omni {
+		mode := "std"
+		audio := false
+		hasVideo := false
+		if req.Metadata != nil {
+			if v, ok := req.Metadata["mode"].(string); ok && strings.TrimSpace(v) != "" {
+				mode = v
+			}
+			if v, ok := req.Metadata["audio"].(bool); ok {
+				audio = v
+			}
+			if v, ok := req.Metadata["has_video"].(bool); ok {
+				hasVideo = v
+			}
+			if v, ok := req.Metadata["video_list"].([]interface{}); ok && len(v) > 0 {
+				hasVideo = true
+			}
+		}
+		variant := klingOmniBillingVariant(mode, audio, hasVideo)
+		return map[string]float64{
+			"seconds": float64(seconds),
+			"variant": ratio_setting.GetVideoModelPriceRatio(ModelKlingV3Omni, variant),
+		}
+	}
 	resolution := "720p"
+	hasVideo := false
 	if req.Metadata != nil {
 		if v, ok := req.Metadata["resolution"].(string); ok && v != "" {
 			resolution = v
 		}
+		if v, ok := req.Metadata["has_video"].(bool); ok {
+			hasVideo = v
+		}
+	}
+	variant := resolution
+	if normalizeModel(req.Model) == ModelDoubaoSeedance20 && hasVideo {
+		variant += "-input"
 	}
 	ratio := taskcommon.VideoResolutionSizeRatio(resolution)
+	if _, ok := ratio_setting.GetVideoModelBasePrice(req.Model); ok {
+		ratio = ratio_setting.GetVideoModelResolutionRatio(req.Model, variant)
+	}
 	return map[string]float64{
 		"seconds": float64(seconds),
 		"size":    ratio,
@@ -316,7 +384,57 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			body.Model = publicModel
 		}
 		body.Duration = normalizeVideoDuration(publicModel, body.Duration)
-		if body.Resolution == "" {
+		if publicModel == ModelKlingV3Omni {
+			body.Mode = strings.ToLower(strings.TrimSpace(body.Mode))
+			if body.Mode == "" {
+				body.Mode = "std"
+			}
+			// Preserve the complete Omni request (image roles, multi-shot,
+			// elements, video_list, and future upstream fields) while applying
+			// the normalized routing/billing fields.
+			var passthrough map[string]interface{}
+			if err := common.Unmarshal(raw, &passthrough); err != nil {
+				return nil, err
+			}
+			passthrough["model"] = body.Model
+			passthrough["duration"] = body.Duration
+			passthrough["mode"] = body.Mode
+			if body.AspectRatio == "" {
+				body.AspectRatio = "16:9"
+			}
+			passthrough["aspect_ratio"] = body.AspectRatio
+			delete(passthrough, "resolution")
+			if webhook := resolveWebhook(body.Webhook); webhook != "" {
+				passthrough["webhook"] = webhook
+			}
+			out, err := common.Marshal(passthrough)
+			if err != nil {
+				return nil, err
+			}
+			return bytes.NewReader(out), nil
+		} else if publicModel == ModelDoubaoSeedance20 {
+			// Seedance 2.0 evolves quickly and supports fields such as video_urls,
+			// audio_urls, image_with_roles, size, and generate_audio. Preserve the
+			// complete request so reference-video inputs are not silently dropped.
+			var passthrough map[string]interface{}
+			if err := common.Unmarshal(raw, &passthrough); err != nil {
+				return nil, err
+			}
+			passthrough["model"] = body.Model
+			passthrough["duration"] = body.Duration
+			if body.Resolution == "" {
+				body.Resolution = "720p"
+			}
+			passthrough["resolution"] = body.Resolution
+			if webhook := resolveWebhook(body.Webhook); webhook != "" {
+				passthrough["webhook"] = webhook
+			}
+			out, err := common.Marshal(passthrough)
+			if err != nil {
+				return nil, err
+			}
+			return bytes.NewReader(out), nil
+		} else if body.Resolution == "" {
 			body.Resolution = "720p"
 		}
 		if body.AspectRatio == "" {
@@ -365,7 +483,7 @@ func openAIToApimart(req relaycommon.TaskSubmitReq, upstreamModel string) submit
 	if req.InputReference != "" {
 		imageURLs = append(imageURLs, req.InputReference)
 	}
-	return submitPayload{
+	payload := submitPayload{
 		Model:       model,
 		Prompt:      req.Prompt,
 		Duration:    duration,
@@ -374,6 +492,25 @@ func openAIToApimart(req relaycommon.TaskSubmitReq, upstreamModel string) submit
 		ImageURLs:   imageURLs,
 		Webhook:     resolveWebhook(req.Webhook),
 	}
+	if normalizeModel(req.Model) == ModelKlingV3Omni {
+		payload.Resolution = ""
+		payload.Mode = "std"
+		if req.Metadata != nil {
+			if v, ok := req.Metadata["mode"].(string); ok {
+				mode := strings.ToLower(strings.TrimSpace(v))
+				if mode == "std" || mode == "pro" || mode == "4k" {
+					payload.Mode = mode
+				}
+			}
+			if v, ok := req.Metadata["audio"].(bool); ok {
+				payload.Audio = &v
+			}
+			if v, ok := req.Metadata["video_list"].([]interface{}); ok {
+				payload.VideoList = v
+			}
+		}
+	}
+	return payload
 }
 
 func resolveWebhook(raw string) string {
@@ -415,7 +552,8 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 
 	var env submitEnvelope
 	if err := common.Unmarshal(responseBody, &env); err != nil {
-		taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("APIMart video returned an invalid response: %.2048s", string(responseBody)))
+		taskErr = service.TaskErrorWrapper(errors.New("video service returned an invalid response"), "invalid_response", http.StatusBadGateway)
 		return
 	}
 	if env.Code != 0 && env.Code != http.StatusOK {
@@ -423,7 +561,8 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		if env.Error != nil && env.Error.Message != "" {
 			msg = env.Error.Message
 		}
-		taskErr = service.TaskErrorWrapper(errors.New(msg), "upstream_error", http.StatusBadGateway)
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("APIMart video rejected task submission: %s", msg))
+		taskErr = service.TaskErrorWrapper(errors.New("video service rejected the request"), "upstream_error", http.StatusBadGateway)
 		return
 	}
 	if len(env.Data) == 0 || strings.TrimSpace(env.Data[0].TaskID) == "" {
@@ -453,7 +592,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	c.JSON(http.StatusOK, openAIResp{
 		ID:     info.PublicTaskID,
 		Object: "video",
-		Model:  info.UpstreamModelName,
+		Model:  info.OriginModelName,
 		Status: "queued",
 	})
 	taskData = responseBody
@@ -539,23 +678,6 @@ func extractVideoURL(env *taskEnvelope) string {
 	return ""
 }
 
-func failureMessageFromTask(task *model.Task) string {
-	if msg := strings.TrimSpace(task.FailReason); msg != "" {
-		return msg
-	}
-	var env taskEnvelope
-	if err := common.Unmarshal(task.Data, &env); err != nil {
-		return ""
-	}
-	if env.Data.Error != nil && strings.TrimSpace(env.Data.Error.Message) != "" {
-		return strings.TrimSpace(env.Data.Error.Message)
-	}
-	if env.Error != nil && strings.TrimSpace(env.Error.Message) != "" {
-		return strings.TrimSpace(env.Error.Message)
-	}
-	return ""
-}
-
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	out := map[string]any{
 		"id":     task.TaskID,
@@ -567,14 +689,12 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 		out["progress"] = task.Progress
 	}
 	if task.Status == model.TaskStatusSuccess {
-		out["url"] = task.GetResultURL()
+		out["url"] = taskcommon.BuildProxyURL(task.TaskID)
 	}
 	if task.Status == model.TaskStatusFailure {
-		if msg := failureMessageFromTask(task); msg != "" {
-			out["error"] = map[string]string{
-				"code":    "task_failed",
-				"message": msg,
-			}
+		out["error"] = map[string]string{
+			"code":    "task_failed",
+			"message": "Video generation failed",
 		}
 	}
 	return common.Marshal(out)

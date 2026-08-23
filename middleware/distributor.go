@@ -84,8 +84,33 @@ func Distribute() func(c *gin.Context) {
 			if !CheckFreeModelRateLimit(c) {
 				return
 			}
-			// A virtual model must always use the shared cheapest selector; token-level
-			// specific-channel pinning would bypass the advertised route semantics.
+			bodyStorage, bodyErr := common.GetBodyStorage(c)
+			if bodyErr != nil {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, bodyErr.Error(), types.ErrorCodeInvalidRequest)
+				return
+			}
+			bodyBytes, bodyReadErr := bodyStorage.Bytes()
+			if bodyReadErr != nil {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, bodyReadErr.Error(), types.ErrorCodeInvalidRequest)
+				return
+			}
+			requirements, requirementErr := service.ParseFreeModelRequirements(c.Request.URL.Path, bodyBytes)
+			if requirementErr != nil {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, requirementErr.Error(), types.ErrorCodeInvalidRequest)
+				return
+			}
+			requirements.CodexClient = service.DetectCodexClient(c)
+			plan, planErr := service.BuildFreeModelCandidatePlan(requirements, nil)
+			if planErr != nil {
+				if errors.Is(planErr, service.ErrFreeModelCapabilityUnavailable) {
+					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, service.ErrFreeModelCapabilityUnavailable.Error(), types.ErrorCode("free_model_capability_unavailable"))
+				} else {
+					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, "FreeModel routing is temporarily unavailable", types.ErrorCode("free_model_routing_unavailable"))
+				}
+				return
+			}
+			service.SetFreeModelCandidatePlan(c, plan)
+			// Token-level channel pinning must never bypass pool membership.
 			ok = false
 		}
 		modelRequest.Model = service.PrepareGptImage2ModelRequest(c, modelRequest.Model)
@@ -126,7 +151,7 @@ func Distribute() func(c *gin.Context) {
 			// Select a channel for the user
 			// check token model mapping
 			modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
-			if modelLimitEnable && !service.IsFreeModel(modelRequest.Model) {
+			if modelLimitEnable {
 				s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
 				if !ok {
 					// token model limit is empty, all models are not allowed
@@ -152,10 +177,6 @@ func Distribute() func(c *gin.Context) {
 				}
 				var selectGroup string
 				usingGroup := normalizeDistributorUsingGroup(c)
-				if service.IsFreeModel(modelRequest.Model) {
-					usingGroup = service.AutoCheapestGroup
-					common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
-				}
 				// check path is /pg/chat/completions
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
 					playgroundRequest := &dto.PlayGroundRequest{}

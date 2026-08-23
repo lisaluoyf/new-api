@@ -35,14 +35,15 @@ func getScannerBufferSize() int {
 	return DefaultMaxScannerBufferSize
 }
 
-func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult)) {
+func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult)) *relaycommon.StreamStatus {
 
-	if resp == nil || dataHandler == nil {
-		return
+	if resp == nil || dataHandler == nil || info == nil {
+		return nil
 	}
 
-	// 无条件新建 StreamStatus
-	info.StreamStatus = relaycommon.NewStreamStatus()
+	if info.StreamStatus == nil {
+		info.StreamStatus = relaycommon.NewStreamStatus()
+	}
 
 	// 确保响应体总是被关闭
 	defer func() {
@@ -52,6 +53,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	}()
 
 	streamingTimeout := time.Duration(constant.StreamingTimeout) * time.Second
+	if service.IsFreeModel(info.OriginModelName) {
+		if candidate, ok := service.FreeModelCandidateForChannel(c, c.GetInt("channel_id")); ok && candidate.TimeoutMS > 0 {
+			streamingTimeout = time.Duration(candidate.TimeoutMS) * time.Millisecond
+		}
+	}
 
 	var (
 		stopChan   = make(chan bool, 3) // 增加缓冲区避免阻塞
@@ -302,6 +308,8 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			notifyClientGoneStream(c, info)
 		}
 	}
+	c.Set("stream_status", info.StreamStatus)
+	return info.StreamStatus
 }
 
 // notifyClientGoneStream 在流式请求因客户端断开(client_gone)而中止时，

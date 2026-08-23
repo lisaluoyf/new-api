@@ -259,6 +259,18 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
 	model.UpdateUserUsedQuotaAndRequestCount(userID, preConsumed)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{
+		UserId:                         userID,
+		Type:                           model.LogTypeConsume,
+		ModelName:                      "test-model",
+		Quota:                          preConsumed,
+		Other:                          common.MapToJsonStr(map[string]interface{}{"task_id": task.TaskID}),
+		AccountingChannelCostAmountUSD: 0.4,
+		AccountingUserPriceAmountUSD:   0.5,
+		AccountingUserFinalAmountUSD:   0.6,
+		AccountingStatus:               "ok",
+		AccountingSnapshot:             `{"status":"ok","amounts_usd":{"channel_cost":0.4,"user_price":0.5,"user_final":0.6}}`,
+	}).Error)
 
 	RefundTaskQuota(ctx, task, "task failed: upstream error")
 
@@ -276,6 +288,16 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 	assert.Equal(t, preConsumed, log.Quota)
 	assert.Equal(t, "test-model", log.ModelName)
+
+	var consumeLog model.Log
+	require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeConsume).First(&consumeLog).Error)
+	assert.Equal(t, model.AccountingStatusRefunded, consumeLog.AccountingStatus)
+	assert.Zero(t, consumeLog.AccountingChannelCostAmountUSD)
+	assert.Zero(t, consumeLog.AccountingUserPriceAmountUSD)
+	assert.Zero(t, consumeLog.AccountingUserFinalAmountUSD)
+	assert.Contains(t, consumeLog.Other, `"billing_refunded":true`)
+	assert.Contains(t, consumeLog.AccountingSnapshot, `"status":"refunded"`)
+	assert.Contains(t, consumeLog.AccountingSnapshot, `"refunded_amounts_usd"`)
 }
 
 func TestRefundTaskQuota_Subscription(t *testing.T) {

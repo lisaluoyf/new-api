@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogContent,
@@ -45,6 +46,52 @@ interface VideoDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+interface VideoMetadata {
+  width: number
+  height: number
+  duration: number
+}
+
+interface LoadedVideoInfo {
+  contentType?: string
+  sizeBytes?: number
+}
+
+function greatestCommonDivisor(a: number, b: number): number {
+  let x = Math.abs(Math.round(a))
+  let y = Math.abs(Math.round(b))
+  while (y > 0) {
+    const remainder = x % y
+    x = y
+    y = remainder
+  }
+  return x || 1
+}
+
+function formatAspectRatio(width: number, height: number): string {
+  if (width <= 0 || height <= 0) return ''
+  const divisor = greatestCommonDivisor(width, height)
+  return `${Math.round(width / divisor)}:${Math.round(height / divisor)}`
+}
+
+function formatFileSize(sizeBytes?: number): string {
+  if (!sizeBytes || sizeBytes <= 0) return ''
+  const megabytes = sizeBytes / (1024 * 1024)
+  return megabytes >= 10
+    ? `${megabytes.toFixed(1)} MB`
+    : `${megabytes.toFixed(2)} MB`
+}
+
+function requestValue(
+  requestData: Record<string, unknown> | null | undefined,
+  key: string
+): string {
+  const value = requestData?.[key]
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return ''
+}
+
 export function VideoDialog({
   videoUrl,
   fallbackUrl,
@@ -59,10 +106,11 @@ export function VideoDialog({
   const [hasError, setHasError] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [isDownloading, setIsDownloading] = useState(false)
+  const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null)
+  const [loadedVideoInfo, setLoadedVideoInfo] = useState<LoadedVideoInfo>({})
 
   useEffect(() => {
     if (!open || !videoUrl) {
-      setPlayableUrl('')
       return
     }
 
@@ -73,6 +121,9 @@ export function VideoDialog({
       setIsLoading(true)
       setHasError(false)
       setErrorMessage('')
+      setPlayableUrl('')
+      setVideoMetadata(null)
+      setLoadedVideoInfo({})
       const candidates = [videoUrl, fallbackUrl].filter(
         (candidate, index, all): candidate is string =>
           Boolean(candidate?.trim()) && all.indexOf(candidate) === index
@@ -85,6 +136,10 @@ export function VideoDialog({
           if (resolved.revoke) {
             objectUrl = resolved.url
           }
+          setLoadedVideoInfo({
+            contentType: resolved.contentType,
+            sizeBytes: resolved.sizeBytes,
+          })
           setPlayableUrl(resolved.url)
           return
         } catch (err) {
@@ -120,7 +175,7 @@ export function VideoDialog({
         URL.revokeObjectURL(objectUrl)
       }
     }
-  }, [fallbackUrl, open, videoUrl])
+  }, [fallbackUrl, open, t, videoUrl])
 
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen) {
@@ -128,6 +183,8 @@ export function VideoDialog({
       setHasError(false)
       setErrorMessage('')
       setPlayableUrl('')
+      setVideoMetadata(null)
+      setLoadedVideoInfo({})
     }
     onOpenChange(newOpen)
   }
@@ -141,6 +198,57 @@ export function VideoDialog({
       setIsDownloading(false)
     }
   }
+
+  const specifications: Array<{ label: string; value: string }> = []
+  const requestedResolution =
+    requestValue(requestData, 'effective_resolution') ||
+    requestValue(requestData, 'resolution')
+  const resolution = videoMetadata
+    ? `${videoMetadata.width}×${videoMetadata.height}`
+    : requestedResolution
+  if (resolution)
+    specifications.push({ label: t('Resolution'), value: resolution })
+
+  const aspectRatio = videoMetadata
+    ? formatAspectRatio(videoMetadata.width, videoMetadata.height)
+    : requestValue(requestData, 'aspect_ratio')
+  if (aspectRatio)
+    specifications.push({ label: t('Aspect ratio'), value: aspectRatio })
+
+  const requestedDuration = Number(requestData?.duration)
+  const duration = videoMetadata?.duration || requestedDuration
+  if (Number.isFinite(duration) && duration > 0) {
+    specifications.push({
+      label: t('Duration (seconds)'),
+      value: duration.toFixed(1),
+    })
+  }
+
+  const mode = requestValue(requestData, 'mode')
+  if (mode) specifications.push({ label: t('Mode'), value: mode.toUpperCase() })
+
+  if (typeof requestData?.audio === 'boolean') {
+    specifications.push({
+      label: t('Audio'),
+      value: requestData.audio ? t('Enabled') : t('Disabled'),
+    })
+  }
+  if (typeof requestData?.has_video === 'boolean') {
+    specifications.push({
+      label: t('Video'),
+      value: requestData.has_video ? t('Enabled') : t('Disabled'),
+    })
+  }
+
+  const contentType = loadedVideoInfo.contentType?.split(';')[0]
+  if (contentType) {
+    specifications.push({
+      label: t('Format'),
+      value: contentType.replace(/^video\//, '').toUpperCase(),
+    })
+  }
+  const fileSize = formatFileSize(loadedVideoInfo.sizeBytes)
+  if (fileSize) specifications.push({ label: t('Size'), value: fileSize })
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -193,6 +301,16 @@ export function VideoDialog({
                   setIsLoading(false)
                   setHasError(false)
                 }}
+                onLoadedMetadata={(event) => {
+                  const video = event.currentTarget
+                  setVideoMetadata({
+                    width: video.videoWidth,
+                    height: video.videoHeight,
+                    duration: Number.isFinite(video.duration)
+                      ? video.duration
+                      : 0,
+                  })
+                }}
                 onError={() => {
                   setIsLoading(false)
                   setHasError(true)
@@ -209,6 +327,23 @@ export function VideoDialog({
               </div>
             )}
           </div>
+
+          {specifications.length > 0 ? (
+            <div className='flex flex-wrap gap-1.5'>
+              {specifications.map((specification) => (
+                <Badge
+                  key={specification.label}
+                  variant='secondary'
+                  className='font-normal'
+                >
+                  <span className='text-muted-foreground mr-1'>
+                    {specification.label}
+                  </span>
+                  {specification.value}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
 
           <p className='text-muted-foreground text-center text-xs'>
             {t('Generated images and videos are only kept for 3 days.')}

@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { StatusBadgeProps } from '@/components/status-badge'
 import { getCurrencyDisplay } from '@/lib/currency'
+import type { StatusBadgeProps } from '@/components/status-badge'
 import {
   BILLING_PRICING_VARS,
+  getTieredPriceScaleForVar,
   normalizeTierLabel,
   parseTiersFromExpr,
   type ParsedTier,
@@ -310,13 +311,17 @@ export function getTieredBillingSummary(
   if (!tier) return null
 
   const cacheTokensPresent = hasAnyCacheTokens(other)
+  const walletPriceScale =
+    other.tiered_price_source === 'wallet'
+      ? other.tiered_price_scale
+      : undefined
 
   const priceEntries: TieredBillingSummary['priceEntries'] = []
   for (const v of BILLING_PRICING_VARS) {
     if (!v.field) continue
     if (v.group === 'cache' && !cacheTokensPresent) continue
     const raw = tier[v.field as keyof ParsedTier]
-    const price = Number(raw)
+    const price = Number(raw) * getTieredPriceScaleForVar(v, walletPriceScale)
     if (Number.isFinite(price) && price > 0) {
       priceEntries.push({
         field: v.field,

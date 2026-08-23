@@ -17,6 +17,7 @@ func ComputeTieredQuota(snap *BillingSnapshot, params TokenParams) (TieredResult
 }
 
 func ComputeTieredQuotaWithRequest(snap *BillingSnapshot, params TokenParams, request RequestInput) (TieredResult, error) {
+	params = ApplyTokenPriceScale(params, snap.PriceScale)
 	cost, trace, err := RunExprByHashWithRequest(snap.ExprString, snap.ExprHash, params, request)
 	if err != nil {
 		return TieredResult{}, err
@@ -32,4 +33,23 @@ func ComputeTieredQuotaWithRequest(snap *BillingSnapshot, params TokenParams, re
 		MatchedTier:            trace.MatchedTier,
 		CrossedTier:            crossed,
 	}, nil
+}
+
+func ApplyTokenPriceScale(params TokenParams, scale TokenPriceScale) TokenParams {
+	if !scale.Enabled {
+		return params
+	}
+	inputScale := scale.Input
+	outputScale := scale.Output
+	params.P *= inputScale
+	params.Img *= inputScale
+	params.AI *= inputScale
+	params.C *= outputScale
+	params.ImgO *= outputScale
+	params.AO *= outputScale
+	params.CR *= scale.CacheRead
+	cacheWriteScale := scale.CacheWrite
+	params.CC *= cacheWriteScale
+	params.CC1h *= cacheWriteScale
+	return params
 }

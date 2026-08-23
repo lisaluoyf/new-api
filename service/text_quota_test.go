@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -14,6 +15,39 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCalculateTextQuotaSummaryAcceptsCacheCreationInputTokensAlias(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	var usage dto.Usage
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"prompt_tokens":5055,
+		"completion_tokens":38,
+		"total_tokens":5093,
+		"prompt_tokens_details":{"cache_creation_input_tokens":5042}
+	}`), &usage))
+	relayInfo := &relaycommon.RelayInfo{
+		RelayFormat:     types.RelayFormatOpenAI,
+		OriginModelName: "qwen3.8-max",
+		PriceData: types.PriceData{
+			ModelRatio:         1,
+			CompletionRatio:    3,
+			CacheRatio:         0.125,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo:     types.GroupRatioInfo{GroupRatio: 1.05},
+		},
+		StartTime: time.Now(),
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &usage)
+
+	require.True(t, summary.InputTokensIncludeCache)
+	require.Equal(t, "total_tokens", summary.CacheTokenSemanticSource)
+	require.Equal(t, 5042, summary.CacheCreationTokens)
+	require.Equal(t, 6751, summary.Quota)
+}
 
 func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -66,6 +100,22 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	require.Equal(t, messageSummary.CacheCreationTokens1h, chatSummary.CacheCreationTokens1h)
 	require.True(t, chatSummary.IsClaudeUsageSemantic)
 	require.Equal(t, 1488, chatSummary.Quota)
+}
+
+func TestApplyFreeModelSettlementAlwaysZerosDirectAndFallbackCharges(t *testing.T) {
+	for _, name := range []string{"first_attempt", "after_fallback"} {
+		t.Run(name, func(t *testing.T) {
+			summary := textQuotaSummary{Quota: 999, WebSearchPrice: 1, ClaudeWebSearchPrice: 2, FileSearchPrice: 3, AudioInputPrice: 4, ImageGenerationCallPrice: 5}
+			tiered := true
+			tieredResult := &billingexpr.TieredResult{}
+			applyFreeModelSettlement(&summary, &tiered, &tieredResult)
+			require.Zero(t, summary.Quota)
+			require.Zero(t, summary.WebSearchPrice)
+			require.Zero(t, summary.FileSearchPrice)
+			require.False(t, tiered)
+			require.Nil(t, tieredResult)
+		})
+	}
 }
 
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {

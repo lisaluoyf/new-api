@@ -1071,6 +1071,47 @@ func TestLen_ZeroDefaultsToZero(t *testing.T) {
 	}
 }
 
+func TestApplyTokenPriceScaleDoesNotChangeTierLength(t *testing.T) {
+	params := billingexpr.ApplyTokenPriceScale(
+		billingexpr.TokenParams{P: 100, C: 20, Len: 300000, CR: 30, CC: 40, CC1h: 50, Img: 10, ImgO: 8, AI: 6, AO: 4},
+		billingexpr.TokenPriceScale{Enabled: true, Input: 0.6, Output: 0.5, CacheRead: 0.2, CacheWrite: 0.4},
+	)
+
+	if params.P != 60 || params.C != 10 || params.CR != 6 || params.CC != 16 || params.CC1h != 20 {
+		t.Fatalf("unexpected scaled token prices: %+v", params)
+	}
+	if params.Img != 6 || math.Abs(params.AI-3.6) > 1e-9 || params.ImgO != 4 || params.AO != 2 {
+		t.Fatalf("unexpected scaled media token prices: %+v", params)
+	}
+	if params.Len != 300000 {
+		t.Fatalf("len changed during price scaling: got %v, want 300000", params.Len)
+	}
+}
+
+func TestGPT55Official272KPriceSchedule(t *testing.T) {
+	const expr = `len <= 272000 ? tier("standard", p * 5 + c * 30 + cr * 0.5) : tier("long_context", p * 10 + c * 45 + cr * 1)`
+
+	standardCost, standardTrace, err := billingexpr.RunExpr(expr, billingexpr.TokenParams{
+		P: 1000, C: 100, CR: 100, Len: 272000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if standardCost != 8050 || standardTrace.MatchedTier != "standard" {
+		t.Fatalf("standard tier = (%v, %q), want (8050, standard)", standardCost, standardTrace.MatchedTier)
+	}
+
+	longCost, longTrace, err := billingexpr.RunExpr(expr, billingexpr.TokenParams{
+		P: 1000, C: 100, CR: 100, Len: 272001,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if longCost != 14600 || longTrace.MatchedTier != "long_context" {
+		t.Fatalf("long tier = (%v, %q), want (14600, long_context)", longCost, longTrace.MatchedTier)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Benchmarks: compile vs cached execution
 // ---------------------------------------------------------------------------

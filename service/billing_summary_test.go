@@ -338,6 +338,52 @@ func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {
 	assert.Equal(t, int64(3), row.RequestCount)
 }
 
+func TestRunBillingSummaryOnceClearsRefundedOnlyBucket(t *testing.T) {
+	truncate(t)
+
+	const (
+		userID    = 1010
+		channelID = 2010
+		modelName = "kling-v3-omni"
+		baseTs    = int64(1_783_800_000)
+	)
+	hourBucket := baseTs / 3600 * 3600
+	seedUser(t, userID, 0)
+	seedChannel(t, channelID)
+	seedConsumeLog(t, &model.Log{
+		UserId:                         userID,
+		Type:                           model.LogTypeConsume,
+		CreatedAt:                      baseTs,
+		ModelName:                      modelName,
+		ChannelId:                      channelID,
+		Quota:                          100,
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceWallet}),
+		AccountingChannelCostAmountUSD: 1.25,
+		AccountingUserFinalAmountUSD:   3.5,
+		AccountingStatus:               model.AccountingStatusRefunded,
+	})
+	require.NoError(t, model.LOG_DB.Create(&model.BillingHourlySummary{
+		HourBucket:   hourBucket,
+		ModelName:    modelName,
+		ChannelId:    channelID,
+		CostUSD:      1.25,
+		RevenueUSD:   3.5,
+		RequestCount: 1,
+	}).Error)
+
+	originalNow := billingSummaryNow
+	billingSummaryNow = func() time.Time { return time.Unix(baseTs+3600, 0) }
+	defer func() { billingSummaryNow = originalNow }()
+
+	runBillingSummaryOnce()
+
+	var row model.BillingHourlySummary
+	require.NoError(t, model.LOG_DB.Where("hour_bucket = ? AND model_name = ? AND channel_id = ?", hourBucket, modelName, channelID).First(&row).Error)
+	assert.Zero(t, row.CostUSD)
+	assert.Zero(t, row.RevenueUSD)
+	assert.Zero(t, row.RequestCount)
+}
+
 func TestApplyPaidSubscriptionAccruals(t *testing.T) {
 	rows := []model.BillingDailyRow{
 		{Day: 10, RevenueUSD: 11, PaidSubscriptionRevenueUSD: 1, PaidSubscriptionUserCount: 1},

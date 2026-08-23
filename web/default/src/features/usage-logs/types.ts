@@ -144,6 +144,14 @@ export interface LogOtherData {
   billing_mode?: string
   expr_b64?: string
   matched_tier?: string
+  tiered_price_source?: string
+  pricing_channel_id?: number
+  tiered_price_scale?: {
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+  }
   reasoning_effort?: string
   image?: boolean
   image_ratio?: number

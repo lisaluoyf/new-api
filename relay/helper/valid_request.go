@@ -17,7 +17,7 @@ import (
 )
 
 func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dto.Request, err error) {
-	relayMode := relayconstant.Path2RelayMode(c.Request.URL.Path)
+	relayMode := relayconstant.Request2RelayMode(c.Request.URL.Path, c.GetHeader("Content-Type"))
 
 	switch format {
 	case types.RelayFormatOpenAI:

@@ -242,7 +242,7 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 	require.NotContains(t, ids, "zz-token-unpriced-model")
 }
 
-func TestListModelsHidesFreeModel(t *testing.T) {
+func TestListModelsShowsFreeModelOnlyToEligibleUsers(t *testing.T) {
 	originalSelfUse := operation_setting.SelfUseModeEnabled
 	operation_setting.SelfUseModeEnabled = true
 	t.Cleanup(func() { operation_setting.SelfUseModeEnabled = originalSelfUse })
@@ -258,11 +258,29 @@ func TestListModelsHidesFreeModel(t *testing.T) {
 	ListModels(ctx, constant.ChannelTypeOpenAI)
 	require.NotContains(t, decodeListModelsResponse(t, recorder), service.FreeModelID)
 
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", 1002).Update("role", common.RoleAdminUser).Error)
+	eligibleRecorder := httptest.NewRecorder()
+	eligibleCtx, _ := gin.CreateTestContext(eligibleRecorder)
+	eligibleCtx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	eligibleCtx.Set("id", 1002)
+	ListModels(eligibleCtx, constant.ChannelTypeOpenAI)
+	require.Contains(t, decodeListModelsResponse(t, eligibleRecorder), service.FreeModelID)
+
 	tokenRecorder := httptest.NewRecorder()
 	tokenCtx, _ := gin.CreateTestContext(tokenRecorder)
 	tokenCtx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	tokenCtx.Set("id", 1002)
 	common.SetContextKey(tokenCtx, constant.ContextKeyTokenModelLimitEnabled, true)
 	common.SetContextKey(tokenCtx, constant.ContextKeyTokenModelLimit, map[string]bool{service.FreeModelID: true})
 	ListModels(tokenCtx, constant.ChannelTypeOpenAI)
-	require.NotContains(t, decodeListModelsResponse(t, tokenRecorder), service.FreeModelID)
+	require.Contains(t, decodeListModelsResponse(t, tokenRecorder), service.FreeModelID)
+
+	limitedRecorder := httptest.NewRecorder()
+	limitedCtx, _ := gin.CreateTestContext(limitedRecorder)
+	limitedCtx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	limitedCtx.Set("id", 1002)
+	common.SetContextKey(limitedCtx, constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(limitedCtx, constant.ContextKeyTokenModelLimit, map[string]bool{"gpt-4o": true})
+	ListModels(limitedCtx, constant.ChannelTypeOpenAI)
+	require.NotContains(t, decodeListModelsResponse(t, limitedRecorder), service.FreeModelID)
 }

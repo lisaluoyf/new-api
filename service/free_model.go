@@ -21,6 +21,8 @@ type FreeModelSettings struct {
 	ActiveSubscriptionEnabled   bool    `json:"active_subscription_enabled"`
 	MinimumSubscriptionPriceUSD float64 `json:"minimum_subscription_price_usd"`
 	AccountRequestsPerMinute    int     `json:"account_requests_per_minute"`
+	MaxAttempts                 int     `json:"max_attempts"`
+	AllowPaidFallback           bool    `json:"allow_paid_fallback"`
 }
 
 var defaultFreeModelSettings = FreeModelSettings{
@@ -29,6 +31,8 @@ var defaultFreeModelSettings = FreeModelSettings{
 	ActiveSubscriptionEnabled:   true,
 	MinimumSubscriptionPriceUSD: 20,
 	AccountRequestsPerMinute:    10,
+	MaxAttempts:                 3,
+	AllowPaidFallback:           false,
 }
 
 func IsFreeModel(modelName string) bool {
@@ -70,6 +74,12 @@ func ValidateFreeModelSettings(settings FreeModelSettings) error {
 	if settings.AccountRequestsPerMinute <= 0 || settings.AccountRequestsPerMinute > 100000 {
 		return errors.New("FreeModel requests per minute must be between 1 and 100000")
 	}
+	if settings.MaxAttempts <= 0 || settings.MaxAttempts > 20 {
+		return errors.New("FreeModel max attempts must be between 1 and 20")
+	}
+	if settings.AllowPaidFallback {
+		return errors.New("FreeModel paid fallback is not supported")
+	}
 	return nil
 }
 
@@ -83,10 +93,20 @@ func normalizeFreeModelSettings(settings FreeModelSettings) FreeModelSettings {
 	if settings.AccountRequestsPerMinute <= 0 {
 		settings.AccountRequestsPerMinute = defaultFreeModelSettings.AccountRequestsPerMinute
 	}
+	if settings.MaxAttempts <= 0 {
+		settings.MaxAttempts = defaultFreeModelSettings.MaxAttempts
+	}
+	// Paid fallback is deliberately fail-closed even if a future/invalid option
+	// value is written outside the administrator API.
+	settings.AllowPaidFallback = false
 	return settings
 }
 
 func SaveFreeModelSettings(settings FreeModelSettings) error {
+	if settings.AllowPaidFallback {
+		return errors.New("FreeModel paid fallback is not supported")
+	}
+	settings = normalizeFreeModelSettings(settings)
 	if err := ValidateFreeModelSettings(settings); err != nil {
 		return err
 	}

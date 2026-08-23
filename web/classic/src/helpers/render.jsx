@@ -23,6 +23,7 @@ import { copy, showSuccess } from './utils';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
 import {
   BILLING_PRICING_VARS,
+  getTieredPriceScaleForVar,
   BILLING_VAR_KEY_TO_FIELD,
   BILLING_VAR_REGEX,
 } from '../constants';
@@ -2315,6 +2316,8 @@ export function renderTieredModelPrice(opts) {
     cache_creation_tokens: cacheCreationTokens = 0,
     cache_creation_tokens_5m: cacheCreationTokens5m = 0,
     cache_creation_tokens_1h: cacheCreationTokens1h = 0,
+    tiered_price_source: tieredPriceSource,
+    tiered_price_scale: tieredPriceScale,
   } = opts;
   let exprStr = '';
   try { exprStr = decodeFromBase64(exprB64); } catch { /* ignore */ }
@@ -2334,22 +2337,23 @@ export function renderTieredModelPrice(opts) {
     return i18next.t('阶梯计费（未匹配到对应阶梯）');
   }
   const { symbol, rate } = getCurrencyConfig();
-  const gr = groupRatio || 1;
+  const walletPriceScale = tieredPriceSource === 'wallet' ? tieredPriceScale : null;
 
   const hasAnyCacheTokens = cacheTokens > 0 || cacheCreationTokens > 0
       || cacheCreationTokens5m > 0 || cacheCreationTokens1h > 0;
 
   const priceLines = BILLING_PRICING_VARS
       .filter((v) => v.group !== 'cache' || hasAnyCacheTokens)
-      .map((v) => [v.field, v.label]);
+      .map((v) => [v.field, v.label, v]);
 
   const lines = [
     buildBillingText('命中档位：{{tier}}', { tier: matchedTier || tier.label }),
     ...priceLines
         .filter(([field]) => tier[field] > 0)
-        .map(([field, label]) =>
-            buildBillingPriceText(`${label}：{{symbol}}{{price}} / 1M tokens`, { symbol, usdAmount: tier[field], rate }),
-        ),
+        .map(([field, label, variable]) => {
+          const price = tier[field] * getTieredPriceScaleForVar(variable, walletPriceScale);
+          return buildBillingPriceText(`${label}：{{symbol}}{{price}} / 1M tokens`, { symbol, usdAmount: price, rate });
+        }),
   ];
 
   return renderBillingArticle(lines);
@@ -2365,6 +2369,8 @@ export function renderTieredModelPriceSimple(opts) {
     cache_creation_tokens_5m: cacheCreationTokens5m = 0,
     cache_creation_tokens_1h: cacheCreationTokens1h = 0,
     cache_creation_tokens: cacheCreationTokens = 0,
+    tiered_price_source: tieredPriceSource,
+    tiered_price_scale: tieredPriceScale,
     displayMode = 'price',
     outputMode = 'segments',
   } = opts;
@@ -2379,6 +2385,7 @@ export function renderTieredModelPriceSimple(opts) {
       });
 
   if (outputMode === 'segments') {
+    const walletPriceScale = tieredPriceSource === 'wallet' ? tieredPriceScale : null;
     const segments = [
       {
         tone: 'primary',
@@ -2398,14 +2405,15 @@ export function renderTieredModelPriceSimple(opts) {
           || cacheCreationTokens5m > 0 || cacheCreationTokens1h > 0;
       const priceSegments = BILLING_PRICING_VARS
           .filter((v) => v.group !== 'cache' || hasAnyCacheTokens)
-          .map((v) => [v.field, v.shortLabel]);
-      for (const [field, label] of priceSegments) {
+          .map((v) => [v.field, v.shortLabel, v]);
+      for (const [field, label, variable] of priceSegments) {
         if (tier[field] > 0) {
+          const price = tier[field] * getTieredPriceScaleForVar(variable, walletPriceScale);
           segments.push({
             tone: 'secondary',
             text: i18next.t('{{label}} {{price}} / 1M tokens', {
               label: i18next.t(label),
-              price: formatCompactDisplayPrice(tier[field]),
+              price: formatCompactDisplayPrice(price),
             }),
           });
         }

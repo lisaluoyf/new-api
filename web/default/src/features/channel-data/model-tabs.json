@@ -42,6 +42,7 @@
   { "model_id": "gpt-image-2", "label": "Image 2", "accent": "#22d3ee" },
   { "model_id": "sora-2", "label": "Sora 2", "accent": "#22d3ee" },
   { "model_id": "sora-2-pro", "label": "Sora 2 Pro", "accent": "#22d3ee" },
+  { "model_id": "kling-v3-omni", "label": "Kling V3 Omni", "accent": "#f97316" },
   { "model_id": "kling-v3-motion-control", "label": "Kling Motion Control", "accent": "#f97316" },
   { "model_id": "minimax-h3", "label": "MiniMax-H3", "accent": "#f97316" }
 ]

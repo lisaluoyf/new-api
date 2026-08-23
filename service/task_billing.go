@@ -63,11 +63,14 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
 	// Video prices are configured at the base resolution. Persist the
-	// effective per-second price so a 2K request does not show the 768P base.
+	// effective per-second price so logs show the selected resolution/mode
+	// rather than only the model's base variant.
 	logModelPrice := info.PriceData.ModelPrice
-	if strings.EqualFold(strings.TrimSpace(info.OriginModelName), "minimax-h3") {
-		if ratio, ok := info.PriceData.OtherRatios["size"]; ok && ratio > 0 {
-			logModelPrice *= ratio
+	if TaskUsesDurationBasedBilling(info.PriceData) {
+		for name, ratio := range info.PriceData.OtherRatios {
+			if name != "seconds" && ratio > 0 {
+				logModelPrice *= ratio
+			}
 		}
 	}
 	other["model_price"] = logModelPrice
@@ -184,7 +187,7 @@ func taskActualChannelCostUSD(task *model.Task) float64 {
 		return 0
 	}
 	if task.Platform == constant.TaskPlatformApimartVideo {
-		if cost := gjson.GetBytes(task.Data, "data.cost").Float(); cost > 0 {
+		if cost := apimartTaskDataNumber(task.Data, "cost"); cost > 0 {
 			return cost
 		}
 	}
@@ -337,7 +340,12 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	// 3. 冲销用户已用额度（提交任务时已计入 used_quota）
 	model.DecreaseUserUsedQuota(task.UserId, quota)
 
-	// 4. 记录日志
+	// 4. 将原消费日志标记为已退款，避免失败任务继续计入平台收入和渠道成本。
+	if err := model.MarkTaskConsumeLogRefunded(task.UserId, task.TaskID); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("标记任务消费日志退款失败 task %s: %s", task.TaskID, err.Error()))
+	}
+
+	// 5. 记录日志
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason

@@ -59,6 +59,25 @@ type textQuotaSummary struct {
 	CacheTokenSemanticSource string
 }
 
+func applyFreeModelSettlement(summary *textQuotaSummary, tieredApplied *bool, tieredResult **billingexpr.TieredResult) {
+	if summary == nil {
+		return
+	}
+	summary.Quota = 0
+	summary.ToolCallSurchargeQuota = decimal.Zero
+	summary.WebSearchPrice = 0
+	summary.ClaudeWebSearchPrice = 0
+	summary.FileSearchPrice = 0
+	summary.AudioInputPrice = 0
+	summary.ImageGenerationCallPrice = 0
+	if tieredApplied != nil {
+		*tieredApplied = false
+	}
+	if tieredResult != nil {
+		*tieredResult = nil
+	}
+}
+
 func cacheWriteTokensTotal(summary textQuotaSummary) int {
 	if summary.CacheCreationTokens5m > 0 || summary.CacheCreationTokens1h > 0 {
 		splitCacheWriteTokens := summary.CacheCreationTokens5m + summary.CacheCreationTokens1h
@@ -413,6 +432,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if relayInfo != nil && relayInfo.HedgeState != nil && relayInfo.HedgeState.TryDefer(usage, extraContent) {
 		return
 	}
+	if relayInfo != nil && IsFreeModel(relayInfo.OriginModelName) {
+		MarkFreeModelAttemptSuccessForLog(ctx)
+	}
 	originUsage := usage
 	if usage == nil {
 		extraContent = append(extraContent, "上游无计费信息")
@@ -439,15 +461,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		}
 	}
 	if IsFreeModel(relayInfo.OriginModelName) {
-		summary.Quota = 0
-		summary.ToolCallSurchargeQuota = decimal.Zero
-		summary.WebSearchPrice = 0
-		summary.ClaudeWebSearchPrice = 0
-		summary.FileSearchPrice = 0
-		summary.AudioInputPrice = 0
-		summary.ImageGenerationCallPrice = 0
-		tieredBillingApplied = false
-		tieredResult = nil
+		applyFreeModelSettlement(&summary, &tieredBillingApplied, &tieredResult)
 		extraContent = append(extraContent, "FreeModel user charge: 0")
 	}
 
@@ -597,6 +611,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		CacheWriteTokens:         cacheWriteTokens,
 		GroupRatio:               summary.GroupRatio,
 		Quota:                    summary.Quota,
+		ZeroUserCharge:           IsFreeModel(relayInfo.OriginModelName),
+		UseQuotaForUserAmounts:   tieredBillingApplied && relayInfo.PriceDataSource == "wallet",
 		BillingAt:                relayInfo.StartTime,
 	}
 	if requestData := ImageRequestDataFromContext(ctx); len(requestData) > 0 {

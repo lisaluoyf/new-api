@@ -11,6 +11,7 @@ const (
 	ModelGrokVideo10s         = "grok-1.5-video-10s"
 	ModelGrokVideo15s         = "grok-1.5-video-15s"
 	ModelGrokVideo6s          = "grok-1.5-video-6s"
+	ModelKlingV3Omni          = "kling-v3-omni"
 	// StdUSDPerSecond is APIMart purchase price for mode=std.
 	StdUSDPerSecond = 0.10288
 	// ProUSDPerSecond is APIMart purchase price for mode=pro.
@@ -26,6 +27,7 @@ var ModelList = []string{
 	ModelGrokVideo10s,
 	ModelGrokVideo15s,
 	ModelGrokVideo6s,
+	ModelKlingV3Omni,
 	ModelKlingV3MotionControl,
 }
 
@@ -35,7 +37,7 @@ func IsVideoModel(model string) bool {
 	switch strings.TrimSpace(model) {
 	case "sora", "sora-2", "sora-2-pro", ModelDoubaoSeedance20,
 		ModelGrokImagineVideo15, ModelGrokVideo10s, ModelGrokVideo15s, ModelGrokVideo6s,
-		ModelKlingV3MotionControl:
+		ModelKlingV3Omni, ModelKlingV3MotionControl:
 		return true
 	default:
 		return false
@@ -60,6 +62,12 @@ func normalizeModel(model string) string {
 }
 
 func normalizeVideoDuration(model string, seconds int) int {
+	if normalizeModel(model) == ModelKlingV3Omni {
+		if seconds >= 3 && seconds <= 15 {
+			return seconds
+		}
+		return 5
+	}
 	if seconds <= 0 {
 		seconds = 4
 	}
@@ -83,6 +91,34 @@ func modeBillingRatio(mode string) float64 {
 		return ProUSDPerSecond / StdUSDPerSecond
 	}
 	return 1
+}
+
+func klingOmniBillingVariant(mode string, audio, hasVideo bool) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case "4k":
+		if audio && !hasVideo {
+			return "4k-sound"
+		}
+		// APIMart currently publishes no separate 4K reference-video tier.
+		return "4k"
+	case "pro":
+		if hasVideo {
+			return "pro-video"
+		}
+		if audio {
+			return "pro-sound"
+		}
+		return "pro"
+	default:
+		if hasVideo {
+			return "video"
+		}
+		if audio {
+			return "sound"
+		}
+		return "base"
+	}
 }
 
 func defaultBillableSeconds(orientation string) int {
