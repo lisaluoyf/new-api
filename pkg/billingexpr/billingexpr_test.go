@@ -1071,6 +1071,23 @@ func TestLen_ZeroDefaultsToZero(t *testing.T) {
 	}
 }
 
+func TestApplyTokenPriceScaleDoesNotChangeTierLength(t *testing.T) {
+	params := billingexpr.ApplyTokenPriceScale(
+		billingexpr.TokenParams{P: 100, C: 20, Len: 300000, CR: 30, CC: 40, CC1h: 50, Img: 10, ImgO: 8, AI: 6, AO: 4},
+		billingexpr.TokenPriceScale{Enabled: true, Input: 0.6, Output: 0.5, CacheRead: 0.2, CacheWrite: 0.4},
+	)
+
+	if params.P != 60 || params.C != 10 || params.CR != 6 || params.CC != 16 || params.CC1h != 20 {
+		t.Fatalf("unexpected scaled token prices: %+v", params)
+	}
+	if params.Img != 6 || math.Abs(params.AI-3.6) > 1e-9 || params.ImgO != 4 || params.AO != 2 {
+		t.Fatalf("unexpected scaled media token prices: %+v", params)
+	}
+	if params.Len != 300000 {
+		t.Fatalf("len changed during price scaling: got %v, want 300000", params.Len)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Benchmarks: compile vs cached execution
 // ---------------------------------------------------------------------------

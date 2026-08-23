@@ -8,11 +8,11 @@ The expression is the billing contract between the administrator and the system.
 
 ### Core Principles
 
-1. **Expression is self-contained** — The expression string alone determines billing. No external ratio tables, no implicit completion multipliers, no hidden conversion factors. Given the same token counts and request context, the same expression always produces the same cost.
+1. **Expression defines the official schedule** — The expression string completely defines official tiers and their relative prices. Promotional/subscription billing executes it directly. Wallet billing applies an explicit, frozen per-token scale from the selected channel's user prices; there are no implicit completion multipliers inside the expression.
 
 2. **Variables are opt-in** — `p` (prompt) and `c` (completion) are the base. Cache (`cr`, `cc`, `cc1h`), image (`img`), and audio (`ai`, `ao`) variables are optional. If omitted, those tokens are included in `p`/`c` and priced at their rate. The system automatically detects which variables the expression uses (via AST introspection) and adjusts token normalization accordingly.
 
-3. **Prices are real prices** — Expression coefficients are actual $/1M tokens prices as published by providers. No ratio conversion, no `/2` convention. `p * 2.5` means $2.50 per 1M prompt tokens.
+3. **Prices are real official prices** — Expression coefficients are actual $/1M token prices as published by providers. No `/2` convention. `p * 2.5` means an official base of $2.50 per 1M prompt tokens; wallet settlement preserves the tier schedule while replacing that base with the selected channel's user price.
 
 4. **Upstream-agnostic** — The expression doesn't need to know whether the upstream API is OpenAI-format (prompt_tokens includes cache) or Claude-format (input_tokens excludes cache). The system normalizes token counts before evaluation based on the upstream response format.
 
@@ -157,9 +157,10 @@ On save, the expression is validated:
 When a request arrives and the model uses `tiered_expr` billing:
 1. Loads expression from `billing_setting.GetBillingExpr()`
 2. Builds `RequestInput` (headers + body) for `param()` / `header()` functions
-3. Runs expression with estimated tokens: `RunExprWithRequest(expr, {P, C}, requestInput)`
-4. Converts output to quota: `rawCost / 1,000,000 * QuotaPerUnit`
-5. Creates `BillingSnapshot` (frozen state for settlement) and stores on `RelayInfo`
+3. For wallet billing, freezes per-token price scales derived from the selected channel's user prices relative to the official base prices. Promotional/subscription billing keeps scale 1 and therefore uses the official expression prices.
+4. Applies the scale to price-bearing token variables (`p`, `c`, `cr`, `cc`, `cc1h`; input/output media variables follow their respective side) and runs the expression with estimated tokens. `len` is never scaled, so tier boundaries continue to use the real context length.
+5. Converts output to quota: `rawCost / 1,000,000 * QuotaPerUnit`
+6. Creates `BillingSnapshot` (including the selected pricing channel and price scales) and stores it on `RelayInfo`. A fallback to another channel rebuilds the wallet snapshot from that channel's user prices.
 
 ### 4. Settlement (Actual Billing)
 
@@ -174,6 +175,7 @@ After the upstream response returns with actual token usage:
 
 2. `TryTieredSettle(relayInfo, params)`:
    - Uses the frozen `BillingSnapshot` from pre-consume
+   - Reapplies its frozen wallet price scales to the actual price-bearing token variables; `len` remains the actual input context length
    - Re-runs the expression with actual token counts
    - Converts via `quotaConversion()` (version-dispatched)
    - Returns actual quota

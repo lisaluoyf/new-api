@@ -313,6 +313,107 @@ func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	require.Equal(t, priceData, refreshed)
 }
 
+func TestTieredWalletUsesSelectedChannelUserPriceWhileTrialUsesOfficialPrice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
+	savedModelRatio := ratio_setting.ModelRatio2JSONString()
+	savedCompletionRatio := ratio_setting.CompletionRatio2JSONString()
+	savedCacheRatio := ratio_setting.CacheRatio2JSONString()
+	savedCreateCacheRatio := ratio_setting.CreateCacheRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatio))
+		require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(savedCompletionRatio))
+		require.NoError(t, ratio_setting.UpdateCacheRatioByJSONString(savedCacheRatio))
+		require.NoError(t, ratio_setting.UpdateCreateCacheRatioByJSONString(savedCreateCacheRatio))
+	})
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"gpt-5.4":1.25}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"gpt-5.4":6}`))
+	require.NoError(t, ratio_setting.UpdateCacheRatioByJSONString(`{"gpt-5.4":0.1}`))
+	require.NoError(t, ratio_setting.UpdateCreateCacheRatioByJSONString(`{"gpt-5.4":1.25}`))
+
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"gpt-5.4":"tiered_expr"}`,
+		"billing_setting.billing_expr": `{"gpt-5.4":"len <= 272000 ? tier(\"standard\", p * 2.5 + c * 15 + cr * 0.25) : tier(\"long_context\", p * 5 + c * 22.5 + cr * 0.5)"}`,
+	}))
+
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.Exec(`CREATE TABLE channels (
+		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		apimaster_price_ratio real, model_price_ratios text
+	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
+		id integer primary key, channel_id integer not null, model_name text not null,
+		input_price real, output_price real, cache_price real, cache_creation_price real,
+		group_ratio real, pricing_source text
+	)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channels
+		(id, recharge_rate, apimaster_price_ratio) VALUES
+		(7, 0.5, 1.5),
+		(8, 0.5, 1.5)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings
+		(channel_id, model_name, input_price, output_price, cache_price, cache_creation_price, group_ratio, pricing_source)
+		VALUES
+		(7, 'gpt-5.4', 2, 10, 0.2, 2.5, 1, 'api'),
+		(8, 'gpt-5.4', 4, 20, 0.4, 5, 1, 'api')`).Error)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	ctx.Set("channel_id", 7)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.4",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+		StartTime:       time.Now(),
+	}
+
+	walletPrice, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	walletSnapshot := info.WalletTieredBillingSnapshot
+	require.NotNil(t, walletSnapshot)
+	require.Equal(t, 7, walletSnapshot.PricingChannelID)
+	require.True(t, walletSnapshot.PriceScale.Enabled)
+	require.InDelta(t, 0.6, walletSnapshot.PriceScale.Input, 0.000001)
+	require.InDelta(t, 0.5, walletSnapshot.PriceScale.Output, 0.000001)
+	require.InDelta(t, 0.6, walletSnapshot.PriceScale.CacheRead, 0.000001)
+	walletEstimatedCost := 1000*1.5 + float64(walletSnapshot.EstimatedCompletionTokens)*7.5
+	require.Equal(t, billingexpr.QuotaRound(walletEstimatedCost/1_000_000*common.QuotaPerUnit*walletSnapshot.GroupRatio), walletPrice.QuotaToPreConsume)
+
+	ok, walletQuota, result := service.TryTieredSettle(info, billingexpr.TokenParams{
+		P: 800, C: 100, Len: 1000, CR: 200,
+	})
+	require.True(t, ok)
+	require.NotNil(t, result)
+	walletCost := 800*1.5 + 100*7.5 + 200*0.15
+	require.Equal(t, billingexpr.QuotaRound(walletCost/1_000_000*common.QuotaPerUnit*walletSnapshot.GroupRatio), walletQuota)
+
+	ctx.Set("channel_id", 8)
+	_, err = RefreshModelPriceForRetry(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.Equal(t, 8, info.WalletTieredBillingSnapshot.PricingChannelID)
+	require.InDelta(t, 1.2, info.WalletTieredBillingSnapshot.PriceScale.Input, 0.000001)
+	require.InDelta(t, 1.0, info.WalletTieredBillingSnapshot.PriceScale.Output, 0.000001)
+
+	trialPrice, err := BuildGPTTrialPriceData(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.NotNil(t, info.TrialTieredBillingSnapshot)
+	require.False(t, info.TrialTieredBillingSnapshot.PriceScale.Enabled)
+	require.Zero(t, info.TrialTieredBillingSnapshot.PriceScale.Input)
+	trialEstimatedCost := 1000*2.5 + float64(info.TrialTieredBillingSnapshot.EstimatedCompletionTokens)*15
+	require.Equal(t, billingexpr.QuotaRound(trialEstimatedCost/1_000_000*common.QuotaPerUnit), trialPrice.QuotaToPreConsume)
+}
+
 func TestTieredPriceSnapshotFollowsSelectedFundingSource(t *testing.T) {
 	walletPrice := types.PriceData{
 		GroupRatioInfo:    types.GroupRatioInfo{GroupRatio: 0.42},

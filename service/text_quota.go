@@ -612,6 +612,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		GroupRatio:               summary.GroupRatio,
 		Quota:                    summary.Quota,
 		ZeroUserCharge:           IsFreeModel(relayInfo.OriginModelName),
+		UseQuotaForUserAmounts:   tieredBillingApplied && relayInfo.PriceDataSource == "wallet",
 		BillingAt:                relayInfo.StartTime,
 	}
 	if requestData := ImageRequestDataFromContext(ctx); len(requestData) > 0 {

@@ -84,6 +84,22 @@ func TestUserAmountsUSDDerivesMediaFinalAmountFromQuota(t *testing.T) {
 	require.InDelta(t, userFinalAmountUSD/1.05, userPriceAmountUSD, 0.0000000000001)
 }
 
+func TestUserAmountsUSDTieredWalletUsesSettledQuota(t *testing.T) {
+	prices := accountingPriceTuple{InputPrice: 2.5, OutputPrice: 15}
+	input := ConsumeAccountingInput{
+		InputTokens:            300000,
+		OutputTokens:           100,
+		GroupRatio:             1.05,
+		Quota:                  123456,
+		UseQuotaForUserAmounts: true,
+	}
+
+	userPriceAmountUSD, userFinalAmountUSD := userAmountsUSD(prices, input)
+
+	require.InDelta(t, float64(input.Quota)/common.QuotaPerUnit, userFinalAmountUSD, 0.0000000000001)
+	require.InDelta(t, userFinalAmountUSD/input.GroupRatio, userPriceAmountUSD, 0.0000000000001)
+}
+
 func TestUserAmountsUSDZeroUserCharge(t *testing.T) {
 	prices := accountingPriceTuple{InputPrice: 2.5, OutputPrice: 15}
 	input := ConsumeAccountingInput{
