@@ -58,6 +58,13 @@ function formatUsdAmount(amount: number) {
   return amount.toFixed(2).replace(/\.?0+$/, '')
 }
 
+function extractMinTopupFromMessage(message: string): number | null {
+  const match = message.match(/less than\s+(\d+(?:\.\d+)?)/i)
+  if (!match) return null
+  const parsed = Number.parseFloat(match[1] ?? '')
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 interface RechargePanelProps {
   onSuccess: () => void
   onPaymentAttempted?: () => void
@@ -89,6 +96,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
       : 1
   const effectiveDiscount = amountDiscount * promoDiscount
   const effectiveAmount = requestAmount * effectiveDiscount
+  const paymentOptionsReady = topupInfo !== null
 
   const checkAndMaybeShowHint = useCallback(async () => {
     const last = localStorage.getItem(HINT_LS_KEY)
@@ -166,8 +174,24 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
     return true
   }
 
+  function presentPaymentError(rawMessage?: string | null) {
+    const message = rawMessage?.trim()
+    if (!message) {
+      toast.error(paymentErrorMessage())
+      return
+    }
+
+    const minTopup = extractMinTopupFromMessage(message)
+    if (minTopup !== null) {
+      setMinTopupDialog({ min: minTopup })
+      return
+    }
+
+    toast.error(message)
+  }
+
   async function handleEpayPay(method: string) {
-    if (requestAmount <= 0) return
+    if (!paymentOptionsReady || requestAmount <= 0) return
     const minTopup =
       topupInfo?.pay_methods?.find((m) => m.type === method)?.min_topup ??
       topupInfo?.min_topup ??
@@ -199,7 +223,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
         document.body.removeChild(form)
         onPaymentAttempted?.()
       } else {
-        toast.error(paymentErrorMessage())
+        presentPaymentError(typeof res.data === 'string' ? res.data : res.message)
       }
     } catch {
       toast.error(paymentErrorMessage())
@@ -209,6 +233,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
   }
 
   async function handlePayPalPay() {
+    if (!paymentOptionsReady) return
     const minTopup = topupInfo?.paypal_min_topup ?? 1
     if (!ensureMinimumTopup(requestAmount, minTopup)) return
     handleMethodSelect('paypal')
@@ -233,6 +258,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
   }
 
   async function handlePancakePay() {
+    if (!paymentOptionsReady) return
     const minTopup = topupInfo?.waffo_pancake_min_topup ?? 1
     if (!ensureMinimumTopup(requestAmount, minTopup)) return
     handleMethodSelect('waffo_pancake')
@@ -241,6 +267,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
   }
 
   async function handlePlategaPay() {
+    if (!paymentOptionsReady) return
     const minTopup = topupInfo?.platega_min_topup ?? 1
     if (!ensureMinimumTopup(requestAmount, minTopup)) return
     handleMethodSelect('platega')
@@ -249,6 +276,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
   }
 
   async function handleClinkPay() {
+    if (!paymentOptionsReady) return
     const minTopup = topupInfo?.clink_min_topup ?? 1
     if (!ensureMinimumTopup(requestAmount, minTopup)) return
     handleMethodSelect('clink')
@@ -257,6 +285,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
   }
 
   function handleCryptoPay() {
+    if (!paymentOptionsReady) return
     const minTopup = topupInfo?.min_topup ?? 1
     if (!ensureMinimumTopup(effectiveAmount, minTopup)) return
     handleMethodSelect('crypto')
@@ -384,7 +413,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {paypalEnabled && (
                 <button
                   type='button'
-                  disabled={requestAmount <= 0 || paypalLoading}
+                  disabled={!paymentOptionsReady || requestAmount <= 0 || paypalLoading}
                   onClick={handlePayPalPay}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -412,7 +441,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {pancakeEnabled && (
                 <button
                   type='button'
-                  disabled={requestAmount <= 0 || pancakeLoading}
+                  disabled={!paymentOptionsReady || requestAmount <= 0 || pancakeLoading}
                   onClick={handlePancakePay}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -436,7 +465,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {plategaEnabled && (
                 <button
                   type='button'
-                  disabled={requestAmount <= 0 || plategaLoading}
+                  disabled={!paymentOptionsReady || requestAmount <= 0 || plategaLoading}
                   onClick={handlePlategaPay}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -463,7 +492,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
                     <TooltipTrigger render={
                       <button
                         type='button'
-                        disabled={requestAmount <= 0 || clinkLoading}
+                        disabled={!paymentOptionsReady || requestAmount <= 0 || clinkLoading}
                         onClick={handleClinkPay}
                         className={cn(
                           'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
@@ -504,7 +533,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {!topupForbidden && (
                 <button
                   type='button'
-                  disabled={requestAmount <= 0}
+                  disabled={!paymentOptionsReady || requestAmount <= 0}
                   onClick={handleCryptoPay}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40',
