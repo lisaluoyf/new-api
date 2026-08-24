@@ -20,6 +20,7 @@ import axios from 'axios'
 import i18next from 'i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
+import { reportErrorLike } from '@/lib/client-error-report'
 import { resolveUserGroupDescription } from '@/lib/user-group-i18n'
 
 // ============================================================================
@@ -93,9 +94,11 @@ api.interceptors.response.use(
   },
   (error) => {
     const skip = error?.config?.skipErrorHandler
+    const status = error?.response?.status
+    if (!skip && (!status || status >= 500)) {
+      reportErrorLike('axios-response', error)
+    }
     if (!skip) {
-      const status = error?.response?.status
-
       if (status === 401) {
         // Unauthorized: clear auth state and show toast
         toast.error(i18next.t('Session expired!'))
@@ -240,9 +243,11 @@ export async function get2FAStatus() {
   return res.data
 }
 
-export function normalizeUserGroupsResponse<T extends {
-  data?: Record<string, { desc: string; ratio: number | string }>
-}>(payload: T): T {
+export function normalizeUserGroupsResponse<
+  T extends {
+    data?: Record<string, { desc: string; ratio: number | string }>
+  },
+>(payload: T): T {
   if (!payload?.data) return payload
 
   const data = Object.fromEntries(

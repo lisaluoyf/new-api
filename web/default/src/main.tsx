@@ -29,6 +29,7 @@ import i18next from 'i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { getStatus } from '@/lib/api'
+import { reportErrorLike } from '@/lib/client-error-report'
 import '@/lib/dayjs'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -76,6 +77,13 @@ const queryClient = new QueryClient({
   },
   queryCache: new QueryCache({
     onError: (error) => {
+      if (
+        !(error instanceof AxiosError) ||
+        !error.response?.status ||
+        error.response.status >= 500
+      ) {
+        reportErrorLike('query-cache', error)
+      }
       if (error instanceof AxiosError) {
         if (error.response?.status === 401) {
           toast.error(i18next.t('Session expired!'))
@@ -100,6 +108,22 @@ const router = createRouter({
   defaultPreloadStaleTime: 0,
   basepath: '/_panel',
 })
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    reportErrorLike('window-error', event.error ?? new Error(event.message), {
+      details: {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      },
+    })
+  })
+
+  window.addEventListener('unhandledrejection', (event) => {
+    reportErrorLike('unhandledrejection', event.reason)
+  })
+}
 
 // Register the router instance for type safety
 declare module '@tanstack/react-router' {

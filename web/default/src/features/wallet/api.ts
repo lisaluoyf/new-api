@@ -459,6 +459,16 @@ export interface ReferralGPTRewardSummary {
   qualified_invitees: number
 }
 
+function toFiniteNumber(value: unknown, fallback = 0): number {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value)
+        : NaN
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 export async function getReferralGPTRewardSummary(): Promise<ReferralGPTRewardSummary | null> {
   try {
     const res = await api.get('/api/user/referral_gpt_reward_summary')
@@ -484,8 +494,18 @@ export async function getSignupGift(): Promise<SignupGiftInfo | null> {
 export async function getFirstTopupPromo(): Promise<FirstTopupPromoInfo | null> {
   try {
     const res = await api.get('/api/user/first_topup_promo')
-    if (res.data?.success && res.data?.data)
-      return res.data.data as FirstTopupPromoInfo
+    if (res.data?.success && res.data?.data) {
+      const data = res.data.data as Record<string, unknown>
+      return {
+        enabled: Boolean(data.enabled),
+        eligible: Boolean(data.eligible),
+        never_recharged: Boolean(data.never_recharged),
+        discount: toFiniteNumber(data.discount, 1),
+        amount: toFiniteNumber(data.amount, 0),
+        pay_amount: toFiniteNumber(data.pay_amount, 0),
+        expires_at: toFiniteNumber(data.expires_at, 0),
+      }
+    }
   } catch {
     /* ignore */
   }

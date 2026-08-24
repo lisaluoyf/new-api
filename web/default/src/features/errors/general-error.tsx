@@ -16,8 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useEffect } from 'react'
 import { useNavigate, useRouter } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { reportErrorLike } from '@/lib/client-error-report'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -52,6 +54,20 @@ export function GeneralError({
   const description = isRateLimited
     ? t('Please wait a moment before trying again.')
     : t('Please try again later.')
+
+  useEffect(() => {
+    reportErrorLike(
+      'general-error',
+      error ??
+        new Error('GeneralError rendered without explicit error payload'),
+      {
+        status,
+        details: {
+          minimal,
+        },
+      }
+    )
+  }, [error, minimal, status])
 
   return (
     <div className={cn('h-svh w-full', className)}>
