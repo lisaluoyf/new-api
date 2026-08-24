@@ -93,6 +93,8 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.GET("/logout", controller.Logout)
 			userRoute.POST("/epay/notify", controller.EpayNotify)
 			userRoute.GET("/epay/notify", controller.EpayNotify)
+			userRoute.POST("/epay/return", controller.EpayReturn)
+			userRoute.GET("/epay/return", controller.EpayReturn)
 			userRoute.GET("/groups", controller.GetUserGroups)
 			userRoute.GET("/first_topup_promo", middleware.TryUserAuth(), controller.GetFirstTopupPromo)
 			userRoute.GET("/signup_gift", middleware.TryUserAuth(), controller.GetSignupGift)
