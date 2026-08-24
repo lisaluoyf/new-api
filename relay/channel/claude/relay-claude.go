@@ -56,12 +56,23 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 				Name:        tool.Function.Name,
 				Description: tool.Function.Description,
 			}
-			claudeTool.InputSchema = make(map[string]interface{})
-			if params["type"] != nil {
-				claudeTool.InputSchema["type"] = params["type"].(string)
+			// Some OpenAI-compatible clients omit properties/required or send them
+			// as null. Anthropic-compatible upstreams validate those values strictly,
+			// so normalize them instead of forwarding invalid JSON Schema nulls.
+			claudeTool.InputSchema = map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]any{},
+				"required":   []string{},
 			}
-			claudeTool.InputSchema["properties"] = params["properties"]
-			claudeTool.InputSchema["required"] = params["required"]
+			if schemaType, ok := params["type"].(string); ok && schemaType != "" {
+				claudeTool.InputSchema["type"] = schemaType
+			}
+			if properties := params["properties"]; properties != nil {
+				claudeTool.InputSchema["properties"] = properties
+			}
+			if required := params["required"]; required != nil {
+				claudeTool.InputSchema["required"] = required
+			}
 			for s, a := range params {
 				if s == "type" || s == "properties" || s == "required" {
 					continue
