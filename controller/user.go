@@ -36,6 +36,22 @@ func Login(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
 		return
 	}
+	loginWithPassword(c)
+}
+
+func InternalLogin(c *gin.Context) {
+	if common.ApimasterInternalSyncKey == "" ||
+		c.GetHeader("X-Apimaster-Internal-Key") != common.ApimasterInternalSyncKey {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "invalid url",
+		})
+		return
+	}
+	loginWithPassword(c)
+}
+
+func loginWithPassword(c *gin.Context) {
 	var loginRequest LoginRequest
 	err := json.NewDecoder(c.Request.Body).Decode(&loginRequest)
 	if err != nil {
