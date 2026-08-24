@@ -26,11 +26,33 @@ var defNext = func(c *gin.Context) {
 // Without this, all host→container traffic shares 172.18.0.1 and exhausts
 // GLOBAL_API_RATE_LIMIT / CRITICAL_RATE_LIMIT, causing console white-screens.
 func skipRateLimitForInternalSync(c *gin.Context) bool {
+	return IsApimasterInternalSyncRequest(c)
+}
+
+// IsApimasterInternalSyncRequest authenticates server-to-server requests from
+// APIMaster. The same key is used for rate-limit bypass and internal routes.
+func IsApimasterInternalSyncRequest(c *gin.Context) bool {
 	secret := common.ApimasterInternalSyncKey
 	if secret == "" {
 		return false
 	}
 	return c.GetHeader(apimasterInternalKeyHeader) == secret
+}
+
+// RequireApimasterInternalSync protects routes that must only be callable by
+// the APIMaster server, never by browser traffic or public API clients.
+func RequireApimasterInternalSync() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !IsApimasterInternalSyncRequest(c) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "internal authentication required",
+			})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
 }
 
 func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string) {
