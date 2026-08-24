@@ -15,6 +15,7 @@
   { "model_id": "claude-haiku-4-5", "label": "Haiku 4.5", "accent": "#a855f7" },
   { "model_id": "deepseek-v4-flash", "label": "DeepSeek Flash", "accent": "#a78bfa" },
   { "model_id": "deepseek-v4-pro", "label": "DeepSeek Pro", "accent": "#a78bfa" },
+  { "model_id": "deepseek-v4-flash-vision-exp", "label": "DeepSeek Vision", "accent": "#a78bfa" },
   { "model_id": "minimax-m3", "label": "MiniMax M3", "accent": "#f97316" },
   { "model_id": "kimi-k2.7-code", "label": "Kimi K2.7 Code", "accent": "#818cf8" },
   { "model_id": "kimi-k3", "label": "Kimi K3", "accent": "#818cf8" },

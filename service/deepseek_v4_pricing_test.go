@@ -52,6 +52,42 @@ func TestDeepSeekV4OfficialPricingAtPro(t *testing.T) {
 	require.InDelta(t, 0.044, peak.CachePrice, 0.0000001)
 }
 
+func TestDeepSeekV4OfficialPricingAtWeekends(t *testing.T) {
+	weekendPeakHours := []time.Time{
+		time.Date(2026, time.August, 22, 10, 0, 0, 0, deepSeekV4Timezone), // Saturday
+		time.Date(2026, time.August, 23, 15, 0, 0, 0, deepSeekV4Timezone), // Sunday
+	}
+	for _, at := range weekendPeakHours {
+		period, ok := DeepSeekV4PricingPeriodAt("deepseek-v4-flash", at)
+		require.True(t, ok)
+		require.Equal(t, "off_peak", period)
+
+		prices, ok := DeepSeekV4OfficialPricingAt("deepseek-v4-flash", at)
+		require.True(t, ok)
+		require.InDelta(t, 0.22, prices.InputPrice, 0.0000001)
+		require.InDelta(t, 0.66, prices.OutputPrice, 0.0000001)
+		require.InDelta(t, 0.007, prices.CachePrice, 0.0000001)
+	}
+}
+
+func TestDeepSeekV4OfficialPricingAtVisionAndSuffixes(t *testing.T) {
+	offPeak, ok := DeepSeekV4OfficialPricingAt("deepseek-v4-flash-vision-exp", beijingTime(t, 13, 0))
+	require.True(t, ok)
+	require.InDelta(t, 0.22, offPeak.InputPrice, 0.0000001)
+	require.InDelta(t, 0.66, offPeak.OutputPrice, 0.0000001)
+	require.InDelta(t, 0.007, offPeak.CachePrice, 0.0000001)
+
+	peak, ok := DeepSeekV4OfficialPricingAt("deepseek-v4-flash-vision-exp-max", beijingTime(t, 15, 0))
+	require.True(t, ok)
+	require.InDelta(t, 0.44, peak.InputPrice, 0.0000001)
+	require.InDelta(t, 1.32, peak.OutputPrice, 0.0000001)
+	require.InDelta(t, 0.014, peak.CachePrice, 0.0000001)
+
+	flashSuffix, ok := DeepSeekV4OfficialPricingAt("deepseek-v4-flash-none", beijingTime(t, 15, 0))
+	require.True(t, ok)
+	require.InDelta(t, 0.44, flashSuffix.InputPrice, 0.0000001)
+}
+
 func TestDeepSeekV4ChannelPricingAppliesGroupRechargeAndUserOverride(t *testing.T) {
 	oldDB := model.DB
 	t.Cleanup(func() { model.DB = oldDB })
@@ -88,5 +124,7 @@ func TestDeepSeekV4ChannelPricingAppliesGroupRechargeAndUserOverride(t *testing.
 
 func TestDeepSeekV4OfficialPricingRejectsOtherModels(t *testing.T) {
 	_, ok := DeepSeekV4OfficialPricingAt("deepseek-chat", beijingTime(t, 10, 0))
+	require.False(t, ok)
+	_, ok = DeepSeekV4OfficialPricingAt("deepseek-v4-flash-none-max", beijingTime(t, 10, 0))
 	require.False(t, ok)
 }

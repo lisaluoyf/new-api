@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
@@ -19,9 +20,9 @@ type ModelUnitPricesUSD struct {
 }
 
 // DeepSeekV4OfficialPricingAt returns DeepSeek's official time-of-day price.
-// Peak hours are 09:00-12:00 and 14:00-18:00 in Beijing time. The caller is
-// expected to pass the request start time so a long request cannot change
-// price while it is in flight. Prices verified 2026-08-17 against:
+// Peak hours are 09:00-12:00 and 14:00-18:00 in Beijing time, Monday-Friday.
+// The caller is expected to pass the request start time so a long request
+// cannot change price while it is in flight. Prices verified against:
 // https://api-docs.deepseek.com/quick_start/pricing/
 func DeepSeekV4OfficialPricingAt(modelName string, at time.Time) (ModelUnitPricesUSD, bool) {
 	if at.IsZero() {
@@ -32,9 +33,14 @@ func DeepSeekV4OfficialPricingAt(modelName string, at time.Time) (ModelUnitPrice
 		return ModelUnitPricesUSD{}, false
 	}
 
+	canonicalModel, ok := deepSeekV4PricingModel(modelName)
+	if !ok {
+		return ModelUnitPricesUSD{}, false
+	}
+
 	var offPeak ModelUnitPricesUSD
-	switch modelName {
-	case "deepseek-v4-flash":
+	switch canonicalModel {
+	case "deepseek-v4-flash", "deepseek-v4-flash-vision-exp":
 		offPeak = ModelUnitPricesUSD{
 			InputPrice:         0.22,
 			OutputPrice:        0.66,
@@ -59,19 +65,37 @@ func DeepSeekV4OfficialPricingAt(modelName string, at time.Time) (ModelUnitPrice
 
 // DeepSeekV4PricingPeriodAt returns the official pricing period in Beijing time.
 func DeepSeekV4PricingPeriodAt(modelName string, at time.Time) (string, bool) {
-	switch modelName {
-	case "deepseek-v4-flash", "deepseek-v4-pro":
-	default:
+	if _, ok := deepSeekV4PricingModel(modelName); !ok {
 		return "", false
 	}
 	if at.IsZero() {
 		at = time.Now()
 	}
-	hour := at.In(deepSeekV4Timezone).Hour()
+	beijingTime := at.In(deepSeekV4Timezone)
+	if beijingTime.Weekday() == time.Saturday || beijingTime.Weekday() == time.Sunday {
+		return "off_peak", true
+	}
+	hour := beijingTime.Hour()
 	if (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18) {
 		return "peak", true
 	}
 	return "off_peak", true
+}
+
+func deepSeekV4PricingModel(modelName string) (string, bool) {
+	canonical := modelName
+	for _, suffix := range []string{"-none", "-max"} {
+		if strings.HasSuffix(canonical, suffix) {
+			canonical = strings.TrimSuffix(canonical, suffix)
+			break
+		}
+	}
+	switch canonical {
+	case "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp":
+		return canonical, true
+	default:
+		return "", false
+	}
 }
 
 // DeepSeekV4ProcurementPricingAt treats the official time-of-day price as the
