@@ -95,7 +95,18 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 	if info.RelayMode == relayconstant.RelayModeImagesGenerations ||
 		info.RelayMode == relayconstant.RelayModeImagesEdits {
 		if !useTrialPricing {
-			if channelID := c.GetInt("channel_id"); channelID > 0 {
+			if imageBasePrice, configured := ratio_setting.GetImageModelBasePrice(info.OriginModelName); configured {
+				modelPrice = imageBasePrice
+				if channelID := c.GetInt("channel_id"); channelID > 0 {
+					if resolved, err := service.ChannelBaseUserPriceResolved(channelID, info.OriginModelName, imageBasePrice); err == nil && resolved > 0 {
+						modelPrice = resolved
+					}
+				}
+				usePrice = true
+				if meta != nil {
+					meta.ImagePriceRatio = ratio_setting.GetImageModelPriceRatio(info.OriginModelName, meta.ImagePriceVariant)
+				}
+			} else if channelID := c.GetInt("channel_id"); channelID > 0 {
 				if resolved, err := service.ChannelActualPricesResolved(channelID, info.OriginModelName); err == nil && resolved != nil && resolved.InputPrice > 0 {
 					modelPrice = resolved.InputPrice
 					usePrice = true

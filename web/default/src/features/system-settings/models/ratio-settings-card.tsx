@@ -29,15 +29,16 @@ import { resetModelRatios } from '../api'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { GroupRatioForm } from './group-ratio-form'
+import { ImagePricingForm } from './image-pricing-form'
 import { ModelRatioForm } from './model-ratio-form'
 import { ToolPriceSettings } from './tool-price-settings'
 import { UpstreamRatioSync } from './upstream-ratio-sync'
-import { VideoMediaPricingForm } from './video-media-pricing-form'
 import {
   formatJsonForTextarea,
   normalizeJsonString,
   validateJsonString,
 } from './utils'
+import { VideoMediaPricingForm } from './video-media-pricing-form'
 
 const modelSchema = z.object({
   ModelPrice: z.string().superRefine((value, ctx) => {
@@ -198,12 +199,19 @@ const groupSchema = z.object({
 
 type ModelFormValues = z.infer<typeof modelSchema>
 type GroupFormValues = z.infer<typeof groupSchema>
-type RatioTabId = 'models' | 'groups' | 'video-media' | 'tool-prices' | 'upstream-sync'
+type RatioTabId =
+  | 'models'
+  | 'groups'
+  | 'image'
+  | 'video-media'
+  | 'tool-prices'
+  | 'upstream-sync'
 
 type RatioSettingsCardProps = {
   modelDefaults: ModelFormValues
   groupDefaults: GroupFormValues
   toolPricesDefault: string
+  imagePricingDefault?: string
   videoMediaPricingDefault?: string
   titleKey?: string
   descriptionKey?: string
@@ -214,6 +222,7 @@ export function RatioSettingsCard({
   modelDefaults,
   groupDefaults,
   toolPricesDefault,
+  imagePricingDefault = '{}',
   videoMediaPricingDefault = '{}',
   titleKey = 'Pricing Ratios',
   descriptionKey = 'Configure model, caching, and group ratios used for billing',
@@ -445,6 +454,7 @@ export function RatioSettingsCard({
   const tabLabels: Record<RatioTabId, string> = {
     models: 'Model prices',
     groups: 'Group ratios',
+    image: 'Image',
     'video-media': 'Video / media pricing',
     'tool-prices': 'Tool prices',
     'upstream-sync': 'Upstream price sync',
@@ -456,6 +466,7 @@ export function RatioSettingsCard({
       3: 'grid-cols-3',
       4: 'grid-cols-4',
       5: 'grid-cols-5',
+      6: 'grid-cols-6',
     }[visibleTabs.length] ?? 'grid-cols-4'
   const defaultTab = visibleTabs[0] ?? 'models'
 
@@ -485,6 +496,9 @@ export function RatioSettingsCard({
     }
     if (tab === 'video-media') {
       return <VideoMediaPricingForm defaultValue={videoMediaPricingDefault} />
+    }
+    if (tab === 'image') {
+      return <ImagePricingForm defaultValue={imagePricingDefault} />
     }
     return (
       <UpstreamRatioSync

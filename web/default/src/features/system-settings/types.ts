@@ -214,6 +214,7 @@ export type BillingSettings = {
   ImageRatio: string
   AudioRatio: string
   AudioCompletionRatio: string
+  ImageModelPricing: string
   VideoModelPricing: string
   ExposeRatioEnabled: boolean
   'billing_setting.billing_mode': string

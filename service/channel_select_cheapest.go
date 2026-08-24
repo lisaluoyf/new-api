@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/cachex"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/hot"
 )
@@ -222,6 +223,7 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 	}
 
 	candidates := ModelPricingLookupNames(modelName)
+	_, hasImageBasePrice := ratio_setting.GetImageModelBasePrice(modelName)
 
 	modelsCol := "c.models"
 	abilityGroupCol := "a.`group`"
@@ -246,12 +248,16 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 	}
 	var rows []pricedCandidateRow
 
+	pricingJoin := "LEFT JOIN channel_model_pricings p ON p.channel_id = c.id AND p.input_price > 0"
+	if hasImageBasePrice {
+		pricingJoin = "LEFT JOIN channel_model_pricings p ON p.channel_id = c.id AND (p.input_price > 0 OR p.group_ratio > 0)"
+	}
 	q := model.DB.Table("channels c").
 		Select(`c.id AS channel_id, c.setting, c.model_mapping, p.model_name AS pricing_model_name, p.pricing_source, p.input_price, p.group_ratio, c.recharge_rate, c.apimaster_price_ratio, c.model_price_ratios, c.priority`).
 		// Join all pricing rows for eligible channels so a per-channel model_mapping
 		// target can be resolved in Go without database-specific JSON operators.
 		// applyPricedCandidateRow filters unrelated model rows below.
-		Joins("LEFT JOIN channel_model_pricings p ON p.channel_id = c.id AND p.input_price > 0").
+		Joins(pricingJoin).
 		Joins("LEFT JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND "+abilityGroupCol+" = 'default'", modelName).
 		Where("c.status = 1").
 		Where(modelsMatchClause, modelsMatchArgs...).
@@ -279,11 +285,14 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 				Priority:            int64PointerOrDefault(row.Priority, 0),
 			}
 		}
+		pricingModelName := ""
+		if row.PricingModelName != nil {
+			pricingModelName = *row.PricingModelName
+		}
+		if hasImageBasePrice && row.GroupRatio != nil && *row.GroupRatio > 0 {
+			applyPricedCandidateGroupRatio(&candidate, modelName, pricingModelName, *row.GroupRatio)
+		}
 		if row.InputPrice != nil && *row.InputPrice > 0 {
-			pricingModelName := ""
-			if row.PricingModelName != nil {
-				pricingModelName = *row.PricingModelName
-			}
 			pricingSource := ""
 			if row.PricingSource != nil {
 				pricingSource = *row.PricingSource
@@ -318,10 +327,29 @@ type pricedRouteCandidate struct {
 	InputPrice          float64
 	HasInputPrice       bool
 	HasMappedInputPrice bool
+	HasMappedGroupRatio bool
 	GroupRatio          float64
 	RechargeRate        float64
 	ApimasterPriceRatio float64
 	Priority            int64
+}
+
+func applyPricedCandidateGroupRatio(candidate *pricedRouteCandidate, modelName, pricingModelName string, groupRatio float64) {
+	if candidate == nil || groupRatio <= 0 {
+		return
+	}
+	target := ModelMappingTarget(candidate.ModelMapping, modelName)
+	if target != "" && pricingModelName == target {
+		candidate.GroupRatio = groupRatio
+		candidate.HasMappedGroupRatio = true
+		return
+	}
+	if candidate.HasMappedGroupRatio || !slices.Contains(ModelPricingLookupNames(modelName), pricingModelName) {
+		return
+	}
+	if candidate.GroupRatio <= 0 {
+		candidate.GroupRatio = groupRatio
+	}
 }
 
 func applyPricedCandidateRow(candidate *pricedRouteCandidate, modelName, pricingModelName, pricingSource string, inputPrice, groupRatio float64) {
@@ -375,6 +403,25 @@ func routeCandidateUserInputPriceAt(candidate pricedRouteCandidate, modelName st
 			groupRatio = 1
 		}
 		price := timedPrices.InputPrice * groupRatio * candidate.RechargeRate * candidate.ApimasterPriceRatio
+		return price, price > 0
+	}
+	if imageBasePrice, ok := ratio_setting.GetImageModelBasePrice(modelName); ok {
+		groupRatio := candidate.GroupRatio
+		if manualGroupRatio := ExtractManualGroupRatio(candidate.Setting); manualGroupRatio > 0 {
+			groupRatio = manualGroupRatio
+		}
+		if groupRatio <= 0 {
+			groupRatio = 1
+		}
+		rechargeRate := candidate.RechargeRate
+		if rechargeRate <= 0 {
+			rechargeRate = 1
+		}
+		apimasterPriceRatio := candidate.ApimasterPriceRatio
+		if apimasterPriceRatio <= 0 {
+			apimasterPriceRatio = 1
+		}
+		price := imageBasePrice * groupRatio * rechargeRate * apimasterPriceRatio
 		return price, price > 0
 	}
 

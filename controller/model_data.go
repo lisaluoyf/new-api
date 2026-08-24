@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -621,13 +622,30 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		if r.PricingSource != nil {
 			pricingSource = *r.PricingSource
 		}
-		mediaPricing := buildVideoMediaPricingView(modelName, rechargeRate)
+		imageGroupRatio := 1.0
+		if manualGroupRatio := service.ExtractManualGroupRatio(r.Setting); manualGroupRatio > 0 {
+			imageGroupRatio = manualGroupRatio
+		} else if r.GroupRatio != nil && *r.GroupRatio > 0 {
+			imageGroupRatio = *r.GroupRatio
+		}
+		mediaPricing := buildImagePricingView(modelName, imageGroupRatio, rechargeRate, apimasterRatio)
+		isImagePricing := mediaPricing != nil
+		if mediaPricing == nil {
+			mediaPricing = buildVideoMediaPricingView(modelName, rechargeRate)
+		}
 		if mediaPricing != nil {
 			baseVariant := mediaPricing.BaseVariant
 			billingBase := mediaPricing.BillingPrices[baseVariant]
 			officialBase := mediaPricing.OfficialPrices[baseVariant]
 			procurementBase := mediaPricing.ProcurementPrices[baseVariant]
-			if billingBase > 0 {
+			if isImagePricing && officialBase > 0 {
+				groupedBase := officialBase * imageGroupRatio
+				modelPricePtr, inputPricePtr = &officialBase, &groupedBase
+				if billingBase > 0 {
+					userPricePtr = &billingBase
+				}
+				groupRatioPtr = &imageGroupRatio
+			} else if billingBase > 0 {
 				modelPricePtr, inputPricePtr, userPricePtr = &billingBase, &billingBase, &billingBase
 				one := 1.0
 				groupRatioPtr = &one
@@ -639,7 +657,11 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 				actualPricePtr = &procurementBase
 			}
 			mismatchPtr, suggestedPtr = nil, nil
-			pricingSource = "media"
+			if isImagePricing {
+				pricingSource = "image"
+			} else {
+				pricingSource = "media"
+			}
 		}
 		upstreamModel := service.ModelMappingTarget(r.ModelMapping, modelName)
 
@@ -779,6 +801,44 @@ func buildVideoMediaPricingView(modelName string, rechargeRate float64) *VideoMe
 		Unit:              pricing.Unit,
 		BaseVariant:       baseVariant,
 		OfficialPrices:    pricing.OfficialPrices,
+		ProcurementPrices: procurement,
+		BillingPrices:     billing,
+	}
+}
+
+func buildImagePricingView(modelName string, groupRatio, rechargeRate, apimasterRatio float64) *VideoMediaPricingView {
+	pricing, ok := ratio_setting.GetImageModelPricingDetails(modelName)
+	if !ok || pricing.BasePrice <= 0 || len(pricing.Prices) == 0 {
+		return nil
+	}
+	if rechargeRate <= 0 {
+		rechargeRate = 1
+	}
+	if groupRatio <= 0 {
+		groupRatio = 1
+	}
+	if apimasterRatio <= 0 {
+		apimasterRatio = 1
+	}
+	official := make(map[string]float64, len(pricing.Prices))
+	procurement := make(map[string]float64, len(pricing.Prices))
+	billing := make(map[string]float64, len(pricing.Prices))
+	for variant, price := range pricing.Prices {
+		if price <= 0 {
+			continue
+		}
+		official[variant] = price
+		procurement[variant] = price * groupRatio * rechargeRate
+		billing[variant] = price * groupRatio * rechargeRate * apimasterRatio
+	}
+	baseVariant := strings.TrimSpace(pricing.BaseVariant)
+	if baseVariant == "" {
+		baseVariant = "1K"
+	}
+	return &VideoMediaPricingView{
+		Unit:              pricing.Unit,
+		BaseVariant:       baseVariant,
+		OfficialPrices:    official,
 		ProcurementPrices: procurement,
 		BillingPrices:     billing,
 	}
@@ -1236,7 +1296,17 @@ func GetPublicMarketplace(c *gin.Context) {
 			actualOutputUserPricePtr = &userOut
 		}
 		var publicMediaPricing *PublicVideoMediaPricingView
-		if mediaPricing := buildVideoMediaPricingView(modelName, rechargeRate); mediaPricing != nil {
+		imageGroupRatio := 1.0
+		if manualGroupRatio := service.ExtractManualGroupRatio(r.Setting); manualGroupRatio > 0 {
+			imageGroupRatio = manualGroupRatio
+		} else if r.GroupRatio != nil && *r.GroupRatio > 0 {
+			imageGroupRatio = *r.GroupRatio
+		}
+		mediaPricing := buildImagePricingView(modelName, imageGroupRatio, rechargeRate, apimasterRatio)
+		if mediaPricing == nil {
+			mediaPricing = buildVideoMediaPricingView(modelName, rechargeRate)
+		}
+		if mediaPricing != nil {
 			publicMediaPricing = &PublicVideoMediaPricingView{
 				Unit:           mediaPricing.Unit,
 				BaseVariant:    mediaPricing.BaseVariant,

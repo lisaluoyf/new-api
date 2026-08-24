@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -338,7 +339,9 @@ func appendChannelActualPrice(relayInfo *relaycommon.RelayInfo, other map[string
 		return
 	}
 	var p *model.ChannelActualPrices
-	if timedPrices, ok := DeepSeekV4UserPricingAt(channelId, modelName, relayInfo.StartTime); ok {
+	if _, imagePriced := ratio_setting.GetImageModelBasePrice(modelName); imagePriced && relayInfo.PriceData.ModelPrice > 0 {
+		p = &model.ChannelActualPrices{InputPrice: relayInfo.PriceData.ModelPrice}
+	} else if timedPrices, ok := DeepSeekV4UserPricingAt(channelId, modelName, relayInfo.StartTime); ok {
 		p = &model.ChannelActualPrices{
 			InputPrice:         timedPrices.InputPrice,
 			OutputPrice:        timedPrices.OutputPrice,

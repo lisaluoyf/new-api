@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/glebarez/sqlite"
@@ -79,6 +80,35 @@ func TestRouteCandidateInputPriceStoredRowWinsOverManualPublicPricing(t *testing
 	if got != 0.75 {
 		t.Fatalf("price=%v want 0.75", got)
 	}
+}
+
+func TestRouteCandidateImagePriceUsesConfiguredBaseInsteadOfUpstreamRow(t *testing.T) {
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
+	previous, hadPrevious := common.OptionMap[ratio_setting.ImageModelPricingOption]
+	common.OptionMap[ratio_setting.ImageModelPricingOption] = ratio_setting.DefaultImageModelPricingJSON()
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if hadPrevious {
+			common.OptionMap[ratio_setting.ImageModelPricingOption] = previous
+		} else {
+			delete(common.OptionMap, ratio_setting.ImageModelPricingOption)
+		}
+	})
+
+	got, ok := routeCandidateUserInputPrice(pricedRouteCandidate{
+		InputPrice:          0.002,
+		HasInputPrice:       true,
+		GroupRatio:          0.05,
+		RechargeRate:        0.5,
+		ApimasterPriceRatio: 3,
+	}, "gpt-image-2", 0.25)
+	require.True(t, ok)
+	require.InDelta(t, 0.25*0.05*0.5*3, got, 1e-9)
 }
 
 func TestMappedPricingRowOverridesCheaperCanonicalFallback(t *testing.T) {

@@ -3,6 +3,7 @@ package dto
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -164,9 +165,75 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	// Including n here caused double-counting for channels that also
 	// set OtherRatio("n") (e.g. Ali/Bailian).
 	return &types.TokenCountMeta{
-		CombineText:     i.Prompt,
-		MaxTokens:       1584,
-		ImagePriceRatio: sizeRatio * qualityRatio,
+		CombineText:       i.Prompt,
+		MaxTokens:         1584,
+		ImagePriceRatio:   sizeRatio * qualityRatio,
+		ImagePriceVariant: i.EffectiveResolutionTier(),
+	}
+}
+
+// EffectiveResolutionTier returns the billing resolution tier before channel
+// adaptors rewrite resolution/size for their upstream-specific wire format.
+func (i *ImageRequest) EffectiveResolutionTier() string {
+	if i == nil {
+		return "1K"
+	}
+	resolution := strings.TrimSpace(i.Resolution)
+	if resolution == "" {
+		for key, raw := range i.Extra {
+			if !strings.EqualFold(key, "resolution") {
+				continue
+			}
+			var value string
+			if common.Unmarshal(raw, &value) == nil {
+				resolution = strings.TrimSpace(value)
+			}
+			break
+		}
+	}
+	if normalized := normalizeImageResolutionTier(resolution); normalized != "" {
+		return normalized
+	}
+
+	size := strings.ToLower(strings.TrimSpace(i.Size))
+	if size == "" || size == "auto" || strings.Contains(size, ":") {
+		return "1K"
+	}
+	parts := strings.Split(size, "x")
+	if len(parts) != 2 {
+		return "1K"
+	}
+	w, errW := strconv.Atoi(strings.TrimSpace(parts[0]))
+	h, errH := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if errW != nil || errH != nil || w <= 0 || h <= 0 {
+		return "1K"
+	}
+	longEdge := w
+	if h > longEdge {
+		longEdge = h
+	}
+	switch {
+	case longEdge >= 2800:
+		return "4K"
+	case longEdge >= 1500:
+		return "2K"
+	default:
+		return "1K"
+	}
+}
+
+func normalizeImageResolutionTier(resolution string) string {
+	switch strings.ToUpper(strings.TrimSpace(resolution)) {
+	case "0.5K":
+		return "0.5K"
+	case "1K":
+		return "1K"
+	case "2K":
+		return "2K"
+	case "4K":
+		return "4K"
+	default:
+		return ""
 	}
 }
 

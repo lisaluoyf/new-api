@@ -220,6 +220,52 @@ func ChannelActualPricesResolved(channelID int, modelName string) (*model.Channe
 	}, nil
 }
 
+// ChannelBaseUserPriceResolved applies the same channel-level coefficients as
+// ordinary channel pricing to a platform-configured per-unit base price.
+// Image pricing uses this so resolution prices remain authoritative while
+// recharge and APIMaster/model-specific multipliers still determine user price.
+func ChannelBaseUserPriceResolved(channelID int, modelName string, basePrice float64) (float64, error) {
+	if basePrice <= 0 {
+		return 0, nil
+	}
+	ch, err := loadChannelPricingResolveContext(channelID)
+	if err != nil {
+		return 0, err
+	}
+	groupRatio := channelBasePriceGroupRatio(channelID, modelName, ch)
+	return basePrice * groupRatio * ch.RechargeRate * ch.EffectivePriceRatio(modelName), nil
+}
+
+func channelBasePriceGroupRatio(channelID int, modelName string, ch channelPricingResolveContext) float64 {
+	if manual := ExtractManualGroupRatio(ch.Setting); manual > 0 {
+		return manual
+	}
+	names := ModelPricingLookupNames(modelName)
+	if target := ModelMappingTarget(ch.ModelMapping, modelName); target != "" {
+		names = append([]string{target}, names...)
+	}
+	var rows []struct {
+		ModelName  string
+		GroupRatio float64
+	}
+	if err := model.DB.Table("channel_model_pricings").
+		Select("model_name, group_ratio").
+		Where("channel_id = ? AND model_name IN ? AND group_ratio > 0", channelID, names).
+		Scan(&rows).Error; err != nil {
+		return 1
+	}
+	byName := make(map[string]float64, len(rows))
+	for _, row := range rows {
+		byName[row.ModelName] = row.GroupRatio
+	}
+	for _, name := range names {
+		if ratio := byName[name]; ratio > 0 {
+			return ratio
+		}
+	}
+	return 1
+}
+
 // ChannelProcurementPricesResolved returns the channel procurement unit price
 // (channel_model_pricings × recharge_rate) using the same alias/model_mapping
 // resolution as ChannelActualPricesResolved.

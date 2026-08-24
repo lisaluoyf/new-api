@@ -194,6 +194,7 @@ func InitOptionMap() {
 	common.OptionMap["AudioRatio"] = ratio_setting.AudioRatio2JSONString()
 	common.OptionMap["AudioCompletionRatio"] = ratio_setting.AudioCompletionRatio2JSONString()
 	common.OptionMap[ratio_setting.VideoModelPricingOption] = ratio_setting.DefaultVideoModelPricingJSON()
+	common.OptionMap[ratio_setting.ImageModelPricingOption] = ratio_setting.DefaultImageModelPricingJSON()
 	common.OptionMap["TopUpLink"] = common.TopUpLink
 	//common.OptionMap["ChatLink"] = common.ChatLink
 	//common.OptionMap["ChatLink2"] = common.ChatLink2

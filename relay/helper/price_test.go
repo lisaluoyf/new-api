@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
@@ -117,6 +118,73 @@ func TestModelPriceHelperPerCallUsesExplicitMediaBasePrice(t *testing.T) {
 	require.NoError(t, err)
 	require.InDelta(t, 0.142, price.ModelPrice, 1e-9)
 	require.Equal(t, int(0.142*common.QuotaPerUnit*price.GroupRatioInfo.GroupRatio), price.Quota)
+}
+
+func TestImagePriceUsesResolutionBaseAndAllChannelCoefficients(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
+
+	common.OptionMapRWMutex.Lock()
+	mapWasNil := common.OptionMap == nil
+	if mapWasNil {
+		common.OptionMap = make(map[string]string)
+	}
+	previous, hadPrevious := common.OptionMap[ratio_setting.ImageModelPricingOption]
+	common.OptionMap[ratio_setting.ImageModelPricingOption] = ratio_setting.DefaultImageModelPricingJSON()
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if mapWasNil {
+			common.OptionMap = nil
+			return
+		}
+		if hadPrevious {
+			common.OptionMap[ratio_setting.ImageModelPricingOption] = previous
+		} else {
+			delete(common.OptionMap, ratio_setting.ImageModelPricingOption)
+		}
+	})
+
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.Exec(`CREATE TABLE channels (
+		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		apimaster_price_ratio real, model_price_ratios text
+	)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channels
+		(id, recharge_rate, apimaster_price_ratio) VALUES (1, 0.5, 2)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
+		id integer primary key, channel_id integer not null, model_name text not null,
+		input_price real, output_price real, cache_price real, cache_creation_price real,
+		group_ratio real, pricing_source text
+	)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings
+		(channel_id, model_name, input_price, group_ratio, pricing_source)
+		VALUES (1, 'gpt-image-2', 0.002, 0.2, 'api')`).Error)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	ctx.Set("channel_id", 1)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-image-2",
+		RelayMode:       relayconstant.RelayModeImagesGenerations,
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	tests := map[string]float64{"1K": 0.25, "2K": 0.30, "4K": 0.60}
+	for resolution, basePrice := range tests {
+		price, priceErr := ModelPriceHelper(ctx, info, 0, &types.TokenCountMeta{ImagePriceVariant: resolution})
+		require.NoError(t, priceErr, resolution)
+		// channel group 0.2 × recharge 0.5 × APIMaster 2.0 = 0.2.
+		want := basePrice * 0.2
+		require.InDelta(t, want, price.ModelPrice, 1e-9, resolution)
+		require.Equal(t, int(want*common.QuotaPerUnit*price.GroupRatioInfo.GroupRatio), price.QuotaToPreConsume, resolution)
+	}
 }
 
 func TestDeepSeekV4RetryKeepsRequestTimeButRefreshesChannelMultiplier(t *testing.T) {

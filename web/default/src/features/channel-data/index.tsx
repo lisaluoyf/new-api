@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Settings2, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -201,13 +219,15 @@ function fmtPrice(price: number | null | undefined): string {
 }
 
 const MEDIA_VARIANT_ORDER = [
+  '1K',
+  '2K',
+  '4K',
   '480P',
   '480P-input',
   '720P',
   '720P-input',
   '1080P',
   '1080P-input',
-  '4K',
   '4K-input',
 ]
 
@@ -1981,6 +2001,11 @@ export function ChannelDataPage() {
                                 {item.pricing_source === 'media' && (
                                   <span className='rounded bg-violet-100 px-1.5 py-0.5 text-[10px] leading-none font-medium text-violet-700'>
                                     8 tiers
+                                  </span>
+                                )}
+                                {item.pricing_source === 'image' && (
+                                  <span className='rounded bg-cyan-100 px-1.5 py-0.5 text-[10px] leading-none font-medium text-cyan-700'>
+                                    Image
                                   </span>
                                 )}
                                 {priceDivergent && (

@@ -901,7 +901,13 @@ func pollAsyncImageTask(c *gin.Context, info *relaycommon.RelayInfo, taskID stri
 				_, imageURL, ok = service.RaceImageTask([]service.ImageTaskTarget{primary, hedgeTarget}, fullDeadline)
 				if ok && hedgeTarget.ChannelID == hedgeChannel.Id && info != nil {
 					if setupErr := middleware.SetupContextForSelectedChannel(c, hedgeChannel, info.OriginModelName); setupErr == nil {
-						info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
+						meta := &types.TokenCountMeta{}
+						if imageRequest, requestOK := info.Request.(*dto.ImageRequest); requestOK {
+							meta = imageRequest.GetTokenCountMeta()
+						}
+						if _, priceErr := helper.RefreshModelPriceForRetry(c, info, 0, meta); priceErr != nil {
+							logger.LogWarn(c.Request.Context(), fmt.Sprintf("image race hedge price refresh failed for channel #%d: %v", hedgeChannel.Id, priceErr))
+						}
 					}
 					addImageRaceHedgeChannel(c, hedgeChannel.Id)
 				}
