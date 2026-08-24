@@ -275,6 +275,77 @@ func TestBuildOpenAIStyleUsageFromClaudeUsageDefaultsAggregateCacheCreationTo5m(
 	require.Equal(t, 0, openAIUsage.ClaudeCacheCreation1hTokens)
 }
 
+func TestRequestOpenAI2ClaudeMessage_NormalizesMissingToolSchemaFields(t *testing.T) {
+	request := dto.GeneralOpenAIRequest{
+		Model: "kimi-k3",
+		Tools: []dto.ToolCallRequest{
+			{
+				Type: "function",
+				Function: dto.FunctionRequest{
+					Name: "get_status",
+					Parameters: map[string]any{
+						"type": "object",
+					},
+				},
+			},
+			{
+				Type: "function",
+				Function: dto.FunctionRequest{
+					Name: "get_weather",
+					Parameters: map[string]any{
+						"type":       nil,
+						"properties": nil,
+						"required":   nil,
+					},
+				},
+			},
+		},
+	}
+
+	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	require.NoError(t, err)
+	normalTools, _ := dto.ProcessTools(claudeRequest.GetTools())
+	require.Len(t, normalTools, 2)
+
+	for _, tool := range normalTools {
+		require.Equal(t, "object", tool.InputSchema["type"])
+		require.Equal(t, map[string]any{}, tool.InputSchema["properties"])
+		require.Equal(t, []string{}, tool.InputSchema["required"])
+	}
+}
+
+func TestRequestOpenAI2ClaudeMessage_PreservesValidToolSchemaFields(t *testing.T) {
+	properties := map[string]any{
+		"city": map[string]any{"type": "string"},
+	}
+	required := []any{"city"}
+	request := dto.GeneralOpenAIRequest{
+		Model: "kimi-k3",
+		Tools: []dto.ToolCallRequest{
+			{
+				Type: "function",
+				Function: dto.FunctionRequest{
+					Name: "get_weather",
+					Parameters: map[string]any{
+						"type":                 "object",
+						"properties":           properties,
+						"required":             required,
+						"additionalProperties": false,
+					},
+				},
+			},
+		},
+	}
+
+	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	require.NoError(t, err)
+	normalTools, _ := dto.ProcessTools(claudeRequest.GetTools())
+	require.Len(t, normalTools, 1)
+	require.Equal(t, properties, normalTools[0].InputSchema["properties"])
+	require.Equal(t, required, normalTools[0].InputSchema["required"])
+	require.Equal(t, false, normalTools[0].InputSchema["additionalProperties"])
+}
+
 func TestRequestOpenAI2ClaudeMessage_IgnoresUnsupportedFileContent(t *testing.T) {
 	request := dto.GeneralOpenAIRequest{
 		Model: "claude-3-5-sonnet",
