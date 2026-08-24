@@ -70,3 +70,22 @@ func TestWalletMinTopupForUserConvertsTokenDisplay(t *testing.T) {
 
 	require.EqualValues(t, 2500000, getWalletMinTopupForUser(1, 1))
 }
+
+func TestClonePayMethodsWithMinTopupReturnsNumericMinimum(t *testing.T) {
+	original := []map[string]string{
+		{"name": "Alipay", "type": "alipay"},
+		{"name": "WeChat Pay", "type": "wxpay"},
+	}
+
+	cloned := clonePayMethodsWithMinTopup(original, map[string]int64{
+		"alipay": 5,
+		"wxpay":  5,
+	})
+
+	require.Len(t, cloned, 2)
+	require.IsType(t, int64(0), cloned[0]["min_topup"])
+	require.EqualValues(t, 5, cloned[0]["min_topup"])
+	require.IsType(t, int64(0), cloned[1]["min_topup"])
+	require.EqualValues(t, 5, cloned[1]["min_topup"])
+	require.NotContains(t, original[0], "min_topup")
+}

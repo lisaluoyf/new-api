@@ -64,7 +64,9 @@ const LIMITED_AMOUNT_DISCOUNT_END_DATES: Record<number, string> = {
 
 const PRESET_AMOUNTS = [10, 50, 100, 500, 1000]
 
-function formatUsdAmount(amount: number) {
+function formatUsdAmount(value: unknown) {
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return '1'
   if (Number.isInteger(amount)) return String(amount)
   return amount.toFixed(2).replace(/\.?0+$/, '')
 }
@@ -194,7 +196,12 @@ export function RechargePanel({
     setSelectedMethod(method)
   }
 
-  function ensureMinimumTopup(amount: number, minTopup: number) {
+  function ensureMinimumTopup(amount: number, minTopupValue: unknown) {
+    const parsedMinTopup = Number(minTopupValue)
+    const minTopup =
+      Number.isFinite(parsedMinTopup) && parsedMinTopup >= 0
+        ? parsedMinTopup
+        : 1
     if (amount < minTopup) {
       setMinTopupDialog({ min: minTopup })
       return false

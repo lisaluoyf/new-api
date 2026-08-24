@@ -93,15 +93,15 @@ func getWalletMinTopupForUser(userId int, configuredMin int) int64 {
 	return walletMinTopupForDisplay(configuredMin, hasSuccessfulPaidTopup(userId))
 }
 
-func clonePayMethodsWithMinTopup(payMethods []map[string]string, minTopups map[string]int64) []map[string]string {
-	cloned := make([]map[string]string, 0, len(payMethods))
+func clonePayMethodsWithMinTopup(payMethods []map[string]string, minTopups map[string]int64) []map[string]any {
+	cloned := make([]map[string]any, 0, len(payMethods))
 	for _, method := range payMethods {
-		copied := make(map[string]string, len(method)+1)
+		copied := make(map[string]any, len(method)+1)
 		for key, value := range method {
 			copied[key] = value
 		}
-		if minTopup, ok := minTopups[copied["type"]]; ok {
-			copied["min_topup"] = strconv.FormatInt(minTopup, 10)
+		if minTopup, ok := minTopups[method["type"]]; ok {
+			copied["min_topup"] = minTopup
 		}
 		cloned = append(cloned, copied)
 	}
@@ -143,11 +143,11 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 
 		if !hasStripe {
-			stripeMethod := map[string]string{
+			stripeMethod := map[string]any{
 				"name":      "Stripe",
 				"type":      "stripe",
 				"color":     "rgba(var(--semi-purple-5), 1)",
-				"min_topup": strconv.FormatInt(stripeMinTopup, 10),
+				"min_topup": stripeMinTopup,
 			}
 			payMethods = append(payMethods, stripeMethod)
 		}
@@ -165,11 +165,11 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 
 		if !hasWaffo {
-			waffoMethod := map[string]string{
+			waffoMethod := map[string]any{
 				"name":      "Waffo (Global Payment)",
 				"type":      model.PaymentMethodWaffo,
 				"color":     "rgba(var(--semi-blue-5), 1)",
-				"min_topup": strconv.FormatInt(waffoMinTopup, 10),
+				"min_topup": waffoMinTopup,
 			}
 			payMethods = append(payMethods, waffoMethod)
 		}
@@ -186,11 +186,11 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 
 		if !hasWaffoPancake {
-			payMethods = append(payMethods, map[string]string{
+			payMethods = append(payMethods, map[string]any{
 				"name":      "Waffo Pancake",
 				"type":      model.PaymentMethodWaffoPancake,
 				"color":     "rgba(var(--semi-orange-5), 1)",
-				"min_topup": strconv.FormatInt(waffoPancakeMinTopup, 10),
+				"min_topup": waffoPancakeMinTopup,
 			})
 		}
 	}
@@ -205,11 +205,11 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 		}
 		if !hasPlatega {
-			payMethods = append(payMethods, map[string]string{
+			payMethods = append(payMethods, map[string]any{
 				"name":      "Russian SBP QR",
 				"type":      model.PaymentMethodPlatega,
 				"color":     "rgba(var(--semi-blue-5), 1)",
-				"min_topup": strconv.FormatInt(plategaMinTopup, 10),
+				"min_topup": plategaMinTopup,
 			})
 		}
 	}
@@ -224,11 +224,11 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 		}
 		if !hasClink {
-			payMethods = append(payMethods, map[string]string{
+			payMethods = append(payMethods, map[string]any{
 				"name":      "Clink (Global Payment)",
 				"type":      model.PaymentMethodClink,
 				"color":     "rgba(var(--semi-green-5), 1)",
-				"min_topup": strconv.FormatInt(clinkMinTopup, 10),
+				"min_topup": clinkMinTopup,
 			})
 		}
 	}

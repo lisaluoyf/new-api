@@ -47,6 +47,58 @@ import type {
   ClinkConfirmResponse,
 } from './types'
 
+function normalizeMinTopup(value: unknown, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+function normalizeTopupInfoResponse(
+  response: TopupInfoResponse
+): TopupInfoResponse {
+  if (!response.data) return response
+
+  const minTopup = normalizeMinTopup(response.data.min_topup, 1)
+  const payMethods = Array.isArray(response.data.pay_methods)
+    ? response.data.pay_methods
+    : []
+
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      min_topup: minTopup,
+      stripe_min_topup: normalizeMinTopup(
+        response.data.stripe_min_topup,
+        minTopup
+      ),
+      paypal_min_topup: normalizeMinTopup(
+        response.data.paypal_min_topup,
+        minTopup
+      ),
+      waffo_min_topup: normalizeMinTopup(
+        response.data.waffo_min_topup,
+        minTopup
+      ),
+      waffo_pancake_min_topup: normalizeMinTopup(
+        response.data.waffo_pancake_min_topup,
+        minTopup
+      ),
+      platega_min_topup: normalizeMinTopup(
+        response.data.platega_min_topup,
+        minTopup
+      ),
+      clink_min_topup: normalizeMinTopup(
+        response.data.clink_min_topup,
+        minTopup
+      ),
+      pay_methods: payMethods.map((method) => ({
+        ...method,
+        min_topup: normalizeMinTopup(method.min_topup, minTopup),
+      })),
+    },
+  }
+}
+
 // ============================================================================
 // Wallet API Functions
 // ============================================================================
@@ -63,7 +115,7 @@ export function isApiSuccess(response: ApiResponse): boolean {
  */
 export async function getTopupInfo(): Promise<TopupInfoResponse> {
   const res = await api.get('/api/user/topup/info')
-  return res.data
+  return normalizeTopupInfoResponse(res.data)
 }
 
 /**
