@@ -2145,8 +2145,7 @@ export function ChannelDataPage() {
                       className={`px-2 py-2.5 text-right font-semibold text-emerald-700 tabular-nums ${dim}`}
                     >
                       {fmtPrice(item.user_price)}
-                      {!item.media_pricing &&
-                        item.apimaster_price_ratio != null &&
+                      {item.apimaster_price_ratio != null &&
                         item.apimaster_price_ratio !== 1 && (
                           <span className='ml-1 text-[10px] font-normal text-emerald-500'>
                             ×{item.apimaster_price_ratio.toFixed(2)}
