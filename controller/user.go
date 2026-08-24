@@ -107,6 +107,46 @@ func loginWithPassword(c *gin.Context) {
 	setupLogin(&user, c)
 }
 
+// InternalLogin authenticates APIMaster's mirrored console account. The route
+// is protected by RequireApimasterInternalSync and deliberately skips the
+// interactive 2FA challenge: the caller is the already-authenticated
+// APIMaster server, not an end-user browser session.
+func InternalLogin(c *gin.Context) {
+	if !common.PasswordLoginEnabled {
+		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
+		return
+	}
+
+	var loginRequest LoginRequest
+	if err := c.ShouldBindJSON(&loginRequest); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if strings.TrimSpace(loginRequest.Username) == "" || loginRequest.Password == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	user := model.User{
+		Username: loginRequest.Username,
+		Password: loginRequest.Password,
+	}
+	if err := user.ValidateAndFill(); err != nil {
+		switch {
+		case errors.Is(err, model.ErrDatabase):
+			common.SysLog(fmt.Sprintf("Internal login database error for user %s: %v", loginRequest.Username, err))
+			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		case errors.Is(err, model.ErrUserEmptyCredentials):
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		default:
+			common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
+		}
+		return
+	}
+
+	setupLogin(&user, c)
+}
+
 // setup session & cookies and then return user info
 func setupLogin(user *model.User, c *gin.Context) {
 	model.UpdateUserLastLoginAt(user.Id)

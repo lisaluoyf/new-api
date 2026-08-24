@@ -27,8 +27,17 @@ export interface DeepSeekV4TimedPricingDisplay {
   currentOutput: number
 }
 
+const DEEPSEEK_V4_TIMED_PRICING_MODELS = new Set([
+  'deepseek-v4-flash',
+  'deepseek-v4-pro',
+  'deepseek-v4-flash-vision-exp',
+])
+
 function isPeakAtUnixSeconds(timestamp: number): boolean {
-  const beijingHour = new Date((timestamp + 8 * 60 * 60) * 1000).getUTCHours()
+  const beijingTime = new Date((timestamp + 8 * 60 * 60) * 1000)
+  const weekday = beijingTime.getUTCDay()
+  if (weekday === 0 || weekday === 6) return false
+  const beijingHour = beijingTime.getUTCHours()
   return (
     (beijingHour >= 9 && beijingHour < 12) ||
     (beijingHour >= 14 && beijingHour < 18)
@@ -39,10 +48,7 @@ export function getDeepSeekV4TimedPricingDisplay(
   log: UsageLog,
   other: LogOtherData
 ): DeepSeekV4TimedPricingDisplay | null {
-  if (
-    log.model_name !== 'deepseek-v4-flash' &&
-    log.model_name !== 'deepseek-v4-pro'
-  ) {
+  if (!DEEPSEEK_V4_TIMED_PRICING_MODELS.has(log.model_name)) {
     return null
   }
 
