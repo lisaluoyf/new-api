@@ -51,8 +51,8 @@ const LIMITED_AMOUNT_DISCOUNT_END_DATES: Record<number, string> = {
   50: '2026-09-01',
 }
 
-const PRESET_AMOUNTS_DEFAULT  = [5, 10, 50, 100, 500, 1000]
-const PRESET_AMOUNTS_NEW_USER = [1, 5, 10, 50, 100, 500, 1000]
+const PRESET_AMOUNTS_DEFAULT  = [10, 50, 100, 500, 1000]
+const PRESET_AMOUNTS_NEW_USER = [1, 10, 50, 100, 500, 1000]
 
 function formatUsdAmount(amount: number) {
   if (Number.isInteger(amount)) return String(amount)

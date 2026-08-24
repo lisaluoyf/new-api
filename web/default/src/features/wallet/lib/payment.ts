@@ -159,11 +159,11 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
  */
 export function generatePresetAmounts(minAmount: number): PresetAmount[] {
   if (minAmount <= 1) {
-    return [1, 5, 10, 50, 100, 500, 1000].map((value) => ({ value }))
+    return [1, 10, 50, 100, 500, 1000].map((value) => ({ value }))
   }
 
   if (minAmount <= 5) {
-    return [5, 10, 50, 100, 500, 1000].map((value) => ({ value }))
+    return [10, 50, 100, 500, 1000].map((value) => ({ value }))
   }
 
   return DEFAULT_PRESET_MULTIPLIERS.map((multiplier) => ({
