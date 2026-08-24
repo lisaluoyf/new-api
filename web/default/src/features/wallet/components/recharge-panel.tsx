@@ -51,8 +51,7 @@ const LIMITED_AMOUNT_DISCOUNT_END_DATES: Record<number, string> = {
   50: '2026-09-01',
 }
 
-const PRESET_AMOUNTS_DEFAULT  = [10, 50, 100, 500, 1000]
-const PRESET_AMOUNTS_NEW_USER = [1, 10, 50, 100, 500, 1000]
+const PRESET_AMOUNTS = [10, 50, 100, 500, 1000]
 
 function formatUsdAmount(amount: number) {
   if (Number.isInteger(amount)) return String(amount)
@@ -79,7 +78,6 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null)
   const [showHint, setShowHint] = useState(false)
   const [promoInfo, setPromoInfo] = useState<FirstTopupPromoInfo | null>(null)
-  const [isNewUser, setIsNewUser] = useState(false)
   const [countdown, setCountdown] = useState('')
   const [minTopupDialog, setMinTopupDialog] = useState<{ min: number } | null>(null)
 
@@ -118,9 +116,6 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
       .then((res) => {
         if (res.success && res.data) {
           setTopupInfo(res.data)
-          if (typeof res.data.has_successful_paid_topup === 'boolean') {
-            setIsNewUser(!res.data.has_successful_paid_topup)
-          }
         }
       })
       .catch(() => {})
@@ -128,7 +123,6 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
 
   useEffect(() => {
     getFirstTopupPromo().then((info) => {
-      if (info?.never_recharged) setIsNewUser(true)
       if (info?.enabled && info?.eligible) setPromoInfo(info)
     })
   }, [])
@@ -299,7 +293,7 @@ export function RechargePanel({ onSuccess, onPaymentAttempted, onPaymentSettled 
               {t('Select Amount')}
             </div>
             <div className='grid grid-cols-3 gap-2'>
-              {(isNewUser ? PRESET_AMOUNTS_NEW_USER : PRESET_AMOUNTS_DEFAULT).map((amount) => {
+              {PRESET_AMOUNTS.map((amount) => {
                 const active = selectedAmount === amount && !customAmount
                 const isPromo = !!promoInfo && amount === promoInfo.amount
                 const amountDiscountRate = topupInfo?.discount?.[amount] ?? 1
