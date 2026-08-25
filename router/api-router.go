@@ -104,6 +104,8 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				selfRoute.POST("/telegram-verification/start", middleware.CriticalRateLimit(), controller.StartTelegramGroupVerification)
 				selfRoute.GET("/telegram-verification/status", controller.TelegramGroupVerificationStatus)
+				selfRoute.POST("/discord-verification/start", middleware.CriticalRateLimit(), controller.StartDiscordGroupVerification)
+				selfRoute.GET("/discord-verification/status", controller.DiscordGroupVerificationStatus)
 				selfRoute.GET("/self/groups", controller.GetUserGroups)
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)

@@ -32,15 +32,16 @@ export function buildGitHubOAuthUrl(clientId: string, state: string): string {
 /**
  * Build Discord OAuth URL
  */
-export function buildDiscordOAuthUrl(clientId: string, state: string): string {
+export function buildDiscordOAuthUrl(
+  clientId: string,
+  state: string,
+  origin = window.location.origin
+): string {
   const url = new URL('https://discord.com/oauth2/authorize')
   url.searchParams.set('client_id', clientId)
-  url.searchParams.set(
-    'redirect_uri',
-    `${window.location.origin}/oauth/discord`
-  )
+  url.searchParams.set('redirect_uri', `${origin}/oauth/discord`)
   url.searchParams.set('response_type', 'code')
-  url.searchParams.set('scope', 'identify+openid')
+  url.searchParams.set('scope', 'identify openid')
   url.searchParams.set('state', state)
   return url.toString()
 }
@@ -112,10 +113,19 @@ export async function handleGitHubOAuth(clientId: string): Promise<void> {
  */
 export async function handleDiscordOAuth(clientId: string): Promise<void> {
   const state = await getOAuthState()
-  if (!state) return
+  if (!state) {
+    throw new Error('Failed to initialize Discord OAuth')
+  }
 
   const url = buildDiscordOAuthUrl(clientId, state)
-  window.open(url, '_blank')
+  const popup = window.open(
+    url,
+    '_blank',
+    'popup=yes,width=640,height=760,resizable=yes,scrollbars=yes'
+  )
+  if (!popup) {
+    throw new Error('Discord OAuth popup was blocked')
+  }
 }
 
 /**

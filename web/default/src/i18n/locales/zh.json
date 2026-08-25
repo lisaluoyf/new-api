@@ -4838,6 +4838,14 @@
     "2.5% cost preview": "2.5% 成本预览",
     "97.5% request GM": "请求理论毛利率 97.5%",
     "7d full-use cost ${{amount}}": "7 天额度满用理论成本 ${{amount}}",
-    "Paid Subscription Users": "订阅用户"
+    "Paid Subscription Users": "订阅用户",
+    "Bind Discord": "绑定 Discord",
+    "Join Discord": "加入 Discord",
+    "Checking...": "检查中...",
+    "Unavailable": "暂不可用",
+    "Bind Discord, then join the community": "绑定 Discord 后加入社群",
+    "Discord community verification is temporarily unavailable": "Discord 社群验证暂不可用",
+    "Join the Discord community; this page will update automatically": "加入 Discord 社群，本页面会自动更新",
+    "Unable to start Discord verification": "无法启动 Discord 验证"
   }
 }

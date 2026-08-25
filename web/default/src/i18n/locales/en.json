@@ -4849,6 +4849,14 @@
     "2.5% cost preview": "2.5% cost preview",
     "97.5% request GM": "97.5% request gross margin",
     "7d full-use cost ${{amount}}": "7d full-use cost ${{amount}}",
-    "Paid Subscription Users": "Subscription Users"
+    "Paid Subscription Users": "Subscription Users",
+    "Bind Discord": "Bind Discord",
+    "Join Discord": "Join Discord",
+    "Checking...": "Checking...",
+    "Unavailable": "Unavailable",
+    "Bind Discord, then join the community": "Bind Discord, then join the community",
+    "Discord community verification is temporarily unavailable": "Discord community verification is temporarily unavailable",
+    "Join the Discord community; this page will update automatically": "Join the Discord community; this page will update automatically",
+    "Unable to start Discord verification": "Unable to start Discord verification"
   }
 }

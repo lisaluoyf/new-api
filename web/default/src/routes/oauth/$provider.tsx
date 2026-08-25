@@ -30,6 +30,7 @@ import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 import { api, getSelf } from '@/lib/api'
 import { OAuthCallbackScreen } from '@/features/auth/components/oauth-callback-screen'
 import { OAUTH_BIND_STORAGE_KEY } from '@/features/auth/constants'
+import { isOAuthBindSuccessResponse } from '@/features/auth/lib/oauth-response'
 
 type OAuthRequestConfig = AxiosRequestConfig & {
   skipBusinessError?: boolean
@@ -169,10 +170,8 @@ function OAuthCallback() {
         }
         const res = await api.get(`/api/oauth/${provider}`, config)
         if (res?.data?.success) {
-          const { message } = res.data
-          const loginUser = (res.data?.data ?? null) as AuthUser | null
           // Check if this is a bind operation
-          if (message === 'bind') {
+          if (isOAuthBindSuccessResponse(res.data)) {
             toast.success(i18next.t('Binding successful!'))
             notifyBindingResult('success')
             if (isBindingFlow) {
@@ -183,6 +182,7 @@ function OAuthCallback() {
             }
             return
           }
+          const loginUser = (res.data?.data ?? null) as AuthUser | null
           // Otherwise it's a login, use payload user if available
           if (loginUser) {
             useAuthStore.getState().auth.setUser(loginUser)

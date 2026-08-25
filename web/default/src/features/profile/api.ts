@@ -165,6 +165,23 @@ export interface TelegramVerificationStart {
   expires_at?: string
 }
 
+export interface DiscordGroupStatus {
+  configured: boolean
+  bound: boolean
+  joined: boolean
+  status: 'binding_required' | 'not_joined' | 'joined' | 'service_unavailable'
+  invite_url?: string
+  checked_at?: string
+}
+
+export interface DiscordVerificationStart {
+  configured: boolean
+  bound: boolean
+  joined: boolean
+  status: 'binding_required' | 'not_joined' | 'service_unavailable'
+  invite_url?: string
+}
+
 /**
  * Verify whether the Telegram identity established through the Bot is in the
  * configured Telegram community.
@@ -180,6 +197,20 @@ export async function startTelegramGroupVerification(): Promise<
   ApiResponse<TelegramVerificationStart>
 > {
   const res = await api.post('/api/user/telegram-verification/start')
+  return res.data
+}
+
+export async function getDiscordGroupStatus(): Promise<
+  ApiResponse<DiscordGroupStatus>
+> {
+  const res = await api.get('/api/user/discord-verification/status')
+  return res.data
+}
+
+export async function startDiscordGroupVerification(): Promise<
+  ApiResponse<DiscordVerificationStart>
+> {
+  const res = await api.post('/api/user/discord-verification/start')
   return res.data
 }
 

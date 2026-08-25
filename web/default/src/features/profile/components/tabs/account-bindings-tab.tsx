@@ -37,13 +37,16 @@ import { StatusBadge } from '@/components/status-badge'
 import { OAUTH_BIND_STORAGE_KEY } from '@/features/auth/constants'
 import {
   getApimasterBindings,
+  getDiscordGroupStatus,
   getTelegramGroupStatus,
   getSelfOAuthBindings,
   startTelegramGroupVerification,
+  startDiscordGroupVerification,
   unbindApimasterBinding,
   unbindCustomOAuth,
   type ApimasterTwitterBinding,
   type CustomOAuthBinding,
+  type DiscordGroupStatus,
   type TelegramGroupStatus,
 } from '../../api'
 import type { UserProfile, BindingItem } from '../../types'
@@ -60,7 +63,7 @@ interface AccountBindingsTabProps {
 }
 
 type DialogKey = 'email' | 'wechat'
-type ActionTarget = 'twitter'
+type ActionTarget = 'twitter' | 'discord'
 type AccountBindingItem = BindingItem & {
   onUnbind?: () => void
   busy?: boolean
@@ -84,6 +87,10 @@ export function AccountBindingsTab({
   const [telegramGroupStatus, setTelegramGroupStatus] =
     useState<TelegramGroupStatus | null>(null)
   const [telegramStarting, setTelegramStarting] = useState(false)
+  const [discordGroupStatus, setDiscordGroupStatus] =
+    useState<DiscordGroupStatus | null>(null)
+  const [discordChecking, setDiscordChecking] = useState(false)
+  const [discordPolling, setDiscordPolling] = useState(false)
 
   const customProviders = status?.custom_oauth_providers as
     | Array<{ id: string; name: string }>
@@ -140,6 +147,52 @@ export function AccountBindingsTab({
     void fetchTelegramGroupStatus()
   }, [fetchTelegramGroupStatus])
 
+  const fetchDiscordGroupStatus =
+    useCallback(async (): Promise<DiscordGroupStatus | null> => {
+      const discordId = profile?.discord_id
+      if (
+        !status?.discord_oauth &&
+        !status?.discord_group_enabled &&
+        !discordId
+      ) {
+        setDiscordGroupStatus(null)
+        return null
+      }
+      setDiscordChecking(true)
+      try {
+        const res = await getDiscordGroupStatus()
+        const data = res.success ? (res.data ?? null) : null
+        setDiscordGroupStatus(data)
+        if (data?.joined || data?.status === 'service_unavailable') {
+          setDiscordPolling(false)
+        }
+        return data
+      } catch {
+        setDiscordGroupStatus((current) =>
+          current
+            ? { ...current, status: 'service_unavailable' }
+            : {
+                configured: false,
+                bound: Boolean(discordId),
+                joined: false,
+                status: 'service_unavailable',
+              }
+        )
+        setDiscordPolling(false)
+        return null
+      } finally {
+        setDiscordChecking(false)
+      }
+    }, [
+      profile?.discord_id,
+      status?.discord_group_enabled,
+      status?.discord_oauth,
+    ])
+
+  useEffect(() => {
+    void fetchDiscordGroupStatus()
+  }, [fetchDiscordGroupStatus])
+
   useEffect(() => {
     const shouldPoll =
       telegramGroupStatus?.status === 'waiting_for_bot' ||
@@ -151,6 +204,26 @@ export function AccountBindingsTab({
     }, 5000)
     return () => window.clearInterval(timer)
   }, [fetchTelegramGroupStatus, telegramGroupStatus])
+
+  useEffect(() => {
+    if (!discordPolling || discordGroupStatus?.joined) return
+    const timer = window.setInterval(() => {
+      void fetchDiscordGroupStatus()
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [discordGroupStatus?.joined, discordPolling, fetchDiscordGroupStatus])
+
+  useEffect(() => {
+    if (!discordPolling) return
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchDiscordGroupStatus()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () =>
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [discordPolling, fetchDiscordGroupStatus])
 
   const handleUnbindCustom = async () => {
     if (!unbindTarget) return
@@ -215,6 +288,49 @@ export function AccountBindingsTab({
     }
   }, [fetchApimasterBindings, t])
 
+  const handleStartDiscordBind = useCallback(async () => {
+    if (!status?.discord_client_id) {
+      toast.error(t('Failed to start Discord login'))
+      return
+    }
+    setPendingAction('discord')
+    try {
+      await handleDiscordOAuth(status.discord_client_id)
+      window.setTimeout(() => {
+        setPendingAction((current) => (current === 'discord' ? null : current))
+      }, 60_000)
+    } catch {
+      setPendingAction(null)
+      toast.error(t('Failed to start Discord login'))
+    }
+  }, [status?.discord_client_id, t])
+
+  const handleDiscordCommunity = useCallback(async () => {
+    const discordWindow = window.open('about:blank', '_blank')
+    if (!discordWindow) {
+      toast.error(t('Please allow popups and try again.'))
+      return
+    }
+    discordWindow.opener = null
+    setDiscordChecking(true)
+    try {
+      const res = await startDiscordGroupVerification()
+      if (!res.success || !res.data?.invite_url) {
+        throw new Error(
+          res.message || t('Unable to start Discord verification')
+        )
+      }
+      discordWindow.location.replace(res.data.invite_url)
+      setDiscordPolling(true)
+      void fetchDiscordGroupStatus()
+    } catch {
+      discordWindow.close()
+      toast.error(t('Unable to start Discord verification'))
+    } finally {
+      setDiscordChecking(false)
+    }
+  }, [fetchDiscordGroupStatus, t])
+
   const handleTelegramCommunity = useCallback(async () => {
     const telegramWindow = window.open('about:blank', '_blank')
     if (!telegramWindow) {
@@ -260,8 +376,14 @@ export function AccountBindingsTab({
           void fetchApimasterBindings()
           void fetchCustomBindings()
           onUpdate()
-          if (payload.provider === 'twitter') {
+          if (
+            payload.provider === 'twitter' ||
+            payload.provider === 'discord'
+          ) {
             toast.success(t('Binding successful!'))
+          }
+          if (payload.provider === 'discord') {
+            void fetchDiscordGroupStatus()
           }
         } else if (payload?.status === 'error') {
           setPendingAction(null)
@@ -279,7 +401,13 @@ export function AccountBindingsTab({
 
     window.addEventListener('storage', handleStorage)
     return () => window.removeEventListener('storage', handleStorage)
-  }, [fetchApimasterBindings, fetchCustomBindings, onUpdate, t])
+  }, [
+    fetchApimasterBindings,
+    fetchCustomBindings,
+    fetchDiscordGroupStatus,
+    onUpdate,
+    t,
+  ])
 
   // Memoize bindings to prevent unnecessary recalculations
   const bindings: AccountBindingItem[] = useMemo(() => {
@@ -320,23 +448,6 @@ export function AccountBindingsTab({
         onBind: () => {
           if (status?.github_client_id) {
             handleGitHubOAuth(status.github_client_id)
-          }
-        },
-      },
-      {
-        id: 'discord',
-        label: t('Discord'),
-        icon: IconDiscord,
-        value: (profile as unknown as Record<string, unknown>).discord_id as
-          | string
-          | undefined,
-        isBound: Boolean(
-          (profile as unknown as Record<string, unknown>).discord_id
-        ),
-        isEnabled: status?.discord_oauth || false,
-        onBind: () => {
-          if (status?.discord_client_id) {
-            handleDiscordOAuth(status.discord_client_id)
           }
         },
       },
@@ -400,6 +511,18 @@ export function AccountBindingsTab({
     twitterBinding,
   ])
 
+  const discordId = (profile as unknown as Record<string, unknown>)
+    .discord_id as string | undefined
+  const showDiscordBinding = Boolean(
+    status?.discord_oauth ||
+    status?.discord_client_id ||
+    status?.discord_group_enabled ||
+    discordId
+  )
+  const discordBound = discordGroupStatus?.bound ?? Boolean(discordId)
+  const discordJoined = Boolean(discordGroupStatus?.joined)
+  const telegramGroupEnabled = Boolean(status?.telegram_group_enabled)
+
   if (!profile || !status || loading) return null
 
   let telegramDescription = t(
@@ -434,6 +557,50 @@ export function AccountBindingsTab({
   }
   if (telegramStarting) {
     telegramActionLabel = t('Loading...')
+  }
+
+  let discordDescription = t('Bind Discord, then join the community')
+  if (!discordGroupStatus?.configured) {
+    discordDescription = t(
+      'Discord community verification is temporarily unavailable'
+    )
+  } else if (discordBound) {
+    discordDescription = t(
+      'Join the Discord community; this page will update automatically'
+    )
+  }
+  if (discordJoined) {
+    discordDescription = t('Membership verified')
+  }
+
+  let discordActionLabel = t('Bind Discord')
+  if (discordBound) {
+    discordActionLabel = t('Join Discord')
+  }
+  if (discordChecking) {
+    discordActionLabel = t('Checking...')
+  }
+  if (discordJoined) {
+    discordActionLabel = t('Joined')
+  }
+  if (discordBound && discordGroupStatus?.status === 'service_unavailable') {
+    discordActionLabel = discordGroupStatus.configured
+      ? t('Try again')
+      : t('Unavailable')
+  }
+
+  let handleDiscordAction = handleStartDiscordBind
+  if (discordBound) {
+    handleDiscordAction = handleDiscordCommunity
+  }
+  if (
+    discordBound &&
+    discordGroupStatus?.configured &&
+    discordGroupStatus.status === 'service_unavailable'
+  ) {
+    handleDiscordAction = async () => {
+      await fetchDiscordGroupStatus()
+    }
   }
 
   return (
@@ -500,43 +667,100 @@ export function AccountBindingsTab({
         ))}
       </div>
 
-      {status.telegram_group_enabled && (
-        <div className='mt-3 rounded-lg border p-3'>
-          <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-            <div className='flex min-w-0 items-center gap-2.5 sm:gap-3'>
-              <div className='bg-muted shrink-0 rounded-md p-1.5 sm:p-2'>
-                <Send className='h-4 w-4' />
-              </div>
-              <div className='min-w-0'>
-                <div className='flex items-center gap-1.5'>
-                  <p className='text-sm font-medium'>
-                    {t('Telegram Community')}
-                  </p>
-                  {telegramGroupStatus?.joined && (
-                    <StatusBadge
-                      label={t('Joined')}
-                      variant='success'
-                      copyable={false}
-                    />
-                  )}
+      {(telegramGroupEnabled || showDiscordBinding) && (
+        <div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2'>
+          {telegramGroupEnabled && (
+            <div className='rounded-lg border p-3'>
+              <div className='flex h-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                <div className='flex min-w-0 items-center gap-2.5 sm:gap-3'>
+                  <div className='bg-muted shrink-0 rounded-md p-1.5 sm:p-2'>
+                    <Send className='h-4 w-4' />
+                  </div>
+                  <div className='min-w-0'>
+                    <div className='flex items-center gap-1.5'>
+                      <p className='text-sm font-medium'>
+                        {t('Telegram Community')}
+                      </p>
+                      {telegramGroupStatus?.joined && (
+                        <StatusBadge
+                          label={t('Joined')}
+                          variant='success'
+                          copyable={false}
+                        />
+                      )}
+                    </div>
+                    <p className='text-muted-foreground text-xs'>
+                      {telegramDescription}
+                    </p>
+                  </div>
                 </div>
-                <p className='text-muted-foreground text-xs'>
-                  {telegramDescription}
-                </p>
+                <div className='flex shrink-0 flex-wrap gap-2'>
+                  <Button
+                    variant={
+                      telegramGroupStatus?.joined ? 'outline' : 'default'
+                    }
+                    size='sm'
+                    className='h-7 px-2.5 text-xs'
+                    onClick={handleTelegramCommunity}
+                    disabled={telegramStarting || telegramGroupStatus?.joined}
+                  >
+                    {telegramActionLabel}
+                  </Button>
+                </div>
               </div>
             </div>
-            <div className='flex shrink-0 flex-wrap gap-2'>
-              <Button
-                variant={telegramGroupStatus?.joined ? 'outline' : 'default'}
-                size='sm'
-                className='h-7 px-2.5 text-xs'
-                onClick={handleTelegramCommunity}
-                disabled={telegramStarting || telegramGroupStatus?.joined}
-              >
-                {telegramActionLabel}
-              </Button>
+          )}
+
+          {showDiscordBinding && (
+            <div className='rounded-lg border p-3'>
+              <div className='flex h-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                <div className='flex min-w-0 items-center gap-2.5 sm:gap-3'>
+                  <div className='bg-muted shrink-0 rounded-md p-1.5 sm:p-2'>
+                    <IconDiscord className='h-4 w-4' />
+                  </div>
+                  <div className='min-w-0'>
+                    <div className='flex items-center gap-1.5'>
+                      <p className='text-sm font-medium'>{t('Discord')}</p>
+                      {(discordBound || discordJoined) && (
+                        <StatusBadge
+                          label={discordJoined ? t('Joined') : t('Bound')}
+                          variant='success'
+                          copyable={false}
+                        />
+                      )}
+                    </div>
+                    <p className='text-muted-foreground text-xs'>
+                      {discordDescription}
+                    </p>
+                    {discordBound && discordId ? (
+                      <p className='text-muted-foreground mt-0.5 truncate text-[11px]'>
+                        {discordId}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className='flex shrink-0 flex-wrap gap-2'>
+                  <Button
+                    variant={discordJoined ? 'outline' : 'default'}
+                    size='sm'
+                    className='h-7 px-2.5 text-xs'
+                    onClick={handleDiscordAction}
+                    disabled={
+                      pendingAction === 'discord' ||
+                      discordChecking ||
+                      discordJoined ||
+                      (discordBound &&
+                        discordGroupStatus?.status === 'service_unavailable' &&
+                        !discordGroupStatus.configured) ||
+                      (!discordBound && !status?.discord_client_id)
+                    }
+                  >
+                    {discordActionLabel}
+                  </Button>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
