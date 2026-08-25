@@ -153,6 +153,33 @@ function OAuthCallback() {
         toast.success(i18next.t('Signed in successfully!'))
       }
 
+      const continueDiscordCommunityBinding = async (): Promise<boolean> => {
+        if (
+          provider !== 'discord' ||
+          !isBindingFlow ||
+          typeof window === 'undefined'
+        ) {
+          return false
+        }
+
+        try {
+          const verification = await api.post(
+            '/api/user/discord-verification/start'
+          )
+          const inviteUrl = verification?.data?.data?.invite_url as
+            | string
+            | undefined
+          if (verification?.data?.success && inviteUrl) {
+            window.location.replace(inviteUrl)
+            return true
+          }
+        } catch (_error) {
+          // Binding still succeeded; the profile page keeps the join action available.
+          void _error
+        }
+        return false
+      }
+
       const handleBindingFailure = (message: string) => {
         notifyBindingResult('error', message)
         toast.error(message)
@@ -180,6 +207,9 @@ function OAuthCallback() {
             toast.success(i18next.t('Binding successful!'))
             notifyBindingResult('success')
             if (isBindingFlow) {
+              if (await continueDiscordCommunityBinding()) {
+                return
+              }
               // Close the callback window if we opened a new tab for binding
               closeBindingWindow()
             } else {

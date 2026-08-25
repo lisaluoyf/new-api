@@ -383,6 +383,7 @@ export function AccountBindingsTab({
             toast.success(t('Binding successful!'))
           }
           if (payload.provider === 'discord') {
+            setDiscordPolling(true)
             void fetchDiscordGroupStatus()
           }
         } else if (payload?.status === 'error') {
@@ -559,7 +560,9 @@ export function AccountBindingsTab({
     telegramActionLabel = t('Loading...')
   }
 
-  let discordDescription = t('Bind Discord, then join the community')
+  let discordDescription = t(
+    'Authorize Discord and automatically continue to the community invite'
+  )
   if (!discordGroupStatus?.configured) {
     discordDescription = t(
       'Discord community verification is temporarily unavailable'
@@ -573,7 +576,7 @@ export function AccountBindingsTab({
     discordDescription = t('Membership verified')
   }
 
-  let discordActionLabel = t('Bind Discord')
+  let discordActionLabel = t('Bind and join Discord')
   if (discordBound) {
     discordActionLabel = t('Join Discord')
   }
@@ -723,8 +726,10 @@ export function AccountBindingsTab({
                       <p className='text-sm font-medium'>{t('Discord')}</p>
                       {(discordBound || discordJoined) && (
                         <StatusBadge
-                          label={discordJoined ? t('Joined') : t('Bound')}
-                          variant='success'
+                          label={
+                            discordJoined ? t('Joined') : t('Pending join')
+                          }
+                          variant={discordJoined ? 'success' : 'warning'}
                           copyable={false}
                         />
                       )}
