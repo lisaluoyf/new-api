@@ -3,9 +3,24 @@ package service
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFingerprintBaseURLUsesOfficialZhipuV4Root(t *testing.T) {
+	empty := ""
+	custom := "https://relay.example/v1/"
+
+	require.Equal(
+		t, "https://open.bigmodel.cn/api/paas/v4",
+		fingerprintBaseURL(&model.Channel{Type: constant.ChannelTypeZhipu, BaseURL: &empty}),
+	)
+	require.Equal(
+		t, "https://relay.example/v1",
+		fingerprintBaseURL(&model.Channel{Type: constant.ChannelTypeZhipu, BaseURL: &custom}),
+	)
+}
 
 func TestExtractAPIFormatHonorsClientExclusive(t *testing.T) {
 	cc := `{"api_format":"openai-compatible","client_exclusive":"claude_code"}`

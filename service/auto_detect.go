@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/bytedance/gopkg/util/gopool"
@@ -65,7 +66,10 @@ func runAutoDetectOnce(flaskURL string) {
 	// status IN (1,3): keep probing AutoDisabled (3) channels so they have a chance
 	// to recover via the consecutive-pass counter. Skip ManuallyDisabled (2) — operator
 	// said "stop touching it".
-	if err := model.DB.Where("status IN (1, 3) AND base_url != '' AND base_url IS NOT NULL").Find(&channels).Error; err != nil {
+	if err := model.DB.Where(
+		"status IN (1, 3) AND ((base_url != '' AND base_url IS NOT NULL) OR type IN ?)",
+		[]int{constant.ChannelTypeZhipu, constant.ChannelTypeZhipu_v4},
+	).Find(&channels).Error; err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("auto-detect: failed to list channels: %v", err))
 		return
 	}
@@ -78,9 +82,6 @@ func runAutoDetectOnce(flaskURL string) {
 	now := time.Now().Unix()
 
 	for _, ch := range channels {
-		if ch.BaseURL == nil || *ch.BaseURL == "" {
-			continue
-		}
 		channelModels := splitChannelModels(ch.Models)
 		for _, m := range configuredModels {
 			if !channelModels[m] {
@@ -132,7 +133,7 @@ func lastFingerprintTime(channelId int, modelName string) int64 {
 }
 
 func detectOneChannel(ctx context.Context, flaskURL string, ch *model.Channel, targetModel string) {
-	baseURL := *ch.BaseURL
+	baseURL := fingerprintBaseURL(ch)
 	apiKey := ch.Key
 	// For multi-key channels the Key field may contain multiple keys separated by newlines
 	if idx := strings.IndexByte(apiKey, '\n'); idx >= 0 {
@@ -306,6 +307,22 @@ func detectOneChannel(ctx context.Context, flaskURL string, ch *model.Channel, t
 	if err := model.DB.Model(&model.Channel{}).Where("id = ?", ch.Id).Updates(updates).Error; err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("auto-detect: failed to update channel %d: %v", ch.Id, err))
 	}
+}
+
+// fingerprintBaseURL returns an OpenAI-compatible endpoint for the black-box
+// detector. Zhipu channels commonly leave BaseURL empty because the relay has a
+// built-in provider default, but the detector needs the explicit v4 API root.
+func fingerprintBaseURL(ch *model.Channel) string {
+	if ch == nil {
+		return ""
+	}
+	if ch.BaseURL != nil && strings.TrimSpace(*ch.BaseURL) != "" {
+		return ch.GetBaseURL()
+	}
+	if ch.Type == constant.ChannelTypeZhipu || ch.Type == constant.ChannelTypeZhipu_v4 {
+		return strings.TrimRight(constant.ChannelBaseURLs[ch.Type], "/") + "/api/paas/v4"
+	}
+	return ch.GetBaseURL()
 }
 
 const autoDisabledModelsInfoKey = "auto_disabled_models"
