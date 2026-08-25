@@ -90,7 +90,10 @@ function OAuthCallback() {
       } else if (!isBindingFlow && mode !== 'login') {
         setMode('login')
       }
-      const notifyBindingResult = (status: 'success' | 'error') => {
+      const notifyBindingResult = (
+        status: 'success' | 'error',
+        message?: string
+      ) => {
         if (typeof window === 'undefined') return
         try {
           window.localStorage.setItem(
@@ -98,6 +101,7 @@ function OAuthCallback() {
             JSON.stringify({
               provider,
               status,
+              message,
               timestamp: Date.now(),
             })
           )
@@ -150,8 +154,9 @@ function OAuthCallback() {
       }
 
       const handleBindingFailure = (message: string) => {
-        notifyBindingResult('error')
+        notifyBindingResult('error', message)
         toast.error(message)
+        closeBindingWindow()
       }
 
       const handleLoginFailure = async (message: string) => {
