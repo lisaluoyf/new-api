@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -532,7 +533,10 @@ func SendReferralRewardEmails(inviter, invitee *User, inviterRewardQuota, invite
 	inviterUSD := float64(inviterRewardQuota) / common.QuotaPerUnit
 	inviteeUSD := float64(inviteeRewardQuota) / common.QuotaPerUnit
 
-	apiURL := "http://127.0.0.1:3000/api/send-referral-reward-email"
+	apiURL := strings.TrimSpace(os.Getenv("APIMASTER_REFERRAL_REWARD_EMAIL_URL"))
+	if apiURL == "" {
+		apiURL = "http://host.docker.internal:3000/api/send-referral-reward-email"
+	}
 
 	sendOne := func(role, email string, rewardUSD float64) {
 		payload, _ := json.Marshal(map[string]interface{}{
