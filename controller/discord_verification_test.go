@@ -63,9 +63,10 @@ func TestDiscordStatusRequiresBindingBeforeMembershipLookup(t *testing.T) {
 	var response struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Bound  bool   `json:"bound"`
-			Joined bool   `json:"joined"`
-			Status string `json:"status"`
+			Bound     bool   `json:"bound"`
+			Joined    bool   `json:"joined"`
+			Status    string `json:"status"`
+			DiscordID string `json:"discord_id"`
 		} `json:"data"`
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
@@ -73,6 +74,7 @@ func TestDiscordStatusRequiresBindingBeforeMembershipLookup(t *testing.T) {
 	require.False(t, response.Data.Bound)
 	require.False(t, response.Data.Joined)
 	require.Equal(t, "binding_required", response.Data.Status)
+	require.Empty(t, response.Data.DiscordID)
 }
 
 func TestDiscordStatusPersistsJoinedMembership(t *testing.T) {
@@ -83,14 +85,16 @@ func TestDiscordStatusPersistsJoinedMembership(t *testing.T) {
 	var response struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Joined bool   `json:"joined"`
-			Status string `json:"status"`
+			Joined    bool   `json:"joined"`
+			Status    string `json:"status"`
+			DiscordID string `json:"discord_id"`
 		} `json:"data"`
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
 	require.True(t, response.Data.Joined)
 	require.Equal(t, "joined", response.Data.Status)
+	require.Equal(t, "discord-1", response.Data.DiscordID)
 	verification, err := model.GetDiscordGroupVerification(1, "123456789012345678")
 	require.NoError(t, err)
 	require.NotNil(t, verification.JoinedAt)
