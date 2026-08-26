@@ -46,11 +46,19 @@ func TestAdminTopupTransactionTypeFilterAndEnrichment(t *testing.T) {
 		{UserId: 1, TradeNo: "subscription-order", Status: common.TopUpStatusSuccess, CreateTime: 1},
 	}).Error)
 	require.NoError(t, db.Create(&SubscriptionOrder{
-		UserId:    1,
-		PlanId:    plan.Id,
-		TradeNo:   "subscription-order",
-		OrderType: "upgrade",
-		Status:    common.TopUpStatusSuccess,
+		UserId:          1,
+		PlanId:          plan.Id,
+		TradeNo:         "subscription-order",
+		OrderType:       "upgrade",
+		PaymentMethod:   "wxpay",
+		PaymentProvider: PaymentProviderEpay,
+		ProviderPayload: common.GetJsonString(map[string]any{
+			"payment_snapshot": map[string]any{
+				"charge_amount":   "70.00",
+				"charge_currency": "CNY",
+			},
+		}),
+		Status: common.TopUpStatusSuccess,
 	}).Error)
 
 	pageInfo := &common.PageInfo{Page: 1, PageSize: 10}
@@ -75,4 +83,5 @@ func TestAdminTopupTransactionTypeFilterAndEnrichment(t *testing.T) {
 	require.Equal(t, TopupTransactionTypeSubscription, byTradeNo["subscription-order"].TransactionType)
 	require.Equal(t, "Pro+", byTradeNo["subscription-order"].SubscriptionPlanTitle)
 	require.Equal(t, "upgrade", byTradeNo["subscription-order"].SubscriptionOrderType)
+	require.Equal(t, "¥70.00", byTradeNo["subscription-order"].ActualPayment)
 }

@@ -788,6 +788,7 @@ func GetUserTopUps(c *gin.Context) {
 		return
 	}
 
+	model.EnrichTopupsWithTransactionInfo(topups)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(topups)
 	common.ApiSuccess(c, pageInfo)

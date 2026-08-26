@@ -330,6 +330,8 @@ export interface TopupRecord {
   subscription_plan_title?: string
   /** Admin-only: purchase, renewal, or upgrade */
   subscription_order_type?: string
+  /** Admin-only: exact charged amount string when money is not the actual paid currency */
+  actual_payment?: string
 }
 
 /**
