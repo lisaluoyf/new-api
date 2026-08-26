@@ -6,6 +6,7 @@ import (
 
 var defaultCacheRatio = map[string]float64{
 	"qwen3.8-max":                         0.2,
+	"qwen3.8-flash":                       0.1,
 	"gemini-3-flash-preview":              0.1,
 	"gemini-3-pro-preview":                0.1,
 	"gemini-3.1-pro-preview":              0.1,
@@ -81,6 +82,7 @@ var defaultCacheRatio = map[string]float64{
 
 var defaultCreateCacheRatio = map[string]float64{
 	"qwen3.8-max":                         1.25,
+	"qwen3.8-flash":                       1.333333333333,
 	"claude-3-sonnet-20240229":            1.25,
 	"claude-3-opus-20240229":              1.25,
 	"claude-3-haiku-20240307":             1.25,

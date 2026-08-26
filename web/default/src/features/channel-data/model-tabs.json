@@ -23,6 +23,7 @@
   { "model_id": "mimo-v2.5", "label": "MiMo v2.5", "accent": "#fb923c" },
   { "model_id": "qwen3.7-max", "label": "Qwen 3.7 Max", "accent": "#06b6d4" },
   { "model_id": "qwen3.8-max", "label": "Qwen 3.8 Max", "accent": "#06b6d4" },
+  { "model_id": "qwen3.8-flash", "label": "Qwen 3.8 Flash", "accent": "#06b6d4" },
   { "model_id": "qwen3.7-plus", "label": "Qwen 3.7 Plus", "accent": "#06b6d4" },
   { "model_id": "doubao-seed-2-1-pro-260628", "label": "Doubao Seed 2.1 Pro", "accent": "#f97316" },
   { "model_id": "doubao-seed-2-1-turbo-260628", "label": "Doubao Seed 2.1 Turbo", "accent": "#fb923c" },
