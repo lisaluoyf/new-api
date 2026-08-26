@@ -45,6 +45,7 @@ type TopUp struct {
 	TransactionType       string `json:"transaction_type,omitempty" gorm:"-"`
 	SubscriptionPlanTitle string `json:"subscription_plan_title,omitempty" gorm:"-"`
 	SubscriptionOrderType string `json:"subscription_order_type,omitempty" gorm:"-"`
+	ActualPayment         string `json:"actual_payment,omitempty" gorm:"-"`
 }
 
 const (
@@ -1503,13 +1504,15 @@ func EnrichTopupsWithTransactionInfo(topups []*TopUp) {
 	}
 
 	type subscriptionTransactionRow struct {
-		TradeNo   string
-		PlanTitle string
-		OrderType string
+		TradeNo         string
+		PlanTitle       string
+		OrderType       string
+		PaymentProvider string
+		ProviderPayload string
 	}
 	var rows []subscriptionTransactionRow
 	err := DB.Table("subscription_orders AS so").
-		Select("so.trade_no, sp.title AS plan_title, so.order_type").
+		Select("so.trade_no, sp.title AS plan_title, so.order_type, so.payment_provider, so.provider_payload").
 		Joins("JOIN subscription_plans AS sp ON sp.id = so.plan_id").
 		Where("so.trade_no IN ?", tradeNos).
 		Find(&rows).Error
@@ -1533,6 +1536,16 @@ func EnrichTopupsWithTransactionInfo(topups []*TopUp) {
 		topup.TransactionType = TopupTransactionTypeSubscription
 		topup.SubscriptionPlanTitle = row.PlanTitle
 		topup.SubscriptionOrderType = row.OrderType
+		switch row.PaymentProvider {
+		case PaymentProviderEpay:
+			if actual := subscriptionEpayActualPayment(row.ProviderPayload); actual != "" {
+				topup.ActualPayment = actual
+			}
+		case PaymentProviderPlatega:
+			if plategaOrder := GetPlategaOrderByTradeNo(topup.TradeNo); plategaOrder != nil && plategaOrder.RubAmount > 0 {
+				topup.ActualPayment = fmt.Sprintf("₽%.2f", plategaOrder.RubAmount)
+			}
+		}
 	}
 }
 

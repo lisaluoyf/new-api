@@ -262,7 +262,8 @@ export function BillingHistoryDialog({
                             <div className='text-sm font-semibold text-red-600'>
                               {formatPaidAmount(
                                 record.money,
-                                record.payment_method
+                                record.payment_method,
+                                record.actual_payment
                               )}
                             </div>
                           </div>

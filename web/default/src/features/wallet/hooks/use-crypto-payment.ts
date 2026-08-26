@@ -24,6 +24,10 @@ import {
   submitCryptoDeposit,
   getCryptoDepositStatus,
 } from '../api'
+import {
+  getInjectedEvmProvider,
+  type EthereumProvider,
+} from '../lib/evm-provider'
 
 // ============================================================================
 // Chain / Token Configuration
@@ -187,39 +191,6 @@ export interface UseCryptoPaymentReturn {
 // ============================================================================
 // Hook
 // ============================================================================
-
-interface EthereumProvider {
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
-  isMetaMask?: boolean
-  isBinance?: boolean
-  isPhantom?: boolean
-  providers?: EthereumProvider[]
-}
-
-declare global {
-  interface Window {
-    ethereum?: EthereumProvider
-    phantom?: {
-      ethereum?: EthereumProvider
-    }
-  }
-}
-
-function getInjectedEvmProvider(): EthereumProvider | null {
-  if (window.phantom?.ethereum) {
-    return window.phantom.ethereum
-  }
-
-  if (window.ethereum?.providers?.length) {
-    return (
-      window.ethereum.providers.find((provider) => (
-        provider.isMetaMask || provider.isBinance || provider.isPhantom
-      )) ?? window.ethereum.providers[0]
-    )
-  }
-
-  return window.ethereum ?? null
-}
 
 function isPendingWalletRequest(error: unknown): boolean {
   const code = (error as { code?: number })?.code

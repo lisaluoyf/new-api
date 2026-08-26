@@ -465,7 +465,11 @@ export function TransactionHistory() {
                         {formatRechargeAmount(creditedAmount)}
                       </td>
                       <td className='px-4 py-3 text-right font-mono font-medium'>
-                        {formatPaidAmount(record.money, record.payment_method)}
+                        {formatPaidAmount(
+                          record.money,
+                          record.payment_method,
+                          record.actual_payment
+                        )}
                       </td>
                       <td className='px-4 py-3 text-center'>
                         <StatusChip status={record.status} />

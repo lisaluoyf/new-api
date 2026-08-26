@@ -100,6 +100,7 @@ func DiscordGroupVerificationStatus(c *gin.Context) {
 			"bound":      bound,
 			"joined":     false,
 			"status":     "service_unavailable",
+			"discord_id": user.DiscordId,
 		}})
 		return
 	}
@@ -112,6 +113,7 @@ func DiscordGroupVerificationStatus(c *gin.Context) {
 			"bound":      false,
 			"joined":     false,
 			"status":     "binding_required",
+			"discord_id": "",
 		}})
 		return
 	}
@@ -125,6 +127,7 @@ func DiscordGroupVerificationStatus(c *gin.Context) {
 			"joined":     false,
 			"status":     "service_unavailable",
 			"invite_url": config.InviteURL,
+			"discord_id": user.DiscordId,
 		}})
 		return
 	}
@@ -142,6 +145,7 @@ func DiscordGroupVerificationStatus(c *gin.Context) {
 		"joined":     joined,
 		"status":     status,
 		"invite_url": config.InviteURL,
+		"discord_id": user.DiscordId,
 		"checked_at": checkedAt.Format(time.RFC3339),
 	}})
 }
