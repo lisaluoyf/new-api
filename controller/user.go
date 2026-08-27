@@ -120,6 +120,17 @@ func InternalLogin(c *gin.Context) {
 		Password: loginRequest.Password,
 	}
 	if err := user.ValidateAndFill(); err != nil {
+		restored, restoreErr := user.ValidateDeletedMirrorAndRestore()
+		if restoreErr != nil {
+			common.SysLog(fmt.Sprintf("Internal login restore error for user %s: %v", loginRequest.Username, restoreErr))
+			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+			return
+		}
+		if restored {
+			common.SysLog(fmt.Sprintf("Restored deleted APIMaster mirror account %s during internal login", loginRequest.Username))
+			setupLogin(&user, c)
+			return
+		}
 		switch {
 		case errors.Is(err, model.ErrDatabase):
 			common.SysLog(fmt.Sprintf("Internal login database error for user %s: %v", loginRequest.Username, err))

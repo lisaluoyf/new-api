@@ -820,6 +820,44 @@ func (user *User) ValidateAndFill() (err error) {
 	return nil
 }
 
+// ValidateDeletedMirrorAndRestore restores an APIMaster-derived mirror only
+// after its original derived password has been verified. It is called solely
+// by the internal-login endpoint, which is protected by the APIMaster sync
+// key. Public login must never resurrect a user who deleted their account.
+func (user *User) ValidateDeletedMirrorAndRestore() (bool, error) {
+	password := user.Password
+	username := strings.TrimSpace(user.Username)
+	if len(username) != UserNameMaxLength || password == "" {
+		return false, nil
+	}
+	for _, char := range username {
+		if !strings.ContainsRune("0123456789abcdef", char) {
+			return false, nil
+		}
+	}
+
+	var deleted User
+	err := DB.Unscoped().
+		Where("username = ? AND deleted_at IS NOT NULL", username).
+		First(&deleted).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("%w: %v", ErrDatabase, err)
+	}
+	if deleted.Status != common.UserStatusEnabled || !common.ValidatePasswordAndHash(password, deleted.Password) {
+		return false, nil
+	}
+
+	if err := DB.Unscoped().Model(&deleted).Update("deleted_at", nil).Error; err != nil {
+		return false, fmt.Errorf("%w: %v", ErrDatabase, err)
+	}
+	deleted.DeletedAt = gorm.DeletedAt{}
+	*user = deleted
+	return true, nil
+}
+
 func (user *User) FillUserById() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
