@@ -91,25 +91,28 @@ func UpsertBillingHourlySummaries(rows []BillingHourlySummary) error {
 // BillingDailyRow is one day's aggregated cost/revenue, returned to the
 // 平台账单 page. Profit and margin are derived at query time, not stored.
 type BillingDailyRow struct {
-	Day                        int64    `json:"day" gorm:"column:day"` // unix seconds, floored to Beijing (UTC+8) midnight
-	CostUSD                    float64  `json:"cost_usd" gorm:"column:cost_usd"`
-	RevenueUSD                 float64  `json:"revenue_usd" gorm:"column:revenue_usd"`
-	ExperienceCostUSD          float64  `json:"experience_cost_usd" gorm:"column:experience_cost_usd"`
-	ExperienceBillingUSD       float64  `json:"experience_billing_usd" gorm:"column:experience_billing_usd"`
-	PaidSubscriptionCostUSD    float64  `json:"paid_subscription_cost_usd" gorm:"column:paid_subscription_cost_usd"`
-	PaidSubscriptionRevenueUSD float64  `json:"paid_subscription_revenue_usd" gorm:"column:paid_subscription_revenue_usd"`
-	CodingPlanCostUSD          float64  `json:"coding_plan_cost_usd" gorm:"column:coding_plan_cost_usd"`
-	CodingPlanRevenueUSD       float64  `json:"coding_plan_revenue_usd" gorm:"column:coding_plan_revenue_usd"`
-	AccountingOKRequestCount   int64    `json:"accounting_ok_request_count" gorm:"column:accounting_ok_request_count"`
-	AccountingTargetReqCount   int64    `json:"accounting_target_request_count" gorm:"column:accounting_target_request_count"`
-	WalletUserCount            int64    `json:"wallet_user_count" gorm:"-"`
-	ExperienceUserCount        int64    `json:"experience_user_count" gorm:"-"`
-	PaidSubscriptionUserCount  int64    `json:"paid_subscription_user_count" gorm:"-"`
-	CodingPlanUserCount        int64    `json:"coding_plan_user_count" gorm:"-"`
-	WalletBalanceUSD           *float64 `json:"wallet_balance_usd,omitempty" gorm:"-"`
-	ExperienceBalanceUSD       *float64 `json:"experience_balance_usd,omitempty" gorm:"-"`
-	PaidSubscriptionBalanceUSD *float64 `json:"paid_subscription_balance_usd,omitempty" gorm:"-"`
-	CodingPlanBalanceUSD       *float64 `json:"coding_plan_balance_usd,omitempty" gorm:"-"`
+	Day                           int64    `json:"day" gorm:"column:day"` // unix seconds, floored to Beijing (UTC+8) midnight
+	CostUSD                       float64  `json:"cost_usd" gorm:"column:cost_usd"`
+	RevenueUSD                    float64  `json:"revenue_usd" gorm:"column:revenue_usd"`
+	ExperienceCostUSD             float64  `json:"experience_cost_usd" gorm:"column:experience_cost_usd"`
+	ExperienceBillingUSD          float64  `json:"experience_billing_usd" gorm:"column:experience_billing_usd"`
+	PaidSubscriptionCostUSD       float64  `json:"paid_subscription_cost_usd" gorm:"column:paid_subscription_cost_usd"`
+	PaidSubscriptionRevenueUSD    float64  `json:"paid_subscription_revenue_usd" gorm:"column:paid_subscription_revenue_usd"`
+	CodingPlanCostUSD             float64  `json:"coding_plan_cost_usd" gorm:"column:coding_plan_cost_usd"`
+	CodingPlanRevenueUSD          float64  `json:"coding_plan_revenue_usd" gorm:"column:coding_plan_revenue_usd"`
+	CodingPlanExpiredCount        int64    `json:"coding_plan_expired_count" gorm:"column:coding_plan_expired_count"`
+	CodingPlanExpiredAllowanceUSD float64  `json:"coding_plan_expired_allowance_usd" gorm:"column:coding_plan_expired_allowance_usd"`
+	CodingPlanExpiryRevenueUSD    float64  `json:"coding_plan_expiry_revenue_usd" gorm:"column:coding_plan_expiry_revenue_usd"`
+	AccountingOKRequestCount      int64    `json:"accounting_ok_request_count" gorm:"column:accounting_ok_request_count"`
+	AccountingTargetReqCount      int64    `json:"accounting_target_request_count" gorm:"column:accounting_target_request_count"`
+	WalletUserCount               int64    `json:"wallet_user_count" gorm:"-"`
+	ExperienceUserCount           int64    `json:"experience_user_count" gorm:"-"`
+	PaidSubscriptionUserCount     int64    `json:"paid_subscription_user_count" gorm:"-"`
+	CodingPlanUserCount           int64    `json:"coding_plan_user_count" gorm:"-"`
+	WalletBalanceUSD              *float64 `json:"wallet_balance_usd,omitempty" gorm:"-"`
+	ExperienceBalanceUSD          *float64 `json:"experience_balance_usd,omitempty" gorm:"-"`
+	PaidSubscriptionBalanceUSD    *float64 `json:"paid_subscription_balance_usd,omitempty" gorm:"-"`
+	CodingPlanBalanceUSD          *float64 `json:"coding_plan_balance_usd,omitempty" gorm:"-"`
 }
 
 type billingDailyCountRow struct {
@@ -135,6 +138,17 @@ type billingUserCountTotals struct {
 type BillingPaidSubscriptionDailyAccrual struct {
 	RevenueUSD float64 `json:"revenue_usd"`
 	UserCount  int64   `json:"user_count"`
+}
+
+type BillingCodingPlanExpiryDaily struct {
+	ExpiredCount        int64   `json:"expired_count" gorm:"column:expired_count"`
+	ExpiredAllowanceUSD float64 `json:"expired_allowance_usd" gorm:"column:expired_allowance_usd"`
+	ExpiryRevenueUSD    float64 `json:"expiry_revenue_usd" gorm:"column:expiry_revenue_usd"`
+}
+
+type billingCodingPlanExpiryDailyRow struct {
+	Day int64 `gorm:"column:day"`
+	BillingCodingPlanExpiryDaily
 }
 
 type billingPaidSubscriptionAccrualRow struct {
@@ -191,6 +205,36 @@ func billingDayStartUnix(unixSeconds int64) int64 {
 
 func billingRangeDayEndExclusive(unixSeconds int64) int64 {
 	return billingDayStartUnix(unixSeconds) + 86400
+}
+
+// GetBillingCodingPlanExpiryDaily returns natural-expiry accounting events.
+// Expiry revenue remains separately classified from consumed Coding Plan
+// revenue so reports can show the exact amount converted at natural expiry.
+func GetBillingCodingPlanExpiryDaily(startTimestamp, endTimestamp int64) (map[int64]BillingCodingPlanExpiryDaily, error) {
+	dayExpr := billingDayExpr("subscription_expiry_revenues.expired_at")
+	tx := DB.Table("subscription_expiry_revenues").
+		Joins("JOIN users ON users.id = subscription_expiry_revenues.user_id AND users.deleted_at IS NULL").
+		Where("users.role < ?", common.RoleAdminUser).
+		Where("subscription_expiry_revenues.plan_type = ?", SubscriptionPlanTypeCodingPlan).
+		Select(dayExpr + ` as day,
+			COUNT(*) as expired_count,
+			COALESCE(SUM(subscription_expiry_revenues.expired_allowance_usd), 0) as expired_allowance_usd,
+			COALESCE(SUM(subscription_expiry_revenues.expired_to_revenue_usd), 0) as expiry_revenue_usd`)
+	if startTimestamp != 0 {
+		tx = tx.Where("subscription_expiry_revenues.expired_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("subscription_expiry_revenues.expired_at <= ?", endTimestamp)
+	}
+	var rows []billingCodingPlanExpiryDailyRow
+	if err := tx.Group(dayExpr).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[int64]BillingCodingPlanExpiryDaily, len(rows))
+	for _, row := range rows {
+		result[row.Day] = row.BillingCodingPlanExpiryDaily
+	}
+	return result, nil
 }
 
 func paidSubscriptionAccrualQueryAt(startTimestamp, endTimestamp, asOfTimestamp int64) *gorm.DB {

@@ -221,7 +221,7 @@ func runClientGoneHedgedRelay(c *gin.Context, relayInfo *relaycommon.RelayInfo, 
 		// 双败（或主渠道单路失败）：正常回到外层串行重试。
 		// primary 的 processChannelError 由外层循环完成；hedge 的真实失败在这里计入渠道健康
 		if hedge != nil && hedge.err != nil && hedge.c.Request.Context().Err() == nil {
-			processChannelError(hedge.c, *types.NewChannelError(hedge.channel.Id, hedge.channel.Type, hedge.channel.Name,
+			processChannelError(hedge.c, hedge.info, *types.NewChannelError(hedge.channel.Id, hedge.channel.Type, hedge.channel.Name,
 				hedge.channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(hedge.c, constant.ContextKeyChannelKey),
 				hedge.channel.GetAutoBan()), hedge.err)
 			c.Set("clientgone_hedge_error", hedge.err.MaskSensitiveErrorWithStatusCode())
@@ -267,7 +267,7 @@ func runClientGoneHedgedRelay(c *gin.Context, relayInfo *relaycommon.RelayInfo, 
 
 	// 赢家 mid-stream 失败：错误归因到赢家渠道（外层循环只认 primary channel，会记错账）
 	if finalWinner.err != nil {
-		processChannelError(finalWinner.c, *types.NewChannelError(finalWinner.channel.Id, finalWinner.channel.Type,
+		processChannelError(finalWinner.c, finalWinner.info, *types.NewChannelError(finalWinner.channel.Id, finalWinner.channel.Type,
 			finalWinner.channel.Name, finalWinner.channel.ChannelInfo.IsMultiKey,
 			common.GetContextKeyString(finalWinner.c, constant.ContextKeyChannelKey), finalWinner.channel.GetAutoBan()), finalWinner.err)
 		c.Set("clientgone_hedge_error_accounted", true)

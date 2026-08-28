@@ -346,7 +346,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError == nil {
 			if service.HasUpstreamNoUsage(c) {
 				// Reuse the existing sliding-window health rules and disable probe.
-				processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), service.NewUpstreamNoUsageError())
+				processChannelError(c, relayInfo, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), service.NewUpstreamNoUsageError())
 			}
 			relayInfo.LastError = nil
 			successChannelId := channel.Id
@@ -394,7 +394,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			// clientgone fallback 竞速内部已按真实失败渠道计过账，避免误记到 primary 渠道
 			c.Set("clientgone_hedge_error_accounted", false)
 		} else {
-			processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+			processChannelError(c, relayInfo, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 		}
 
 		if !retryDecision.ShouldRetry {
@@ -1097,7 +1097,7 @@ func taskRetryDecisionToMap(decision taskRetryDecision) map[string]interface{} {
 	}
 }
 
-func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
+func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, channelError types.ChannelError, err *types.NewAPIError) {
 	if c.Request != nil && c.Request.Context().Err() != nil {
 		// 客户端已断开导致的上游请求取消不是渠道故障：不计健康统计、不触发禁用、不记错误日志
 		logger.LogError(c, fmt.Sprintf("skip channel error accounting, client gone (channel #%d): %s", channelError.ChannelId, err.Error()))
@@ -1144,6 +1144,7 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		other["channel_id"] = channelId
 		other["channel_name"] = c.GetString("channel_name")
 		other["channel_type"] = c.GetInt("channel_type")
+		service.AppendBillingSourceInfo(relayInfo, other)
 		if value, exists := c.Get("stream_status"); exists {
 			if status, ok := value.(*relaycommon.StreamStatus); ok && status != nil {
 				streamStatus := map[string]interface{}{"status": "error", "end_reason": string(status.EndReason), "error_count": status.TotalErrorCount(), "summary": status.Summary()}
@@ -1423,7 +1424,7 @@ func RelayTask(c *gin.Context) {
 		retryDecision := evaluateTaskRetry(c, channel.Id, taskErr, retryParam.GetRetry(), common.RetryTimes-retryParam.GetRetry())
 		if !taskErr.LocalError {
 			setTaskRetryDecision(c, retryDecision)
-			processChannelError(c,
+			processChannelError(c, relayInfo,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))

@@ -453,6 +453,25 @@ func TestApplyPaidSubscriptionAccruals(t *testing.T) {
 	assert.Equal(t, int64(1), rows[2].PaidSubscriptionUserCount)
 }
 
+func TestApplyCodingPlanExpiryAccountingAddsTotalRevenueOnce(t *testing.T) {
+	rows := []model.BillingDailyRow{{Day: 10, RevenueUSD: 25}}
+	expiryByDay := map[int64]model.BillingCodingPlanExpiryDaily{
+		10: {ExpiredCount: 2, ExpiredAllowanceUSD: 20, ExpiryRevenueUSD: 9.8734},
+		9:  {ExpiredCount: 1, ExpiredAllowanceUSD: 5, ExpiryRevenueUSD: 2.5},
+	}
+
+	applyCodingPlanExpiryAccounting(&rows, expiryByDay)
+
+	require.Len(t, rows, 2)
+	assert.Equal(t, int64(10), rows[0].Day)
+	assert.InDelta(t, 34.8734, rows[0].RevenueUSD, 1e-9)
+	assert.Equal(t, int64(2), rows[0].CodingPlanExpiredCount)
+	assert.InDelta(t, 20, rows[0].CodingPlanExpiredAllowanceUSD, 1e-9)
+	assert.InDelta(t, 9.8734, rows[0].CodingPlanExpiryRevenueUSD, 1e-9)
+	assert.Equal(t, int64(9), rows[1].Day)
+	assert.InDelta(t, 2.5, rows[1].RevenueUSD, 1e-9)
+}
+
 func TestGetBillingDailyCapsPaidSubscriptionToCurrentTime(t *testing.T) {
 	truncate(t)
 

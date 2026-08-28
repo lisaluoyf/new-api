@@ -1636,8 +1636,24 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 	for userId := range userIds {
 		cacheGroup := ""
 		err := DB.Transaction(func(tx *gorm.DB) error {
+			var dueSubscriptions []UserSubscription
+			if err := tx.Where("user_id = ? AND status = ? AND end_time > 0 AND end_time <= ?", userId, "active", now).
+				Order("end_time asc, id asc").
+				Find(&dueSubscriptions).Error; err != nil {
+				return err
+			}
+			if len(dueSubscriptions) == 0 {
+				return nil
+			}
+			if err := recordCodingPlanExpiryRevenuesTx(tx, dueSubscriptions); err != nil {
+				return err
+			}
+			dueIds := make([]int, 0, len(dueSubscriptions))
+			for _, due := range dueSubscriptions {
+				dueIds = append(dueIds, due.Id)
+			}
 			res := tx.Model(&UserSubscription{}).
-				Where("user_id = ? AND status = ? AND end_time > 0 AND end_time <= ?", userId, "active", now).
+				Where("id IN ? AND status = ? AND end_time > 0 AND end_time <= ?", dueIds, "active", now).
 				Updates(map[string]interface{}{
 					"status":     "expired",
 					"updated_at": common.GetTimestamp(),

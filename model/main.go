@@ -340,6 +340,7 @@ func migrateDB() error {
 		&BillingExperienceDailySnapshot{},
 		&BillingPaidSubscriptionDailySnapshot{},
 		&BillingCodingPlanDailySnapshot{},
+		&SubscriptionExpiryRevenue{},
 	)
 	if err != nil {
 		return err
@@ -394,6 +395,7 @@ func migrateDBFast() error {
 		{&SubscriptionOrder{}, "SubscriptionOrder"},
 		{&UserSubscription{}, "UserSubscription"},
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
+		{&SubscriptionExpiryRevenue{}, "SubscriptionExpiryRevenue"},
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&TelegramGroupVerification{}, "TelegramGroupVerification"},

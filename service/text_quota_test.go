@@ -49,6 +49,30 @@ func TestCalculateTextQuotaSummaryAcceptsCacheCreationInputTokensAlias(t *testin
 	require.Equal(t, 6751, summary.Quota)
 }
 
+func TestCalculateTextQuotaSummaryUsesCodingPlanEffectiveTokenPrices(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.6-sol",
+		PriceDataSource: "coding_plan",
+		PriceData: types.PriceData{
+			// $5/M official input and $30/M official output at a 0.03
+			// Coding Plan multiplier become $0.15/M and $0.90/M.
+			ModelRatio:      0.15 / 2,
+			CompletionRatio: 6,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+	usage := &dto.Usage{PromptTokens: 26_606, CompletionTokens: 18}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 2_004, summary.Quota)
+	require.InDelta(t, 0.15/2, summary.ModelRatio, 0.0000001)
+	require.InDelta(t, 6, summary.CompletionRatio, 0.0000001)
+}
+
 func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

@@ -50,6 +50,7 @@ import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-p
 import type { UsageLog } from '../../data/schema'
 import { getDeepSeekV4TimedPricingDisplay } from '../../lib/deepseek-v4-pricing'
 import {
+  getCodingPlanEffectivePrices,
   parseLogOther,
   isSubscriptionUsageLog,
   getParamOverrideActionLabel,
@@ -151,17 +152,20 @@ function BillingBreakdown(props: {
   const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const isSubscription = isSubscriptionUsageLog(other)
+  const codingPlanPrices = getCodingPlanEffectivePrices(other)
   const tieredSummary = getTieredBillingSummary(other)
 
   const rows: Array<{ label: string; value: string }> = []
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
   const fmtPrice = (usd: number) => formatBillingCurrencyFromUSD(usd, priceOpts)
-  const baseInputUSD = other.model_ratio != null ? other.model_ratio * 2.0 : 0
+  const baseInputUSD =
+    codingPlanPrices?.input ??
+    (other.model_ratio != null ? other.model_ratio * 2.0 : 0)
   const timedPricing = getDeepSeekV4TimedPricingDisplay(log, other)
   const fmtPricePair = (input: number, output: number) =>
     `${fmtPrice(input)} / ${fmtPrice(output)}/M`
 
-  if (isTieredExpr) {
+  if (isTieredExpr && !codingPlanPrices) {
     rows.push({
       label: t('Billing Mode'),
       value:
@@ -215,20 +219,27 @@ function BillingBreakdown(props: {
   } else {
     rows.push({
       label: t('Billing Mode'),
-      value: isSubscription
-        ? `${t('Per-token')} (${t('Official')})`
-        : t('Per-token'),
+      value:
+        isSubscription && other.subscription_type !== 'coding_plan'
+          ? `${t('Per-token')} (${t('Official')})`
+          : t('Per-token'),
     })
-    if (other.model_ratio != null) {
+    if (codingPlanPrices || other.model_ratio != null) {
       rows.push({
         label: t('Input'),
         value: `${fmtPrice(baseInputUSD)}/M`,
       })
     }
-    if (other.completion_ratio != null && other.model_ratio != null) {
+    if (
+      codingPlanPrices ||
+      (other.completion_ratio != null && other.model_ratio != null)
+    ) {
       rows.push({
         label: t('Output'),
-        value: `${fmtPrice(baseInputUSD * other.completion_ratio)}/M`,
+        value: `${fmtPrice(
+          codingPlanPrices?.output ??
+            baseInputUSD * (other.completion_ratio ?? 0)
+        )}/M`,
       })
     }
   }

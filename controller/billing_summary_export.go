@@ -21,30 +21,33 @@ var billingExportLocation = time.FixedZone(billingExportTimezone, 8*60*60)
 // page. Derived non-subscription values are materialized here so downstream
 // services do not need to reproduce frontend-only formulas.
 type billingSummaryExportRow struct {
-	Day                          int64    `json:"day"`
-	Date                         string   `json:"date"`
-	TotalCostUSD                 float64  `json:"total_cost_usd"`
-	TotalRevenueUSD              float64  `json:"total_revenue_usd"`
-	WalletCostUSD                float64  `json:"wallet_cost_usd"`
-	WalletRevenueUSD             float64  `json:"wallet_revenue_usd"`
-	WalletProfitUSD              float64  `json:"wallet_profit_usd"`
-	WalletMarginPercent          *float64 `json:"wallet_margin_percent"`
-	ExperienceCostUSD            float64  `json:"experience_cost_usd"`
-	ExperienceBillingUSD         float64  `json:"experience_billing_usd"`
-	WalletUserCount              int64    `json:"wallet_user_count"`
-	PaidSubscriptionCostUSD      float64  `json:"paid_subscription_cost_usd"`
-	PaidSubscriptionRevenueUSD   float64  `json:"paid_subscription_revenue_usd"`
-	PaidSubscriptionUserCount    int64    `json:"paid_subscription_user_count"`
-	CodingPlanCostUSD            float64  `json:"coding_plan_cost_usd"`
-	CodingPlanRevenueUSD         float64  `json:"coding_plan_revenue_usd"`
-	CodingPlanUserCount          int64    `json:"coding_plan_user_count"`
-	ExperienceUserCount          int64    `json:"experience_user_count"`
-	WalletBalanceUSD             *float64 `json:"wallet_balance_usd"`
-	ExperienceBalanceUSD         *float64 `json:"experience_balance_usd"`
-	PaidSubscriptionBalanceUSD   *float64 `json:"paid_subscription_balance_usd"`
-	CodingPlanBalanceUSD         *float64 `json:"coding_plan_balance_usd"`
-	AccountingOKRequestCount     int64    `json:"accounting_ok_request_count"`
-	AccountingTargetRequestCount int64    `json:"accounting_target_request_count"`
+	Day                           int64    `json:"day"`
+	Date                          string   `json:"date"`
+	TotalCostUSD                  float64  `json:"total_cost_usd"`
+	TotalRevenueUSD               float64  `json:"total_revenue_usd"`
+	WalletCostUSD                 float64  `json:"wallet_cost_usd"`
+	WalletRevenueUSD              float64  `json:"wallet_revenue_usd"`
+	WalletProfitUSD               float64  `json:"wallet_profit_usd"`
+	WalletMarginPercent           *float64 `json:"wallet_margin_percent"`
+	ExperienceCostUSD             float64  `json:"experience_cost_usd"`
+	ExperienceBillingUSD          float64  `json:"experience_billing_usd"`
+	WalletUserCount               int64    `json:"wallet_user_count"`
+	PaidSubscriptionCostUSD       float64  `json:"paid_subscription_cost_usd"`
+	PaidSubscriptionRevenueUSD    float64  `json:"paid_subscription_revenue_usd"`
+	PaidSubscriptionUserCount     int64    `json:"paid_subscription_user_count"`
+	CodingPlanCostUSD             float64  `json:"coding_plan_cost_usd"`
+	CodingPlanRevenueUSD          float64  `json:"coding_plan_revenue_usd"`
+	CodingPlanUserCount           int64    `json:"coding_plan_user_count"`
+	CodingPlanExpiredCount        int64    `json:"coding_plan_expired_count"`
+	CodingPlanExpiredAllowanceUSD float64  `json:"coding_plan_expired_allowance_usd"`
+	CodingPlanExpiryRevenueUSD    float64  `json:"coding_plan_expiry_revenue_usd"`
+	ExperienceUserCount           int64    `json:"experience_user_count"`
+	WalletBalanceUSD              *float64 `json:"wallet_balance_usd"`
+	ExperienceBalanceUSD          *float64 `json:"experience_balance_usd"`
+	PaidSubscriptionBalanceUSD    *float64 `json:"paid_subscription_balance_usd"`
+	CodingPlanBalanceUSD          *float64 `json:"coding_plan_balance_usd"`
+	AccountingOKRequestCount      int64    `json:"accounting_ok_request_count"`
+	AccountingTargetRequestCount  int64    `json:"accounting_target_request_count"`
 }
 
 func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummaryExportRow {
@@ -54,7 +57,7 @@ func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummar
 		if walletCost < 0 {
 			walletCost = 0
 		}
-		walletRevenue := row.RevenueUSD - row.ExperienceBillingUSD - row.PaidSubscriptionRevenueUSD - row.CodingPlanRevenueUSD
+		walletRevenue := row.RevenueUSD - row.ExperienceBillingUSD - row.PaidSubscriptionRevenueUSD - row.CodingPlanRevenueUSD - row.CodingPlanExpiryRevenueUSD
 		if walletRevenue < 0 {
 			walletRevenue = 0
 		}
@@ -67,30 +70,33 @@ func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummar
 		}
 
 		exportRows = append(exportRows, billingSummaryExportRow{
-			Day:                          row.Day,
-			Date:                         time.Unix(row.Day, 0).In(billingExportLocation).Format("2006-01-02"),
-			TotalCostUSD:                 row.CostUSD,
-			TotalRevenueUSD:              row.RevenueUSD,
-			WalletCostUSD:                walletCost,
-			WalletRevenueUSD:             walletRevenue,
-			WalletProfitUSD:              walletProfit,
-			WalletMarginPercent:          walletMarginPercent,
-			ExperienceCostUSD:            row.ExperienceCostUSD,
-			ExperienceBillingUSD:         row.ExperienceBillingUSD,
-			WalletUserCount:              row.WalletUserCount,
-			PaidSubscriptionCostUSD:      row.PaidSubscriptionCostUSD,
-			PaidSubscriptionRevenueUSD:   row.PaidSubscriptionRevenueUSD,
-			PaidSubscriptionUserCount:    row.PaidSubscriptionUserCount,
-			CodingPlanCostUSD:            row.CodingPlanCostUSD,
-			CodingPlanRevenueUSD:         row.CodingPlanRevenueUSD,
-			CodingPlanUserCount:          row.CodingPlanUserCount,
-			ExperienceUserCount:          row.ExperienceUserCount,
-			WalletBalanceUSD:             row.WalletBalanceUSD,
-			ExperienceBalanceUSD:         row.ExperienceBalanceUSD,
-			PaidSubscriptionBalanceUSD:   row.PaidSubscriptionBalanceUSD,
-			CodingPlanBalanceUSD:         row.CodingPlanBalanceUSD,
-			AccountingOKRequestCount:     row.AccountingOKRequestCount,
-			AccountingTargetRequestCount: row.AccountingTargetReqCount,
+			Day:                           row.Day,
+			Date:                          time.Unix(row.Day, 0).In(billingExportLocation).Format("2006-01-02"),
+			TotalCostUSD:                  row.CostUSD,
+			TotalRevenueUSD:               row.RevenueUSD,
+			WalletCostUSD:                 walletCost,
+			WalletRevenueUSD:              walletRevenue,
+			WalletProfitUSD:               walletProfit,
+			WalletMarginPercent:           walletMarginPercent,
+			ExperienceCostUSD:             row.ExperienceCostUSD,
+			ExperienceBillingUSD:          row.ExperienceBillingUSD,
+			WalletUserCount:               row.WalletUserCount,
+			PaidSubscriptionCostUSD:       row.PaidSubscriptionCostUSD,
+			PaidSubscriptionRevenueUSD:    row.PaidSubscriptionRevenueUSD,
+			PaidSubscriptionUserCount:     row.PaidSubscriptionUserCount,
+			CodingPlanCostUSD:             row.CodingPlanCostUSD,
+			CodingPlanRevenueUSD:          row.CodingPlanRevenueUSD,
+			CodingPlanUserCount:           row.CodingPlanUserCount,
+			CodingPlanExpiredCount:        row.CodingPlanExpiredCount,
+			CodingPlanExpiredAllowanceUSD: row.CodingPlanExpiredAllowanceUSD,
+			CodingPlanExpiryRevenueUSD:    row.CodingPlanExpiryRevenueUSD,
+			ExperienceUserCount:           row.ExperienceUserCount,
+			WalletBalanceUSD:              row.WalletBalanceUSD,
+			ExperienceBalanceUSD:          row.ExperienceBalanceUSD,
+			PaidSubscriptionBalanceUSD:    row.PaidSubscriptionBalanceUSD,
+			CodingPlanBalanceUSD:          row.CodingPlanBalanceUSD,
+			AccountingOKRequestCount:      row.AccountingOKRequestCount,
+			AccountingTargetRequestCount:  row.AccountingTargetReqCount,
 		})
 	}
 	return exportRows

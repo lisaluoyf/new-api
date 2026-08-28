@@ -180,7 +180,28 @@ func completeCodingPlanOrderTx(tx *gorm.DB, order *SubscriptionOrder, plan *Subs
 	if err != nil {
 		return nil, err
 	}
-	created.PaidAmountSnapshot = order.Money
+	cashPaid := decimal.NewFromFloat(order.Money)
+	if cashPaid.IsNegative() {
+		cashPaid = decimal.Zero
+	}
+	creditApplied := decimal.NewFromFloat(order.CreditAmount)
+	if creditApplied.IsNegative() {
+		creditApplied = decimal.Zero
+	}
+	paidValueBasis := cashPaid.Add(creditApplied)
+	entitlementPrice := decimal.NewFromFloat(order.ListPrice)
+	if !entitlementPrice.IsPositive() {
+		entitlementPrice = decimal.NewFromFloat(plan.PriceAmount)
+	}
+	if entitlementPrice.IsPositive() && paidValueBasis.GreaterThan(entitlementPrice) {
+		paidValueBasis = entitlementPrice
+	}
+	if order.ListPrice > 0 {
+		created.PriceAmountSnapshot = entitlementPrice.Round(6).InexactFloat64()
+	}
+	// This snapshot is the new entitlement's paid-value basis. Renewal credit
+	// and newly collected cash together fund the fresh 30-day allowance.
+	created.PaidAmountSnapshot = paidValueBasis.Round(6).InexactFloat64()
 	created.CurrentCycleId = order.Id
 	if err := tx.Save(created).Error; err != nil {
 		return nil, err

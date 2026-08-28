@@ -44,12 +44,15 @@ export function buildBillingSummaryColumns(
       row.revenue_usd -
         row.experience_billing_usd -
         row.paid_subscription_revenue_usd -
-        row.coding_plan_revenue_usd
+        row.coding_plan_revenue_usd -
+        row.coding_plan_expiry_revenue_usd
     )
   const getPaidSubscriptionProfit = (row: BillingTableRow) =>
     row.paid_subscription_revenue_usd - row.paid_subscription_cost_usd
   const getCodingPlanProfit = (row: BillingTableRow) =>
-    row.coding_plan_revenue_usd - row.coding_plan_cost_usd
+    row.coding_plan_revenue_usd +
+    row.coding_plan_expiry_revenue_usd -
+    row.coding_plan_cost_usd
 
   return [
     {
@@ -276,6 +279,16 @@ export function buildBillingSummaryColumns(
       cell: ({ row }) => (
         <span className='text-xs tabular-nums'>
           {formatUSD1(row.original.coding_plan_revenue_usd)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'coding_plan_expiry_revenue_usd',
+      size: 86,
+      header: () => <span>{t('Expiry Revenue')}</span>,
+      cell: ({ row }) => (
+        <span className='text-xs tabular-nums'>
+          {formatUSD1(row.original.coding_plan_expiry_revenue_usd ?? 0)}
         </span>
       ),
     },

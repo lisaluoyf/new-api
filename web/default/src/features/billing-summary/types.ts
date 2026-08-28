@@ -40,6 +40,9 @@ export interface BillingDailyRow {
   paid_subscription_revenue_usd: number
   coding_plan_cost_usd: number
   coding_plan_revenue_usd: number
+  coding_plan_expired_count: number
+  coding_plan_expired_allowance_usd: number
+  coding_plan_expiry_revenue_usd: number
   accounting_ok_request_count: number
   accounting_target_request_count: number
   wallet_user_count: number
@@ -65,8 +68,7 @@ export interface ApiResponse<T = unknown> {
   data?: T
 }
 
-export interface BillingSummaryResponse
-  extends ApiResponse<BillingDailyRow[]> {
+export interface BillingSummaryResponse extends ApiResponse<BillingDailyRow[]> {
   wallet_balance_usd?: number
   experience_balance_usd?: number
   paid_subscription_balance_usd?: number

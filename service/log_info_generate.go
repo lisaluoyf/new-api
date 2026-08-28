@@ -167,14 +167,41 @@ func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other map[string]inter
 	other["stream_status"] = streamInfo
 }
 
+// AppendBillingSourceInfo records only the selected funding identity. Error
+// attempts use this so they can show the correct source without implying that
+// the failed attempt consumed the request's pre-reserved quota.
+func AppendBillingSourceInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if relayInfo == nil || other == nil {
+		return
+	}
+	if relayInfo.BillingSource != "" {
+		other["billing_source"] = relayInfo.BillingSource
+	}
+	if relayInfo.BillingSource != BillingSourceSubscription {
+		return
+	}
+	if relayInfo.SubscriptionId != 0 {
+		other["subscription_id"] = relayInfo.SubscriptionId
+	}
+	if relayInfo.SubscriptionPlanId != 0 {
+		other["subscription_plan_id"] = relayInfo.SubscriptionPlanId
+	}
+	if relayInfo.SubscriptionPlanTitle != "" {
+		other["subscription_plan_title"] = relayInfo.SubscriptionPlanTitle
+	}
+	if relayInfo.SubscriptionPlanType != "" {
+		other["subscription_type"] = relayInfo.SubscriptionPlanType
+	}
+	if relayInfo.SubscriptionCycleId > 0 {
+		other["subscription_cycle_id"] = relayInfo.SubscriptionCycleId
+	}
+}
+
 func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
 	if relayInfo == nil || other == nil {
 		return
 	}
-	// billing_source: "wallet" or "subscription"
-	if relayInfo.BillingSource != "" {
-		other["billing_source"] = relayInfo.BillingSource
-	}
+	AppendBillingSourceInfo(relayInfo, other)
 	if relayInfo.UserSetting.BillingPreference != "" {
 		other["billing_preference"] = relayInfo.UserSetting.BillingPreference
 	}
@@ -191,18 +218,6 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		// post_delta: settlement delta applied after actual usage is known (can be negative for refund)
 		if relayInfo.SubscriptionPostDelta != 0 {
 			other["subscription_post_delta"] = relayInfo.SubscriptionPostDelta
-		}
-		if relayInfo.SubscriptionPlanId != 0 {
-			other["subscription_plan_id"] = relayInfo.SubscriptionPlanId
-		}
-		if relayInfo.SubscriptionPlanTitle != "" {
-			other["subscription_plan_title"] = relayInfo.SubscriptionPlanTitle
-		}
-		if relayInfo.SubscriptionPlanType != "" {
-			other["subscription_type"] = relayInfo.SubscriptionPlanType
-		}
-		if relayInfo.SubscriptionCycleId > 0 {
-			other["subscription_cycle_id"] = relayInfo.SubscriptionCycleId
 		}
 		// Compute "this request" subscription consumed + remaining
 		consumed := relayInfo.SubscriptionPreConsumed + relayInfo.SubscriptionPostDelta

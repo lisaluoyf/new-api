@@ -169,6 +169,38 @@ func applyPaidSubscriptionAccruals(rows *[]model.BillingDailyRow, accruals map[i
 	})
 }
 
+func applyCodingPlanExpiryAccounting(rows *[]model.BillingDailyRow, expiryByDay map[int64]model.BillingCodingPlanExpiryDaily) {
+	if rows == nil {
+		return
+	}
+	byDay := make(map[int64]*model.BillingDailyRow, len(*rows))
+	for i := range *rows {
+		row := &(*rows)[i]
+		if expiry, ok := expiryByDay[row.Day]; ok {
+			row.RevenueUSD += expiry.ExpiryRevenueUSD
+			row.CodingPlanExpiredCount = expiry.ExpiredCount
+			row.CodingPlanExpiredAllowanceUSD = expiry.ExpiredAllowanceUSD
+			row.CodingPlanExpiryRevenueUSD = expiry.ExpiryRevenueUSD
+		}
+		byDay[row.Day] = row
+	}
+	for day, expiry := range expiryByDay {
+		if _, ok := byDay[day]; ok {
+			continue
+		}
+		*rows = append(*rows, model.BillingDailyRow{
+			Day:                           day,
+			RevenueUSD:                    expiry.ExpiryRevenueUSD,
+			CodingPlanExpiredCount:        expiry.ExpiredCount,
+			CodingPlanExpiredAllowanceUSD: expiry.ExpiredAllowanceUSD,
+			CodingPlanExpiryRevenueUSD:    expiry.ExpiryRevenueUSD,
+		})
+	}
+	sort.Slice(*rows, func(i, j int) bool {
+		return (*rows)[i].Day > (*rows)[j].Day
+	})
+}
+
 // GetBillingDaily picks the summary-table path when no user-identifying
 // filter is set, otherwise falls back to querying raw logs directly (see
 // model.GetBillingDailyFromRawLogs for why no name→id resolution is needed).
@@ -214,6 +246,15 @@ func GetBillingDaily(startTimestamp, endTimestamp int64, modelName string, chann
 		return nil, err
 	}
 	applyPaidSubscriptionAccruals(&rows, paidSubscriptionAccruals)
+	// Expiry events have no model/channel/token attribution, so they only
+	// belong in the unfiltered platform view.
+	if modelName == "" && channel == 0 && tokenName == "" && username == "" && email == "" {
+		expiryByDay, err := model.GetBillingCodingPlanExpiryDaily(startTimestamp, endTimestamp)
+		if err != nil {
+			return nil, err
+		}
+		applyCodingPlanExpiryAccounting(&rows, expiryByDay)
+	}
 	for i := range rows {
 		if balance, ok := experienceSnapshots[rows[i].Day]; ok {
 			balanceCopy := balance

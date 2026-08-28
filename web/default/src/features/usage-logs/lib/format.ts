@@ -216,6 +216,47 @@ export function getSubscriptionRequestBillingUSD(
   return quota / quotaPerUnit
 }
 
+export interface CodingPlanEffectivePrices {
+  input: number
+  output: number
+  cacheRead: number | null
+  cacheWrite: number | null
+}
+
+export function getCodingPlanEffectivePrices(
+  other: LogOtherData | null | undefined
+): CodingPlanEffectivePrices | null {
+  if (other?.subscription_type !== 'coding_plan') return null
+
+  const multiplier = Number(other.coding_plan_multiplier)
+  const officialInput = Number(other.coding_official_input_price)
+  const officialOutput = Number(other.coding_official_output_price)
+  if (
+    !Number.isFinite(multiplier) ||
+    multiplier <= 0 ||
+    !Number.isFinite(officialInput) ||
+    officialInput <= 0 ||
+    !Number.isFinite(officialOutput) ||
+    officialOutput <= 0
+  ) {
+    return null
+  }
+
+  const effectiveOptionalPrice = (value: number | undefined) => {
+    const official = Number(value)
+    return Number.isFinite(official) && official > 0
+      ? official * multiplier
+      : null
+  }
+
+  return {
+    input: officialInput * multiplier,
+    output: officialOutput * multiplier,
+    cacheRead: effectiveOptionalPrice(other.coding_official_cache_read_price),
+    cacheWrite: effectiveOptionalPrice(other.coding_official_cache_write_price),
+  }
+}
+
 export function isFreeTrialUsageLog(
   log: UsageLog,
   other: LogOtherData | null

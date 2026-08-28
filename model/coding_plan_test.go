@@ -84,19 +84,94 @@ func TestCompleteCodingRenewalStartsFreshCycleNow(t *testing.T) {
 	}
 	require.NoError(t, DB.Create(&old).Error)
 	order := SubscriptionOrder{
-		Id: 11104, UserId: old.UserId, PlanId: plan.Id, Money: 26,
+		Id: 11104, UserId: old.UserId, PlanId: plan.Id, Money: 13, ListPrice: 39, CreditAmount: 26,
 		OrderType: "renewal", PreviousSubscriptionId: old.Id,
 	}
 	created, err := completeCodingPlanOrderTx(DB, &order, &plan)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, created.AmountUsed)
 	require.Equal(t, plan.TotalAmount, created.AmountTotal)
-	require.InDelta(t, 26, created.PaidAmountSnapshot, 0.000001)
+	require.InDelta(t, 39, created.PaidAmountSnapshot, 0.000001)
+	require.InDelta(t, 39, created.PriceAmountSnapshot, 0.000001)
 	require.WithinDuration(t, time.Unix(now+30*86400, 0), time.Unix(created.EndTime, 0), 2*time.Second)
 
 	var cancelled UserSubscription
 	require.NoError(t, DB.First(&cancelled, old.Id).Error)
 	require.Equal(t, "cancelled", cancelled.Status)
+}
+
+func TestExpireDueCodingPlansRecordsUnusedAllowanceOnce(t *testing.T) {
+	setupGPTSubscriptionTestDB(t)
+	oldQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500_000
+	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
+
+	now := GetDBTimestamp()
+	expiredAt := now - 36*3600
+	user := User{
+		Id: 11111, Username: "coding-expiry", Password: "password",
+		AffCode: "coding-expiry", Role: common.RoleCommonUser,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	plan := SubscriptionPlan{
+		Id: 11112, Title: "Coding Pro", PlanType: SubscriptionPlanTypeCodingPlan,
+		PriceAmount: 39, Currency: "USD", DurationUnit: SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true, TierLevel: 1,
+		CodingOfficialAmountUSD: 79, TotalAmount: int64(79 * common.QuotaPerUnit),
+		CodingModelMultipliers: `{"glm":0.350}`,
+	}
+	require.NoError(t, DB.Create(&plan).Error)
+	subscriptions := []UserSubscription{
+		{
+			Id: 11113, UserId: user.Id, PlanId: plan.Id, Status: "active",
+			StartTime: expiredAt - 30*86400, EndTime: expiredAt,
+			AmountTotal: plan.TotalAmount, AmountUsed: int64(59 * common.QuotaPerUnit),
+			PriceAmountSnapshot: 39, PaidAmountSnapshot: 39,
+		},
+		{
+			Id: 11114, UserId: user.Id, PlanId: plan.Id, Status: "active",
+			StartTime: expiredAt - 30*86400, EndTime: expiredAt,
+			AmountTotal: plan.TotalAmount, AmountUsed: plan.TotalAmount,
+			PriceAmountSnapshot: 39, PaidAmountSnapshot: 39,
+		},
+		{
+			Id: 11115, UserId: user.Id, PlanId: plan.Id, Status: "cancelled",
+			StartTime: expiredAt - 30*86400, EndTime: expiredAt,
+			AmountTotal: plan.TotalAmount, AmountUsed: int64(10 * common.QuotaPerUnit),
+			PriceAmountSnapshot: 39, PaidAmountSnapshot: 39,
+		},
+	}
+	require.NoError(t, DB.Create(&subscriptions).Error)
+
+	expiredCount, err := ExpireDueSubscriptions(100)
+	require.NoError(t, err)
+	require.Equal(t, 2, expiredCount)
+
+	var events []SubscriptionExpiryRevenue
+	require.NoError(t, DB.Find(&events).Error)
+	require.Len(t, events, 1)
+	event := events[0]
+	require.Equal(t, subscriptions[0].Id, event.SubscriptionId)
+	require.Equal(t, expiredAt, event.ExpiredAt)
+	require.EqualValues(t, 20*common.QuotaPerUnit, event.ExpiredAllowanceQuota)
+	require.InDelta(t, 20, event.ExpiredAllowanceUSD, 1e-9)
+	require.InDelta(t, 39, event.PaidValueBasisUSD, 1e-9)
+	require.InDelta(t, 39.0*20.0/79.0, event.ExpiredToRevenueUSD, 1e-9)
+
+	daily, err := GetBillingCodingPlanExpiryDaily(expiredAt-1, expiredAt+1)
+	require.NoError(t, err)
+	day := billingDayStartUnix(expiredAt)
+	require.Len(t, daily, 1)
+	require.Equal(t, int64(1), daily[day].ExpiredCount)
+	require.InDelta(t, 20, daily[day].ExpiredAllowanceUSD, 1e-9)
+	require.InDelta(t, 9.8734177215, daily[day].ExpiryRevenueUSD, 1e-9)
+
+	expiredCount, err = ExpireDueSubscriptions(100)
+	require.NoError(t, err)
+	require.Zero(t, expiredCount)
+	var eventCount int64
+	require.NoError(t, DB.Model(&SubscriptionExpiryRevenue{}).Count(&eventCount).Error)
+	require.Equal(t, int64(1), eventCount)
 }
 
 func TestCodingPlanPreConsumeChecksLiveModelMap(t *testing.T) {

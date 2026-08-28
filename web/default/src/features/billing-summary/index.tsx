@@ -81,8 +81,7 @@ export function BillingSummaryPage() {
       (acc, row) => ({
         cost_usd: acc.cost_usd + row.cost_usd,
         revenue_usd: acc.revenue_usd + row.revenue_usd,
-        experience_cost_usd:
-          acc.experience_cost_usd + row.experience_cost_usd,
+        experience_cost_usd: acc.experience_cost_usd + row.experience_cost_usd,
         experience_billing_usd:
           acc.experience_billing_usd + row.experience_billing_usd,
         paid_subscription_cost_usd:
@@ -93,6 +92,14 @@ export function BillingSummaryPage() {
           acc.coding_plan_cost_usd + row.coding_plan_cost_usd,
         coding_plan_revenue_usd:
           acc.coding_plan_revenue_usd + row.coding_plan_revenue_usd,
+        coding_plan_expired_count:
+          acc.coding_plan_expired_count + row.coding_plan_expired_count,
+        coding_plan_expired_allowance_usd:
+          acc.coding_plan_expired_allowance_usd +
+          row.coding_plan_expired_allowance_usd,
+        coding_plan_expiry_revenue_usd:
+          acc.coding_plan_expiry_revenue_usd +
+          row.coding_plan_expiry_revenue_usd,
         accounting_ok_request_count:
           acc.accounting_ok_request_count + row.accounting_ok_request_count,
         accounting_target_request_count:
@@ -108,6 +115,9 @@ export function BillingSummaryPage() {
         paid_subscription_revenue_usd: 0,
         coding_plan_cost_usd: 0,
         coding_plan_revenue_usd: 0,
+        coding_plan_expired_count: 0,
+        coding_plan_expired_allowance_usd: 0,
+        coding_plan_expiry_revenue_usd: 0,
         accounting_ok_request_count: 0,
         accounting_target_request_count: 0,
       }

@@ -70,3 +70,50 @@ func TestAppendBillingInfoIncludesCodingPlanWalletFallbackReason(t *testing.T) {
 	require.Equal(t, BillingSourceWallet, other["billing_source"])
 	require.Equal(t, "official cache write price is unavailable", other["coding_plan_fallback_reason"])
 }
+
+func TestAppendBillingSourceInfoRecordsSubscriptionIdentityWithoutConsumption(t *testing.T) {
+	other := map[string]interface{}{}
+	AppendBillingSourceInfo(&relaycommon.RelayInfo{
+		BillingSource:           BillingSourceSubscription,
+		SubscriptionId:          2732,
+		SubscriptionPlanId:      8,
+		SubscriptionPlanTitle:   "Coding Starter",
+		SubscriptionPlanType:    model.SubscriptionPlanTypeCodingPlan,
+		SubscriptionCycleId:     86,
+		SubscriptionPreConsumed: 361,
+		SubscriptionPostDelta:   -316,
+	}, other)
+
+	require.Equal(t, BillingSourceSubscription, other["billing_source"])
+	require.Equal(t, model.SubscriptionPlanTypeCodingPlan, other["subscription_type"])
+	require.Equal(t, "Coding Starter", other["subscription_plan_title"])
+	require.Equal(t, 2732, other["subscription_id"])
+	require.Equal(t, 8, other["subscription_plan_id"])
+	require.Equal(t, 86, other["subscription_cycle_id"])
+	require.NotContains(t, other, "subscription_pre_consumed")
+	require.NotContains(t, other, "subscription_post_delta")
+	require.NotContains(t, other, "subscription_consumed")
+}
+
+func TestAppendBillingSourceInfoKeepsWalletIdentity(t *testing.T) {
+	other := map[string]interface{}{}
+	AppendBillingSourceInfo(&relaycommon.RelayInfo{
+		BillingSource: BillingSourceWallet,
+	}, other)
+
+	require.Equal(t, BillingSourceWallet, other["billing_source"])
+	require.NotContains(t, other, "subscription_type")
+}
+
+func TestAppendBillingSourceInfoRecordsGPTSubscriptionIdentity(t *testing.T) {
+	other := map[string]interface{}{}
+	AppendBillingSourceInfo(&relaycommon.RelayInfo{
+		BillingSource:         BillingSourceSubscription,
+		SubscriptionPlanTitle: "GPT Pro",
+		SubscriptionPlanType:  model.SubscriptionPlanTypeGPTSubscription,
+	}, other)
+
+	require.Equal(t, BillingSourceSubscription, other["billing_source"])
+	require.Equal(t, model.SubscriptionPlanTypeGPTSubscription, other["subscription_type"])
+	require.Equal(t, "GPT Pro", other["subscription_plan_title"])
+}

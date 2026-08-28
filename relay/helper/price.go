@@ -346,6 +346,18 @@ func BuildCodingPlanPriceData(_ *gin.Context, info *relaycommon.RelayInfo, promp
 // fallback selects a different channel. A tiered snapshot stays frozen within
 // one attempt, but wallet price scales must be rebuilt for the new channel.
 func RefreshModelPriceForRetry(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
+	// Coding Plan pricing is independent from the selected upstream channel.
+	// Restore it before the wallet tiered-pricing refresh can replace the active
+	// snapshot during fallback.
+	if info != nil && info.PriceDataSource == model.SubscriptionPlanTypeCodingPlan {
+		priceData, err := BuildCodingPlanPriceData(c, info, promptTokens, meta)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		info.SetCodingPriceData(priceData)
+		info.ActivateCodingPriceData()
+		return priceData, nil
+	}
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
 		channelID := selectedPricingChannelID(c, info)
 		if info.WalletTieredBillingSnapshot != nil && info.WalletTieredBillingSnapshot.PricingChannelID == channelID {
@@ -359,15 +371,6 @@ func RefreshModelPriceForRetry(c *gin.Context, info *relaycommon.RelayInfo, prom
 			return info.PriceData, nil
 		}
 		return walletPriceData, nil
-	}
-	if info != nil && info.PriceDataSource == model.SubscriptionPlanTypeCodingPlan {
-		priceData, err := BuildCodingPlanPriceData(c, info, promptTokens, meta)
-		if err != nil {
-			return types.PriceData{}, err
-		}
-		info.SetCodingPriceData(priceData)
-		info.ActivateCodingPriceData()
-		return priceData, nil
 	}
 	if info != nil && (info.PriceDataSource == string(priceResolutionModeGPTTrial) || info.PriceDataSource == model.SubscriptionPlanTypeGPTReferralReward || info.PriceDataSource == model.SubscriptionPlanTypeGPTSubscription) {
 		priceSource := info.PriceDataSource

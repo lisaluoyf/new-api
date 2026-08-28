@@ -24,6 +24,7 @@ func setupGPTSubscriptionTestDB(t *testing.T) {
 		&SubscriptionOrder{},
 		&UserSubscription{},
 		&SubscriptionPreConsumeRecord{},
+		&SubscriptionExpiryRevenue{},
 		&TopUp{},
 	))
 	DB = db

@@ -215,6 +215,13 @@ export interface LogOtherData {
   subscription_7d_limit?: number
   subscription_7d_used?: number
   subscription_7d_remain?: number
+  // Coding Plan prices are archived manufacturer prices. Displayed user
+  // prices multiply each axis by coding_plan_multiplier.
+  coding_plan_multiplier?: number
+  coding_official_input_price?: number
+  coding_official_output_price?: number
+  coding_official_cache_read_price?: number
+  coding_official_cache_write_price?: number
   // Channel user base prices archived at billing time, before user group scaling.
   ch_input_price?: number
   ch_output_price?: number

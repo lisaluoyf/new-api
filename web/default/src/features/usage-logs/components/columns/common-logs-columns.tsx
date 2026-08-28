@@ -41,6 +41,7 @@ import type { UsageLog } from '../../data/schema'
 import { getDeepSeekV4TimedPricingDisplay } from '../../lib/deepseek-v4-pricing'
 import {
   formatModelName,
+  getCodingPlanEffectivePrices,
   getFirstResponseTimeColor,
   getResponseTimeColor,
   getTieredBillingSummary,
@@ -140,8 +141,9 @@ function buildDetailSegments(
     return showUnit ? `${text}/M` : text
   }
   const isTieredExpr = other.billing_mode === 'tiered_expr'
+  const codingPlanPrices = getCodingPlanEffectivePrices(other)
   const tieredSummary = getTieredBillingSummary(other)
-  if (isTieredExpr) {
+  if (isTieredExpr && !codingPlanPrices) {
     if (tieredSummary) {
       const baseEntries = tieredSummary.priceEntries
         .filter((entry) => ['inputPrice', 'outputPrice'].includes(entry.field))
@@ -215,33 +217,55 @@ function buildDetailSegments(
       segments.push({
         text: `${t('Per-second')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
       })
-    } else if (isSubscription && other.model_ratio != null) {
-      const inputPriceUSD = other.model_ratio * 2.0
-      const priceEntries = [
-        `${t('Official')} ${t('Input')} ${formatPriceCompact(inputPriceUSD)}/M`,
-      ]
-      if (other.completion_ratio != null) {
-        priceEntries.push(
-          `${t('Official')} ${t('Output')} ${formatPriceCompact(inputPriceUSD * other.completion_ratio)}/M`,
-        )
+    } else if (
+      isSubscription &&
+      (codingPlanPrices || other.model_ratio != null)
+    ) {
+      const inputPriceUSD =
+        codingPlanPrices?.input ?? (other.model_ratio ?? 0) * 2.0
+      const outputPriceUSD = codingPlanPrices
+        ? codingPlanPrices.output
+        : other.completion_ratio != null
+          ? inputPriceUSD * other.completion_ratio
+          : null
+      const priceEntries = [formatPriceCompact(inputPriceUSD)]
+      if (outputPriceUSD != null) {
+        priceEntries.push(formatPriceCompact(outputPriceUSD))
       }
       segments.push({
-        text: priceEntries.join(' · '),
+        text:
+          other.subscription_type === 'coding_plan'
+            ? formatPriceList(priceEntries, true)
+            : [
+                `${t('Official')} ${t('Input')} ${formatPriceCompact(inputPriceUSD)}/M`,
+                outputPriceUSD != null
+                  ? `${t('Official')} ${t('Output')} ${formatPriceCompact(outputPriceUSD)}/M`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · '),
       })
 
       if (hasAnyCacheTokens(other)) {
-        const cacheEntries = [
-          other.cache_ratio != null && other.cache_ratio !== 1
-            ? formatPriceCompact(inputPriceUSD * other.cache_ratio)
-            : null,
-          other.cache_creation_ratio != null && other.cache_creation_ratio !== 1
-            ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio)
-            : null,
-          other.cache_creation_ratio_1h != null &&
-          other.cache_creation_ratio_1h !== 0
-            ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio_1h)
-            : null,
-        ].filter(Boolean) as string[]
+        const cacheEntries = codingPlanPrices
+          ? [codingPlanPrices.cacheRead, codingPlanPrices.cacheWrite]
+              .filter((price): price is number => price != null && price > 0)
+              .map(formatPriceCompact)
+          : ([
+              other.cache_ratio != null && other.cache_ratio !== 1
+                ? formatPriceCompact(inputPriceUSD * other.cache_ratio)
+                : null,
+              other.cache_creation_ratio != null &&
+              other.cache_creation_ratio !== 1
+                ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio)
+                : null,
+              other.cache_creation_ratio_1h != null &&
+              other.cache_creation_ratio_1h !== 0
+                ? formatPriceCompact(
+                    inputPriceUSD * other.cache_creation_ratio_1h
+                  )
+                : null,
+            ].filter(Boolean) as string[])
 
         if (cacheEntries.length > 0) {
           segments.push({

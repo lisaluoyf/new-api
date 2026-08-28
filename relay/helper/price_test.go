@@ -370,6 +370,86 @@ func TestBuildCodingPlanPriceDataUsesAllOfficialAxesAndLiveMultiplier(t *testing
 	require.InDelta(t, 1, price.CacheCreationRatio, 0.0000001)
 }
 
+func TestRefreshModelPriceForRetryKeepsCodingPlanPricingForTieredModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
+
+	savedModelRatio := ratio_setting.ModelRatio2JSONString()
+	savedCompletionRatio := ratio_setting.CompletionRatio2JSONString()
+	savedCacheRatio := ratio_setting.CacheRatio2JSONString()
+	savedCreateCacheRatio := ratio_setting.CreateCacheRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatio))
+		require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(savedCompletionRatio))
+		require.NoError(t, ratio_setting.UpdateCacheRatioByJSONString(savedCacheRatio))
+		require.NoError(t, ratio_setting.UpdateCreateCacheRatioByJSONString(savedCreateCacheRatio))
+	})
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"coding-tiered-test":2.5}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"coding-tiered-test":6}`))
+	require.NoError(t, ratio_setting.UpdateCacheRatioByJSONString(`{"coding-tiered-test":0.1}`))
+	require.NoError(t, ratio_setting.UpdateCreateCacheRatioByJSONString(`{"coding-tiered-test":1}`))
+
+	savedBillingConfig := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		savedBillingConfig[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedBillingConfig))
+	})
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"coding-tiered-test":"tiered_expr"}`,
+		"billing_setting.billing_expr": `{"coding-tiered-test":"tier(\"standard\", p * 5 + c * 30 + cr * 0.5 + cw * 5)"}`,
+	}))
+
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionPlan{}, &model.UserSubscription{}))
+
+	now := time.Now().Unix()
+	plan := model.SubscriptionPlan{
+		Id: 15101, Title: "Coding Tiered", PlanType: model.SubscriptionPlanTypeCodingPlan,
+		PriceAmount: 39, Currency: "USD", DurationUnit: model.SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true, TierLevel: 1,
+		CodingOfficialAmountUSD: 79, TotalAmount: int64(79 * common.QuotaPerUnit),
+		CodingModelMultipliers: `{"coding-tiered-test":0.030}`,
+	}
+	require.NoError(t, db.Create(&plan).Error)
+	require.NoError(t, db.Create(&model.UserSubscription{
+		Id: 15102, UserId: 15103, PlanId: plan.Id, Status: "active",
+		StartTime: now, EndTime: now + 30*86400, AmountTotal: plan.TotalAmount,
+	}).Error)
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+	t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	ctx.Set("channel_id", 164)
+	info := &relaycommon.RelayInfo{
+		UserId: 15103, OriginModelName: "coding-tiered-test",
+		UserGroup: "default", UsingGroup: "default", StartTime: time.Now(),
+	}
+
+	initial, err := BuildCodingPlanPriceData(ctx, info, 26_606, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	info.SetCodingPriceData(initial)
+	require.True(t, info.ActivateCodingPriceData())
+
+	ctx.Set("channel_id", 82)
+	refreshed, err := RefreshModelPriceForRetry(ctx, info, 26_606, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.Equal(t, model.SubscriptionPlanTypeCodingPlan, info.PriceDataSource)
+	require.Nil(t, info.TieredBillingSnapshot)
+	require.InDelta(t, 0.15/2, refreshed.ModelRatio, 0.0000001)
+	require.InDelta(t, 6, refreshed.CompletionRatio, 0.0000001)
+	require.InDelta(t, 0.1, refreshed.CacheRatio, 0.0000001)
+	require.InDelta(t, refreshed.ModelRatio, info.PriceData.ModelRatio, 0.0000001)
+	require.Greater(t, refreshed.QuotaToPreConsume, 0)
+}
+
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
