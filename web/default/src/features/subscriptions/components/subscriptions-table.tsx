@@ -36,7 +36,9 @@ export function SubscriptionsTable({ planType }: { planType?: string }) {
   const { t } = useTranslation()
   const columns = useSubscriptionsColumns()
   const { refreshTrigger } = useSubscriptions()
-  const [sorting, setSorting] = useState<SortingState>([])
+  const [sorting, setSorting] = useState<SortingState>(() =>
+    planType === 'coding_plan' ? [{ id: 'price', desc: false }] : []
+  )
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
 
   const { data, isLoading } = useQuery({
