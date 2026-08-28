@@ -39,7 +39,11 @@ export function isValidMediaPreviewURL(url: string): boolean {
 
 export function isLogMediaImageModel(modelName: string): boolean {
   const model = modelName.trim().toLowerCase()
-  return model.startsWith('gpt-image-2') || model.includes('flash-image')
+  return (
+    model.startsWith('gpt-image-2') ||
+    model.includes('flash-image') ||
+    model.startsWith('gemini-3-pro-image')
+  )
 }
 
 export function isLogMediaVideoModel(modelName: string): boolean {

@@ -364,13 +364,22 @@ function MediaPreviewCell({
     <>
       <button
         type='button'
-        className='group flex items-center gap-1 text-left text-xs'
+        className='group flex items-center gap-2 text-left text-xs'
         onClick={(e) => {
           e.stopPropagation()
           setDialogOpen(true)
         }}
       >
-        <Icon className='text-muted-foreground size-3 shrink-0' />
+        {preview.kind === 'image' && preview.url ? (
+          <img
+            src={preview.url}
+            alt={t('Generated image')}
+            className='border-border bg-muted size-10 shrink-0 rounded-md border object-cover'
+            loading='lazy'
+          />
+        ) : (
+          <Icon className='text-muted-foreground size-3 shrink-0' />
+        )}
         <span className='text-foreground leading-snug group-hover:underline'>
           {label}
         </span>

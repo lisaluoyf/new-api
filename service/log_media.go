@@ -19,7 +19,7 @@ func EnrichLogsMediaURLs(logs []*model.Log) {
 	}
 }
 
-// EnrichLogMediaURL resolves a preview URL for gpt-image-2 / sora logs that predate result_url persistence.
+// EnrichLogMediaURL resolves a preview URL for image/video logs that predate result_url persistence.
 func EnrichLogMediaURL(log *model.Log) {
 	if log == nil || log.Type != model.LogTypeConsume {
 		return
@@ -27,6 +27,7 @@ func EnrichLogMediaURL(log *model.Log) {
 	modelName := strings.ToLower(strings.TrimSpace(log.ModelName))
 	if !strings.HasPrefix(modelName, "gpt-image-2") &&
 		!strings.Contains(modelName, "flash-image") &&
+		!strings.HasPrefix(modelName, "gemini-3-pro-image") &&
 		!isLogMediaVideoModel(modelName) {
 		return
 	}
