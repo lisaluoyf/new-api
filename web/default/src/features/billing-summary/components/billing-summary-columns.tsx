@@ -35,17 +35,21 @@ export function buildBillingSummaryColumns(
       0,
       row.cost_usd -
         row.experience_cost_usd -
-        row.paid_subscription_cost_usd
+        row.paid_subscription_cost_usd -
+        row.coding_plan_cost_usd
     )
   const getWalletRevenue = (row: BillingTableRow) =>
     Math.max(
       0,
       row.revenue_usd -
         row.experience_billing_usd -
-        row.paid_subscription_revenue_usd
+        row.paid_subscription_revenue_usd -
+        row.coding_plan_revenue_usd
     )
   const getPaidSubscriptionProfit = (row: BillingTableRow) =>
     row.paid_subscription_revenue_usd - row.paid_subscription_cost_usd
+  const getCodingPlanProfit = (row: BillingTableRow) =>
+    row.coding_plan_revenue_usd - row.coding_plan_cost_usd
 
   return [
     {
@@ -181,7 +185,7 @@ export function buildBillingSummaryColumns(
     {
       accessorKey: 'paid_subscription_user_count',
       size: 70,
-      header: () => <span>{t('Paid Subscription Users')}</span>,
+      header: () => <span>{t('Subscription Users')}</span>,
       cell: ({ row }) => (
         <span
           className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
@@ -244,6 +248,71 @@ export function buildBillingSummaryColumns(
       },
     },
     {
+      accessorKey: 'coding_plan_user_count',
+      size: 82,
+      header: () => <span>{t('Coding Plan Users')}</span>,
+      cell: ({ row }) => (
+        <span
+          className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
+        >
+          {row.original.coding_plan_user_count ?? 0}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'coding_plan_cost_usd',
+      size: 56,
+      header: () => <span>{t('Cost')}</span>,
+      cell: ({ row }) => (
+        <span className='text-xs tabular-nums'>
+          {formatUSD1(row.original.coding_plan_cost_usd)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'coding_plan_revenue_usd',
+      size: 56,
+      header: () => <span>{t('Revenue')}</span>,
+      cell: ({ row }) => (
+        <span className='text-xs tabular-nums'>
+          {formatUSD1(row.original.coding_plan_revenue_usd)}
+        </span>
+      ),
+    },
+    {
+      id: 'coding_plan_profit_usd',
+      size: 52,
+      header: () => <span>{t('Profit')}</span>,
+      cell: ({ row }) => {
+        const profit = getCodingPlanProfit(row.original)
+        return (
+          <span
+            className={`text-xs tabular-nums ${profit < 0 ? 'text-destructive' : ''}`}
+          >
+            {formatUSD1(profit)}
+          </span>
+        )
+      },
+    },
+    {
+      id: 'coding_plan_margin',
+      size: 54,
+      header: () => <span>{t('Margin')}</span>,
+      cell: ({ row }) => {
+        const cost = row.original.coding_plan_cost_usd
+        if (cost <= 0)
+          return <span className='text-muted-foreground text-xs'>—</span>
+        const margin = (getCodingPlanProfit(row.original) / cost) * 100
+        return (
+          <span
+            className={`text-xs tabular-nums ${margin < 0 ? 'text-destructive' : ''}`}
+          >
+            {margin.toFixed(1)}%
+          </span>
+        )
+      },
+    },
+    {
       accessorKey: 'wallet_balance_usd',
       size: 76,
       header: () => <span>{t('Wallet Balance')}</span>,
@@ -283,6 +352,23 @@ export function buildBillingSummaryColumns(
       header: () => <span>{t('Subscription Balance')}</span>,
       cell: ({ row }) => {
         const balance = row.original.paid_subscription_balance_usd
+        return balance != null ? (
+          <span
+            className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}
+          >
+            {formatUSD(balance)}
+          </span>
+        ) : (
+          <span className='text-muted-foreground text-xs'>—</span>
+        )
+      },
+    },
+    {
+      accessorKey: 'coding_plan_balance_usd',
+      size: 76,
+      header: () => <span>{t('Coding Plan Balance')}</span>,
+      cell: ({ row }) => {
+        const balance = row.original.coding_plan_balance_usd
         return balance != null ? (
           <span
             className={`text-xs tabular-nums ${row.original.isTotal ? 'font-semibold' : ''}`}

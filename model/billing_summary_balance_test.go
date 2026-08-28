@@ -14,7 +14,7 @@ func TestGetNonAdminWalletBalanceUSD(t *testing.T) {
 	oldQuotaPerUnit := common.QuotaPerUnit
 	db, err := gorm.Open(sqlite.Open("file:billing-summary-balance?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&User{}, &UserSubscription{}, &BillingWalletDailySnapshot{}, &BillingSubscriptionDailySnapshot{}, &BillingExperienceDailySnapshot{}, &BillingPaidSubscriptionDailySnapshot{}, &SubscriptionPlan{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &UserSubscription{}, &BillingWalletDailySnapshot{}, &BillingSubscriptionDailySnapshot{}, &BillingExperienceDailySnapshot{}, &BillingPaidSubscriptionDailySnapshot{}, &BillingCodingPlanDailySnapshot{}, &SubscriptionPlan{}))
 	DB = db
 	common.QuotaPerUnit = 500_000
 	t.Cleanup(func() {
@@ -56,7 +56,7 @@ func TestGetNonAdminSubscriptionBalanceUSD(t *testing.T) {
 	oldQuotaPerUnit := common.QuotaPerUnit
 	db, err := gorm.Open(sqlite.Open("file:billing-summary-subscription-balance?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&User{}, &UserSubscription{}, &BillingSubscriptionDailySnapshot{}, &BillingExperienceDailySnapshot{}, &BillingPaidSubscriptionDailySnapshot{}, &SubscriptionPlan{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &UserSubscription{}, &BillingSubscriptionDailySnapshot{}, &BillingExperienceDailySnapshot{}, &BillingPaidSubscriptionDailySnapshot{}, &BillingCodingPlanDailySnapshot{}, &SubscriptionPlan{}))
 	DB = db
 	common.QuotaPerUnit = 500_000
 	t.Cleanup(func() {
@@ -78,6 +78,7 @@ func TestGetNonAdminSubscriptionBalanceUSD(t *testing.T) {
 		{Id: 102, Title: "Referral Reward", PlanType: SubscriptionPlanTypeGPTReferralReward, Currency: "USD", DurationUnit: SubscriptionDurationDay, DurationValue: 365},
 		{Id: 103, Title: "GPT Subscription A", PlanType: SubscriptionPlanTypeGPTSubscription, Currency: "USD", DurationUnit: SubscriptionDurationMonth, DurationValue: 1, PriceAmount: 100},
 		{Id: 104, Title: "GPT Subscription B", PlanType: SubscriptionPlanTypeGPTSubscription, Currency: "USD", DurationUnit: SubscriptionDurationMonth, DurationValue: 1, PriceAmount: 40},
+		{Id: 105, Title: "Coding Plan", PlanType: SubscriptionPlanTypeCodingPlan, Currency: "USD", DurationUnit: SubscriptionDurationMonth, DurationValue: 1, PriceAmount: 60},
 	}
 	require.NoError(t, db.Create(&plans).Error)
 
@@ -87,6 +88,7 @@ func TestGetNonAdminSubscriptionBalanceUSD(t *testing.T) {
 		{UserId: 2, PlanId: 102, AmountTotal: 800_000, AmountUsed: 300_000, Status: "active", EndTime: now + 7200},
 		{UserId: 2, PlanId: 103, AmountTotal: 1_200_000, AmountUsed: 200_000, Status: "active", StartTime: now - 15*86400, EndTime: now + 15*86400, PriceAmountSnapshot: 100, DurationSecondsSnapshot: 30 * 86400},
 		{UserId: 1, PlanId: 104, AmountTotal: 900_000, AmountUsed: 100_000, Status: "active", StartTime: now - 15*86400, EndTime: now + 15*86400, PriceAmountSnapshot: 0, DurationSecondsSnapshot: 0},
+		{UserId: 1, PlanId: 105, AmountTotal: 1_000_000, AmountUsed: 250_000, Status: "active", StartTime: now - 15*86400, EndTime: now + 15*86400, PriceAmountSnapshot: 60, DurationSecondsSnapshot: 30 * 86400},
 		{UserId: 2, PlanId: 101, AmountTotal: 100_000, AmountUsed: 200_000, Status: "active", EndTime: now + 7200}, // clamped to 0
 		{UserId: 3, PlanId: 103, AmountTotal: 5_000_000, AmountUsed: 0, Status: "active", EndTime: now + 3600},     // admin excluded
 		{UserId: 4, PlanId: 101, AmountTotal: 2_000_000, AmountUsed: 0, Status: "active", EndTime: now + 3600},     // deleted excluded
@@ -97,7 +99,7 @@ func TestGetNonAdminSubscriptionBalanceUSD(t *testing.T) {
 
 	balanceUSD, err := GetNonAdminSubscriptionBalanceUSD()
 	require.NoError(t, err)
-	require.Equal(t, 6.6, balanceUSD)
+	require.Equal(t, 8.1, balanceUSD)
 
 	experienceBalanceUSD, err := GetNonAdminExperienceBalanceUSD()
 	require.NoError(t, err)
@@ -111,16 +113,26 @@ func TestGetNonAdminSubscriptionBalanceUSD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 70.0, paidSubscriptionBalanceAtNow)
 
+	codingPlanBalanceUSD, err := GetNonAdminCodingPlanBalanceUSD()
+	require.NoError(t, err)
+	require.Equal(t, 45.0, codingPlanBalanceUSD)
+
+	codingPlanBalanceAtNow, err := GetNonAdminCodingPlanBalanceUSDAt(now)
+	require.NoError(t, err)
+	require.Equal(t, 45.0, codingPlanBalanceAtNow)
+
 	_, err = UpsertBillingSubscriptionDailySnapshot(100, 110)
 	require.NoError(t, err)
 	_, err = UpsertBillingExperienceDailySnapshot(100, 110)
 	require.NoError(t, err)
 	_, err = UpsertBillingPaidSubscriptionDailySnapshot(100, now)
 	require.NoError(t, err)
+	_, err = UpsertBillingCodingPlanDailySnapshot(100, now)
+	require.NoError(t, err)
 	require.NoError(t, db.Model(&UserSubscription{}).Where("user_id = ? AND plan_id = ?", 1, 101).Update("amount_used", 0).Error)
 	latestBalance, err := UpsertBillingSubscriptionDailySnapshot(100, 120)
 	require.NoError(t, err)
-	require.Equal(t, 7.6, latestBalance)
+	require.Equal(t, 9.1, latestBalance)
 	latestExperienceBalance, err := UpsertBillingExperienceDailySnapshot(100, 120)
 	require.NoError(t, err)
 	require.Equal(t, 4.0, latestExperienceBalance)
@@ -128,22 +140,31 @@ func TestGetNonAdminSubscriptionBalanceUSD(t *testing.T) {
 	latestPaidBalance, err := UpsertBillingPaidSubscriptionDailySnapshot(100, now)
 	require.NoError(t, err)
 	require.Equal(t, 70.0, latestPaidBalance)
+	latestCodingBalance, err := UpsertBillingCodingPlanDailySnapshot(100, now)
+	require.NoError(t, err)
+	require.Equal(t, 45.0, latestCodingBalance)
 
 	snapshots, err := GetBillingSubscriptionDailySnapshots(100, 100)
 	require.NoError(t, err)
-	require.Equal(t, map[int64]float64{100: 7.6}, snapshots)
+	require.Equal(t, map[int64]float64{100: 9.1}, snapshots)
 	experienceSnapshots, err := GetBillingExperienceDailySnapshots(100, 100)
 	require.NoError(t, err)
 	require.Equal(t, map[int64]float64{100: 4.0}, experienceSnapshots)
 	paidSnapshots, err := GetBillingPaidSubscriptionDailySnapshots(100, 100)
 	require.NoError(t, err)
 	require.Equal(t, map[int64]float64{100: 70.0}, paidSnapshots)
+	codingSnapshots, err := GetBillingCodingPlanDailySnapshots(100, 100)
+	require.NoError(t, err)
+	require.Equal(t, map[int64]float64{100: 45.0}, codingSnapshots)
 	var snapshot BillingSubscriptionDailySnapshot
 	require.NoError(t, db.First(&snapshot, "day = ?", 100).Error)
 	require.Equal(t, int64(120), snapshot.SnapshotAt)
 	var paidSnapshot BillingPaidSubscriptionDailySnapshot
 	require.NoError(t, db.First(&paidSnapshot, "day = ?", 100).Error)
 	require.Equal(t, now, paidSnapshot.SnapshotAt)
+	var codingSnapshot BillingCodingPlanDailySnapshot
+	require.NoError(t, db.First(&codingSnapshot, "day = ?", 100).Error)
+	require.Equal(t, now, codingSnapshot.SnapshotAt)
 }
 
 func TestGetBillingPaidSubscriptionDailyAccruals(t *testing.T) {

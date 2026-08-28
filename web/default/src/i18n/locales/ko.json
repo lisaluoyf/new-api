@@ -4640,5 +4640,7 @@
   "User Balance": "사용자 잔액",
   "No active subscription": "활성 구독 없음",
   "Not claimed": "미수령",
-  "Days left with date": "{{days}}일 남음 ({{date}})"
+  "Days left with date": "{{days}}일 남음 ({{date}})",
+  "Coding Plan Users": "Coding Plan Users",
+  "Coding Plan Balance": "Coding Plan Balance"
 }

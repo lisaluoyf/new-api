@@ -4642,5 +4642,7 @@
   "User Balance": "Баланс пользователей",
   "No active subscription": "Нет активной подписки",
   "Not claimed": "Не получено",
-  "Days left with date": "Осталось {{days}} дн. ({{date}})"
+  "Days left with date": "Осталось {{days}} дн. ({{date}})",
+  "Coding Plan Users": "Coding Plan Users",
+  "Coding Plan Balance": "Coding Plan Balance"
 }

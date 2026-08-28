@@ -4640,5 +4640,7 @@
   "User Balance": "Số dư người dùng",
   "No active subscription": "Không có gói đăng ký đang hoạt động",
   "Not claimed": "Chưa nhận",
-  "Days left with date": "Còn {{days}} ngày ({{date}})"
+  "Days left with date": "Còn {{days}} ngày ({{date}})",
+  "Coding Plan Users": "Coding Plan Users",
+  "Coding Plan Balance": "Coding Plan Balance"
 }

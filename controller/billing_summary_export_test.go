@@ -15,6 +15,7 @@ func TestBuildBillingSummaryExportRows(t *testing.T) {
 	walletBalance := 42.5
 	experienceBalance := 18.25
 	paidSubscriptionBalance := 9.75
+	codingPlanBalance := 12.5
 	rows := buildBillingSummaryExportRows([]model.BillingDailyRow{
 		{
 			Day:                        1_783_785_600, // 2026-07-12 00:00:00 Asia/Shanghai
@@ -24,14 +25,18 @@ func TestBuildBillingSummaryExportRows(t *testing.T) {
 			ExperienceBillingUSD:       4,
 			PaidSubscriptionCostUSD:    1,
 			PaidSubscriptionRevenueUSD: 1.5,
+			CodingPlanCostUSD:          0.5,
+			CodingPlanRevenueUSD:       1.0,
 			AccountingOKRequestCount:   8,
 			AccountingTargetReqCount:   10,
 			WalletUserCount:            6,
 			ExperienceUserCount:        2,
 			PaidSubscriptionUserCount:  1,
+			CodingPlanUserCount:        3,
 			WalletBalanceUSD:           &walletBalance,
 			ExperienceBalanceUSD:       &experienceBalance,
 			PaidSubscriptionBalanceUSD: &paidSubscriptionBalance,
+			CodingPlanBalanceUSD:       &codingPlanBalance,
 		},
 		{
 			Day:                  1_783_699_200,
@@ -44,13 +49,14 @@ func TestBuildBillingSummaryExportRows(t *testing.T) {
 
 	require.Len(t, rows, 2)
 	assert.Equal(t, "2026-07-12", rows[0].Date)
-	assert.InDelta(t, 2, rows[0].WalletCostUSD, 1e-9)
-	assert.InDelta(t, 5.5, rows[0].WalletRevenueUSD, 1e-9)
-	assert.InDelta(t, 3.5, rows[0].WalletProfitUSD, 1e-9)
+	assert.InDelta(t, 1.5, rows[0].WalletCostUSD, 1e-9)
+	assert.InDelta(t, 4.5, rows[0].WalletRevenueUSD, 1e-9)
+	assert.InDelta(t, 3.0, rows[0].WalletProfitUSD, 1e-9)
 	require.NotNil(t, rows[0].WalletMarginPercent)
-	assert.InDelta(t, 175, *rows[0].WalletMarginPercent, 1e-9)
+	assert.InDelta(t, 200, *rows[0].WalletMarginPercent, 1e-9)
 	assert.Equal(t, int64(6), rows[0].WalletUserCount)
 	assert.Equal(t, int64(1), rows[0].PaidSubscriptionUserCount)
+	assert.Equal(t, int64(3), rows[0].CodingPlanUserCount)
 	assert.Equal(t, int64(8), rows[0].AccountingOKRequestCount)
 	assert.Equal(t, int64(10), rows[0].AccountingTargetRequestCount)
 	require.NotNil(t, rows[0].WalletBalanceUSD)
@@ -59,6 +65,8 @@ func TestBuildBillingSummaryExportRows(t *testing.T) {
 	assert.InDelta(t, 18.25, *rows[0].ExperienceBalanceUSD, 1e-9)
 	require.NotNil(t, rows[0].PaidSubscriptionBalanceUSD)
 	assert.InDelta(t, 9.75, *rows[0].PaidSubscriptionBalanceUSD, 1e-9)
+	require.NotNil(t, rows[0].CodingPlanBalanceUSD)
+	assert.InDelta(t, 12.5, *rows[0].CodingPlanBalanceUSD, 1e-9)
 	assert.Nil(t, rows[1].WalletMarginPercent)
 }
 

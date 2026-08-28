@@ -294,6 +294,8 @@ export const STATIC_I18N_KEYS = [
   'Paid Subscription Users',
   'Paid Subscription Balance',
   'Subscription Balance',
+  'Coding Plan Users',
+  'Coding Plan Balance',
   'Platform User Balance',
   'Non-subscription Users',
   'Subscription Users',

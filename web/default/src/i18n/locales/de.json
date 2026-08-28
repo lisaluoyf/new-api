@@ -4606,5 +4606,7 @@
   "User Balance": "Benutzerguthaben",
   "No active subscription": "Kein aktives Abonnement",
   "Not claimed": "Nicht beansprucht",
-  "Days left with date": "Noch {{days}} Tage ({{date}})"
+  "Days left with date": "Noch {{days}} Tage ({{date}})",
+  "Coding Plan Users": "Coding Plan Users",
+  "Coding Plan Balance": "Coding Plan Balance"
 }

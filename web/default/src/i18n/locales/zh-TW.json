@@ -4609,5 +4609,7 @@
   "User Balance": "用戶餘額",
   "No active subscription": "目前沒有可用訂閱",
   "Not claimed": "未領取",
-  "Days left with date": "剩餘 {{days}} 天 ({{date}})"
+  "Days left with date": "剩餘 {{days}} 天 ({{date}})",
+  "Coding Plan Users": "Coding Plan 用戶",
+  "Coding Plan Balance": "Coding Plan 餘額"
 }

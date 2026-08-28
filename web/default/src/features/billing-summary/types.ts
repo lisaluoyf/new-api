@@ -38,14 +38,18 @@ export interface BillingDailyRow {
   experience_billing_usd: number
   paid_subscription_cost_usd: number
   paid_subscription_revenue_usd: number
+  coding_plan_cost_usd: number
+  coding_plan_revenue_usd: number
   accounting_ok_request_count: number
   accounting_target_request_count: number
   wallet_user_count: number
   experience_user_count: number
   paid_subscription_user_count: number
+  coding_plan_user_count: number
   wallet_balance_usd?: number | null
   experience_balance_usd?: number | null
   paid_subscription_balance_usd?: number | null
+  coding_plan_balance_usd?: number | null
 }
 
 // Frontend-only row shape: a synthetic "Total" row is prepended to the table
@@ -66,7 +70,9 @@ export interface BillingSummaryResponse
   wallet_balance_usd?: number
   experience_balance_usd?: number
   paid_subscription_balance_usd?: number
+  coding_plan_balance_usd?: number
   wallet_user_count?: number
   experience_user_count?: number
   paid_subscription_user_count?: number
+  coding_plan_user_count?: number
 }

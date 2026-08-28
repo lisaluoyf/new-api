@@ -339,6 +339,7 @@ func migrateDB() error {
 		&BillingSubscriptionDailySnapshot{},
 		&BillingExperienceDailySnapshot{},
 		&BillingPaidSubscriptionDailySnapshot{},
+		&BillingCodingPlanDailySnapshot{},
 	)
 	if err != nil {
 		return err

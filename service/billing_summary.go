@@ -31,6 +31,7 @@ type billingUserCountTotals struct {
 	WalletUserCount           int64 `json:"wallet_user_count"`
 	ExperienceUserCount       int64 `json:"experience_user_count"`
 	PaidSubscriptionUserCount int64 `json:"paid_subscription_user_count"`
+	CodingPlanUserCount       int64 `json:"coding_plan_user_count"`
 }
 
 func billingSummaryEffectiveEndTimestamp(endTimestamp int64) int64 {
@@ -86,6 +87,9 @@ func runBillingSummaryOnce() {
 	if _, err := model.UpsertBillingPaidSubscriptionDailySnapshot(billingDayStart(now), now); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: paid subscription snapshot failed: %v", err))
 	}
+	if _, err := model.UpsertBillingCodingPlanDailySnapshot(billingDayStart(now), now); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: coding plan snapshot failed: %v", err))
+	}
 	// Floor to the hour: the upsert overwrites whole (hour, model, channel)
 	// buckets, so the window boundary must sit exactly on a bucket edge. A
 	// mid-hour boundary re-aggregates the straddled bucket from only part of
@@ -103,8 +107,10 @@ func runBillingSummaryOnce() {
 		         SUM(CASE WHEN accounting_status = 'ok' THEN CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE accounting_user_final_amount_usd END ELSE 0 END) as revenue_usd,
 		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as subscription_cost_usd,
 		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as subscription_billing_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' AND (other LIKE '%"subscription_type":"gpt_subscription"%' OR other LIKE '%"subscription_type":"coding_plan"%') THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' AND (other LIKE '%"subscription_type":"gpt_subscription"%' OR other LIKE '%"subscription_type":"coding_plan"%') THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
+		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"gpt_subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
+		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"gpt_subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
+		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"coding_plan"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as coding_plan_cost_usd,
+		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"coding_plan"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as coding_plan_revenue_usd,
 		         SUM(CASE WHEN accounting_status = 'ok' THEN 1 ELSE 0 END) as request_count`).
 		Where("type = ? AND quota > 0 AND accounting_status <> '' AND created_at >= ?", model.LogTypeConsume, since).
 		Group(hourExpr + ", model_name, channel_id").
@@ -199,6 +205,10 @@ func GetBillingDaily(startTimestamp, endTimestamp int64, modelName string, chann
 	if err != nil {
 		return nil, err
 	}
+	codingPlanSnapshots, err := model.GetBillingCodingPlanDailySnapshots(startTimestamp, endTimestamp)
+	if err != nil {
+		return nil, err
+	}
 	paidSubscriptionAccruals, err := model.GetBillingPaidSubscriptionDailyAccrualsAt(startTimestamp, endTimestamp, billingSummaryNow().Unix())
 	if err != nil {
 		return nil, err
@@ -213,14 +223,21 @@ func GetBillingDaily(startTimestamp, endTimestamp int64, modelName string, chann
 			balanceCopy := balance
 			rows[i].PaidSubscriptionBalanceUSD = &balanceCopy
 		}
+		if balance, ok := codingPlanSnapshots[rows[i].Day]; ok {
+			balanceCopy := balance
+			rows[i].CodingPlanBalanceUSD = &balanceCopy
+		}
 		if rows[i].ExperienceBalanceUSD == nil {
 			if legacyBalance, ok := legacySubscriptionSnapshots[rows[i].Day]; ok {
 				derivedExperience := legacyBalance
 				if paidBalance, hasPaid := paidSubscriptionSnapshots[rows[i].Day]; hasPaid {
 					derivedExperience -= paidBalance
-					if derivedExperience < 0 {
-						derivedExperience = 0
-					}
+				}
+				if codingBalance, hasCoding := codingPlanSnapshots[rows[i].Day]; hasCoding {
+					derivedExperience -= codingBalance
+				}
+				if derivedExperience < 0 {
+					derivedExperience = 0
 				}
 				balanceCopy := derivedExperience
 				rows[i].ExperienceBalanceUSD = &balanceCopy
@@ -240,6 +257,7 @@ func GetBillingUserCountsTotal(startTimestamp, endTimestamp int64, modelName str
 		WalletUserCount:           totals.WalletUserCount,
 		ExperienceUserCount:       totals.ExperienceUserCount,
 		PaidSubscriptionUserCount: totals.PaidSubscriptionUserCount,
+		CodingPlanUserCount:       totals.CodingPlanUserCount,
 	}, nil
 }
 

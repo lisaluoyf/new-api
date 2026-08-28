@@ -4640,5 +4640,7 @@
   "User Balance": "Saldo pengguna",
   "No active subscription": "Tidak ada langganan aktif",
   "Not claimed": "Belum diklaim",
-  "Days left with date": "Sisa {{days}} hari ({{date}})"
+  "Days left with date": "Sisa {{days}} hari ({{date}})",
+  "Coding Plan Users": "Coding Plan Users",
+  "Coding Plan Balance": "Coding Plan Balance"
 }

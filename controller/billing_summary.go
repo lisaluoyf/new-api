@@ -46,14 +46,21 @@ func GetBillingSummary(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
+	codingPlanBalanceUSD, err := model.GetNonAdminCodingPlanBalanceUSD()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success":                       true,
 		"data":                          rows,
 		"wallet_balance_usd":            walletBalanceUSD,
 		"experience_balance_usd":        experienceBalanceUSD,
 		"paid_subscription_balance_usd": paidSubscriptionBalanceUSD,
+		"coding_plan_balance_usd":       codingPlanBalanceUSD,
 		"wallet_user_count":             userCounts.WalletUserCount,
 		"experience_user_count":         userCounts.ExperienceUserCount,
 		"paid_subscription_user_count":  userCounts.PaidSubscriptionUserCount,
+		"coding_plan_user_count":        userCounts.CodingPlanUserCount,
 	})
 }

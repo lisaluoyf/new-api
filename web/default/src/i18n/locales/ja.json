@@ -4640,5 +4640,7 @@
   "User Balance": "ユーザー残高",
   "No active subscription": "有効なサブスクリプションはありません",
   "Not claimed": "未受取",
-  "Days left with date": "残り {{days}} 日 ({{date}})"
+  "Days left with date": "残り {{days}} 日 ({{date}})",
+  "Coding Plan Users": "Coding Plan Users",
+  "Coding Plan Balance": "Coding Plan Balance"
 }

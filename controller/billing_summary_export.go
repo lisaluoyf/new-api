@@ -35,10 +35,14 @@ type billingSummaryExportRow struct {
 	PaidSubscriptionCostUSD      float64  `json:"paid_subscription_cost_usd"`
 	PaidSubscriptionRevenueUSD   float64  `json:"paid_subscription_revenue_usd"`
 	PaidSubscriptionUserCount    int64    `json:"paid_subscription_user_count"`
+	CodingPlanCostUSD            float64  `json:"coding_plan_cost_usd"`
+	CodingPlanRevenueUSD         float64  `json:"coding_plan_revenue_usd"`
+	CodingPlanUserCount          int64    `json:"coding_plan_user_count"`
 	ExperienceUserCount          int64    `json:"experience_user_count"`
 	WalletBalanceUSD             *float64 `json:"wallet_balance_usd"`
 	ExperienceBalanceUSD         *float64 `json:"experience_balance_usd"`
 	PaidSubscriptionBalanceUSD   *float64 `json:"paid_subscription_balance_usd"`
+	CodingPlanBalanceUSD         *float64 `json:"coding_plan_balance_usd"`
 	AccountingOKRequestCount     int64    `json:"accounting_ok_request_count"`
 	AccountingTargetRequestCount int64    `json:"accounting_target_request_count"`
 }
@@ -46,11 +50,11 @@ type billingSummaryExportRow struct {
 func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummaryExportRow {
 	exportRows := make([]billingSummaryExportRow, 0, len(rows))
 	for _, row := range rows {
-		walletCost := row.CostUSD - row.ExperienceCostUSD - row.PaidSubscriptionCostUSD
+		walletCost := row.CostUSD - row.ExperienceCostUSD - row.PaidSubscriptionCostUSD - row.CodingPlanCostUSD
 		if walletCost < 0 {
 			walletCost = 0
 		}
-		walletRevenue := row.RevenueUSD - row.ExperienceBillingUSD - row.PaidSubscriptionRevenueUSD
+		walletRevenue := row.RevenueUSD - row.ExperienceBillingUSD - row.PaidSubscriptionRevenueUSD - row.CodingPlanRevenueUSD
 		if walletRevenue < 0 {
 			walletRevenue = 0
 		}
@@ -77,10 +81,14 @@ func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummar
 			PaidSubscriptionCostUSD:      row.PaidSubscriptionCostUSD,
 			PaidSubscriptionRevenueUSD:   row.PaidSubscriptionRevenueUSD,
 			PaidSubscriptionUserCount:    row.PaidSubscriptionUserCount,
+			CodingPlanCostUSD:            row.CodingPlanCostUSD,
+			CodingPlanRevenueUSD:         row.CodingPlanRevenueUSD,
+			CodingPlanUserCount:          row.CodingPlanUserCount,
 			ExperienceUserCount:          row.ExperienceUserCount,
 			WalletBalanceUSD:             row.WalletBalanceUSD,
 			ExperienceBalanceUSD:         row.ExperienceBalanceUSD,
 			PaidSubscriptionBalanceUSD:   row.PaidSubscriptionBalanceUSD,
+			CodingPlanBalanceUSD:         row.CodingPlanBalanceUSD,
 			AccountingOKRequestCount:     row.AccountingOKRequestCount,
 			AccountingTargetRequestCount: row.AccountingTargetReqCount,
 		})
@@ -155,6 +163,11 @@ func BillingSummaryExport(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
 	}
+	codingPlanBalanceUSD, err := model.GetNonAdminCodingPlanBalanceUSD()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -165,9 +178,11 @@ func BillingSummaryExport(c *gin.Context) {
 			"wallet_balance_usd":            walletBalanceUSD,
 			"experience_balance_usd":        experienceBalanceUSD,
 			"paid_subscription_balance_usd": paidSubscriptionBalanceUSD,
+			"coding_plan_balance_usd":       codingPlanBalanceUSD,
 			"wallet_user_count":             userCounts.WalletUserCount,
 			"experience_user_count":         userCounts.ExperienceUserCount,
 			"paid_subscription_user_count":  userCounts.PaidSubscriptionUserCount,
+			"coding_plan_user_count":        userCounts.CodingPlanUserCount,
 			"rows":                          buildBillingSummaryExportRows(rows),
 		},
 	})

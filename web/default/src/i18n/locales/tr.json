@@ -4606,5 +4606,7 @@
   "User Balance": "Kullanıcı Bakiyesi",
   "No active subscription": "Aktif abonelik yok",
   "Not claimed": "Talep edilmedi",
-  "Days left with date": "{{days}} gün kaldı ({{date}})"
+  "Days left with date": "{{days}} gün kaldı ({{date}})",
+  "Coding Plan Users": "Coding Plan Users",
+  "Coding Plan Balance": "Coding Plan Balance"
 }

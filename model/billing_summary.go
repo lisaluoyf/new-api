@@ -19,12 +19,14 @@ type BillingHourlySummary struct {
 	HourBucket                 int64   `json:"hour_bucket" gorm:"uniqueIndex:idx_bill_hour_model_ch;index;not null"` // unix seconds, floored to the hour
 	ModelName                  string  `json:"model_name" gorm:"size:256;uniqueIndex:idx_bill_hour_model_ch;default:''"`
 	ChannelId                  int     `json:"channel_id" gorm:"uniqueIndex:idx_bill_hour_model_ch;default:0"`
-	CostUSD                    float64 `json:"cost_usd" gorm:"type:decimal(20,10);default:0"`                 // SUM(accounting_channel_cost_amount_usd)
-	RevenueUSD                 float64 `json:"revenue_usd" gorm:"type:decimal(20,10);default:0"`              // SUM(accounting_user_final_amount_usd) + subscription official billing
-	SubscriptionCostUSD        float64 `json:"subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`    // SUM(accounting_channel_cost_amount_usd) for all subscription traffic
-	SubscriptionBillingUSD     float64 `json:"subscription_billing_usd" gorm:"type:decimal(20,10);default:0"` // SUM(subscription official price, quota / QuotaPerUnit) for all subscription traffic
-	PaidSubscriptionCostUSD    float64 `json:"paid_subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`
-	PaidSubscriptionRevenueUSD float64 `json:"paid_subscription_revenue_usd" gorm:"type:decimal(20,10);default:0"`
+	CostUSD                    float64 `json:"cost_usd" gorm:"type:decimal(20,10);default:0"`                      // SUM(accounting_channel_cost_amount_usd)
+	RevenueUSD                 float64 `json:"revenue_usd" gorm:"type:decimal(20,10);default:0"`                   // SUM(accounting_user_final_amount_usd) + subscription official billing
+	SubscriptionCostUSD        float64 `json:"subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`         // SUM(accounting_channel_cost_amount_usd) for all subscription traffic
+	SubscriptionBillingUSD     float64 `json:"subscription_billing_usd" gorm:"type:decimal(20,10);default:0"`      // SUM(subscription official price, quota / QuotaPerUnit) for all subscription traffic
+	PaidSubscriptionCostUSD    float64 `json:"paid_subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`    // GPT subscription only
+	PaidSubscriptionRevenueUSD float64 `json:"paid_subscription_revenue_usd" gorm:"type:decimal(20,10);default:0"` // GPT subscription only
+	CodingPlanCostUSD          float64 `json:"coding_plan_cost_usd" gorm:"type:decimal(20,10);default:0"`
+	CodingPlanRevenueUSD       float64 `json:"coding_plan_revenue_usd" gorm:"type:decimal(20,10);default:0"`
 	RequestCount               int64   `json:"request_count" gorm:"default:0"`
 	UpdatedAt                  int64   `json:"updated_at"`
 }
@@ -65,6 +67,14 @@ type BillingPaidSubscriptionDailySnapshot struct {
 	SnapshotAt                 int64   `json:"snapshot_at" gorm:"not null"`
 }
 
+// BillingCodingPlanDailySnapshot stores the latest non-admin coding plan
+// balance seen for each Beijing calendar day.
+type BillingCodingPlanDailySnapshot struct {
+	Day                  int64   `json:"day" gorm:"primaryKey;not null"`
+	CodingPlanBalanceUSD float64 `json:"coding_plan_balance_usd" gorm:"type:decimal(20,6);default:0"`
+	SnapshotAt           int64   `json:"snapshot_at" gorm:"not null"`
+}
+
 // UpsertBillingHourlySummaries writes/merges rows keyed by (hour_bucket, model_name, channel_id).
 func UpsertBillingHourlySummaries(rows []BillingHourlySummary) error {
 	if len(rows) == 0 {
@@ -73,7 +83,7 @@ func UpsertBillingHourlySummaries(rows []BillingHourlySummary) error {
 	return LOG_DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "hour_bucket"}, {Name: "model_name"}, {Name: "channel_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"cost_usd", "revenue_usd", "subscription_cost_usd", "subscription_billing_usd", "paid_subscription_cost_usd", "paid_subscription_revenue_usd", "request_count", "updated_at",
+			"cost_usd", "revenue_usd", "subscription_cost_usd", "subscription_billing_usd", "paid_subscription_cost_usd", "paid_subscription_revenue_usd", "coding_plan_cost_usd", "coding_plan_revenue_usd", "request_count", "updated_at",
 		}),
 	}).Create(&rows).Error
 }
@@ -88,14 +98,18 @@ type BillingDailyRow struct {
 	ExperienceBillingUSD       float64  `json:"experience_billing_usd" gorm:"column:experience_billing_usd"`
 	PaidSubscriptionCostUSD    float64  `json:"paid_subscription_cost_usd" gorm:"column:paid_subscription_cost_usd"`
 	PaidSubscriptionRevenueUSD float64  `json:"paid_subscription_revenue_usd" gorm:"column:paid_subscription_revenue_usd"`
+	CodingPlanCostUSD          float64  `json:"coding_plan_cost_usd" gorm:"column:coding_plan_cost_usd"`
+	CodingPlanRevenueUSD       float64  `json:"coding_plan_revenue_usd" gorm:"column:coding_plan_revenue_usd"`
 	AccountingOKRequestCount   int64    `json:"accounting_ok_request_count" gorm:"column:accounting_ok_request_count"`
 	AccountingTargetReqCount   int64    `json:"accounting_target_request_count" gorm:"column:accounting_target_request_count"`
 	WalletUserCount            int64    `json:"wallet_user_count" gorm:"-"`
 	ExperienceUserCount        int64    `json:"experience_user_count" gorm:"-"`
 	PaidSubscriptionUserCount  int64    `json:"paid_subscription_user_count" gorm:"-"`
+	CodingPlanUserCount        int64    `json:"coding_plan_user_count" gorm:"-"`
 	WalletBalanceUSD           *float64 `json:"wallet_balance_usd,omitempty" gorm:"-"`
 	ExperienceBalanceUSD       *float64 `json:"experience_balance_usd,omitempty" gorm:"-"`
 	PaidSubscriptionBalanceUSD *float64 `json:"paid_subscription_balance_usd,omitempty" gorm:"-"`
+	CodingPlanBalanceUSD       *float64 `json:"coding_plan_balance_usd,omitempty" gorm:"-"`
 }
 
 type billingDailyCountRow struct {
@@ -108,12 +122,14 @@ type billingDailyUserCountRow struct {
 	WalletUserCount           int64 `gorm:"column:wallet_user_count"`
 	ExperienceUserCount       int64 `gorm:"column:experience_user_count"`
 	PaidSubscriptionUserCount int64 `gorm:"column:paid_subscription_user_count"`
+	CodingPlanUserCount       int64 `gorm:"column:coding_plan_user_count"`
 }
 
 type billingUserCountTotals struct {
 	WalletUserCount           int64 `json:"wallet_user_count"`
 	ExperienceUserCount       int64 `json:"experience_user_count"`
 	PaidSubscriptionUserCount int64 `json:"paid_subscription_user_count"`
+	CodingPlanUserCount       int64 `json:"coding_plan_user_count"`
 }
 
 type BillingPaidSubscriptionDailyAccrual struct {
@@ -153,8 +169,16 @@ func billingExperienceSubscriptionCondition() string {
 	return `(COALESCE(other, '') LIKE '%"subscription_type":"gpt_trial"%' OR COALESCE(other, '') LIKE '%"subscription_type":"gpt_referral_reward"%')`
 }
 
+func billingGPTSubscriptionCondition() string {
+	return `(COALESCE(other, '') LIKE '%"subscription_type":"gpt_subscription"%')`
+}
+
+func billingCodingPlanCondition() string {
+	return `(COALESCE(other, '') LIKE '%"subscription_type":"coding_plan"%')`
+}
+
 func billingPaidSubscriptionCondition() string {
-	return `(COALESCE(other, '') LIKE '%"subscription_type":"gpt_subscription"%' OR COALESCE(other, '') LIKE '%"subscription_type":"coding_plan"%')`
+	return `(` + billingGPTSubscriptionCondition() + ` OR ` + billingCodingPlanCondition() + `)`
 }
 
 func billingWalletCondition() string {
@@ -180,7 +204,7 @@ func paidSubscriptionAccrualQueryAt(startTimestamp, endTimestamp, asOfTimestamp 
 		Joins("JOIN users ON users.id = user_subscriptions.user_id AND users.deleted_at IS NULL").
 		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
 		Where("users.role < ?", common.RoleAdminUser).
-		Where("subscription_plans.plan_type IN ?", []string{SubscriptionPlanTypeGPTSubscription, SubscriptionPlanTypeCodingPlan}).
+		Where("subscription_plans.plan_type = ?", SubscriptionPlanTypeGPTSubscription).
 		Where("user_subscriptions.status <> ?", "cancelled").
 		Where("user_subscriptions.end_time > user_subscriptions.start_time")
 	if startTimestamp != 0 {
@@ -309,10 +333,12 @@ func GetBillingDailyFromSummary(startTimestamp, endTimestamp int64, modelName st
 		Select(dayExpr + ` as day,
 			SUM(cost_usd) as cost_usd,
 			SUM(revenue_usd) as revenue_usd,
-			COALESCE(SUM(subscription_cost_usd), 0) - COALESCE(SUM(paid_subscription_cost_usd), 0) as experience_cost_usd,
-			COALESCE(SUM(subscription_billing_usd), 0) - COALESCE(SUM(paid_subscription_revenue_usd), 0) as experience_billing_usd,
+			COALESCE(SUM(subscription_cost_usd), 0) - COALESCE(SUM(paid_subscription_cost_usd), 0) - COALESCE(SUM(coding_plan_cost_usd), 0) as experience_cost_usd,
+			COALESCE(SUM(subscription_billing_usd), 0) - COALESCE(SUM(paid_subscription_revenue_usd), 0) - COALESCE(SUM(coding_plan_revenue_usd), 0) as experience_billing_usd,
 			COALESCE(SUM(paid_subscription_cost_usd), 0) as paid_subscription_cost_usd,
 			COALESCE(SUM(paid_subscription_revenue_usd), 0) as paid_subscription_revenue_usd,
+			COALESCE(SUM(coding_plan_cost_usd), 0) as coding_plan_cost_usd,
+			COALESCE(SUM(coding_plan_revenue_usd), 0) as coding_plan_revenue_usd,
 			SUM(request_count) as accounting_ok_request_count`)
 	if startTimestamp != 0 {
 		tx = tx.Where("hour_bucket >= ?", startTimestamp)
@@ -359,8 +385,10 @@ func GetBillingDailyFromRawLogs(startTimestamp, endTimestamp int64, modelName st
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE accounting_user_final_amount_usd END ELSE 0 END) as revenue_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingExperienceSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as experience_cost_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingExperienceSubscriptionCondition()+` THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as experience_billing_usd,
-			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingPaidSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
-			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingPaidSubscriptionCondition()+` THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingGPTSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingGPTSubscriptionCondition()+` THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingCodingPlanCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as coding_plan_cost_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingCodingPlanCondition()+` THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as coding_plan_revenue_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN 1 ELSE 0 END) as accounting_ok_request_count,
 			SUM(`+billingTargetRequestCountExpr()+`) as accounting_target_request_count`).
 		Where("type = ?", LogTypeConsume)
@@ -492,7 +520,8 @@ func getBillingDailyUserCounts(startTimestamp, endTimestamp int64, modelName str
 		Select(dayExpr + ` as day,
 			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingWalletCondition() + ` THEN user_id ELSE NULL END) as wallet_user_count,
 			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count,
-			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingPaidSubscriptionCondition() + ` THEN user_id ELSE NULL END) as paid_subscription_user_count`).
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingGPTSubscriptionCondition() + ` THEN user_id ELSE NULL END) as paid_subscription_user_count,
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingCodingPlanCondition() + ` THEN user_id ELSE NULL END) as coding_plan_user_count`).
 		Group(dayExpr).
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -515,6 +544,7 @@ func mergeBillingDailyUserCounts(rows *[]BillingDailyRow, counts map[int64]billi
 			row.WalletUserCount = count.WalletUserCount
 			row.ExperienceUserCount = count.ExperienceUserCount
 			row.PaidSubscriptionUserCount = count.PaidSubscriptionUserCount
+			row.CodingPlanUserCount = count.CodingPlanUserCount
 		}
 		byDay[row.Day] = row
 	}
@@ -527,6 +557,7 @@ func mergeBillingDailyUserCounts(rows *[]BillingDailyRow, counts map[int64]billi
 			WalletUserCount:           count.WalletUserCount,
 			ExperienceUserCount:       count.ExperienceUserCount,
 			PaidSubscriptionUserCount: count.PaidSubscriptionUserCount,
+			CodingPlanUserCount:       count.CodingPlanUserCount,
 		})
 	}
 	sort.Slice(*rows, func(i, j int) bool {
@@ -546,7 +577,8 @@ func GetBillingUserCountsTotalAt(startTimestamp, endTimestamp int64, modelName s
 	var totals billingUserCountTotals
 	if err := tx.
 		Select(`COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingWalletCondition() + ` THEN user_id ELSE NULL END) as wallet_user_count,
-			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count`).
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count,
+			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingCodingPlanCondition() + ` THEN user_id ELSE NULL END) as coding_plan_user_count`).
 		Scan(&totals).Error; err != nil {
 		return billingUserCountTotals{}, err
 	}
@@ -728,7 +760,39 @@ func GetNonAdminPaidSubscriptionBalanceUSDAt(at int64) (float64, error) {
 		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
 		Where("users.role < ?", common.RoleAdminUser).
 		Where("user_subscriptions.status = ? AND user_subscriptions.end_time > ?", "active", at).
-		Where("subscription_plans.plan_type IN ?", []string{SubscriptionPlanTypeGPTSubscription, SubscriptionPlanTypeCodingPlan}).
+		Where("subscription_plans.plan_type = ?", SubscriptionPlanTypeGPTSubscription).
+		Scan(&rows).Error
+	if err != nil {
+		return 0, err
+	}
+	var total float64
+	for _, row := range rows {
+		total += paidSubscriptionBalanceUSDAt(row, at)
+	}
+	return total, nil
+}
+
+func GetNonAdminCodingPlanBalanceUSD() (float64, error) {
+	return GetNonAdminCodingPlanBalanceUSDAt(common.GetTimestamp())
+}
+
+func GetNonAdminCodingPlanBalanceUSDAt(at int64) (float64, error) {
+	var rows []paidSubscriptionBalanceRow
+	err := DB.Table("user_subscriptions").
+		Select(`user_subscriptions.price_amount_snapshot,
+			user_subscriptions.paid_amount_snapshot,
+			user_subscriptions.amount_total,
+			user_subscriptions.amount_used,
+			user_subscriptions.duration_seconds_snapshot,
+			user_subscriptions.start_time,
+			user_subscriptions.end_time,
+			subscription_plans.price_amount as plan_price_amount,
+			subscription_plans.plan_type`).
+		Joins("JOIN users ON users.id = user_subscriptions.user_id AND users.deleted_at IS NULL").
+		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
+		Where("users.role < ?", common.RoleAdminUser).
+		Where("user_subscriptions.status = ? AND user_subscriptions.end_time > ?", "active", at).
+		Where("subscription_plans.plan_type = ?", SubscriptionPlanTypeCodingPlan).
 		Scan(&rows).Error
 	if err != nil {
 		return 0, err
@@ -816,6 +880,25 @@ func UpsertBillingPaidSubscriptionDailySnapshot(day, snapshotAt int64) (float64,
 	return balanceUSD, err
 }
 
+func UpsertBillingCodingPlanDailySnapshot(day, snapshotAt int64) (float64, error) {
+	balanceUSD, err := GetNonAdminCodingPlanBalanceUSDAt(snapshotAt)
+	if err != nil {
+		return 0, err
+	}
+	row := BillingCodingPlanDailySnapshot{
+		Day:                  day,
+		CodingPlanBalanceUSD: balanceUSD,
+		SnapshotAt:           snapshotAt,
+	}
+	err = DB.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "day"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"coding_plan_balance_usd", "snapshot_at",
+		}),
+	}).Create(&row).Error
+	return balanceUSD, err
+}
+
 func GetBillingWalletDailySnapshots(startTimestamp, endTimestamp int64) (map[int64]float64, error) {
 	tx := DB.Model(&BillingWalletDailySnapshot{})
 	if startTimestamp != 0 {
@@ -888,6 +971,25 @@ func GetBillingPaidSubscriptionDailySnapshots(startTimestamp, endTimestamp int64
 	result := make(map[int64]float64, len(rows))
 	for _, row := range rows {
 		result[row.Day] = row.PaidSubscriptionBalanceUSD
+	}
+	return result, nil
+}
+
+func GetBillingCodingPlanDailySnapshots(startTimestamp, endTimestamp int64) (map[int64]float64, error) {
+	tx := DB.Model(&BillingCodingPlanDailySnapshot{})
+	if startTimestamp != 0 {
+		tx = tx.Where("day >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("day <= ?", endTimestamp)
+	}
+	var rows []BillingCodingPlanDailySnapshot
+	if err := tx.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[int64]float64, len(rows))
+	for _, row := range rows {
+		result[row.Day] = row.CodingPlanBalanceUSD
 	}
 	return result, nil
 }

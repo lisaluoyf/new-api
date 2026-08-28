@@ -4640,5 +4640,7 @@
   "User Balance": "Saldo de usuarios",
   "No active subscription": "No hay suscripción activa",
   "Not claimed": "No reclamado",
-  "Days left with date": "Quedan {{days}} días ({{date}})"
+  "Days left with date": "Quedan {{days}} días ({{date}})",
+  "Coding Plan Users": "Coding Plan Users",
+  "Coding Plan Balance": "Coding Plan Balance"
 }

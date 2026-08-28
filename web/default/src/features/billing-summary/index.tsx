@@ -53,6 +53,10 @@ export function BillingSummaryPage() {
     data?.success && data.paid_subscription_balance_usd != null
       ? Number(data.paid_subscription_balance_usd)
       : null
+  const codingPlanBalanceUSD =
+    data?.success && data.coding_plan_balance_usd != null
+      ? Number(data.coding_plan_balance_usd)
+      : null
   const walletUserCount =
     data?.success && data.wallet_user_count != null
       ? Number(data.wallet_user_count)
@@ -64,6 +68,10 @@ export function BillingSummaryPage() {
   const paidSubscriptionUserCount =
     data?.success && data.paid_subscription_user_count != null
       ? Number(data.paid_subscription_user_count)
+      : 0
+  const codingPlanUserCount =
+    data?.success && data.coding_plan_user_count != null
+      ? Number(data.coding_plan_user_count)
       : 0
 
   // Prepend a synthetic "Total" row so the summed cost/revenue/profit/margin
@@ -81,6 +89,10 @@ export function BillingSummaryPage() {
           acc.paid_subscription_cost_usd + row.paid_subscription_cost_usd,
         paid_subscription_revenue_usd:
           acc.paid_subscription_revenue_usd + row.paid_subscription_revenue_usd,
+        coding_plan_cost_usd:
+          acc.coding_plan_cost_usd + row.coding_plan_cost_usd,
+        coding_plan_revenue_usd:
+          acc.coding_plan_revenue_usd + row.coding_plan_revenue_usd,
         accounting_ok_request_count:
           acc.accounting_ok_request_count + row.accounting_ok_request_count,
         accounting_target_request_count:
@@ -94,6 +106,8 @@ export function BillingSummaryPage() {
         experience_billing_usd: 0,
         paid_subscription_cost_usd: 0,
         paid_subscription_revenue_usd: 0,
+        coding_plan_cost_usd: 0,
+        coding_plan_revenue_usd: 0,
         accounting_ok_request_count: 0,
         accounting_target_request_count: 0,
       }
@@ -105,9 +119,11 @@ export function BillingSummaryPage() {
         wallet_user_count: walletUserCount,
         experience_user_count: experienceUserCount,
         paid_subscription_user_count: paidSubscriptionUserCount,
+        coding_plan_user_count: codingPlanUserCount,
         wallet_balance_usd: walletBalanceUSD,
         experience_balance_usd: experienceBalanceUSD,
         paid_subscription_balance_usd: paidSubscriptionBalanceUSD,
+        coding_plan_balance_usd: codingPlanBalanceUSD,
         isTotal: true,
       },
       ...rows,
@@ -117,9 +133,11 @@ export function BillingSummaryPage() {
     walletUserCount,
     experienceUserCount,
     paidSubscriptionUserCount,
+    codingPlanUserCount,
     walletBalanceUSD,
     experienceBalanceUSD,
     paidSubscriptionBalanceUSD,
+    codingPlanBalanceUSD,
   ])
 
   const columns = useMemo(() => buildBillingSummaryColumns(t), [t])
