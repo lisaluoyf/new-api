@@ -178,6 +178,9 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	if relayInfo.UserSetting.BillingPreference != "" {
 		other["billing_preference"] = relayInfo.UserSetting.BillingPreference
 	}
+	if relayInfo.CodingPlanUnavailableReason != "" {
+		other["coding_plan_fallback_reason"] = relayInfo.CodingPlanUnavailableReason
+	}
 	if relayInfo.BillingSource == "subscription" {
 		if relayInfo.SubscriptionId != 0 {
 			other["subscription_id"] = relayInfo.SubscriptionId
@@ -237,6 +240,13 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 			other["subscription_7d_limit"] = relayInfo.SubscriptionSevenDayLimit
 			other["subscription_7d_used"] = sevenUsed
 			other["subscription_7d_remain"] = max(int64(0), relayInfo.SubscriptionSevenDayLimit-sevenUsed)
+		}
+		if relayInfo.SubscriptionPlanType == model.SubscriptionPlanTypeCodingPlan {
+			other["coding_plan_multiplier"] = relayInfo.CodingPlanMultiplier
+			other["coding_official_input_price"] = relayInfo.CodingOfficialInputPrice
+			other["coding_official_output_price"] = relayInfo.CodingOfficialOutputPrice
+			other["coding_official_cache_read_price"] = relayInfo.CodingOfficialCacheReadPrice
+			other["coding_official_cache_write_price"] = relayInfo.CodingOfficialCacheWritePrice
 		}
 		// Wallet quota is not deducted when billed from subscription.
 		other["wallet_quota_deducted"] = 0

@@ -911,7 +911,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	trySubscription := func(requiredPlanMatcher model.SubscriptionPlanMatcher, excludedPlanMatcher model.SubscriptionPlanMatcher, quota int, promotionalPriceSource string) (*BillingSession, *types.NewAPIError) {
 		if promotionalPriceSource != "" {
-			if !relayInfo.ActivateGPTPromotionalPriceData(promotionalPriceSource) {
+			if promotionalPriceSource == model.SubscriptionPlanTypeCodingPlan {
+				if !relayInfo.ActivateCodingPriceData() {
+					return nil, types.NewError(fmt.Errorf("Coding Plan price snapshot is missing"), types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry())
+				}
+			} else if !relayInfo.ActivateGPTPromotionalPriceData(promotionalPriceSource) {
 				return nil, types.NewError(fmt.Errorf("gpt trial price snapshot is missing"), types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry())
 			}
 		} else if !relayInfo.ActivateWalletPriceData() && relayInfo.PriceDataSource == "" {
@@ -941,7 +945,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	tryStandardSubscription := func() (*BillingSession, *types.NewAPIError) {
-		return trySubscription(nil, model.IsGPTSpecialSubscriptionPlan, preConsumedQuota, "")
+		return trySubscription(nil, model.IsSpecialSubscriptionPlan, preConsumedQuota, "")
 	}
 
 	tryGPTTrial := func() (*BillingSession, *types.NewAPIError) {
@@ -1008,6 +1012,22 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return session, nil
 	}
 
+	tryCodingPlan := func() (*BillingSession, *types.NewAPIError) {
+		if !relayInfo.HasActiveCodingPlan || relayInfo.CodingPriceData == nil {
+			return nil, nil
+		}
+		quota := relayInfo.CodingPriceData.QuotaToPreConsume
+		session, apiErr := trySubscription(model.IsCodingPlan, nil, quota, model.SubscriptionPlanTypeCodingPlan)
+		if apiErr != nil {
+			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+				relayInfo.ActivateWalletPriceData()
+				return nil, nil
+			}
+			return nil, apiErr
+		}
+		return session, nil
+	}
+
 	if session, apiErr := tryGPTTrial(); apiErr != nil {
 		return nil, apiErr
 	} else if session != nil {
@@ -1019,6 +1039,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return session, nil
 	}
 	if session, apiErr := tryGPTPaidSubscription(); apiErr != nil {
+		return nil, apiErr
+	} else if session != nil {
+		return session, nil
+	}
+	if session, apiErr := tryCodingPlan(); apiErr != nil {
 		return nil, apiErr
 	} else if session != nil {
 		return session, nil
@@ -1041,7 +1066,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	case "subscription_first":
 		fallthrough
 	default:
-		hasSub, subCheckErr := model.HasActiveUserSubscriptionExcludingPlanMatcher(relayInfo.UserId, model.IsGPTSpecialSubscriptionPlan)
+		hasSub, subCheckErr := model.HasActiveUserSubscriptionExcludingPlanMatcher(relayInfo.UserId, model.IsSpecialSubscriptionPlan)
 		if subCheckErr != nil {
 			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}

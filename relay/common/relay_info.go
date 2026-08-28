@@ -170,6 +170,15 @@ type RelayInfo struct {
 	// TrialPriceData stores the official-priced snapshot shared by GPT
 	// promotional subscriptions (limited trial and permanent referral rewards).
 	TrialPriceData *types.PriceData
+	// CodingPriceData stores the live official-price snapshot multiplied by
+	// the active Coding Plan model multiplier.
+	CodingPriceData               *types.PriceData
+	CodingPlanMultiplier          float64
+	CodingOfficialInputPrice      float64
+	CodingOfficialOutputPrice     float64
+	CodingOfficialCacheReadPrice  float64
+	CodingOfficialCacheWritePrice float64
+	CodingPlanUnavailableReason   string
 	// PriceDataSource tracks which snapshot is currently active on PriceData.
 	// "wallet" covers normal wallet/standard-subscription pricing, "gpt_trial"
 	// and "gpt_referral_reward" cover the GPT promotional official-price paths.
@@ -180,6 +189,7 @@ type RelayInfo struct {
 	// HasActiveGPTReferralReward caches the permanent referral-credit lookup.
 	HasActiveGPTReferralReward bool
 	HasActiveGPTSubscription   bool
+	HasActiveCodingPlan        bool
 	// GPTTrialChecked marks whether HasActiveGPTTrial was resolved for this
 	// request.
 	GPTTrialChecked bool
@@ -299,6 +309,17 @@ func (info *RelayInfo) SetTrialPriceData(priceData types.PriceData) {
 	}
 }
 
+func (info *RelayInfo) SetCodingPriceData(priceData types.PriceData) {
+	if info == nil {
+		return
+	}
+	priceCopy := priceData
+	info.CodingPriceData = &priceCopy
+	if info.PriceDataSource == "coding_plan" {
+		info.PriceData = priceData
+	}
+}
+
 func (info *RelayInfo) ActivateWalletPriceData() bool {
 	if info == nil || info.WalletPriceData == nil {
 		return false
@@ -323,6 +344,16 @@ func (info *RelayInfo) ActivateGPTPromotionalPriceData(source string) bool {
 	}
 	info.PriceDataSource = source
 	info.TieredBillingSnapshot = info.TrialTieredBillingSnapshot
+	return true
+}
+
+func (info *RelayInfo) ActivateCodingPriceData() bool {
+	if info == nil || info.CodingPriceData == nil {
+		return false
+	}
+	info.PriceData = *info.CodingPriceData
+	info.PriceDataSource = "coding_plan"
+	info.TieredBillingSnapshot = nil
 	return true
 }
 

@@ -59,3 +59,14 @@ func TestAppendChannelActualPriceUsesDeepSeekRequestStartTime(t *testing.T) {
 		})
 	}
 }
+
+func TestAppendBillingInfoIncludesCodingPlanWalletFallbackReason(t *testing.T) {
+	other := map[string]interface{}{}
+	appendBillingInfo(&relaycommon.RelayInfo{
+		BillingSource:               BillingSourceWallet,
+		CodingPlanUnavailableReason: "official cache write price is unavailable",
+	}, other)
+
+	require.Equal(t, BillingSourceWallet, other["billing_source"])
+	require.Equal(t, "official cache write price is unavailable", other["coding_plan_fallback_reason"])
+}

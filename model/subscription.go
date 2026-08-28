@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -39,6 +40,7 @@ const (
 	SubscriptionPlanTypeGPTTrial          = "gpt_trial"
 	SubscriptionPlanTypeGPTReferralReward = "gpt_referral_reward"
 	SubscriptionPlanTypeGPTSubscription   = "gpt_subscription"
+	SubscriptionPlanTypeCodingPlan        = "coding_plan"
 )
 
 var (
@@ -187,12 +189,14 @@ type SubscriptionPlan struct {
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
 
 	// GPT paid-subscription presentation and rolling official-price limits.
-	TierLevel       int    `json:"tier_level" gorm:"type:int;default:0;index"`
-	FiveHourAmount  int64  `json:"five_hour_amount" gorm:"type:bigint;not null;default:0"`
-	SevenDayAmount  int64  `json:"seven_day_amount" gorm:"type:bigint;not null;default:0"`
-	ModelAllowlist  string `json:"model_allowlist" gorm:"type:text"`
-	Recommended     bool   `json:"recommended" gorm:"default:false"`
-	CardDescription string `json:"card_description" gorm:"type:text"`
+	TierLevel               int     `json:"tier_level" gorm:"type:int;default:0;index"`
+	FiveHourAmount          int64   `json:"five_hour_amount" gorm:"type:bigint;not null;default:0"`
+	SevenDayAmount          int64   `json:"seven_day_amount" gorm:"type:bigint;not null;default:0"`
+	ModelAllowlist          string  `json:"model_allowlist" gorm:"type:text"`
+	Recommended             bool    `json:"recommended" gorm:"default:false"`
+	CardDescription         string  `json:"card_description" gorm:"type:text"`
+	CodingOfficialAmountUSD float64 `json:"coding_official_amount_usd" gorm:"type:decimal(10,6);not null;default:0"`
+	CodingModelMultipliers  string  `json:"coding_model_multipliers" gorm:"type:text"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
@@ -225,6 +229,8 @@ func NormalizeSubscriptionPlanType(value string) string {
 		return normalized
 	case SubscriptionPlanTypeGPTSubscription:
 		return normalized
+	case SubscriptionPlanTypeCodingPlan:
+		return normalized
 	default:
 		return SubscriptionPlanTypeNone
 	}
@@ -235,7 +241,99 @@ func IsSupportedSubscriptionPlanType(value string) bool {
 	return normalized == SubscriptionPlanTypeNone ||
 		normalized == SubscriptionPlanTypeStandard ||
 		normalized == SubscriptionPlanTypeGPTTrial ||
-		normalized == SubscriptionPlanTypeGPTSubscription
+		normalized == SubscriptionPlanTypeGPTSubscription ||
+		normalized == SubscriptionPlanTypeCodingPlan
+}
+
+func IsCodingPlan(plan *SubscriptionPlan) bool {
+	return plan != nil && NormalizeSubscriptionPlanType(plan.PlanType) == SubscriptionPlanTypeCodingPlan
+}
+
+// ParseCodingModelMultipliers validates admin JSON without silently rounding
+// values that have more than the supported three decimal places.
+func ParseCodingModelMultipliers(raw string) (map[string]float64, error) {
+	if strings.TrimSpace(raw) == "" {
+		return map[string]float64{}, nil
+	}
+	var input map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &input); err != nil {
+		return nil, fmt.Errorf("invalid coding model multipliers: %w", err)
+	}
+	result := make(map[string]float64, len(input))
+	for rawName, rawValue := range input {
+		name := strings.TrimSpace(rawName)
+		if name == "" {
+			return nil, errors.New("coding model name cannot be empty")
+		}
+		valueText := strings.TrimSpace(string(rawValue))
+		if len(valueText) > 1 && valueText[0] == '"' {
+			var decoded string
+			if err := json.Unmarshal(rawValue, &decoded); err != nil {
+				return nil, fmt.Errorf("invalid multiplier for %s", name)
+			}
+			valueText = strings.TrimSpace(decoded)
+		}
+		if valueText == "" || strings.ContainsAny(valueText, "eE") {
+			return nil, fmt.Errorf("invalid multiplier for %s", name)
+		}
+		parts := strings.Split(valueText, ".")
+		if len(parts) > 2 || (len(parts) == 2 && len(parts[1]) > 3) {
+			return nil, fmt.Errorf("multiplier for %s must have at most 3 decimals", name)
+		}
+		value, err := strconv.ParseFloat(valueText, 64)
+		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0.001 || value > 1 {
+			return nil, fmt.Errorf("multiplier for %s must be between 0.001 and 1.000", name)
+		}
+		key := strings.ToLower(name)
+		if _, exists := result[key]; exists {
+			return nil, fmt.Errorf("duplicate coding model: %s", name)
+		}
+		result[key] = math.Round(value*1000) / 1000
+	}
+	return result, nil
+}
+
+func CodingModelMultipliersJSON(raw string) (string, error) {
+	values, err := ParseCodingModelMultipliers(raw)
+	if err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(values)
+	return string(data), err
+}
+
+func ValidateCodingPlan(plan *SubscriptionPlan) error {
+	if !IsCodingPlan(plan) {
+		return nil
+	}
+	if plan.CodingOfficialAmountUSD <= 0 {
+		return errors.New("coding plan official amount must be greater than 0")
+	}
+	if plan.DurationUnit != SubscriptionDurationDay || plan.DurationValue != 30 {
+		return errors.New("coding plan duration must be exactly 30 days")
+	}
+	if plan.TotalAmount <= 0 {
+		return errors.New("coding plan total quota must be greater than 0")
+	}
+	_, err := ParseCodingModelMultipliers(plan.CodingModelMultipliers)
+	return err
+}
+
+func CodingPlanMultiplier(plan *SubscriptionPlan, modelName string) (float64, bool) {
+	if !IsCodingPlan(plan) {
+		return 0, false
+	}
+	values, err := ParseCodingModelMultipliers(plan.CodingModelMultipliers)
+	if err != nil {
+		return 0, false
+	}
+	value, ok := values[strings.ToLower(strings.TrimSpace(modelName))]
+	return value, ok
+}
+
+func IsCodingPlanModelAllowed(plan *SubscriptionPlan, modelName string) bool {
+	_, ok := CodingPlanMultiplier(plan, modelName)
+	return ok
 }
 
 func IsGPTReferralRewardSubscriptionPlan(plan *SubscriptionPlan) bool {
@@ -248,6 +346,10 @@ func IsGPTPaidSubscriptionPlan(plan *SubscriptionPlan) bool {
 
 func IsGPTSpecialSubscriptionPlan(plan *SubscriptionPlan) bool {
 	return IsGPTTrialSubscriptionPlan(plan) || IsGPTReferralRewardSubscriptionPlan(plan) || IsGPTPaidSubscriptionPlan(plan)
+}
+
+func IsSpecialSubscriptionPlan(plan *SubscriptionPlan) bool {
+	return IsGPTSpecialSubscriptionPlan(plan) || IsCodingPlan(plan)
 }
 
 func IsGPTPromotionalSubscriptionPlan(plan *SubscriptionPlan) bool {
@@ -326,6 +428,7 @@ type SubscriptionOrder struct {
 	ListPrice              float64 `json:"list_price" gorm:"type:decimal(10,6);not null;default:0"`
 	CreditAmount           float64 `json:"credit_amount" gorm:"type:decimal(10,6);not null;default:0"`
 	OrderType              string  `json:"order_type" gorm:"type:varchar(32);default:'purchase';index"`
+	ProductType            string  `json:"product_type" gorm:"type:varchar(32);default:'';index"`
 	PreviousSubscriptionId int     `json:"previous_subscription_id" gorm:"default:0;index"`
 	PreviousEndTime        int64   `json:"previous_end_time" gorm:"type:bigint;default:0"`
 	PreviousCycleId        int     `json:"previous_cycle_id" gorm:"default:0"`
@@ -391,6 +494,7 @@ type UserSubscription struct {
 	FiveHourAmount          int64   `json:"five_hour_amount" gorm:"type:bigint;not null;default:0"`
 	SevenDayAmount          int64   `json:"seven_day_amount" gorm:"type:bigint;not null;default:0"`
 	ModelAllowlistSnapshot  string  `json:"model_allowlist_snapshot" gorm:"type:text"`
+	PaidAmountSnapshot      float64 `json:"paid_amount_snapshot" gorm:"type:decimal(10,6);not null;default:0"`
 	CurrentCycleId          int     `json:"current_cycle_id" gorm:"default:0;index"`
 
 	LastResetTime int64 `json:"last_reset_time" gorm:"type:bigint;default:0"`
@@ -648,6 +752,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		PlanSubtitleSnapshot:    plan.Subtitle,
 		CardDescriptionSnapshot: plan.CardDescription,
 		PriceAmountSnapshot:     plan.PriceAmount,
+		PaidAmountSnapshot:      plan.PriceAmount,
 		DurationSecondsSnapshot: endUnix - now.Unix(),
 		TierLevelSnapshot:       plan.TierLevel,
 		FiveHourAmount:          plan.FiveHourAmount,
@@ -706,6 +811,8 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
 		if IsGPTPaidSubscriptionPlan(plan) {
 			_, err = completeGPTSubscriptionOrderTx(tx, &order, plan)
+		} else if IsCodingPlan(plan) {
+			_, err = completeCodingPlanOrderTx(tx, &order, plan)
 		} else {
 			_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
 		}
@@ -870,6 +977,24 @@ func ReverseSubscriptionOrder(tradeNo string, amount float64, reversalType strin
 		}
 		switch order.OrderType {
 		case "renewal":
+			if order.ProductType == SubscriptionPlanTypeCodingPlan {
+				if currentQuery.RowsAffected > 0 {
+					if err := tx.Model(&current).Updates(map[string]any{"status": "cancelled", "end_time": now, "updated_at": now}).Error; err != nil {
+						return err
+					}
+				}
+				if order.PreviousSubscriptionId > 0 {
+					status := "active"
+					if order.PreviousEndTime <= now {
+						status = "expired"
+					}
+					if err := tx.Model(&UserSubscription{}).Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).
+						Updates(map[string]any{"status": status, "end_time": order.PreviousEndTime, "current_cycle_id": order.PreviousCycleId, "updated_at": now}).Error; err != nil {
+						return err
+					}
+				}
+				break
+			}
 			if currentQuery.RowsAffected > 0 {
 				current.EndTime = order.PreviousEndTime
 				current.CurrentCycleId = order.PreviousCycleId
@@ -948,6 +1073,81 @@ func ReinstateSubscriptionOrder(tradeNo string, amount float64, providerPayload 
 		}
 
 		now := GetDBTimestampTx(tx)
+		if order.ProductType == SubscriptionPlanTypeCodingPlan {
+			var entitlement UserSubscription
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("user_id = ? AND current_cycle_id = ?", order.UserId, order.Id).
+				Order("id desc").First(&entitlement).Error; err != nil {
+				return err
+			}
+
+			allowedActiveIDs := map[int]struct{}{entitlement.Id: {}}
+			if order.PreviousSubscriptionId > 0 {
+				allowedActiveIDs[order.PreviousSubscriptionId] = struct{}{}
+			}
+			var activeSubscriptions []UserSubscription
+			if err := tx.Where("user_id = ? AND status = ? AND end_time > ?", order.UserId, "active", now).Find(&activeSubscriptions).Error; err != nil {
+				return err
+			}
+			for i := range activeSubscriptions {
+				if _, allowed := allowedActiveIDs[activeSubscriptions[i].Id]; allowed {
+					continue
+				}
+				plan, err := getSubscriptionPlanByIdTx(tx, activeSubscriptions[i].PlanId)
+				if err != nil {
+					return err
+				}
+				if IsCodingPlan(plan) {
+					return errors.New("another Coding Plan is active; manual reinstatement required")
+				}
+			}
+
+			restoredEnd := entitlement.StartTime + entitlement.DurationSecondsSnapshot
+			if entitlement.DurationSecondsSnapshot <= 0 {
+				plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
+				if err != nil {
+					return err
+				}
+				restoredEnd, err = calcPlanEndTime(time.Unix(entitlement.StartTime, 0), plan)
+				if err != nil {
+					return err
+				}
+			}
+			status := "active"
+			if restoredEnd <= now {
+				status = "expired"
+			}
+			entitlement.EndTime = restoredEnd
+			entitlement.Status = status
+			entitlement.CurrentCycleId = order.Id
+			if err := tx.Save(&entitlement).Error; err != nil {
+				return err
+			}
+
+			if order.PreviousSubscriptionId > 0 {
+				var previous UserSubscription
+				if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&previous).Error; err != nil {
+					return err
+				}
+				if previous.CurrentCycleId != order.PreviousCycleId {
+					return errors.New("Coding Plan changed after chargeback; manual reinstatement required")
+				}
+				if err := tx.Model(&previous).Updates(map[string]any{"status": "cancelled", "end_time": entitlement.StartTime, "updated_at": now}).Error; err != nil {
+					return err
+				}
+			}
+
+			order.Status = common.TopUpStatusSuccess
+			if err := tx.Save(&order).Error; err != nil {
+				return err
+			}
+			completeTime := order.CompleteTime
+			if completeTime <= 0 {
+				completeTime = now
+			}
+			return tx.Model(&TopUp{}).Where("trade_no = ?", tradeNo).
+				Updates(map[string]any{"status": common.TopUpStatusSuccess, "complete_time": completeTime}).Error
+		}
+
 		var entitlement UserSubscription
 		if order.OrderType == "renewal" {
 			if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&entitlement).Error; err != nil {
@@ -1678,6 +1878,9 @@ func preConsumeUserSubscription(
 				returnValue.SevenDayLimit = sevenLimit
 				returnValue.FiveHourUsedAfter = rollingInfo.FiveHourUsed + amount
 				returnValue.SevenDayUsedAfter = rollingInfo.SevenDayUsed + amount
+			}
+			if IsCodingPlan(plan) && !IsCodingPlanModelAllowed(plan, modelName) {
+				continue
 			}
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err

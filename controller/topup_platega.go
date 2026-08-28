@@ -154,7 +154,7 @@ func RequestPlategaPay(c *gin.Context) {
 	var terms subscriptionOrderTerms
 	payRub := 0.0
 	if req.PlanId > 0 {
-		plan, terms, err = resolveGPTSubscriptionPayment(id, req.PlanId)
+		plan, terms, err = resolvePaidSubscriptionPayment(id, req.PlanId)
 		if err != nil {
 			common.ApiErrorMsg(c, err.Error())
 			return
@@ -189,7 +189,7 @@ func RequestPlategaPay(c *gin.Context) {
 	normalizedAmount := normalizePlategaTopUpAmount(req.Amount)
 
 	if plan != nil {
-		order := newGPTSubscriptionOrder(id, plan, terms, tradeNo, model.PaymentMethodPlatega, model.PaymentProviderPlatega)
+		order := newPaidSubscriptionOrder(id, plan, terms, tradeNo, model.PaymentMethodPlatega, model.PaymentProviderPlatega)
 		if err := order.Insert(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Platega 创建订阅订单失败 user_id=%d trade_no=%s plan_id=%d error=%q", id, tradeNo, plan.Id, err.Error()))
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to create order"})
@@ -223,8 +223,8 @@ func RequestPlategaPay(c *gin.Context) {
 	failedURL := getPlategaFailedURL()
 	if plan != nil {
 		description = "APIMaster.ai GPT Pass subscription"
-		returnURL = freeModelPaymentURL("success")
-		failedURL = freeModelPaymentURL("cancelled")
+		returnURL = subscriptionPaymentURL(plan, "success")
+		failedURL = subscriptionPaymentURL(plan, "cancelled")
 	}
 
 	createReq := &service.PlategaCreateTransactionRequest{

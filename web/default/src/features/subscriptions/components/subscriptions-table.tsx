@@ -51,9 +51,10 @@ export function SubscriptionsTable({ planType }: { planType?: string }) {
   const plans = useMemo(
     () =>
       (data || []).filter((item) =>
-        planType === 'gpt_subscription'
-          ? item.plan.plan_type === 'gpt_subscription'
-          : item.plan.plan_type !== 'gpt_subscription'
+        planType === 'gpt_subscription' || planType === 'coding_plan'
+          ? item.plan.plan_type === planType
+          : item.plan.plan_type !== 'gpt_subscription' &&
+            item.plan.plan_type !== 'coding_plan'
       ),
     [data, planType]
   )

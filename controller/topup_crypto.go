@@ -45,6 +45,7 @@ const transferEventTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628
 const (
 	cryptoIntentPurposeWalletTopup     = "wallet_topup"
 	cryptoIntentPurposeGPTSubscription = "gpt_subscription"
+	cryptoIntentPurposeCodingPlan      = "coding_plan"
 )
 
 var cryptoChains = map[string]cryptoChainConfig{
@@ -555,7 +556,7 @@ func markCryptoIntentFailed(intentId string, err error) {
 		common.SysLog(fmt.Sprintf("crypto: reload failed intent=%s err=%v", intentId, loadErr))
 		return
 	}
-	if intent.Purpose == cryptoIntentPurposeGPTSubscription && strings.TrimSpace(intent.SubscriptionOrderTradeNo) != "" {
+	if (intent.Purpose == cryptoIntentPurposeGPTSubscription || intent.Purpose == cryptoIntentPurposeCodingPlan) && strings.TrimSpace(intent.SubscriptionOrderTradeNo) != "" {
 		if _, expireErr := tryExpireSubscriptionPayment(intent.SubscriptionOrderTradeNo, model.PaymentProviderCrypto); expireErr != nil {
 			common.SysLog(fmt.Sprintf("crypto: expire subscription order failed intent=%s tradeNo=%s err=%v", intent.Id, intent.SubscriptionOrderTradeNo, expireErr))
 		}
@@ -661,7 +662,7 @@ func verifyAndCredit(intentId string) {
 		return
 	}
 
-	if intent.Purpose == cryptoIntentPurposeGPTSubscription {
+	if intent.Purpose == cryptoIntentPurposeGPTSubscription || intent.Purpose == cryptoIntentPurposeCodingPlan {
 		if strings.TrimSpace(intent.SubscriptionOrderTradeNo) == "" || intent.ExpectedUsdAmount <= 0 {
 			markCryptoIntentFailed(intentId, fmt.Errorf("subscription payment metadata missing"))
 			return
@@ -867,7 +868,7 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 	var terms subscriptionOrderTerms
 	if req.PlanId > 0 {
 		var err error
-		plan, terms, err = resolveGPTSubscriptionPayment(userId, req.PlanId)
+		plan, terms, err = resolvePaidSubscriptionPayment(userId, req.PlanId)
 		if err != nil {
 			common.ApiErrorMsg(c, err.Error())
 			return
@@ -888,6 +889,9 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 	}
 	if plan != nil {
 		intent.Purpose = cryptoIntentPurposeGPTSubscription
+		if model.IsCodingPlan(plan) {
+			intent.Purpose = cryptoIntentPurposeCodingPlan
+		}
 		intent.ExpectedUsdAmount = terms.Payable
 		intent.SubscriptionOrderTradeNo = fmt.Sprintf("CRYPTO-SUB:%s", intent.Id)
 	}
@@ -895,7 +899,7 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
 		if plan != nil {
-			order := newGPTSubscriptionOrder(
+			order := newPaidSubscriptionOrder(
 				userId,
 				plan,
 				terms,

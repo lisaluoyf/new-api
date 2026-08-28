@@ -154,7 +154,7 @@ func billingExperienceSubscriptionCondition() string {
 }
 
 func billingPaidSubscriptionCondition() string {
-	return `COALESCE(other, '') LIKE '%"subscription_type":"gpt_subscription"%'`
+	return `(COALESCE(other, '') LIKE '%"subscription_type":"gpt_subscription"%' OR COALESCE(other, '') LIKE '%"subscription_type":"coding_plan"%')`
 }
 
 func billingWalletCondition() string {
@@ -180,7 +180,7 @@ func paidSubscriptionAccrualQueryAt(startTimestamp, endTimestamp, asOfTimestamp 
 		Joins("JOIN users ON users.id = user_subscriptions.user_id AND users.deleted_at IS NULL").
 		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
 		Where("users.role < ?", common.RoleAdminUser).
-		Where("subscription_plans.plan_type = ?", SubscriptionPlanTypeGPTSubscription).
+		Where("subscription_plans.plan_type IN ?", []string{SubscriptionPlanTypeGPTSubscription, SubscriptionPlanTypeCodingPlan}).
 		Where("user_subscriptions.status <> ?", "cancelled").
 		Where("user_subscriptions.end_time > user_subscriptions.start_time")
 	if startTimestamp != 0 {
@@ -658,15 +658,29 @@ type paidSubscriptionBalanceRow struct {
 	StartTime               int64   `gorm:"column:start_time"`
 	EndTime                 int64   `gorm:"column:end_time"`
 	PlanPriceAmount         float64 `gorm:"column:plan_price_amount"`
+	PaidAmountSnapshot      float64 `gorm:"column:paid_amount_snapshot"`
+	AmountTotal             int64   `gorm:"column:amount_total"`
+	AmountUsed              int64   `gorm:"column:amount_used"`
+	PlanType                string  `gorm:"column:plan_type"`
 }
 
 func paidSubscriptionBalanceUSDAt(row paidSubscriptionBalanceRow, at int64) float64 {
 	price := row.PriceAmountSnapshot
+	if row.PaidAmountSnapshot > 0 {
+		price = row.PaidAmountSnapshot
+	}
 	if price <= 0 {
 		price = row.PlanPriceAmount
 	}
 	if price <= 0 {
 		return 0
+	}
+	if row.PlanType == SubscriptionPlanTypeCodingPlan {
+		if row.AmountTotal <= 0 {
+			return 0
+		}
+		remaining := max(int64(0), row.AmountTotal-row.AmountUsed)
+		return price * float64(remaining) / float64(row.AmountTotal)
 	}
 	if row.EndTime <= row.StartTime {
 		return 0
@@ -702,15 +716,19 @@ func GetNonAdminPaidSubscriptionBalanceUSDAt(at int64) (float64, error) {
 	var rows []paidSubscriptionBalanceRow
 	err := DB.Table("user_subscriptions").
 		Select(`user_subscriptions.price_amount_snapshot,
+			user_subscriptions.paid_amount_snapshot,
+			user_subscriptions.amount_total,
+			user_subscriptions.amount_used,
 			user_subscriptions.duration_seconds_snapshot,
 			user_subscriptions.start_time,
 			user_subscriptions.end_time,
-			subscription_plans.price_amount as plan_price_amount`).
+			subscription_plans.price_amount as plan_price_amount,
+			subscription_plans.plan_type`).
 		Joins("JOIN users ON users.id = user_subscriptions.user_id AND users.deleted_at IS NULL").
 		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
 		Where("users.role < ?", common.RoleAdminUser).
 		Where("user_subscriptions.status = ? AND user_subscriptions.end_time > ?", "active", at).
-		Where("subscription_plans.plan_type = ?", SubscriptionPlanTypeGPTSubscription).
+		Where("subscription_plans.plan_type IN ?", []string{SubscriptionPlanTypeGPTSubscription, SubscriptionPlanTypeCodingPlan}).
 		Scan(&rows).Error
 	if err != nil {
 		return 0, err

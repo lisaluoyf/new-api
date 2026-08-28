@@ -17,9 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useFieldArray, useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
+import {
+  CalendarClock,
+  CreditCard,
+  Plus,
+  RefreshCw,
+  Settings2,
+  Trash2,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -100,6 +107,10 @@ export function SubscriptionsMutateDrawer({
     resolver: zodResolver(schema) as unknown as Resolver<PlanFormValues>,
     defaultValues: PLAN_FORM_DEFAULTS,
   })
+  const codingModels = useFieldArray({
+    control: form.control,
+    name: 'coding_models',
+  })
 
   useEffect(() => {
     if (open) {
@@ -119,6 +130,16 @@ export function SubscriptionsMutateDrawer({
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
   const modelAllowlist = form.watch('model_allowlist')
+  const planType = form.watch('plan_type')
+
+  useEffect(() => {
+    if (planType !== 'coding_plan') return
+    form.setValue('duration_unit', 'day')
+    form.setValue('duration_value', 30)
+    form.setValue('quota_reset_period', 'never')
+    form.setValue('custom_seconds', 0)
+    form.setValue('quota_reset_custom_seconds', 0)
+  }, [form, planType])
 
   const modelOptions = useMemo(() => {
     const channelDataModelIds = new Set(MODEL_TABS.map((tab) => tab.modelId))
@@ -272,6 +293,7 @@ export function SubscriptionsMutateDrawer({
                           value: 'gpt_subscription',
                           label: 'GPT 订阅',
                         },
+                        { value: 'coding_plan', label: 'Coding Plan' },
                       ]}
                       onValueChange={field.onChange}
                       value={field.value || 'standard'}
@@ -291,6 +313,9 @@ export function SubscriptionsMutateDrawer({
                           </SelectItem>
                           <SelectItem value='gpt_subscription'>
                             GPT 订阅
+                          </SelectItem>
+                          <SelectItem value='coding_plan'>
+                            Coding Plan
                           </SelectItem>
                         </SelectGroup>
                       </SelectContent>
@@ -339,13 +364,16 @@ export function SubscriptionsMutateDrawer({
                           {...field}
                           type='number'
                           min={0}
+                          disabled={planType === 'coding_plan'}
                           onChange={(e) =>
                             field.onChange(parseFloat(e.target.value) || 0)
                           }
                         />
                       </FormControl>
                       <FormDescription>
-                        {t('0 means unlimited')}
+                        {planType === 'coding_plan'
+                          ? '由官方计价额度自动换算'
+                          : t('0 means unlimited')}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -427,6 +455,189 @@ export function SubscriptionsMutateDrawer({
                           用于补充该档位已经实际开通的特殊服务或权限，权益之间使用
                           | 分隔；不要填写尚未落地的承诺。
                         </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='recommended'
+                    render={({ field }) => (
+                      <FormItem className='flex flex-row items-center gap-2'>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormLabel className='!mt-0'>推荐套餐</FormLabel>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              ) : null}
+
+              {form.watch('plan_type') === 'coding_plan' ? (
+                <div className='space-y-4 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-3'>
+                  <h4 className='text-sm font-medium'>Coding Plan 设置</h4>
+                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                    <FormField
+                      control={form.control}
+                      name='coding_official_amount_usd'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>官方计价额度（USD）</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type='number'
+                              min={0.01}
+                              step='0.01'
+                              onChange={(event) =>
+                                field.onChange(Number(event.target.value) || 0)
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name='tier_level'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>套餐等级</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type='number'
+                              min={0}
+                              step={1}
+                              onChange={(event) =>
+                                field.onChange(Number(event.target.value) || 0)
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className='space-y-2'>
+                    <div className='flex items-center justify-between gap-3'>
+                      <div>
+                        <FormLabel>模型和扣费倍率</FormLabel>
+                        <p className='text-muted-foreground text-xs'>
+                          模型列表和倍率修改后会立即影响已有活动用户。
+                        </p>
+                      </div>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        onClick={() =>
+                          codingModels.append({
+                            model: '',
+                            multiplier: '1.000',
+                          })
+                        }
+                      >
+                        <Plus className='mr-1 h-4 w-4' />
+                        添加模型
+                      </Button>
+                    </div>
+                    <datalist id='coding-plan-models'>
+                      {modelOptions.map((option) => (
+                        <option key={option.value} value={option.value} />
+                      ))}
+                    </datalist>
+                    <div className='overflow-hidden rounded-md border'>
+                      <div className='bg-muted grid grid-cols-[minmax(0,1fr)_120px_44px] gap-2 px-3 py-2 text-xs font-medium'>
+                        <span>模型</span>
+                        <span>倍率</span>
+                        <span className='sr-only'>操作</span>
+                      </div>
+                      {codingModels.fields.length === 0 ? (
+                        <div className='text-muted-foreground px-3 py-5 text-center text-xs'>
+                          尚未配置模型
+                        </div>
+                      ) : (
+                        codingModels.fields.map((item, index) => (
+                          <div
+                            key={item.id}
+                            className='grid grid-cols-[minmax(0,1fr)_120px_44px] gap-2 border-t p-2'
+                          >
+                            <FormField
+                              control={form.control}
+                              name={`coding_models.${index}.model`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      list='coding-plan-models'
+                                      placeholder='选择或输入模型 ID'
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`coding_models.${index}.multiplier`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      type='number'
+                                      min='0.001'
+                                      max='1.000'
+                                      step='0.001'
+                                      placeholder='0.500'
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <Button
+                              type='button'
+                              variant='ghost'
+                              size='icon'
+                              title='删除模型'
+                              onClick={() => codingModels.remove(index)}
+                            >
+                              <Trash2 className='h-4 w-4' />
+                              <span className='sr-only'>删除模型</span>
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    {form.formState.errors.coding_models?.root?.message ? (
+                      <p className='text-destructive text-sm font-medium'>
+                        {form.formState.errors.coding_models.root.message}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name='card_description'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>卡片权益文案</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            rows={3}
+                            placeholder='权益之间使用 | 分隔'
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -578,6 +789,7 @@ export function SubscriptionsMutateDrawer({
                         ]}
                         onValueChange={field.onChange}
                         value={field.value}
+                        disabled={planType === 'coding_plan'}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -611,6 +823,7 @@ export function SubscriptionsMutateDrawer({
                             {...field}
                             type='number'
                             min={1}
+                            disabled={planType === 'coding_plan'}
                             onChange={(e) =>
                               field.onChange(parseInt(e.target.value, 10) || 0)
                             }
@@ -632,6 +845,7 @@ export function SubscriptionsMutateDrawer({
                             {...field}
                             type='number'
                             min={1}
+                            disabled={planType === 'coding_plan'}
                             onChange={(e) =>
                               field.onChange(parseInt(e.target.value, 10) || 0)
                             }
@@ -668,6 +882,7 @@ export function SubscriptionsMutateDrawer({
                         ]}
                         onValueChange={field.onChange}
                         value={field.value}
+                        disabled={planType === 'coding_plan'}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -700,7 +915,10 @@ export function SubscriptionsMutateDrawer({
                           {...field}
                           type='number'
                           min={0}
-                          disabled={resetPeriod !== 'custom'}
+                          disabled={
+                            planType === 'coding_plan' ||
+                            resetPeriod !== 'custom'
+                          }
                           onChange={(e) =>
                             field.onChange(parseInt(e.target.value, 10) || 0)
                           }

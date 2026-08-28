@@ -21,36 +21,82 @@ import type { TFunction } from 'i18next'
 import type { SubscriptionPlan, PlanPayload } from '../types'
 
 export function getPlanFormSchema(t: TFunction) {
-  return z.object({
-    title: z.string().min(1, t('Please enter plan title')),
-    subtitle: z.string().optional(),
-    plan_type: z.enum(['standard', 'gpt_trial', 'gpt_subscription']),
-    price_amount: z.coerce.number().min(0, t('Please enter amount')),
-    duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
-    duration_value: z.coerce.number().min(1),
-    custom_seconds: z.coerce.number().min(0).optional(),
-    quota_reset_period: z.enum([
-      'never',
-      'daily',
-      'weekly',
-      'monthly',
-      'custom',
-    ]),
-    quota_reset_custom_seconds: z.coerce.number().min(0).optional(),
-    enabled: z.boolean(),
-    sort_order: z.coerce.number(),
-    max_purchase_per_user: z.coerce.number().min(0),
-    total_amount: z.coerce.number().min(0),
-    upgrade_group: z.string().optional(),
-    stripe_price_id: z.string().optional(),
-    creem_product_id: z.string().optional(),
-    tier_level: z.coerce.number().min(0),
-    five_hour_amount: z.coerce.number().min(0),
-    seven_day_amount: z.coerce.number().min(0),
-    model_allowlist: z.string().optional(),
-    recommended: z.boolean(),
-    card_description: z.string().optional(),
-  })
+  return z
+    .object({
+      title: z.string().min(1, t('Please enter plan title')),
+      subtitle: z.string().optional(),
+      plan_type: z.enum([
+        'standard',
+        'gpt_trial',
+        'gpt_subscription',
+        'coding_plan',
+      ]),
+      price_amount: z.coerce.number().min(0, t('Please enter amount')),
+      duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
+      duration_value: z.coerce.number().min(1),
+      custom_seconds: z.coerce.number().min(0).optional(),
+      quota_reset_period: z.enum([
+        'never',
+        'daily',
+        'weekly',
+        'monthly',
+        'custom',
+      ]),
+      quota_reset_custom_seconds: z.coerce.number().min(0).optional(),
+      enabled: z.boolean(),
+      sort_order: z.coerce.number(),
+      max_purchase_per_user: z.coerce.number().min(0),
+      total_amount: z.coerce.number().min(0),
+      upgrade_group: z.string().optional(),
+      stripe_price_id: z.string().optional(),
+      creem_product_id: z.string().optional(),
+      tier_level: z.coerce.number().min(0),
+      five_hour_amount: z.coerce.number().min(0),
+      seven_day_amount: z.coerce.number().min(0),
+      model_allowlist: z.string().optional(),
+      recommended: z.boolean(),
+      card_description: z.string().optional(),
+      coding_official_amount_usd: z.coerce.number().min(0),
+      coding_models: z.array(
+        z.object({
+          model: z.string().trim().min(1, '请选择模型'),
+          multiplier: z
+            .string()
+            .regex(/^\d+(?:\.\d{1,3})?$/, '倍率最多保留三位小数')
+            .refine((value) => {
+              const number = Number(value)
+              return number >= 0.001 && number <= 1
+            }, '倍率必须在 0.001 到 1.000 之间'),
+        })
+      ),
+    })
+    .superRefine((values, ctx) => {
+      if (values.plan_type !== 'coding_plan') return
+      if (values.coding_official_amount_usd <= 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['coding_official_amount_usd'],
+          message: '官方计价额度必须大于 0',
+        })
+      }
+      if (values.coding_models.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['coding_models'],
+          message: '至少配置一个模型',
+        })
+      }
+      const names = values.coding_models.map((item) =>
+        item.model.trim().toLowerCase()
+      )
+      if (new Set(names).size !== names.length) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['coding_models'],
+          message: '模型不能重复',
+        })
+      }
+    })
 }
 
 export type PlanFormValues = z.infer<ReturnType<typeof getPlanFormSchema>>
@@ -78,6 +124,8 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   model_allowlist: '',
   recommended: false,
   card_description: '',
+  coding_official_amount_usd: 0,
+  coding_models: [],
 }
 
 export const GPT_TRIAL_PRESET: PlanFormValues = {
@@ -103,6 +151,22 @@ export const GPT_TRIAL_PRESET: PlanFormValues = {
   model_allowlist: '',
   recommended: false,
   card_description: '',
+  coding_official_amount_usd: 0,
+  coding_models: [],
+}
+
+function parseCodingModels(raw?: string): PlanFormValues['coding_models'] {
+  try {
+    const values = JSON.parse(raw || '{}') as Record<string, number>
+    return Object.entries(values)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([model, multiplier]) => ({
+        model,
+        multiplier: Number(multiplier).toFixed(3),
+      }))
+  } catch {
+    return []
+  }
 }
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
@@ -114,7 +178,9 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
         ? 'gpt_trial'
         : plan.plan_type === 'gpt_subscription'
           ? 'gpt_subscription'
-          : 'standard',
+          : plan.plan_type === 'coding_plan'
+            ? 'coding_plan'
+            : 'standard',
     price_amount: Number(plan.price_amount || 0),
     duration_unit: plan.duration_unit || 'month',
     duration_value: Number(plan.duration_value || 1),
@@ -134,6 +200,8 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     model_allowlist: plan.model_allowlist || '',
     recommended: plan.recommended === true,
     card_description: plan.card_description || '',
+    coding_official_amount_usd: Number(plan.coding_official_amount_usd || 0),
+    coding_models: parseCodingModels(plan.coding_model_multipliers),
   }
 }
 
@@ -156,11 +224,26 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       total_amount: Number(values.total_amount || 0),
       upgrade_group: values.upgrade_group || '',
       tier_level: Number(values.tier_level || 0),
-      five_hour_amount: Math.round(Number(values.five_hour_amount || 0) * 500_000),
-      seven_day_amount: Math.round(Number(values.seven_day_amount || 0) * 500_000),
+      five_hour_amount: Math.round(
+        Number(values.five_hour_amount || 0) * 500_000
+      ),
+      seven_day_amount: Math.round(
+        Number(values.seven_day_amount || 0) * 500_000
+      ),
       model_allowlist: values.model_allowlist || '',
       recommended: values.recommended === true,
       card_description: values.card_description || '',
+      coding_official_amount_usd: Number(
+        values.coding_official_amount_usd || 0
+      ),
+      coding_model_multipliers: JSON.stringify(
+        Object.fromEntries(
+          values.coding_models.map((item) => [
+            item.model.trim(),
+            Number(item.multiplier),
+          ])
+        )
+      ),
     },
   }
 }

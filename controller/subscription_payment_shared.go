@@ -10,12 +10,12 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 )
 
-func resolveGPTSubscriptionPayment(userID int, planID int) (*model.SubscriptionPlan, subscriptionOrderTerms, error) {
+func resolvePaidSubscriptionPayment(userID int, planID int) (*model.SubscriptionPlan, subscriptionOrderTerms, error) {
 	if userID <= 0 || planID <= 0 {
 		return nil, subscriptionOrderTerms{}, errors.New("Invalid parameters")
 	}
 	plan, err := model.GetSubscriptionPlanById(planID)
-	if err != nil || plan == nil || !plan.Enabled || !model.IsGPTPaidSubscriptionPlan(plan) {
+	if err != nil || plan == nil || !plan.Enabled || (!model.IsGPTPaidSubscriptionPlan(plan) && !model.IsCodingPlan(plan)) {
 		return nil, subscriptionOrderTerms{}, errors.New("Plan is not available")
 	}
 	terms, err := resolveSubscriptionOrderTerms(userID, plan)
@@ -28,7 +28,7 @@ func resolveGPTSubscriptionPayment(userID int, planID int) (*model.SubscriptionP
 	return plan, terms, nil
 }
 
-func newGPTSubscriptionOrder(
+func newPaidSubscriptionOrder(
 	userID int,
 	plan *model.SubscriptionPlan,
 	terms subscriptionOrderTerms,
@@ -43,6 +43,7 @@ func newGPTSubscriptionOrder(
 		ListPrice:              terms.ListPrice,
 		CreditAmount:           terms.CreditAmount,
 		OrderType:              terms.OrderType,
+		ProductType:            model.NormalizeSubscriptionPlanType(plan.PlanType),
 		PreviousSubscriptionId: terms.PreviousSubscriptionId,
 		PreviousEndTime:        terms.PreviousEndTime,
 		PreviousCycleId:        terms.PreviousCycleId,
@@ -60,6 +61,28 @@ func freeModelPaymentURL(status string) string {
 		return base
 	}
 	return fmt.Sprintf("%s?payment=%s", base, status)
+}
+
+func subscriptionPaymentURL(plan *model.SubscriptionPlan, status string) string {
+	base := strings.TrimRight(system_setting.ServerAddress, "/")
+	if model.IsCodingPlan(plan) {
+		base += "/coding-plan"
+	} else {
+		base += "/freemodel"
+	}
+	if strings.TrimSpace(status) == "" {
+		return base
+	}
+	return fmt.Sprintf("%s?payment=%s", base, status)
+}
+
+func subscriptionOrderPaymentURL(order *model.SubscriptionOrder, status string) string {
+	if order != nil {
+		if plan, err := model.GetSubscriptionPlanById(order.PlanId); err == nil {
+			return subscriptionPaymentURL(plan, status)
+		}
+	}
+	return freeModelPaymentURL(status)
 }
 
 // tryCompleteSubscriptionPayment returns handled=false only when tradeNo does

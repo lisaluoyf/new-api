@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -33,7 +34,7 @@ func GetSubscriptionPlans(c *gin.Context) {
 	for _, p := range plans {
 		// Trial plans are issued exclusively by the signup sharing flow. They
 		// must never appear as a purchasable subscription option.
-		if model.IsGPTPromotionalSubscriptionPlan(&p) {
+		if model.IsGPTPromotionalSubscriptionPlan(&p) || model.IsCodingPlan(&p) {
 			continue
 		}
 		result = append(result, SubscriptionPlanDTO{
@@ -164,6 +165,27 @@ type AdminUpsertSubscriptionPlanRequest struct {
 	Plan model.SubscriptionPlan `json:"plan"`
 }
 
+func normalizeCodingPlanForAdmin(plan *model.SubscriptionPlan) error {
+	if plan == nil || !model.IsCodingPlan(plan) {
+		return nil
+	}
+	plan.DurationUnit = model.SubscriptionDurationDay
+	plan.DurationValue = 30
+	plan.CustomSeconds = 0
+	plan.QuotaResetPeriod = model.SubscriptionResetNever
+	plan.QuotaResetCustomSeconds = 0
+	plan.FiveHourAmount = 0
+	plan.SevenDayAmount = 0
+	plan.CreemProductId = ""
+	plan.TotalAmount = int64(math.Round(plan.CodingOfficialAmountUSD * common.QuotaPerUnit))
+	normalized, err := model.CodingModelMultipliersJSON(plan.CodingModelMultipliers)
+	if err != nil {
+		return err
+	}
+	plan.CodingModelMultipliers = normalized
+	return model.ValidateCodingPlan(plan)
+}
+
 func AdminCreateSubscriptionPlan(c *gin.Context) {
 	var req AdminUpsertSubscriptionPlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -210,6 +232,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.PlanType = model.NormalizeSubscriptionPlanType(req.Plan.PlanType)
+	if err := normalizeCodingPlanForAdmin(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	if req.Plan.UpgradeGroup != "" {
 		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
@@ -282,6 +308,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.PlanType = model.NormalizeSubscriptionPlanType(req.Plan.PlanType)
+	if err := normalizeCodingPlanForAdmin(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	if req.Plan.UpgradeGroup != "" {
 		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
@@ -321,6 +351,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"model_allowlist":            strings.TrimSpace(req.Plan.ModelAllowlist),
 			"recommended":                req.Plan.Recommended,
 			"card_description":           req.Plan.CardDescription,
+			"coding_official_amount_usd": req.Plan.CodingOfficialAmountUSD,
+			"coding_model_multipliers":   req.Plan.CodingModelMultipliers,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
@@ -347,8 +379,8 @@ func AdminDeleteSubscriptionPlan(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if !model.IsGPTPaidSubscriptionPlan(plan) {
-		common.ApiErrorMsg(c, "仅 GPT 付费订阅套餐支持删除")
+	if !model.IsGPTPaidSubscriptionPlan(plan) && !model.IsCodingPlan(plan) {
+		common.ApiErrorMsg(c, "仅付费订阅套餐支持删除")
 		return
 	}
 	var references int64

@@ -206,6 +206,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.HasActiveGPTTrial = false
 	relayInfo.HasActiveGPTReferralReward = false
 	relayInfo.HasActiveGPTSubscription = false
+	relayInfo.HasActiveCodingPlan = false
 	if service.IsFreeTrialEligibleModel(relayInfo.OriginModelName) {
 		hasTrial, trialErr := model.HasActiveUserSubscriptionByPlanMatcher(relayInfo.UserId, model.IsGPTTrialSubscriptionPlan)
 		if trialErr != nil {
@@ -231,6 +232,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				return
 			}
 			relayInfo.ActivateWalletPriceData()
+		}
+	}
+	hasCodingPlan, codingErr := model.HasActiveUserSubscriptionByPlanMatcher(relayInfo.UserId, model.IsCodingPlan)
+	if codingErr != nil {
+		newAPIError = types.NewError(codingErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		return
+	}
+	relayInfo.HasActiveCodingPlan = hasCodingPlan
+	if hasCodingPlan {
+		if codingPrice, codingPriceErr := helper.BuildCodingPlanPriceData(c, relayInfo, tokens, meta); codingPriceErr == nil {
+			relayInfo.CodingPlanUnavailableReason = ""
+			relayInfo.SetCodingPriceData(codingPrice)
+		} else {
+			relayInfo.CodingPlanUnavailableReason = codingPriceErr.Error()
 		}
 	}
 

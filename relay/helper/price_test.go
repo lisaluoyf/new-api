@@ -329,6 +329,47 @@ func TestBuildGPTTrialPriceDataIgnoresChannelPricing(t *testing.T) {
 	require.NotNil(t, info.TrialPriceData)
 }
 
+func TestBuildCodingPlanPriceDataUsesAllOfficialAxesAndLiveMultiplier(t *testing.T) {
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionPlan{}, &model.UserSubscription{}))
+
+	now := model.GetDBTimestamp()
+	plan := model.SubscriptionPlan{
+		Id: 15001, Title: "Coding Pro", PlanType: model.SubscriptionPlanTypeCodingPlan,
+		PriceAmount: 39, Currency: "USD", DurationUnit: model.SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true, TierLevel: 1,
+		CodingOfficialAmountUSD: 79, TotalAmount: int64(79 * common.QuotaPerUnit),
+		CodingModelMultipliers: `{"deepseek-v4-pro":0.400}`,
+	}
+	require.NoError(t, db.Create(&plan).Error)
+	require.NoError(t, db.Create(&model.UserSubscription{
+		Id: 15002, UserId: 15003, PlanId: plan.Id, Status: "active",
+		StartTime: now, EndTime: now + 30*86400, AmountTotal: plan.TotalAmount,
+	}).Error)
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+	t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
+
+	start := time.Date(2026, time.August, 17, 13, 0, 0, 0, time.FixedZone("CST", 8*60*60))
+	info := &relaycommon.RelayInfo{
+		UserId: 15003, OriginModelName: "deepseek-v4-pro", StartTime: start,
+	}
+	price, err := BuildCodingPlanPriceData(nil, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.InDelta(t, 0.4, info.CodingPlanMultiplier, 0.0000001)
+	require.InDelta(t, 0.66, info.CodingOfficialInputPrice, 0.0000001)
+	require.InDelta(t, 1.98, info.CodingOfficialOutputPrice, 0.0000001)
+	require.InDelta(t, 0.022, info.CodingOfficialCacheReadPrice, 0.0000001)
+	require.InDelta(t, 0.66, info.CodingOfficialCacheWritePrice, 0.0000001)
+	require.InDelta(t, 0.66/2*0.4, price.ModelRatio, 0.0000001)
+	require.InDelta(t, 1.98/0.66, price.CompletionRatio, 0.0000001)
+	require.InDelta(t, 0.022/0.66, price.CacheRatio, 0.0000001)
+	require.InDelta(t, 1, price.CacheCreationRatio, 0.0000001)
+}
+
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

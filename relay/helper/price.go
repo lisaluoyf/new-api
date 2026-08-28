@@ -293,6 +293,55 @@ func BuildGPTTrialPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptT
 	return priceData, nil
 }
 
+// BuildCodingPlanPriceData resolves the manufacturer's four token prices and
+// applies the live model multiplier. It deliberately leaves UsePrice false so
+// the normal text settlement path can split input/cache-read/cache-write and
+// output independently.
+func BuildCodingPlanPriceData(_ *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
+	if info == nil {
+		return types.PriceData{}, fmt.Errorf("relay info is nil")
+	}
+	plan, err := model.GetActiveCodingPlanForModel(info.UserId, info.OriginModelName)
+	if err != nil {
+		return types.PriceData{}, err
+	}
+	multiplier, ok := model.CodingPlanMultiplier(plan, info.OriginModelName)
+	if !ok {
+		return types.PriceData{}, fmt.Errorf("model %s is not included in Coding Plan", info.OriginModelName)
+	}
+	at := info.StartTime
+	if at.IsZero() {
+		at = time.Now()
+	}
+	input, output, cache, cacheCreation, ok := service.GlobalModelPricingUSDAt(info.OriginModelName, at)
+	if !ok || input <= 0 || output <= 0 || cache <= 0 || cacheCreation <= 0 {
+		return types.PriceData{}, fmt.Errorf("official price for model %s is unavailable", info.OriginModelName)
+	}
+	info.CodingPlanMultiplier = multiplier
+	info.CodingOfficialInputPrice = input
+	info.CodingOfficialOutputPrice = output
+	info.CodingOfficialCacheReadPrice = cache
+	info.CodingOfficialCacheWritePrice = cacheCreation
+	preConsumedTokens := common.Max(promptTokens, common.PreConsumedQuota)
+	if meta != nil && meta.MaxTokens != 0 {
+		preConsumedTokens += meta.MaxTokens
+	}
+	modelRatio := input / 2 * multiplier
+	priceData := types.PriceData{
+		ModelPrice:           input * multiplier,
+		ModelRatio:           modelRatio,
+		CompletionRatio:      output / input,
+		CacheRatio:           cache / input,
+		CacheCreationRatio:   cacheCreation / input,
+		CacheCreation5mRatio: cacheCreation / input,
+		CacheCreation1hRatio: cacheCreation / input * claudeCacheCreation1hMultiplier,
+		UsePrice:             false,
+		QuotaToPreConsume:    int(float64(preConsumedTokens) * modelRatio),
+		GroupRatioInfo:       types.GroupRatioInfo{GroupRatio: 1, GroupSpecialRatio: -1},
+	}
+	return priceData, nil
+}
+
 // RefreshModelPriceForRetry recalculates channel-dependent pricing after a
 // fallback selects a different channel. A tiered snapshot stays frozen within
 // one attempt, but wallet price scales must be rebuilt for the new channel.
@@ -310,6 +359,15 @@ func RefreshModelPriceForRetry(c *gin.Context, info *relaycommon.RelayInfo, prom
 			return info.PriceData, nil
 		}
 		return walletPriceData, nil
+	}
+	if info != nil && info.PriceDataSource == model.SubscriptionPlanTypeCodingPlan {
+		priceData, err := BuildCodingPlanPriceData(c, info, promptTokens, meta)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		info.SetCodingPriceData(priceData)
+		info.ActivateCodingPriceData()
+		return priceData, nil
 	}
 	if info != nil && (info.PriceDataSource == string(priceResolutionModeGPTTrial) || info.PriceDataSource == model.SubscriptionPlanTypeGPTReferralReward || info.PriceDataSource == model.SubscriptionPlanTypeGPTSubscription) {
 		priceSource := info.PriceDataSource

@@ -181,6 +181,19 @@ type subscriptionOrderTerms struct {
 
 func resolveSubscriptionOrderTerms(userId int, plan *model.SubscriptionPlan) (subscriptionOrderTerms, error) {
 	terms := subscriptionOrderTerms{OrderType: "purchase", ListPrice: plan.PriceAmount, Payable: plan.PriceAmount}
+	if model.IsCodingPlan(plan) {
+		var err error
+		terms.OrderType, terms.PreviousSubscriptionId, terms.CreditAmount, terms.Payable, err = model.CalculateCodingPlanQuote(userId, plan)
+		if err == nil && terms.PreviousSubscriptionId > 0 {
+			var previous model.UserSubscription
+			if queryErr := model.DB.Where("id = ? AND user_id = ?", terms.PreviousSubscriptionId, userId).First(&previous).Error; queryErr != nil {
+				return terms, queryErr
+			}
+			terms.PreviousEndTime = previous.EndTime
+			terms.PreviousCycleId = previous.CurrentCycleId
+		}
+		return terms, err
+	}
 	if !model.IsGPTPaidSubscriptionPlan(plan) {
 		return terms, nil
 	}

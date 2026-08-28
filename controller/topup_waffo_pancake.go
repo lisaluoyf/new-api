@@ -165,7 +165,7 @@ func RequestWaffoPancakePay(c *gin.Context) {
 			common.ApiErrorMsg(c, "Waffo payment for GPT Pass currently supports USD only")
 			return
 		}
-		plan, terms, err = resolveGPTSubscriptionPayment(id, req.PlanId)
+		plan, terms, err = resolvePaidSubscriptionPayment(id, req.PlanId)
 		if err != nil {
 			common.ApiErrorMsg(c, err.Error())
 			return
@@ -195,7 +195,7 @@ func RequestWaffoPancakePay(c *gin.Context) {
 	tradeNo := fmt.Sprintf("%s-%d-%d-%s", tradePrefix, id, time.Now().UnixMilli(), randstr.String(6))
 	var topUp *model.TopUp
 	if plan != nil {
-		order := newGPTSubscriptionOrder(id, plan, terms, tradeNo, model.PaymentMethodWaffoPancake, model.PaymentProviderWaffoPancake)
+		order := newPaidSubscriptionOrder(id, plan, terms, tradeNo, model.PaymentMethodWaffoPancake, model.PaymentProviderWaffoPancake)
 		if err := order.Insert(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 创建订阅订单失败 user_id=%d trade_no=%s plan_id=%d error=%q", id, tradeNo, plan.Id, err.Error()))
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to create order"})
@@ -239,7 +239,7 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		BuyerEmail: getWaffoPancakeBuyerEmail(user),
 		SuccessURL: func() string {
 			if plan != nil {
-				return freeModelPaymentURL("success")
+				return subscriptionPaymentURL(plan, "success")
 			}
 			return getWaffoPancakeReturnURL()
 		}(),

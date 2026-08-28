@@ -178,6 +178,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		ListPrice:              terms.ListPrice,
 		CreditAmount:           terms.CreditAmount,
 		OrderType:              terms.OrderType,
+		ProductType:            model.NormalizeSubscriptionPlanType(plan.PlanType),
 		PreviousSubscriptionId: terms.PreviousSubscriptionId,
 		PreviousEndTime:        terms.PreviousEndTime,
 		PreviousCycleId:        terms.PreviousCycleId,
@@ -280,7 +281,7 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	if c.Request.Method == "POST" {
 		// POST 请求：从 POST body 解析参数
 		if err := c.Request.ParseForm(); err != nil {
-			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
+			c.Redirect(http.StatusFound, freeModelPaymentURL("fail"))
 			return
 		}
 		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
@@ -316,16 +317,16 @@ func SubscriptionEpayReturn(c *gin.Context) {
 		order, err := verifySubscriptionEpayCallbackAmount(verifyInfo.ServiceTradeNo, verifyInfo.Money)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("subscription EPay return amount validation failed trade_no=%s error=%q", verifyInfo.ServiceTradeNo, err.Error()))
-			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
+			c.Redirect(http.StatusFound, subscriptionOrderPaymentURL(order, "fail"))
 			return
 		}
 		providerPayload := buildSubscriptionEpayCompletionPayload(order.ProviderPayload, verifyInfo)
 		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, providerPayload, model.PaymentProviderEpay, verifyInfo.Type); err != nil {
-			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
+			c.Redirect(http.StatusFound, subscriptionOrderPaymentURL(order, "fail"))
 			return
 		}
-		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=success")
+		c.Redirect(http.StatusFound, subscriptionOrderPaymentURL(order, "success"))
 		return
 	}
-	c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=pending")
+	c.Redirect(http.StatusFound, subscriptionOrderPaymentURL(model.GetSubscriptionOrderByTradeNo(verifyInfo.ServiceTradeNo), "pending"))
 }

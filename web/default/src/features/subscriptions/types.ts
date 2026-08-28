@@ -26,7 +26,9 @@ export const subscriptionPlanSchema = z.object({
   id: z.number(),
   title: z.string(),
   subtitle: z.string().optional(),
-  plan_type: z.enum(['standard', 'gpt_trial', 'gpt_subscription']).optional(),
+  plan_type: z
+    .enum(['standard', 'gpt_trial', 'gpt_subscription', 'coding_plan'])
+    .optional(),
   price_amount: z.number(),
   currency: z.string().default('USD'),
   duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
@@ -47,6 +49,8 @@ export const subscriptionPlanSchema = z.object({
   model_allowlist: z.string().optional(),
   recommended: z.boolean().optional(),
   card_description: z.string().optional(),
+  coding_official_amount_usd: z.number().optional(),
+  coding_model_multipliers: z.string().optional(),
 })
 
 export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
@@ -75,6 +79,7 @@ export const userSubscriptionSchema = z.object({
   plan_subtitle_snapshot: z.string().optional(),
   card_description_snapshot: z.string().optional(),
   price_amount_snapshot: z.number().optional(),
+  paid_amount_snapshot: z.number().optional(),
   duration_seconds_snapshot: z.number().optional(),
   tier_level_snapshot: z.number().optional(),
   five_hour_amount: z.number().optional(),

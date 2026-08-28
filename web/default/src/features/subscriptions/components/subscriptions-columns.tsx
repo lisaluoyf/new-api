@@ -153,6 +153,34 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         size: 95,
       },
       {
+        id: 'coding_allowance',
+        meta: { label: 'Coding Plan 额度', mobileHidden: true },
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title='Coding Plan 额度' />
+        ),
+        cell: ({ row }) => {
+          const plan = row.original.plan
+          if (plan.plan_type !== 'coding_plan') return '-'
+          let modelCount = 0
+          try {
+            modelCount = Object.keys(
+              JSON.parse(plan.coding_model_multipliers || '{}')
+            ).length
+          } catch {
+            modelCount = 0
+          }
+          return (
+            <div className='text-muted-foreground text-xs'>
+              <div>
+                ${Number(plan.coding_official_amount_usd || 0).toFixed(2)}
+              </div>
+              <div>{modelCount} 个模型</div>
+            </div>
+          )
+        },
+        size: 110,
+      },
+      {
         id: 'gpt_margin',
         meta: { label: '2.5% 成本预览', mobileHidden: true },
         header: ({ column }) => (

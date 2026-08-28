@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
@@ -100,7 +99,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorMsg(c, "Trial plans can only be claimed through the promotion")
 		return
 	}
-	if plan.StripePriceId == "" && !model.IsGPTPaidSubscriptionPlan(plan) {
+	if plan.StripePriceId == "" && !model.IsGPTPaidSubscriptionPlan(plan) && !model.IsCodingPlan(plan) {
 		common.ApiErrorI18n(c, i18n.MsgPaymentPriceIdNotConfig)
 		return
 	}
@@ -126,7 +125,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		return
 	}
 	providerPayload := ""
-	if model.IsGPTPaidSubscriptionPlan(plan) {
+	if model.IsGPTPaidSubscriptionPlan(plan) || model.IsCodingPlan(plan) {
 		paymentSnapshot, err := newSubscriptionStripePaymentSnapshot(terms.Payable, plan.Currency)
 		if err != nil {
 			common.ApiErrorMsg(c, "Stripe only supports USD subscription orders of at least $0.50")
@@ -164,6 +163,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		ListPrice:              terms.ListPrice,
 		CreditAmount:           terms.CreditAmount,
 		OrderType:              terms.OrderType,
+		ProductType:            model.NormalizeSubscriptionPlanType(plan.PlanType),
 		PreviousSubscriptionId: terms.PreviousSubscriptionId,
 		PreviousEndTime:        terms.PreviousEndTime,
 		PreviousCycleId:        terms.PreviousCycleId,
@@ -192,21 +192,21 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
-		SuccessURL:        stripe.String(system_setting.ServerAddress + "/freemodel?payment=success"),
-		CancelURL:         stripe.String(system_setting.ServerAddress + "/freemodel?payment=cancelled"),
+		SuccessURL:        stripe.String(subscriptionPaymentURL(plan, "success")),
+		CancelURL:         stripe.String(subscriptionPaymentURL(plan, "cancelled")),
 	}
-	if model.IsGPTPaidSubscriptionPlan(plan) {
+	if model.IsGPTPaidSubscriptionPlan(plan) || model.IsCodingPlan(plan) {
 		params.Mode = stripe.String(string(stripe.CheckoutSessionModePayment))
 		params.LineItems = []*stripe.CheckoutSessionLineItemParams{{
 			Quantity: stripe.Int64(1),
 			PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
 				Currency:    stripe.String(strings.ToLower(plan.Currency)),
 				UnitAmount:  stripe.Int64(int64(payable*100 + 0.5)),
-				ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{Name: stripe.String("GPT Pass · " + plan.Title)},
+				ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{Name: stripe.String(plan.Title)},
 			},
 		}}
 		params.PaymentIntentData = &stripe.CheckoutSessionPaymentIntentDataParams{
-			Metadata: map[string]string{"trade_no": referenceId, "product_type": model.SubscriptionPlanTypeGPTSubscription},
+			Metadata: map[string]string{"trade_no": referenceId, "product_type": model.NormalizeSubscriptionPlanType(plan.PlanType)},
 		}
 	} else {
 		params.Mode = stripe.String(string(stripe.CheckoutSessionModeSubscription))

@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Clock3, TicketCheck } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Code2,
+  TicketCheck,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -21,6 +27,23 @@ type GPTState = {
   }
 }
 
+type CodingState = {
+  plans: Array<{
+    id: number
+    title: string
+    price_amount: number
+    official_amount_usd: number
+  }>
+  state: {
+    subscription?: {
+      plan_title_snapshot?: string
+      amount_total: number
+      amount_used: number
+      end_time: number
+    } | null
+  }
+}
+
 function usd(quota: number) {
   return `$${(Number(quota || 0) / QUOTA_PER_DOLLAR).toFixed(2)}`
 }
@@ -33,8 +56,7 @@ function formatDate(timestamp: number) {
   }).format(new Date(timestamp * 1000))
 }
 
-function openFreeModelPage() {
-  const href = '/freemodel'
+function openProductPage(href: '/freemodel' | '/coding-plan') {
   if (window.self !== window.top) {
     window.parent.postMessage(
       { type: 'apimaster-navigate', href },
@@ -43,6 +65,78 @@ function openFreeModelPage() {
     return
   }
   window.location.assign(href)
+}
+
+function CodingSubscriptionCard({ data }: { data: CodingState }) {
+  const { t } = useTranslation()
+  const current = data.state.subscription
+  const lowest = [...data.plans].sort(
+    (a, b) => a.price_amount - b.price_amount
+  )[0]
+  const remaining = current
+    ? Math.max(0, current.amount_total - current.amount_used)
+    : 0
+  return (
+    <div
+      className={`${GLASS_CARD_CLS} flex h-[258px] flex-col justify-between px-12 py-4`}
+    >
+      <div>
+        <div className='flex items-start justify-between gap-4'>
+          <div className='flex min-w-0 items-center gap-4'>
+            <div className='flex size-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-500/10'>
+              <Code2 className='size-5 text-emerald-700 dark:text-emerald-300' />
+            </div>
+            <div className='min-w-0'>
+              <div className='text-muted-foreground text-xs font-medium'>
+                Coding Plan
+              </div>
+              <div className='mt-0.5 truncate text-2xl font-bold'>
+                {current?.plan_title_snapshot || 'Chinese coding models'}
+              </div>
+            </div>
+          </div>
+          <span className='rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'>
+            {current ? t('Active') : t('Available')}
+          </span>
+        </div>
+        <div className='mt-5 space-y-2 text-sm'>
+          {current ? (
+            <>
+              <div className='flex items-center justify-between gap-3'>
+                <span className='text-muted-foreground'>{t('Remaining')}</span>
+                <span className='font-mono font-medium'>{usd(remaining)}</span>
+              </div>
+              <div className='flex items-center justify-between gap-3'>
+                <span className='text-muted-foreground'>{t('Validity')}</span>
+                <span className='flex items-center gap-1.5 font-medium'>
+                  <Clock3 className='size-4' /> {formatDate(current.end_time)}
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className='text-muted-foreground leading-6'>
+                One shared 30-day allowance for leading Chinese coding models.
+              </p>
+              <div className='font-mono text-lg font-semibold'>
+                {t('Starting at')} $
+                {Number(lowest?.price_amount || 0).toFixed(0)}
+                <span className='text-muted-foreground ml-1 text-xs font-normal'>
+                  / 30 {t('days')}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      <Button
+        className='w-full bg-emerald-600 text-white hover:bg-emerald-700'
+        onClick={() => openProductPage('/coding-plan')}
+      >
+        {current ? t('Manage plan') : t('View plans')}
+      </Button>
+    </div>
+  )
 }
 
 function GPTSubscriptionCard({ data }: { data: GPTState }) {
@@ -124,7 +218,7 @@ function GPTSubscriptionCard({ data }: { data: GPTState }) {
 
       <Button
         className='w-full bg-cyan-500 text-white hover:bg-cyan-600'
-        onClick={openFreeModelPage}
+        onClick={() => openProductPage('/freemodel')}
       >
         {current ? t('Manage plan') : t('View plans')}
       </Button>
@@ -136,6 +230,7 @@ export function WalletBenefitsCarousel() {
   const { t } = useTranslation()
   const [loading, setLoading] = useState(true)
   const [gpt, setGPT] = useState<GPTState | null>(null)
+  const [coding, setCoding] = useState<CodingState | null>(null)
   const [showTrial, setShowTrial] = useState(false)
   const [index, setIndex] = useState(0)
   const [paused, setPaused] = useState(false)
@@ -151,11 +246,21 @@ export function WalletBenefitsCarousel() {
         skipErrorHandler: true,
         skipBusinessError: true,
       } as Record<string, unknown>),
+      api.get('/api/subscription/coding/plans', {
+        skipErrorHandler: true,
+        skipBusinessError: true,
+      } as Record<string, unknown>),
       getSelfSubscriptionFull(),
-    ]).then(([gptResult, allResult]) => {
+    ]).then(([gptResult, codingResult, allResult]) => {
       if (!active) return
       if (gptResult.status === 'fulfilled' && gptResult.value.data?.success) {
         setGPT(gptResult.value.data.data as GPTState)
+      }
+      if (
+        codingResult.status === 'fulfilled' &&
+        codingResult.value.data?.success
+      ) {
+        setCoding(codingResult.value.data.data as CodingState)
       }
       if (allResult.status === 'fulfilled') {
         setShowTrial(
@@ -178,11 +283,14 @@ export function WalletBenefitsCarousel() {
       ...(gpt
         ? [{ key: 'gpt', node: <GPTSubscriptionCard data={gpt} /> }]
         : []),
+      ...(coding
+        ? [{ key: 'coding', node: <CodingSubscriptionCard data={coding} /> }]
+        : []),
       ...(showTrial
         ? [{ key: 'trial', node: <TrialSubscriptionSection /> }]
         : []),
     ],
-    [gpt, showTrial]
+    [coding, gpt, showTrial]
   )
 
   useEffect(() => {

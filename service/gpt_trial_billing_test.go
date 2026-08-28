@@ -163,6 +163,100 @@ func TestPreConsumeBillingUsesPaidGPTAfterTrialAndReferral(t *testing.T) {
 	require.Equal(t, 1000, user.Quota)
 }
 
+func seedCodingPlanBilling(t *testing.T, planID, subscriptionID, userID int, modelName string, amountTotal, amountUsed int64) {
+	t.Helper()
+	seedSubscriptionPlan(t, planID, "Coding Plan", model.SubscriptionPlanTypeCodingPlan)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", planID).Updates(map[string]any{
+		"duration_value": 30, "coding_official_amount_usd": 79,
+		"coding_model_multipliers": `{"` + modelName + `":0.350}`,
+	}).Error)
+	model.InvalidateSubscriptionPlanCache(planID)
+	seedUserSubscriptionWithPlan(t, subscriptionID, userID, planID, amountTotal, amountUsed)
+}
+
+func addCodingPlanBillingInfo(info *relaycommon.RelayInfo, quota int) {
+	info.HasActiveCodingPlan = true
+	info.SetCodingPriceData(types.PriceData{
+		ModelRatio:        0.35,
+		CompletionRatio:   2,
+		QuotaToPreConsume: quota,
+		GroupRatioInfo:    types.GroupRatioInfo{GroupRatio: 1},
+	})
+}
+
+func TestPreConsumeBillingPrefersPaidGPTOverCodingPlan(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	seedToken(t, 2, 1, "trial-billing-key", 1000)
+	seedSubscriptionPlan(t, 103, "Pro", model.SubscriptionPlanTypeGPTSubscription)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 103).Updates(map[string]any{
+		"model_allowlist": "gpt-5", "five_hour_amount": 500, "seven_day_amount": 1000,
+	}).Error)
+	model.InvalidateSubscriptionPlanCache(103)
+	seedUserSubscriptionWithPlan(t, 203, 1, 103, 0, 0)
+	require.NoError(t, model.DB.Model(&model.UserSubscription{}).Where("id = ?", 203).Updates(map[string]any{
+		"five_hour_amount": 500, "seven_day_amount": 1000,
+	}).Error)
+	seedCodingPlanBilling(t, 104, 204, 1, "gpt-5", 1000, 0)
+
+	info := seedGPTTrialBillingInfo("gpt-5", "wallet_first")
+	info.HasActiveGPTTrial = false
+	info.HasActiveGPTSubscription = true
+	addCodingPlanBillingInfo(info, 25)
+	require.Nil(t, PreConsumeBilling(retryBillingContext(), info.WalletPriceData.QuotaToPreConsume, info))
+	require.Equal(t, model.SubscriptionPlanTypeGPTSubscription, info.PriceDataSource)
+	require.Equal(t, 103, info.SubscriptionPlanId)
+	require.Equal(t, 40, info.Billing.GetPreConsumedQuota())
+}
+
+func TestPreConsumeBillingUsesCodingPlanAfterPaidGPTRollingLimit(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	seedToken(t, 2, 1, "trial-billing-key", 1000)
+	seedSubscriptionPlan(t, 103, "Pro", model.SubscriptionPlanTypeGPTSubscription)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 103).Updates(map[string]any{
+		"model_allowlist": "gpt-5", "five_hour_amount": 30, "seven_day_amount": 100,
+	}).Error)
+	model.InvalidateSubscriptionPlanCache(103)
+	seedUserSubscriptionWithPlan(t, 203, 1, 103, 0, 0)
+	require.NoError(t, model.DB.Model(&model.UserSubscription{}).Where("id = ?", 203).Updates(map[string]any{
+		"five_hour_amount": 30, "seven_day_amount": 100,
+	}).Error)
+	seedCodingPlanBilling(t, 104, 204, 1, "gpt-5", 1000, 0)
+
+	info := seedGPTTrialBillingInfo("gpt-5", "wallet_first")
+	info.HasActiveGPTTrial = false
+	info.HasActiveGPTSubscription = true
+	addCodingPlanBillingInfo(info, 25)
+	require.Nil(t, PreConsumeBilling(retryBillingContext(), info.WalletPriceData.QuotaToPreConsume, info))
+	require.Equal(t, model.SubscriptionPlanTypeCodingPlan, info.PriceDataSource)
+	require.Equal(t, 104, info.SubscriptionPlanId)
+	require.Equal(t, 25, info.Billing.GetPreConsumedQuota())
+
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	require.Equal(t, 1000, user.Quota)
+}
+
+func TestPreConsumeBillingFallsBackToWalletWhenCodingPlanDoesNotSupportModel(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	seedToken(t, 2, 1, "trial-billing-key", 1000)
+	seedCodingPlanBilling(t, 104, 204, 1, "kimi-k3", 1000, 0)
+
+	info := seedGPTTrialBillingInfo("gpt-5", "subscription_first")
+	info.HasActiveGPTTrial = false
+	addCodingPlanBillingInfo(info, 25)
+	require.Nil(t, PreConsumeBilling(retryBillingContext(), info.WalletPriceData.QuotaToPreConsume, info))
+	require.Equal(t, BillingSourceWallet, info.BillingSource)
+	require.Equal(t, BillingSourceWallet, info.PriceDataSource)
+	require.Equal(t, 120, info.Billing.GetPreConsumedQuota())
+
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	require.Equal(t, 880, user.Quota)
+}
+
 func TestPreConsumeBillingFallsBackToWalletWhenPaidRollingLimitReached(t *testing.T) {
 	truncate(t)
 	seedUser(t, 1, 1000)

@@ -156,7 +156,7 @@ func RequestPayPalPay(c *gin.Context) {
 	var terms subscriptionOrderTerms
 	chargedMoney := 0.0
 	if req.PlanId > 0 {
-		plan, terms, err = resolveGPTSubscriptionPayment(id, req.PlanId)
+		plan, terms, err = resolvePaidSubscriptionPayment(id, req.PlanId)
 		if err != nil {
 			common.ApiErrorMsg(c, err.Error())
 			return
@@ -180,7 +180,7 @@ func RequestPayPalPay(c *gin.Context) {
 	successURL := req.SuccessURL
 	if successURL == "" {
 		if plan != nil {
-			successURL = freeModelPaymentURL("success")
+			successURL = subscriptionPaymentURL(plan, "success")
 		} else {
 			successURL = system_setting.ServerAddress + "/console/usage-logs"
 		}
@@ -188,14 +188,14 @@ func RequestPayPalPay(c *gin.Context) {
 	cancelURL := req.CancelURL
 	if cancelURL == "" {
 		if plan != nil {
-			cancelURL = freeModelPaymentURL("cancelled")
+			cancelURL = subscriptionPaymentURL(plan, "cancelled")
 		} else {
 			cancelURL = system_setting.ServerAddress + "/console/topup"
 		}
 	}
 
 	if plan != nil {
-		order := newGPTSubscriptionOrder(id, plan, terms, referenceID, model.PaymentMethodPayPal, model.PaymentProviderPayPal)
+		order := newPaidSubscriptionOrder(id, plan, terms, referenceID, model.PaymentMethodPayPal, model.PaymentProviderPayPal)
 		if err := order.Insert(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("PayPal 创建订阅订单失败 user_id=%d trade_no=%s plan_id=%d error=%q", id, referenceID, plan.Id, err.Error()))
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentCreateFailed)})

@@ -107,7 +107,7 @@ func RequestClinkPay(c *gin.Context) {
 	var terms subscriptionOrderTerms
 	chargedMoney := 0.0
 	if req.PlanId > 0 {
-		plan, terms, err = resolveGPTSubscriptionPayment(id, req.PlanId)
+		plan, terms, err = resolvePaidSubscriptionPayment(id, req.PlanId)
 		if err != nil {
 			common.ApiErrorMsg(c, err.Error())
 			return
@@ -131,7 +131,7 @@ func RequestClinkPay(c *gin.Context) {
 	}
 	tradeNo := fmt.Sprintf("%s-%d-%d-%s", tradePrefix, id, time.Now().UnixMilli(), randstr.String(6))
 	if plan != nil {
-		order := newGPTSubscriptionOrder(id, plan, terms, tradeNo, model.PaymentMethodClink, model.PaymentProviderClink)
+		order := newPaidSubscriptionOrder(id, plan, terms, tradeNo, model.PaymentMethodClink, model.PaymentProviderClink)
 		if err := order.Insert(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Clink 创建订阅订单失败 user_id=%d trade_no=%s plan_id=%d error=%q", id, tradeNo, plan.Id, err.Error()))
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentCreateFailed)})
@@ -174,13 +174,13 @@ func RequestClinkPay(c *gin.Context) {
 		UIMode:              "hostedPage",
 		SuccessURL: func() string {
 			if plan != nil {
-				return freeModelPaymentURL("success")
+				return subscriptionPaymentURL(plan, "success")
 			}
 			return getClinkSuccessURL(req.SuccessURL)
 		}(),
 		CancelURL: func() string {
 			if plan != nil {
-				return freeModelPaymentURL("cancelled")
+				return subscriptionPaymentURL(plan, "cancelled")
 			}
 			return getClinkCancelURL(req.CancelURL)
 		}(),
@@ -189,7 +189,7 @@ func RequestClinkPay(c *gin.Context) {
 			"user_id":  strconv.Itoa(user.Id),
 			"purpose": func() string {
 				if plan != nil {
-					return "gpt_subscription"
+					return model.NormalizeSubscriptionPlanType(plan.PlanType)
 				}
 				return "wallet_topup"
 			}(),
