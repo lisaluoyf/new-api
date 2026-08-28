@@ -161,14 +161,15 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         cell: ({ row }) => {
           const plan = row.original.plan
           if (plan.plan_type !== 'coding_plan') return '-'
-          let modelCount = 0
-          try {
-            modelCount = Object.keys(
-              JSON.parse(plan.coding_model_multipliers || '{}')
-            ).length
-          } catch {
-            modelCount = 0
-          }
+          const modelCount = (() => {
+            try {
+              return Object.keys(
+                JSON.parse(plan.coding_model_multipliers || '{}')
+              ).length
+            } catch {
+              return 0
+            }
+          })()
           return (
             <div className='text-muted-foreground text-xs'>
               <div>
