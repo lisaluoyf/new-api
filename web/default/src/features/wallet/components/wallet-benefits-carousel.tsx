@@ -238,43 +238,63 @@ export function WalletBenefitsCarousel() {
 
   useEffect(() => {
     let active = true
-    void Promise.allSettled([
-      api.get('/api/subscription/gpt/plans', {
-        // This request only decides whether the optional GPT Pass card is
-        // visible. A 403 is expected for users outside the internal allowlist
-        // and must not surface as a global error toast.
-        skipErrorHandler: true,
-        skipBusinessError: true,
-      } as Record<string, unknown>),
-      api.get('/api/subscription/coding/plans', {
-        skipErrorHandler: true,
-        skipBusinessError: true,
-      } as Record<string, unknown>),
-      getSelfSubscriptionFull(),
-    ]).then(([gptResult, codingResult, allResult]) => {
-      if (!active) return
-      if (gptResult.status === 'fulfilled' && gptResult.value.data?.success) {
-        setGPT(gptResult.value.data.data as GPTState)
-      }
-      if (
-        codingResult.status === 'fulfilled' &&
-        codingResult.value.data?.success
-      ) {
-        setCoding(codingResult.value.data.data as CodingState)
-      }
-      if (allResult.status === 'fulfilled') {
-        setShowTrial(
-          Boolean(
-            allResult.value.data?.plans?.some(
-              (item) => item.plan.plan_type === 'gpt_trial' && item.plan.enabled
+    let inFlight = false
+
+    const loadBenefits = async () => {
+      if (inFlight) return
+      inFlight = true
+      try {
+        const [gptResult, codingResult, allResult] = await Promise.allSettled([
+          api.get('/api/subscription/gpt/plans', {
+            // This request only decides whether the optional GPT Pass card is
+            // visible. A 403 is expected for users outside the internal allowlist
+            // and must not surface as a global error toast.
+            skipErrorHandler: true,
+            skipBusinessError: true,
+          } as Record<string, unknown>),
+          api.get('/api/subscription/coding/plans', {
+            skipErrorHandler: true,
+            skipBusinessError: true,
+          } as Record<string, unknown>),
+          getSelfSubscriptionFull(),
+        ])
+        if (!active) return
+        if (gptResult.status === 'fulfilled' && gptResult.value.data?.success) {
+          setGPT(gptResult.value.data.data as GPTState)
+        }
+        if (
+          codingResult.status === 'fulfilled' &&
+          codingResult.value.data?.success
+        ) {
+          setCoding(codingResult.value.data.data as CodingState)
+        }
+        if (allResult.status === 'fulfilled') {
+          setShowTrial(
+            Boolean(
+              allResult.value.data?.plans?.some(
+                (item) =>
+                  item.plan.plan_type === 'gpt_trial' && item.plan.enabled
+              )
             )
           )
-        )
+        }
+        setLoading(false)
+      } finally {
+        inFlight = false
       }
-      setLoading(false)
-    })
+    }
+
+    const refreshVisibleBenefits = () => {
+      if (document.visibilityState === 'visible') void loadBenefits()
+    }
+
+    void loadBenefits()
+    window.addEventListener('focus', refreshVisibleBenefits)
+    document.addEventListener('visibilitychange', refreshVisibleBenefits)
     return () => {
       active = false
+      window.removeEventListener('focus', refreshVisibleBenefits)
+      document.removeEventListener('visibilitychange', refreshVisibleBenefits)
     }
   }, [])
 
