@@ -15,6 +15,7 @@ var (
 		"gpt-image-1",
 		"prefix:gpt-image-2", // gpt-image-2, gpt-image-2-official
 		"prefix:imagen-",
+		"prefix:gemini-3-pro-image",
 		"flux-",
 		"flux.1-",
 		"flash-image", // gemini-2.5-flash-image, gemini-3.1-flash-image-preview, …
@@ -60,7 +61,7 @@ func UsesAsyncImageTaskUpstream(modelName string) bool {
 	if strings.HasPrefix(lower, "gpt-image-2") {
 		return true
 	}
-	return strings.Contains(lower, "flash-image")
+	return strings.Contains(lower, "flash-image") || strings.HasPrefix(lower, "gemini-3-pro-image")
 }
 
 func IsOpenAITextModel(modelName string) bool {

@@ -8,7 +8,7 @@ import (
 
 const ImageModelPricingOption = "ImageModelPricing"
 
-const defaultImageModelPricing = `{"gpt-image-2":{"unit":"image","base_price":0.25,"base_variant":"1K","prices":{"1K":0.25,"2K":0.3,"4K":0.6}}}`
+const defaultImageModelPricing = `{"gemini-2.5-flash-image":{"unit":"image","base_price":0.039,"base_variant":"1K","prices":{"1K":0.039}},"gemini-3-pro-image":{"unit":"image","base_price":0.134,"base_variant":"1K","prices":{"1K":0.134,"2K":0.134,"4K":0.24}},"gemini-3.1-flash-image":{"unit":"image","base_price":0.067,"base_variant":"1K","prices":{"0.5K":0.045,"1K":0.067,"2K":0.101,"4K":0.151}},"gpt-image-2":{"unit":"image","base_price":0.25,"base_variant":"1K","prices":{"1K":0.25,"2K":0.3,"4K":0.6}}}`
 
 type imageModelPricing struct {
 	Unit        string             `json:"unit,omitempty"`

@@ -4,14 +4,15 @@ import "testing"
 
 func TestIsImageGenerationModel_gptImage2(t *testing.T) {
 	cases := map[string]bool{
-		"gpt-image-2":                      true,
-		"gpt-image-2-official":             true,
-		"gpt-image-1":                      true,
-		"gpt-image-1-mini":                 true,
-		"gemini-3.1-flash-image-preview":   true,
-		"gemini-2.5-flash-image":           true,
-		"claude-sonnet-4-6":                false,
-		"gpt-5.4":                          false,
+		"gpt-image-2":                    true,
+		"gpt-image-2-official":           true,
+		"gpt-image-1":                    true,
+		"gpt-image-1-mini":               true,
+		"gemini-3.1-flash-image-preview": true,
+		"gemini-2.5-flash-image":         true,
+		"gemini-3-pro-image":             true,
+		"claude-sonnet-4-6":              false,
+		"gpt-5.4":                        false,
 	}
 	for model, want := range cases {
 		if got := IsImageGenerationModel(model); got != want {
@@ -32,6 +33,9 @@ func TestUsesAsyncImageTaskUpstream(t *testing.T) {
 	}
 	if !UsesAsyncImageTaskUpstream("gemini-3.1-flash-image-preview") {
 		t.Fatal("expected gemini-3.1-flash-image-preview to use async upstream")
+	}
+	if !UsesAsyncImageTaskUpstream("gemini-3-pro-image") {
+		t.Fatal("expected gemini-3-pro-image to use async upstream")
 	}
 	if UsesAsyncImageTaskUpstream("gemini-3.1-flash-lite") {
 		t.Fatal("text flash-lite models should not use image async upstream")
