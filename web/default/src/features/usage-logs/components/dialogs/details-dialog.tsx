@@ -196,7 +196,7 @@ function BillingBreakdown(props: {
         timedPricing.currentOutput
       ),
     })
-  } else if (isDuration) {
+  } else if (!isSubscription && isDuration) {
     rows.push({ label: t('Billing Mode'), value: t('Per-second') })
     if (other.model_price != null) {
       rows.push({
@@ -204,7 +204,7 @@ function BillingBreakdown(props: {
         value: `${fmtPrice(other.model_price)}/s`,
       })
     }
-  } else if (isPerCall) {
+  } else if (!isSubscription && isPerCall) {
     rows.push({ label: t('Billing Mode'), value: t('Per-call') })
     if (other.model_price != null) {
       rows.push({

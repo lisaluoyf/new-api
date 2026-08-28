@@ -194,6 +194,8 @@ export function getSubscriptionSourceLabel(
       return other.subscription_plan_title
         ? `${t('GPT Subscription')} · ${other.subscription_plan_title}`
         : t('GPT Subscription')
+    case 'coding_plan':
+      return 'Coding Plan'
     default:
       return t('Subscription')
   }

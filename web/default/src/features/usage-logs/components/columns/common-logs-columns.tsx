@@ -207,24 +207,26 @@ function buildDetailSegments(
           true
         )}`,
       })
-    } else if (isPerCall) {
+    } else if (!isSubscription && isPerCall) {
       segments.push({
         text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
       })
-    } else if (isDuration) {
+    } else if (!isSubscription && isDuration) {
       segments.push({
         text: `${t('Per-second')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
       })
     } else if (isSubscription && other.model_ratio != null) {
       const inputPriceUSD = other.model_ratio * 2.0
-      const baseEntries = [formatPriceCompact(inputPriceUSD)]
+      const priceEntries = [
+        `${t('Official')} ${t('Input')} ${formatPriceCompact(inputPriceUSD)}/M`,
+      ]
       if (other.completion_ratio != null) {
-        baseEntries.push(
-          formatPriceCompact(inputPriceUSD * other.completion_ratio)
+        priceEntries.push(
+          `${t('Official')} ${t('Output')} ${formatPriceCompact(inputPriceUSD * other.completion_ratio)}/M`,
         )
       }
       segments.push({
-        text: `${t('Official')} · ${formatPriceList(baseEntries, true)}`,
+        text: priceEntries.join(' · '),
       })
 
       if (hasAnyCacheTokens(other)) {
