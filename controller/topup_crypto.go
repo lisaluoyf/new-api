@@ -907,7 +907,7 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 				model.PaymentMethodCrypto,
 				model.PaymentProviderCrypto,
 			)
-			if err := tx.Create(order).Error; err != nil {
+			if err := model.InsertSubscriptionOrderTx(tx, order); err != nil {
 				return err
 			}
 		}

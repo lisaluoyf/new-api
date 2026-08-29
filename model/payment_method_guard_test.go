@@ -155,7 +155,8 @@ func TestCompleteSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T
 	assert.Zero(t, countUserSubscriptionsForPaymentGuardTest(t, 202))
 
 	topUp := GetTopUpByTradeNo("sub-guard-order")
-	assert.Nil(t, topUp)
+	require.NotNil(t, topUp)
+	assert.Equal(t, common.TopUpStatusPending, topUp.Status)
 }
 
 func TestCompleteSubscriptionOrder_CreatesZeroAmountLedgerEntryWithoutWalletCredit(t *testing.T) {

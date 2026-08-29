@@ -896,6 +896,15 @@ func AdminCompleteTopUp(c *gin.Context) {
 	LockOrder(req.TradeNo)
 	defer UnlockOrder(req.TradeNo)
 
+	if order := model.GetSubscriptionOrderByTradeNo(req.TradeNo); order != nil {
+		if err := model.CompleteSubscriptionOrder(req.TradeNo, "", order.PaymentProvider, order.PaymentMethod); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ApiSuccess(c, nil)
+		return
+	}
+
 	if err := model.ManualCompleteTopUp(req.TradeNo, c.ClientIP()); err != nil {
 		common.ApiError(c, err)
 		return

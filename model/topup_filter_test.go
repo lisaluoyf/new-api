@@ -85,3 +85,58 @@ func TestAdminTopupTransactionTypeFilterAndEnrichment(t *testing.T) {
 	require.Equal(t, "upgrade", byTradeNo["subscription-order"].SubscriptionOrderType)
 	require.Equal(t, "¥70.00", byTradeNo["subscription-order"].ActualPayment)
 }
+
+func TestSubscriptionOrderInsertCreatesVisiblePendingTransaction(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&User{}, &TopUp{}, &SubscriptionPlan{}, &SubscriptionOrder{}))
+	DB = db
+
+	plan := SubscriptionPlan{Title: "Coding Starter", PlanType: SubscriptionPlanTypeCodingPlan}
+	require.NoError(t, db.Create(&plan).Error)
+	order := SubscriptionOrder{
+		UserId: 6811, PlanId: plan.Id, Money: 4.99,
+		TradeNo: "pending-coding-renewal", OrderType: "renewal",
+		PaymentMethod: PaymentMethodPlatega, PaymentProvider: PaymentProviderPlatega,
+		Status: common.TopUpStatusPending, CreateTime: 12345,
+	}
+	require.NoError(t, order.Insert())
+
+	topup := GetTopUpByTradeNo(order.TradeNo)
+	require.NotNil(t, topup)
+	require.Equal(t, common.TopUpStatusPending, topup.Status)
+	require.Equal(t, order.Money, topup.CreditedAmount)
+	require.Zero(t, topup.CompleteTime)
+
+	rows, total, err := GetAllTopUps("", "", TopupTransactionTypeSubscription, &common.PageInfo{Page: 1, PageSize: 10})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	EnrichTopupsWithTransactionInfo(rows)
+	require.Equal(t, "Coding Starter", rows[0].SubscriptionPlanTitle)
+	require.Equal(t, "renewal", rows[0].SubscriptionOrderType)
+}
+
+func TestBackfillSubscriptionTopUpHistoryRestoresMissingOrders(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&TopUp{}, &SubscriptionOrder{}))
+	DB = db
+
+	missing := SubscriptionOrder{
+		UserId: 6811, PlanId: 8, Money: 4.989284,
+		TradeNo: "SUB-PLATEGA-6811-missing", OrderType: "purchase",
+		PaymentMethod: PaymentMethodPlatega, PaymentProvider: PaymentProviderPlatega,
+		Status: common.TopUpStatusPending, CreateTime: 1787936521,
+	}
+	require.NoError(t, db.Create(&missing).Error)
+	require.Nil(t, GetTopUpByTradeNo(missing.TradeNo))
+
+	require.NoError(t, BackfillSubscriptionTopUpHistory())
+	require.NoError(t, BackfillSubscriptionTopUpHistory())
+	topup := GetTopUpByTradeNo(missing.TradeNo)
+	require.NotNil(t, topup)
+	require.Equal(t, common.TopUpStatusPending, topup.Status)
+	var count int64
+	require.NoError(t, db.Model(&TopUp{}).Where("trade_no = ?", missing.TradeNo).Count(&count).Error)
+	require.EqualValues(t, 1, count)
+}

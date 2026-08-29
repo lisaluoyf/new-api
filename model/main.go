@@ -357,6 +357,9 @@ func migrateDB() error {
 	if err := SeedDefaultGPTSubscriptionPlans(); err != nil {
 		return err
 	}
+	if err := BackfillSubscriptionTopUpHistory(); err != nil {
+		return err
+	}
 	return nil
 }
 

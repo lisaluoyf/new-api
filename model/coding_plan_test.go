@@ -64,6 +64,34 @@ func TestCodingPlanQuoteUsesRemainingAllowance(t *testing.T) {
 	require.InDelta(t, 40.5, payable, 0.000001)
 }
 
+func TestCodingPlanQuoteMarksSamePlanAsRenewal(t *testing.T) {
+	setupGPTSubscriptionTestDB(t)
+	now := GetDBTimestamp()
+	plan := SubscriptionPlan{
+		Id: 11011, Title: "Coding Starter", PlanType: SubscriptionPlanTypeCodingPlan,
+		PriceAmount: 5, Currency: "USD", DurationUnit: SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true, TierLevel: 1,
+		CodingOfficialAmountUSD: 10, TotalAmount: int64(10 * common.QuotaPerUnit),
+		CodingModelMultipliers: `{"glm":0.350}`,
+	}
+	require.NoError(t, DB.Create(&plan).Error)
+	InvalidateSubscriptionPlanCache(plan.Id)
+	sub := UserSubscription{
+		Id: 11012, UserId: 11013, PlanId: plan.Id, Status: "active",
+		StartTime: now - 86400, EndTime: now + 29*86400,
+		AmountTotal: plan.TotalAmount, AmountUsed: plan.TotalAmount / 2,
+		PriceAmountSnapshot: 5, PaidAmountSnapshot: 5, TierLevelSnapshot: 1,
+	}
+	require.NoError(t, DB.Create(&sub).Error)
+
+	kind, previousID, credit, payable, err := CalculateCodingPlanQuote(sub.UserId, &plan)
+	require.NoError(t, err)
+	require.Equal(t, "renewal", kind)
+	require.Equal(t, sub.Id, previousID)
+	require.InDelta(t, 2.5, credit, 0.000001)
+	require.InDelta(t, 2.5, payable, 0.000001)
+}
+
 func TestCompleteCodingRenewalStartsFreshCycleNow(t *testing.T) {
 	setupGPTSubscriptionTestDB(t)
 	now := GetDBTimestamp()
@@ -93,6 +121,42 @@ func TestCompleteCodingRenewalStartsFreshCycleNow(t *testing.T) {
 	require.Equal(t, plan.TotalAmount, created.AmountTotal)
 	require.InDelta(t, 39, created.PaidAmountSnapshot, 0.000001)
 	require.InDelta(t, 39, created.PriceAmountSnapshot, 0.000001)
+	require.WithinDuration(t, time.Unix(now+30*86400, 0), time.Unix(created.EndTime, 0), 2*time.Second)
+
+	var cancelled UserSubscription
+	require.NoError(t, DB.First(&cancelled, old.Id).Error)
+	require.Equal(t, "cancelled", cancelled.Status)
+}
+
+func TestCompleteCodingPlanNormalizesLegacyPurchaseRenewal(t *testing.T) {
+	setupGPTSubscriptionTestDB(t)
+	now := GetDBTimestamp()
+	plan := SubscriptionPlan{
+		Id: 11121, Title: "Coding Starter", PlanType: SubscriptionPlanTypeCodingPlan,
+		PriceAmount: 5, Currency: "USD", DurationUnit: SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true, TierLevel: 1,
+		CodingOfficialAmountUSD: 10, TotalAmount: int64(10 * common.QuotaPerUnit),
+		CodingModelMultipliers: `{"glm":0.350}`,
+	}
+	require.NoError(t, DB.Create(&plan).Error)
+	InvalidateSubscriptionPlanCache(plan.Id)
+	old := UserSubscription{
+		Id: 11122, UserId: 11123, PlanId: plan.Id, Status: "active",
+		StartTime: now - 86400, EndTime: now + 29*86400,
+		AmountTotal: plan.TotalAmount, AmountUsed: plan.TotalAmount / 2,
+		PaidAmountSnapshot: 5,
+	}
+	require.NoError(t, DB.Create(&old).Error)
+	order := SubscriptionOrder{
+		Id: 11124, UserId: old.UserId, PlanId: plan.Id, Money: 2.5,
+		ListPrice: 5, CreditAmount: 2.5, OrderType: "purchase",
+		PreviousSubscriptionId: old.Id,
+	}
+
+	created, err := completeCodingPlanOrderTx(DB, &order, &plan)
+	require.NoError(t, err)
+	require.Equal(t, "renewal", order.OrderType)
+	require.Equal(t, order.Id, created.CurrentCycleId)
 	require.WithinDuration(t, time.Unix(now+30*86400, 0), time.Unix(created.EndTime, 0), 2*time.Second)
 
 	var cancelled UserSubscription

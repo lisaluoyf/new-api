@@ -451,7 +451,25 @@ func (o *SubscriptionOrder) Insert() error {
 	if o.CreateTime == 0 {
 		o.CreateTime = common.GetTimestamp()
 	}
-	return DB.Create(o).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return InsertSubscriptionOrderTx(tx, o)
+	})
+}
+
+// InsertSubscriptionOrderTx creates the order and its transaction-history
+// mirror atomically. Pending subscription payments must be visible before the
+// provider callback, including when entitlement completion later fails.
+func InsertSubscriptionOrderTx(tx *gorm.DB, order *SubscriptionOrder) error {
+	if tx == nil || order == nil {
+		return errors.New("invalid subscription order")
+	}
+	if order.CreateTime == 0 {
+		order.CreateTime = common.GetTimestamp()
+	}
+	if err := tx.Create(order).Error; err != nil {
+		return err
+	}
+	return upsertSubscriptionTopUpTx(tx, order)
 }
 
 func (o *SubscriptionOrder) Update() error {
@@ -819,9 +837,6 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if err != nil {
 			return err
 		}
-		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
-			return err
-		}
 		order.Status = common.TopUpStatusSuccess
 		order.CompleteTime = common.GetTimestamp()
 		if providerPayload != "" {
@@ -831,6 +846,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 			order.PaymentMethod = actualPaymentMethod
 		}
 		if err := tx.Save(&order).Error; err != nil {
+			return err
+		}
+		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
 		}
 		var paidUser User
@@ -885,8 +903,8 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 				PaymentMethod:       order.PaymentMethod,
 				PaymentProvider:     order.PaymentProvider,
 				CreateTime:          order.CreateTime,
-				CompleteTime:        now,
-				Status:              common.TopUpStatusSuccess,
+				CompleteTime:        order.CompleteTime,
+				Status:              order.Status,
 			}
 			return tx.Create(&topup).Error
 		}
@@ -905,9 +923,33 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if topup.CreateTime == 0 {
 		topup.CreateTime = order.CreateTime
 	}
-	topup.CompleteTime = now
-	topup.Status = common.TopUpStatusSuccess
+	if order.Status == common.TopUpStatusSuccess && order.CompleteTime == 0 {
+		order.CompleteTime = now
+	}
+	topup.CompleteTime = order.CompleteTime
+	topup.Status = order.Status
 	return tx.Save(&topup).Error
+}
+
+// BackfillSubscriptionTopUpHistory restores legacy subscription orders that
+// predate pending transaction-history mirrors. Existing rows are untouched.
+func BackfillSubscriptionTopUpHistory() error {
+	var orders []SubscriptionOrder
+	if err := DB.Table("subscription_orders AS so").
+		Select("so.*").
+		Joins("LEFT JOIN top_ups AS t ON t.trade_no = so.trade_no").
+		Where("t.id IS NULL AND so.trade_no IS NOT NULL AND so.trade_no <> ''").
+		Order("so.id ASC").Find(&orders).Error; err != nil {
+		return err
+	}
+	for i := range orders {
+		if err := DB.Transaction(func(tx *gorm.DB) error {
+			return upsertSubscriptionTopUpTx(tx, &orders[i])
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) error {
@@ -931,7 +973,10 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 		}
 		order.Status = common.TopUpStatusExpired
 		order.CompleteTime = common.GetTimestamp()
-		return tx.Save(&order).Error
+		if err := tx.Save(&order).Error; err != nil {
+			return err
+		}
+		return upsertSubscriptionTopUpTx(tx, &order)
 	})
 }
 

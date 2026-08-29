@@ -107,7 +107,9 @@ func CalculateCodingPlanQuote(userId int, target *SubscriptionPlan) (orderType s
 		return "", 0, 0, 0, findErr
 	}
 	previousId = current.Id
-	if current.PlanId != target.Id {
+	if current.PlanId == target.Id {
+		orderType = "renewal"
+	} else {
 		currentLevel := current.TierLevelSnapshot
 		if currentLevel == 0 {
 			currentLevel = currentPlan.TierLevel
@@ -157,6 +159,19 @@ func completeCodingPlanOrderTx(tx *gorm.DB, order *SubscriptionOrder, plan *Subs
 		return nil, errors.New("invalid Coding Plan completion")
 	}
 	now := GetDBTimestampTx(tx)
+	// Orders created before the renewal quote fix retained purchase even though
+	// they already referenced the user's active subscription. Normalize those
+	// persisted orders during completion so provider retries and manual recovery
+	// can safely finish the paid renewal.
+	if order.OrderType == "purchase" && order.PreviousSubscriptionId > 0 {
+		var previous UserSubscription
+		if err := tx.Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&previous).Error; err != nil {
+			return nil, err
+		}
+		if previous.PlanId == order.PlanId {
+			order.OrderType = "renewal"
+		}
+	}
 	if order.OrderType == "purchase" {
 		if _, _, err := activeCodingPlanTx(tx, order.UserId); err == nil {
 			return nil, errors.New("user already has an active Coding Plan")
