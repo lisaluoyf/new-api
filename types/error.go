@@ -100,6 +100,9 @@ type NewAPIError struct {
 	errorCode      ErrorCode
 	StatusCode     int
 	Metadata       json.RawMessage
+	// UpstreamResponseBody is retained for administrator diagnostics only.
+	// It must never be used as the client-facing error message.
+	UpstreamResponseBody string
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.

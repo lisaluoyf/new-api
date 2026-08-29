@@ -1176,7 +1176,11 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		errorContent := err.MaskSensitiveErrorWithStatusCode()
+		if body := strings.TrimSpace(err.UpstreamResponseBody); body != "" {
+			errorContent += " | upstream_response_body: " + body
+		}
+		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, errorContent, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 
 }

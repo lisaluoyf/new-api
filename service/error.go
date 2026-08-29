@@ -91,6 +91,19 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		return
 	}
 	CloseResponseBodyGracefully(resp)
+	// Keep a bounded, masked copy for admin error logs and failed-request
+	// snapshots while preserving the existing client-facing redaction policy.
+	const maxDiagnosticBody = 4096
+	diagnosticBody := common.MaskSensitiveInfo(string(responseBody))
+	if len(diagnosticBody) > maxDiagnosticBody {
+		diagnosticBody = diagnosticBody[:maxDiagnosticBody] + "... (truncated)"
+	}
+	newApiErr.UpstreamResponseBody = diagnosticBody
+	defer func() {
+		if newApiErr != nil {
+			newApiErr.UpstreamResponseBody = diagnosticBody
+		}
+	}()
 	var errResponse dto.GeneralErrorResponse
 	buildErrWithBody := func(message string) error {
 		if message == "" {

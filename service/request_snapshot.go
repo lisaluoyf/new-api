@@ -35,12 +35,16 @@ func SaveFinalFailedRequestSnapshot(c *gin.Context, relayInfo *relaycommon.Relay
 	if relayInfo == nil || newAPIError == nil {
 		return
 	}
+	errorMessage := newAPIError.MaskSensitiveErrorWithStatusCode()
+	if body := strings.TrimSpace(newAPIError.UpstreamResponseBody); body != "" {
+		errorMessage += " | upstream_response_body: " + body
+	}
 	SaveRequestSnapshot(c, relayInfo, RequestSnapshotOptions{
 		SnapshotType:      model.FailedRequestSnapshotTypeFinalFailed,
 		ErrorCode:         string(newAPIError.GetErrorCode()),
 		ErrorType:         string(newAPIError.GetErrorType()),
 		StatusCode:        newAPIError.StatusCode,
-		ErrorMessage:      newAPIError.MaskSensitiveErrorWithStatusCode(),
+		ErrorMessage:      errorMessage,
 		RetryDecisionJSON: retryDecisionJSON,
 		RelayFormat:       relayInfo.RelayFormat,
 	})
