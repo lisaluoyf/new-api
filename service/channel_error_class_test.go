@@ -52,6 +52,31 @@ func TestClassifyChannelError_modelAccessForbidden(t *testing.T) {
 	require.Equal(t, CategoryDisableImmediate, ClassifyChannelError(err))
 }
 
+func TestClassifyChannelError_moonshotMissingModelIsNotRecharge(t *testing.T) {
+	t.Parallel()
+	err := types.NewErrorWithStatusCode(
+		types.NewError(nil, types.ErrorCodeBadResponseStatusCode),
+		types.ErrorCodeBadResponseStatusCode,
+		404,
+	)
+	err.SetMessage("status_code=404, Not found the model kimi-k2.5 or Permission denied")
+
+	require.Equal(t, CategoryDisableImmediate, ClassifyChannelError(err))
+	require.False(t, IsHighConfidenceRecharge(err))
+}
+
+func TestClassifyChannelError_legacyDisableKeywordIsNotRecharge(t *testing.T) {
+	t.Parallel()
+	err := types.NewErrorWithStatusCode(
+		types.NewError(nil, types.ErrorCodeBadResponseStatusCode),
+		types.ErrorCodeBadResponseStatusCode,
+		400,
+	)
+	err.SetMessage("Operation not allowed")
+
+	require.Equal(t, CategoryDisableImmediate, ClassifyChannelError(err))
+}
+
 func TestClassifyChannelError_imageGenerationTimeout(t *testing.T) {
 	t.Parallel()
 	err := types.WithOpenAIError(types.OpenAIError{

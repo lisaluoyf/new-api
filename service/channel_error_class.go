@@ -121,7 +121,10 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 
 	lowerMessage := strings.ToLower(err.Error())
 	if search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true); search {
-		return CategoryUpstreamRecharge
+		// These are legacy automatic-disable keywords, not proof that the
+		// upstream account is out of credit. Explicit balance/quota messages
+		// have already been classified by isUpstreamRechargeError above.
+		return CategoryDisableImmediate
 	}
 
 	if isRateLimitCooldown(err) {
@@ -182,11 +185,12 @@ func isPlatformUserQuotaError(err *types.NewAPIError) bool {
 }
 
 func isModelAccessForbiddenError(err *types.NewAPIError) bool {
-	if err == nil || err.StatusCode != 403 {
+	if err == nil || (err.StatusCode != 403 && err.StatusCode != 404) {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
 	markers := []string{
+		"not found the model",
 		"无权访问模型",
 		"no access to model",
 		"not authorized to access model",
