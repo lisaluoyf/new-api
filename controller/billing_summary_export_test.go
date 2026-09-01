@@ -120,6 +120,19 @@ func TestBillingExportCredentialsFallsBackToCatalogSecret(t *testing.T) {
 	assert.Equal(t, "catalog-secret", provided)
 }
 
+func TestBillingSummaryExportCostOnlyRequiresBreakdown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("BILLING_EXPORT_SECRET", "expected-secret")
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/internal/billing-summary-export?cost_only=true", nil)
+	c.Request.Header.Set("X-Billing-Export-Secret", "expected-secret")
+
+	BillingSummaryExport(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
 func TestBillingExportChannel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tests := []struct {
@@ -142,6 +155,51 @@ func TestBillingExportChannel(t *testing.T) {
 			assert.Equal(t, test.expected, billingExportChannel(c))
 		})
 	}
+}
+
+func TestBillingExportChannelIDs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name     string
+		query    string
+		expected []int
+		wantErr  bool
+	}{
+		{name: "multiple channels", query: "?channel_ids=97,103,97", expected: []int{97, 103}},
+		{name: "legacy channel", query: "?channel=42", expected: []int{42}},
+		{name: "all channels"},
+		{name: "invalid channel", query: "?channel_ids=97,nope", wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/internal/billing-summary-export"+test.query, nil)
+
+			actual, err := billingExportChannelIDs(c)
+			if test.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, actual)
+		})
+	}
+}
+
+func TestBuildBillingSummaryExportChannelRows(t *testing.T) {
+	rows := buildBillingSummaryExportChannelRows([]model.BillingChannelDailyCostRow{{
+		Day: 100, ChannelId: 97, CostUSD: 10,
+		ExperienceCostUSD: 2, PaidSubscriptionCostUSD: 3, CodingPlanCostUSD: 1,
+	}})
+
+	require.Len(t, rows, 1)
+	assert.Equal(t, 97, rows[0].ChannelId)
+	assert.InDelta(t, 4, rows[0].WalletCostUSD, 1e-9)
+	assert.InDelta(t, 2, rows[0].ExperienceCostUSD, 1e-9)
+	assert.InDelta(t, 3, rows[0].PaidSubscriptionCostUSD, 1e-9)
+	assert.InDelta(t, 10, rows[0].TotalCostUSD, 1e-9)
 }
 
 func TestBillingExportTimestamp(t *testing.T) {

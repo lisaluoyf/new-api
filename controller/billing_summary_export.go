@@ -2,6 +2,7 @@ package controller
 
 import (
 	"crypto/subtle"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,6 +49,15 @@ type billingSummaryExportRow struct {
 	CodingPlanBalanceUSD          *float64 `json:"coding_plan_balance_usd"`
 	AccountingOKRequestCount      int64    `json:"accounting_ok_request_count"`
 	AccountingTargetRequestCount  int64    `json:"accounting_target_request_count"`
+}
+
+type billingSummaryExportChannelRow struct {
+	Day                     int64   `json:"day"`
+	ChannelId               int     `json:"channel_id"`
+	WalletCostUSD           float64 `json:"wallet_cost_usd"`
+	ExperienceCostUSD       float64 `json:"experience_cost_usd"`
+	PaidSubscriptionCostUSD float64 `json:"paid_subscription_cost_usd"`
+	TotalCostUSD            float64 `json:"total_cost_usd"`
 }
 
 func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummaryExportRow {
@@ -102,6 +112,25 @@ func buildBillingSummaryExportRows(rows []model.BillingDailyRow) []billingSummar
 	return exportRows
 }
 
+func buildBillingSummaryExportChannelRows(rows []model.BillingChannelDailyCostRow) []billingSummaryExportChannelRow {
+	exportRows := make([]billingSummaryExportChannelRow, 0, len(rows))
+	for _, row := range rows {
+		walletCost := row.CostUSD - row.ExperienceCostUSD - row.PaidSubscriptionCostUSD - row.CodingPlanCostUSD
+		if walletCost < 0 {
+			walletCost = 0
+		}
+		exportRows = append(exportRows, billingSummaryExportChannelRow{
+			Day:                     row.Day,
+			ChannelId:               row.ChannelId,
+			WalletCostUSD:           walletCost,
+			ExperienceCostUSD:       row.ExperienceCostUSD,
+			PaidSubscriptionCostUSD: row.PaidSubscriptionCostUSD,
+			TotalCostUSD:            row.CostUSD,
+		})
+	}
+	return exportRows
+}
+
 func billingExportCredentials(c *gin.Context) (secret string, provided string) {
 	secret = strings.TrimSpace(common.GetEnvOrDefaultString("BILLING_EXPORT_SECRET", ""))
 	provided = strings.TrimSpace(c.GetHeader("X-Billing-Export-Secret"))
@@ -123,6 +152,31 @@ func billingExportChannel(c *gin.Context) int {
 	return channel
 }
 
+func billingExportChannelIDs(c *gin.Context) ([]int, error) {
+	value := strings.TrimSpace(c.Query("channel_ids"))
+	if value == "" {
+		channel := billingExportChannel(c)
+		if channel > 0 {
+			return []int{channel}, nil
+		}
+		return nil, nil
+	}
+	seen := make(map[int]bool)
+	channelIDs := make([]int, 0)
+	for _, item := range strings.Split(value, ",") {
+		channelID, err := strconv.Atoi(strings.TrimSpace(item))
+		if err != nil || channelID <= 0 {
+			return nil, fmt.Errorf("invalid channel_ids value %q", item)
+		}
+		if seen[channelID] {
+			continue
+		}
+		seen[channelID] = true
+		channelIDs = append(channelIDs, channelID)
+	}
+	return channelIDs, nil
+}
+
 func billingExportTimestamp(c *gin.Context, key string) int64 {
 	timestamp, err := strconv.ParseInt(c.Query(key), 10, 64)
 	if err != nil || timestamp <= 0 {
@@ -142,6 +196,10 @@ func billingExportTimestamp(c *gin.Context, key string) int64 {
 // view for backward compatibility.
 // Optional start_timestamp and end_timestamp parameters bound the export so
 // callers do not have to trigger a full-history billing scan.
+// include_channel_breakdown=true adds cost-only day/channel rows. channel_ids
+// can limit that breakdown without changing the legacy aggregate rows.
+// cost_only=true skips balances, user counts, and legacy rows for lightweight
+// consumers that only need channel cost breakdowns.
 func BillingSummaryExport(c *gin.Context) {
 	secret, provided := billingExportCredentials(c)
 	if secret == "" {
@@ -156,6 +214,39 @@ func BillingSummaryExport(c *gin.Context) {
 	channel := billingExportChannel(c)
 	startTimestamp := billingExportTimestamp(c, "start_timestamp")
 	endTimestamp := billingExportTimestamp(c, "end_timestamp")
+	includeBreakdown, _ := strconv.ParseBool(c.Query("include_channel_breakdown"))
+	costOnly, _ := strconv.ParseBool(c.Query("cost_only"))
+	if costOnly && !includeBreakdown {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "cost_only requires include_channel_breakdown"})
+		return
+	}
+	var channelRows []billingSummaryExportChannelRow
+	if includeBreakdown {
+		channelIDs, err := billingExportChannelIDs(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		rows, err := service.GetBillingChannelDailyCosts(startTimestamp, endTimestamp, channelIDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		channelRows = buildBillingSummaryExportChannelRows(rows)
+	}
+	if costOnly {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data": gin.H{
+				"generated_at": time.Now().Unix(),
+				"timezone":     billingExportTimezone,
+				"currency":     "USD",
+				"rows":         []billingSummaryExportRow{},
+				"channel_rows": channelRows,
+			},
+		})
+		return
+	}
 	rows, err := service.GetBillingDaily(startTimestamp, endTimestamp, "", channel, "", "", "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
@@ -202,6 +293,7 @@ func BillingSummaryExport(c *gin.Context) {
 			"paid_subscription_user_count":  userCounts.PaidSubscriptionUserCount,
 			"coding_plan_user_count":        userCounts.CodingPlanUserCount,
 			"rows":                          buildBillingSummaryExportRows(rows),
+			"channel_rows":                  channelRows,
 		},
 	})
 }
