@@ -136,6 +136,11 @@
     "accent": "#4285f4"
   },
   { "model_id": "gpt-image-2", "label": "Image 2", "accent": "#22d3ee" },
+  {
+    "model_id": "gpt-image-2-fd",
+    "label": "Image 2 FD",
+    "accent": "#22d3ee"
+  },
   { "model_id": "sora-2", "label": "Sora 2", "accent": "#22d3ee" },
   { "model_id": "sora-2-pro", "label": "Sora 2 Pro", "accent": "#22d3ee" },
   {

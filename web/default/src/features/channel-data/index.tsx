@@ -361,6 +361,7 @@ const NON_LLM_MODEL_IDS = new Set([
   'gemini-3.1-flash-image',
   'gemini-3.1-flash-image-preview',
   'gpt-image-2',
+  'gpt-image-2-fd',
   'sora-2',
   'sora-2-pro',
   'doubao-seedance-2.0',
@@ -388,6 +389,7 @@ const IMAGE_MODEL_IDS = new Set([
   'gemini-3.1-flash-image',
   'gemini-3.1-flash-image-preview',
   'gpt-image-2',
+  'gpt-image-2-fd',
 ])
 
 const PROCUREMENT_FIELD_LABEL_KEY: Record<string, string> = {
