@@ -161,7 +161,12 @@ const (
 )
 
 func isHiddenChannelDataModel(modelName string) bool {
-	return strings.EqualFold(strings.TrimSpace(modelName), "gemini-3.1-flash-lite")
+	switch strings.ToLower(strings.TrimSpace(modelName)) {
+	case "gemini-3.1-flash-lite", "kimi-k2.5":
+		return true
+	default:
+		return false
+	}
 }
 
 // GetModelData returns channel pricing and detection stats for a given model.

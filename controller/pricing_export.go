@@ -96,6 +96,9 @@ func PricingExport(c *gin.Context) {
 	}
 	exportPricings := make([]pricingExportPricing, 0, len(pricingRows))
 	for _, row := range pricingRows {
+		if isHiddenChannelDataModel(row.ModelName) {
+			continue
+		}
 		userPriceRatio := 1.0
 		if ch, ok := channelByID[row.ChannelId]; ok {
 			userPriceRatio = ch.GetModelPriceRatio(row.ModelName)
