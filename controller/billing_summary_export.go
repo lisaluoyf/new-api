@@ -123,8 +123,16 @@ func billingExportChannel(c *gin.Context) int {
 	return channel
 }
 
-// BillingSummaryExport returns every available daily Platform Billing row,
-// newest first. It is intended for service-to-service reads by Roma.
+func billingExportTimestamp(c *gin.Context, key string) int64 {
+	timestamp, err := strconv.ParseInt(c.Query(key), 10, 64)
+	if err != nil || timestamp <= 0 {
+		return 0
+	}
+	return timestamp
+}
+
+// BillingSummaryExport returns daily Platform Billing rows, newest first. It
+// is intended for service-to-service reads by Roma.
 //
 // Authentication prefers X-Billing-Export-Secret/BILLING_EXPORT_SECRET. When
 // no dedicated secret is configured, Roma may reuse its existing
@@ -132,6 +140,8 @@ func billingExportChannel(c *gin.Context) int {
 // The optional channel query parameter applies the same channel-id filter as
 // the Platform Billing page; zero or an invalid value keeps the all-channel
 // view for backward compatibility.
+// Optional start_timestamp and end_timestamp parameters bound the export so
+// callers do not have to trigger a full-history billing scan.
 func BillingSummaryExport(c *gin.Context) {
 	secret, provided := billingExportCredentials(c)
 	if secret == "" {
@@ -144,12 +154,14 @@ func BillingSummaryExport(c *gin.Context) {
 	}
 
 	channel := billingExportChannel(c)
-	rows, err := service.GetBillingDaily(0, 0, "", channel, "", "", "")
+	startTimestamp := billingExportTimestamp(c, "start_timestamp")
+	endTimestamp := billingExportTimestamp(c, "end_timestamp")
+	rows, err := service.GetBillingDaily(startTimestamp, endTimestamp, "", channel, "", "", "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	userCounts, err := service.GetBillingUserCountsTotal(0, 0, "", channel, "", "", "")
+	userCounts, err := service.GetBillingUserCountsTotal(startTimestamp, endTimestamp, "", channel, "", "", "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return

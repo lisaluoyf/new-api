@@ -143,3 +143,27 @@ func TestBillingExportChannel(t *testing.T) {
 		})
 	}
 }
+
+func TestBillingExportTimestamp(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name     string
+		query    string
+		expected int64
+	}{
+		{name: "selected timestamp", query: "?start_timestamp=1785542400", expected: 1785542400},
+		{name: "missing timestamp", expected: 0},
+		{name: "invalid timestamp", query: "?start_timestamp=invalid", expected: 0},
+		{name: "negative timestamp", query: "?start_timestamp=-1", expected: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/internal/billing-summary-export"+test.query, nil)
+
+			assert.Equal(t, test.expected, billingExportTimestamp(c, "start_timestamp"))
+		})
+	}
+}
