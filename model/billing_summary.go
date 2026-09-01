@@ -115,6 +115,18 @@ type BillingDailyRow struct {
 	CodingPlanBalanceUSD          *float64 `json:"coding_plan_balance_usd,omitempty" gorm:"-"`
 }
 
+// BillingChannelDailyCostRow is the cost-only day/channel grain used by the
+// internal billing export. It lets Roma group channels into providers without
+// issuing one HTTP request per channel.
+type BillingChannelDailyCostRow struct {
+	Day                     int64   `json:"day" gorm:"column:day"`
+	ChannelId               int     `json:"channel_id" gorm:"column:channel_id"`
+	CostUSD                 float64 `json:"cost_usd" gorm:"column:cost_usd"`
+	ExperienceCostUSD       float64 `json:"experience_cost_usd" gorm:"column:experience_cost_usd"`
+	PaidSubscriptionCostUSD float64 `json:"paid_subscription_cost_usd" gorm:"column:paid_subscription_cost_usd"`
+	CodingPlanCostUSD       float64 `json:"coding_plan_cost_usd" gorm:"column:coding_plan_cost_usd"`
+}
+
 type billingDailyCountRow struct {
 	Day                      int64 `gorm:"column:day"`
 	AccountingTargetReqCount int64 `gorm:"column:accounting_target_request_count"`
@@ -414,6 +426,29 @@ func GetBillingDailyFromSummary(startTimestamp, endTimestamp int64, modelName st
 	return rows, nil
 }
 
+func GetBillingChannelDailyCostsFromSummary(startTimestamp, endTimestamp int64, channelIDs []int) ([]BillingChannelDailyCostRow, error) {
+	dayExpr := billingDayExpr("hour_bucket")
+	tx := LOG_DB.Table("billing_hourly_summaries").
+		Select(dayExpr + ` as day,
+			channel_id,
+			SUM(cost_usd) as cost_usd,
+			COALESCE(SUM(subscription_cost_usd), 0) - COALESCE(SUM(paid_subscription_cost_usd), 0) - COALESCE(SUM(coding_plan_cost_usd), 0) as experience_cost_usd,
+			COALESCE(SUM(paid_subscription_cost_usd), 0) as paid_subscription_cost_usd,
+			COALESCE(SUM(coding_plan_cost_usd), 0) as coding_plan_cost_usd`)
+	if startTimestamp != 0 {
+		tx = tx.Where("hour_bucket >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("hour_bucket <= ?", endTimestamp)
+	}
+	if len(channelIDs) > 0 {
+		tx = tx.Where("channel_id IN ?", channelIDs)
+	}
+	var rows []BillingChannelDailyCostRow
+	err := tx.Group(dayExpr + ", channel_id").Order("day desc, channel_id asc").Scan(&rows).Error
+	return rows, err
+}
+
 // GetBillingDailyFromRawLogs aggregates directly from the logs table, for
 // filter combinations (token name / username / email) not covered by the
 // summary table's grain. Filters directly on logs' own denormalized
@@ -480,6 +515,30 @@ func GetBillingDailyFromRawLogs(startTimestamp, endTimestamp int64, modelName st
 	}
 	mergeBillingDailyUserCounts(&rows, userCounts)
 	return rows, nil
+}
+
+func GetBillingChannelDailyCostsFromRawLogs(startTimestamp, endTimestamp int64, channelIDs []int) ([]BillingChannelDailyCostRow, error) {
+	dayExpr := billingDayExpr("created_at")
+	tx := LOG_DB.Table("logs").
+		Select(dayExpr+` as day,
+			channel_id,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN accounting_channel_cost_amount_usd ELSE 0 END) as cost_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingExperienceSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as experience_cost_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingGPTSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingCodingPlanCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as coding_plan_cost_usd`).
+		Where("type = ?", LogTypeConsume)
+	if startTimestamp != 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+	if len(channelIDs) > 0 {
+		tx = tx.Where("channel_id IN ?", channelIDs)
+	}
+	var rows []BillingChannelDailyCostRow
+	err := tx.Group(dayExpr + ", channel_id").Order("day desc, channel_id asc").Scan(&rows).Error
+	return rows, err
 }
 
 func getBillingDailyTargetRequestCounts(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string) (map[int64]int64, error) {

@@ -168,6 +168,43 @@ func TestGetBillingDailyFromRawLogs_SplitsSubscriptionMetrics(t *testing.T) {
 	assert.Equal(t, int64(1), row.CodingPlanUserCount)
 }
 
+func TestGetBillingChannelDailyCostsFromRawLogsPreservesChannelGrain(t *testing.T) {
+	truncate(t)
+	const (
+		userID     = 1010
+		channelOne = 2010
+		channelTwo = 2011
+		baseTs     = int64(1_783_800_000)
+	)
+	seedUser(t, userID, 0)
+	seedChannel(t, channelOne)
+	seedChannel(t, channelTwo)
+	seedConsumeLog(t, &model.Log{
+		UserId: userID, Type: model.LogTypeConsume, CreatedAt: baseTs,
+		ChannelId: channelOne, Quota: 100, AccountingStatus: "ok",
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceWallet}),
+		AccountingChannelCostAmountUSD: 1.25,
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId: userID, Type: model.LogTypeConsume, CreatedAt: baseTs,
+		ChannelId: channelOne, Quota: 100, AccountingStatus: "ok",
+		Other:                          common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription, "subscription_type": model.SubscriptionPlanTypeGPTSubscription}),
+		AccountingChannelCostAmountUSD: 0.75,
+	})
+	seedConsumeLog(t, &model.Log{
+		UserId: userID, Type: model.LogTypeConsume, CreatedAt: baseTs,
+		ChannelId: channelTwo, Quota: 100, AccountingStatus: "ok",
+		AccountingChannelCostAmountUSD: 5,
+	})
+
+	rows, err := model.GetBillingChannelDailyCostsFromRawLogs(baseTs-10, baseTs+10, []int{channelOne})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, channelOne, rows[0].ChannelId)
+	assert.InDelta(t, 2, rows[0].CostUSD, 1e-9)
+	assert.InDelta(t, 0.75, rows[0].PaidSubscriptionCostUSD, 1e-9)
+}
+
 func TestGetBillingUserCountsTotal_DistinctAcrossWholeRange(t *testing.T) {
 	truncate(t)
 

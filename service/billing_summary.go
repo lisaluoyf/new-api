@@ -382,3 +382,32 @@ func getBillingDailyHybrid(startTimestamp, endTimestamp int64, modelName string,
 	})
 	return rows, nil
 }
+
+// GetBillingChannelDailyCosts uses the same historical-summary/current-day
+// split as GetBillingDaily, but preserves channel_id for downstream provider
+// grouping and returns cost fields only.
+func GetBillingChannelDailyCosts(startTimestamp, endTimestamp int64, channelIDs []int) ([]model.BillingChannelDailyCostRow, error) {
+	plan := planBillingDailyHybridRange(startTimestamp, endTimestamp, billingSummaryNow().Unix())
+	rows := make([]model.BillingChannelDailyCostRow, 0, 32)
+	if plan.useSummary {
+		summaryRows, err := model.GetBillingChannelDailyCostsFromSummary(plan.summaryStart, plan.summaryEnd, channelIDs)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, summaryRows...)
+	}
+	if plan.useRaw {
+		rawRows, err := model.GetBillingChannelDailyCostsFromRawLogs(plan.rawStart, plan.rawEnd, channelIDs)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, rawRows...)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Day == rows[j].Day {
+			return rows[i].ChannelId < rows[j].ChannelId
+		}
+		return rows[i].Day > rows[j].Day
+	})
+	return rows, nil
+}
