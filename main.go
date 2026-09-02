@@ -153,6 +153,9 @@ func main() {
 	// Platform billing hourly summary (平台账单)
 	service.StartBillingSummaryTask()
 
+	// Bound replay snapshot storage and remove expired request bodies in small batches.
+	service.StartFailedRequestSnapshotCleanupTask()
+
 	// Optional production shadow benchmark for APIMaster vs upstream latency/success comparison.
 	service.InitShadowBenchmark()
 

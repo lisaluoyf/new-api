@@ -19,6 +19,7 @@ import (
 const (
 	clientGoneSnapshotStatusCode = 499
 	requestSnapshotSavedKey      = "request_snapshot_saved"
+	defaultSnapshotMaxBodyMB     = 1
 )
 
 type RequestSnapshotOptions struct {
@@ -33,6 +34,9 @@ type RequestSnapshotOptions struct {
 
 func SaveFinalFailedRequestSnapshot(c *gin.Context, relayInfo *relaycommon.RelayInfo, newAPIError *types.NewAPIError, retryDecisionJSON string) {
 	if relayInfo == nil || newAPIError == nil {
+		return
+	}
+	if shouldSkipFailedRequestSnapshot(newAPIError.GetErrorCode()) {
 		return
 	}
 	errorMessage := newAPIError.MaskSensitiveErrorWithStatusCode()
@@ -106,6 +110,12 @@ func SaveRequestSnapshot(c *gin.Context, relayInfo *relaycommon.RelayInfo, opts 
 	if relayFormat == "" {
 		relayFormat = relayInfo.RelayFormat
 	}
+	bodySize := int64(len(body))
+	bodyText := ""
+	maxBodyBytes := int64(common.GetEnvOrDefault("FAILED_REQUEST_SNAPSHOT_MAX_BODY_MB", defaultSnapshotMaxBodyMB)) * 1024 * 1024
+	if maxBodyBytes > 0 && bodySize <= maxBodyBytes {
+		bodyText = string(body)
+	}
 	snapshot := &model.FailedRequestSnapshot{
 		RequestId:       requestID,
 		SnapshotType:    snapshotType,
@@ -116,8 +126,8 @@ func SaveRequestSnapshot(c *gin.Context, relayInfo *relaycommon.RelayInfo, opts 
 		Method:          method,
 		ContentType:     contentType,
 		Headers:         common.GetJsonString(captureReplayHeaders(c)),
-		Body:            string(body),
-		BodySize:        int64(len(body)),
+		Body:            bodyText,
+		BodySize:        bodySize,
 		UseChannel:      common.GetJsonString(c.GetStringSlice("use_channel")),
 		ErrorCode:       opts.ErrorCode,
 		ErrorType:       opts.ErrorType,
@@ -145,6 +155,15 @@ func SaveRequestSnapshot(c *gin.Context, relayInfo *relaycommon.RelayInfo, opts 
 		return
 	}
 	markSnapshotSaved(c, snapshotType)
+}
+
+func shouldSkipFailedRequestSnapshot(errorCode types.ErrorCode) bool {
+	switch errorCode {
+	case types.ErrorCodeInsufficientUserQuota, types.ErrorCodePreConsumeTokenQuotaFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 func captureReplayHeaders(c *gin.Context) map[string][]string {
@@ -215,6 +234,9 @@ func snapshotAlreadySaved(c *gin.Context, snapshotType string) bool {
 func BuildReplayRequest(snapshot *model.FailedRequestSnapshot, channelID int, token string) (*http.Request, error) {
 	if snapshot == nil {
 		return nil, fmt.Errorf("snapshot is nil")
+	}
+	if snapshot.BodySize != int64(len(snapshot.Body)) {
+		return nil, fmt.Errorf("snapshot body was not retained: original size %d bytes", snapshot.BodySize)
 	}
 	method := strings.TrimSpace(snapshot.Method)
 	if method == "" {

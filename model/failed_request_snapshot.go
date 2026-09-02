@@ -34,7 +34,7 @@ type FailedRequestSnapshot struct {
 	LastChannelId   int    `json:"last_channel_id" gorm:"index"`
 	LastChannelName string `json:"last_channel_name"`
 	// 时序字段（相对请求开始的毫秒数；-1 表示未发生）
-	FrtMs             int64 `json:"frt_ms" gorm:"default:-1"`      // 首字时刻
+	FrtMs             int64 `json:"frt_ms" gorm:"default:-1"`       // 首字时刻
 	CancelAtMs        int64 `json:"cancel_at_ms" gorm:"default:-1"` // 快照写入时刻（client_gone 时 ≈ 客户端断开被检测到的时刻）
 	LastDataMs        int64 `json:"last_data_ms" gorm:"default:-1"` // 最后一次收到上游数据的时刻
 	SendResponseCount int   `json:"send_response_count"`            // 断开前已向客户端下发的 chunk 数
@@ -82,4 +82,21 @@ func GetFailedRequestSnapshotByRequestId(requestId string) (*FailedRequestSnapsh
 		return nil, err
 	}
 	return &snapshot, nil
+}
+
+func DeleteFailedRequestSnapshotsBefore(cutoffTs int64, limit int) (int64, error) {
+	if cutoffTs <= 0 || limit <= 0 {
+		return 0, nil
+	}
+	var ids []int
+	err := DB.Model(&FailedRequestSnapshot{}).
+		Where("created_at < ?", cutoffTs).
+		Order("created_at ASC").
+		Limit(limit).
+		Pluck("id", &ids).Error
+	if err != nil || len(ids) == 0 {
+		return 0, err
+	}
+	result := DB.Where("id IN ?", ids).Delete(&FailedRequestSnapshot{})
+	return result.RowsAffected, result.Error
 }

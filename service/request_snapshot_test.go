@@ -20,12 +20,16 @@ import (
 func withSnapshotTestDB(t *testing.T) {
 	t.Helper()
 	previousDB := model.DB
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.FailedRequestSnapshot{}))
 	model.DB = db
 	t.Cleanup(func() {
 		model.DB = previousDB
+		sqlDB, sqlErr := db.DB()
+		if sqlErr == nil {
+			_ = sqlDB.Close()
+		}
 	})
 }
 
@@ -96,4 +100,43 @@ func TestSaveFinalFailedRequestSnapshot(t *testing.T) {
 	require.Equal(t, 502, snapshot.StatusCode)
 	require.Equal(t, `{"reason":"upstream_5xx"}`, snapshot.RetryDecision)
 	require.JSONEq(t, `["38","50"]`, snapshot.UseChannel)
+}
+
+func TestSaveFinalFailedRequestSnapshotSkipsQuotaErrors(t *testing.T) {
+	withSnapshotTestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.6-luna"}`))
+	ctx.Set(common.RequestIdKey, "req-no-quota")
+	info := &relaycommon.RelayInfo{UserId: 1, TokenId: 2, OriginModelName: "gpt-5.6-luna"}
+	apiErr := types.NewErrorWithStatusCode(errors.New("no quota"), types.ErrorCodeInsufficientUserQuota, 403)
+
+	SaveFinalFailedRequestSnapshot(ctx, info, apiErr, "")
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.FailedRequestSnapshot{}).Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestSaveFinalFailedRequestSnapshotOmitsOversizedBody(t *testing.T) {
+	withSnapshotTestDB(t)
+	gin.SetMode(gin.TestMode)
+	t.Setenv("FAILED_REQUEST_SNAPSHOT_MAX_BODY_MB", "1")
+
+	body := strings.Repeat("x", 1024*1024+1)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest("POST", "/v1/responses", strings.NewReader(body))
+	ctx.Set(common.RequestIdKey, "req-oversized")
+	info := &relaycommon.RelayInfo{UserId: 1, TokenId: 2, OriginModelName: "gpt-5.6-sol"}
+	apiErr := types.NewErrorWithStatusCode(errors.New("bad gateway"), types.ErrorCodeBadResponseStatusCode, 502)
+
+	SaveFinalFailedRequestSnapshot(ctx, info, apiErr, "")
+
+	snapshot, err := model.GetFailedRequestSnapshotByRequestId("req-oversized")
+	require.NoError(t, err)
+	require.Empty(t, snapshot.Body)
+	require.Equal(t, int64(len(body)), snapshot.BodySize)
+	_, err = BuildReplayRequest(snapshot, 1, "token")
+	require.ErrorContains(t, err, "snapshot body was not retained")
 }
