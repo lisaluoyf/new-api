@@ -88,6 +88,7 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Login)
 			userRoute.POST("/internal/login", middleware.RequireApimasterInternalSync(), controller.InternalLogin)
 			userRoute.POST("/internal/telegram-api-key", middleware.RequireMiaInternalService(), controller.ResolveMiaTelegramAPIKey)
+			userRoute.POST("/internal/mia-models", middleware.RequireMiaInternalService(), controller.GetMiaTelegramModelCatalog)
 			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), controller.Verify2FALogin)
 			userRoute.POST("/passkey/login/begin", middleware.CriticalRateLimit(), controller.PasskeyLoginBegin)
 			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), controller.PasskeyLoginFinish)

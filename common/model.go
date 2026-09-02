@@ -20,6 +20,27 @@ var (
 		"flux.1-",
 		"flash-image", // gemini-2.5-flash-image, gemini-3.1-flash-image-preview, …
 	}
+	// VideoGenerationModels is the centralized capability registry for models
+	// served through the OpenAI-compatible video endpoint. Use exact: or prefix:
+	// rules so ordinary chat models are never classified by a loose substring.
+	VideoGenerationModels = []string{
+		"exact:minimax-h3",
+		"exact:sora",
+		"prefix:sora-2",
+		"prefix:kling-",
+		"prefix:doubao-seedance-",
+		"prefix:grok-imagine-video",
+		"prefix:grok-1.5-video-",
+		"prefix:minimax-hailuo-",
+		"prefix:t2v-01",
+		"prefix:i2v-01",
+		"prefix:s2v-01",
+		"prefix:vidu",
+		"prefix:veo-",
+		"prefix:wan2.",
+		"prefix:wanx2.",
+		"prefix:jimeng_vgfm_",
+	}
 	OpenAITextModels = []string{
 		"gpt-",
 		"o1",
@@ -49,6 +70,24 @@ func IsImageGenerationModel(modelName string) bool {
 		}
 		if strings.Contains(modelName, m) {
 			return true
+		}
+	}
+	return false
+}
+
+func IsVideoGenerationModel(modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	for _, rule := range VideoGenerationModels {
+		rule = strings.ToLower(rule)
+		switch {
+		case strings.HasPrefix(rule, "exact:"):
+			if modelName == strings.TrimPrefix(rule, "exact:") {
+				return true
+			}
+		case strings.HasPrefix(rule, "prefix:"):
+			if strings.HasPrefix(modelName, strings.TrimPrefix(rule, "prefix:")) {
+				return true
+			}
 		}
 	}
 	return false

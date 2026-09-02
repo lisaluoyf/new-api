@@ -37,9 +37,21 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}
 		}
 	}
+	if IsVideoGenerationModel(modelName) && !endpointTypeContains(endpointTypes, constant.EndpointTypeOpenAIVideo) {
+		endpointTypes = append([]constant.EndpointType{constant.EndpointTypeOpenAIVideo}, endpointTypes...)
+	}
 	if IsImageGenerationModel(modelName) {
 		// add to first
 		endpointTypes = append([]constant.EndpointType{constant.EndpointTypeImageGeneration}, endpointTypes...)
 	}
 	return endpointTypes
+}
+
+func endpointTypeContains(endpointTypes []constant.EndpointType, target constant.EndpointType) bool {
+	for _, endpointType := range endpointTypes {
+		if endpointType == target {
+			return true
+		}
+	}
+	return false
 }

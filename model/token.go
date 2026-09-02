@@ -90,6 +90,27 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 // excluded because the service call may originate from a different address
 // than the one the user configured.
 func GetUsableUserTokenForModel(userId int, modelName string) (*Token, error) {
+	tokens, err := GetUsableUserTokensForTrustedService(userId)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range tokens {
+		token := &tokens[i]
+		if token.ModelLimitsEnabled && !token.GetModelLimitsMap()[modelName] {
+			continue
+		}
+		return token, nil
+	}
+
+	return nil, gorm.ErrRecordNotFound
+}
+
+// GetUsableUserTokensForTrustedService returns tokens that a server-side
+// integration may safely use on the user's behalf. IP-restricted tokens are
+// excluded because the integration request does not originate from the
+// address configured by the user.
+func GetUsableUserTokensForTrustedService(userId int) ([]Token, error) {
 	var tokens []Token
 	if err := DB.Where("user_id = ? AND status = ?", userId, common.TokenStatusEnabled).
 		Order("id asc").
@@ -98,8 +119,9 @@ func GetUsableUserTokenForModel(userId int, modelName string) (*Token, error) {
 	}
 
 	now := common.GetTimestamp()
+	usable := make([]Token, 0, len(tokens))
 	for i := range tokens {
-		token := &tokens[i]
+		token := tokens[i]
 		if token.ExpiredTime != -1 && token.ExpiredTime < now {
 			continue
 		}
@@ -109,13 +131,9 @@ func GetUsableUserTokenForModel(userId int, modelName string) (*Token, error) {
 		if len(token.GetIpLimits()) > 0 {
 			continue
 		}
-		if token.ModelLimitsEnabled && !token.GetModelLimitsMap()[modelName] {
-			continue
-		}
-		return token, nil
+		usable = append(usable, token)
 	}
-
-	return nil, gorm.ErrRecordNotFound
+	return usable, nil
 }
 
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。

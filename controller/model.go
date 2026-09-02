@@ -164,31 +164,100 @@ func ListModels(c *gin.Context, modelType int) {
 // Keeping this logic shared ensures registry consumers and regular API clients
 // observe identical token model limits, user groups, and billing visibility.
 func GetAccessibleOpenAIModels(c *gin.Context) ([]dto.OpenAIModels, error) {
+	modelLimitEnabled := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
+	modelLimit := map[string]bool{}
+	if value, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit); ok {
+		modelLimit, _ = value.(map[string]bool)
+	}
+	return getAccessibleOpenAIModels(
+		c.GetInt("id"),
+		common.GetContextKeyString(c, constant.ContextKeyTokenGroup),
+		modelLimitEnabled,
+		modelLimit,
+	)
+}
+
+// GetAccessibleOpenAIModelsForToken applies the same visibility rules as
+// GET /v1/models without exposing or authenticating with the token key.
+func GetAccessibleOpenAIModelsForToken(userID int, token *model.Token) ([]dto.OpenAIModels, error) {
+	if token == nil {
+		return nil, fmt.Errorf("token is nil")
+	}
+	models, err := getAccessibleOpenAIModels(
+		userID,
+		token.Group,
+		token.ModelLimitsEnabled,
+		token.GetModelLimitsMap(),
+	)
+	if err != nil || !token.ModelLimitsEnabled {
+		return models, err
+	}
+
+	// Model-limited keys still have to obey their selected group. The regular
+	// relay enforces this at channel selection time; the catalog filters it up
+	// front so Mia never offers a model that the key cannot actually route.
+	groupModels, err := getTokenGroupEnabledModels(userID, token.Group)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]struct{}, len(groupModels))
+	for _, modelName := range groupModels {
+		allowed[modelName] = struct{}{}
+	}
+	filtered := make([]dto.OpenAIModels, 0, len(models))
+	for _, accessibleModel := range models {
+		if _, ok := allowed[accessibleModel.Id]; ok {
+			filtered = append(filtered, accessibleModel)
+		}
+	}
+	return filtered, nil
+}
+
+func getTokenGroupEnabledModels(userID int, tokenGroup string) ([]string, error) {
+	userGroup, err := model.GetUserGroup(userID, false)
+	if err != nil {
+		return nil, err
+	}
+	if tokenGroup == "auto" {
+		models := make([]string, 0)
+		for _, autoGroup := range service.GetUserAutoGroup(userGroup) {
+			for _, modelName := range model.GetGroupEnabledModels(autoGroup) {
+				if !common.StringsContains(models, modelName) {
+					models = append(models, modelName)
+				}
+			}
+		}
+		return models, nil
+	}
+	if service.IsFreeTrialGroup(tokenGroup) {
+		return service.FilterFreeTrialModels(model.GetGroupEnabledModels(service.AutoCheapestGroup)), nil
+	}
+	if tokenGroup != "" {
+		userGroup = tokenGroup
+	}
+	return model.GetGroupEnabledModels(userGroup), nil
+}
+
+func getAccessibleOpenAIModels(userID int, tokenGroup string, modelLimitEnable bool, tokenModelLimit map[string]bool) ([]dto.OpenAIModels, error) {
 	userOpenAiModels := make([]dto.OpenAIModels, 0)
 
 	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
 	if !acceptUnsetRatioModel {
-		userId := c.GetInt("id")
-		if userId > 0 {
-			userSettings, _ := model.GetUserSetting(userId, false)
+		if userID > 0 {
+			userSettings, _ := model.GetUserSetting(userID, false)
 			if userSettings.AcceptUnsetRatioModel {
 				acceptUnsetRatioModel = true
 			}
 		}
 	}
 
-	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
 	if modelLimitEnable {
-		s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
-		var tokenModelLimit map[string]bool
-		if ok {
-			tokenModelLimit = s.(map[string]bool)
-		} else {
+		if tokenModelLimit == nil {
 			tokenModelLimit = map[string]bool{}
 		}
 		for allowModel, _ := range tokenModelLimit {
 			if service.IsFreeModel(allowModel) {
-				eligible, _, eligibilityErr := service.FreeModelEligibility(c.GetInt("id"))
+				eligible, _, eligibilityErr := service.FreeModelEligibility(userID)
 				if eligibilityErr != nil || !eligible || !common.StringsContains(model.GetEnabledModels(), service.FreeModelID) {
 					continue
 				}
@@ -214,13 +283,11 @@ func GetAccessibleOpenAIModels(c *gin.Context) ([]dto.OpenAIModels, error) {
 			}
 		}
 	} else {
-		userId := c.GetInt("id")
-		userGroup, err := model.GetUserGroup(userId, false)
+		userGroup, err := model.GetUserGroup(userID, false)
 		if err != nil {
 			return nil, err
 		}
 		group := userGroup
-		tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 		if tokenGroup != "" {
 			group = tokenGroup
 		}
@@ -241,7 +308,7 @@ func GetAccessibleOpenAIModels(c *gin.Context) ([]dto.OpenAIModels, error) {
 		}
 		for _, modelName := range models {
 			if service.IsFreeModel(modelName) {
-				eligible, _, eligibilityErr := service.FreeModelEligibility(userId)
+				eligible, _, eligibilityErr := service.FreeModelEligibility(userID)
 				if eligibilityErr == nil && eligible {
 					userOpenAiModels = append(userOpenAiModels, dto.OpenAIModels{Id: service.FreeModelID, Object: "model", Created: 1626777600, OwnedBy: "apimaster", SupportedEndpointTypes: model.GetModelSupportEndpointTypes(service.FreeModelID)})
 				}
