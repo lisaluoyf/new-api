@@ -27,7 +27,26 @@ type miaModelCatalogItem struct {
 	Vendor                 string                  `json:"vendor"`
 	Capability             string                  `json:"capability"`
 	Recommended            bool                    `json:"recommended"`
+	SupportsVision         bool                    `json:"supports_vision"`
+	VisionRecommended      bool                    `json:"vision_recommended"`
+	VideoCapabilities      *miaVideoCapabilities   `json:"video_capabilities,omitempty"`
 	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
+}
+
+type miaIntegerRange struct {
+	Min     int `json:"min"`
+	Max     int `json:"max"`
+	Default int `json:"default"`
+}
+
+type miaVideoCapabilities struct {
+	Modes              []string        `json:"modes"`
+	DurationSeconds    miaIntegerRange `json:"duration_seconds"`
+	Resolutions        []string        `json:"resolutions"`
+	DefaultResolution  string          `json:"default_resolution"`
+	AspectRatios       []string        `json:"aspect_ratios"`
+	DefaultAspectRatio string          `json:"default_aspect_ratio"`
+	MaxReferenceImages int             `json:"max_reference_images"`
 }
 
 func resolveMiaTelegramUser(c *gin.Context) (miaTelegramAPIKeyRequest, *model.User, bool) {
@@ -126,7 +145,7 @@ func getMiaUsableTokenForModel(userID int, modelName string) (*model.Token, erro
 			return nil, accessErr
 		}
 		for _, accessibleModel := range accessibleModels {
-			if accessibleModel.Id == modelName {
+			if strings.EqualFold(accessibleModel.Id, modelName) {
 				return &tokens[i], nil
 			}
 		}
@@ -163,7 +182,10 @@ func GetMiaTelegramModelCatalog(c *gin.Context) {
 
 	// Populate the endpoint metadata cache from enabled abilities before model
 	// classification. This is the same source used by GET /v1/models.
-	model.GetPricing()
+	pricingByModel := make(map[string]model.Pricing)
+	for _, pricing := range model.GetPricing() {
+		pricingByModel[strings.ToLower(pricing.ModelName)] = pricing
+	}
 	modelItems := make(map[string]miaModelCatalogItem)
 	for i := range tokens {
 		accessibleModels, accessErr := GetAccessibleOpenAIModelsForToken(user.Id, &tokens[i])
@@ -181,12 +203,20 @@ func GetMiaTelegramModelCatalog(c *gin.Context) {
 			if !ok {
 				continue
 			}
-			modelItems[accessibleModel.Id] = miaModelCatalogItem{
+			pricing := pricingByModel[strings.ToLower(accessibleModel.Id)]
+			supportsVision := capability == "chat" && miaModelHasTag(pricing.Tags, "vision")
+			visionRecommended := supportsVision && miaModelHasTag(pricing.Tags, "vision-recommended")
+			videoCapabilities := miaVideoModelCapabilities(accessibleModel.Id, capability)
+			displayName, vendor := miaModelPresentation(accessibleModel.Id, accessibleModel.OwnedBy)
+			modelItems[strings.ToLower(accessibleModel.Id)] = miaModelCatalogItem{
 				ID:                     accessibleModel.Id,
-				DisplayName:            accessibleModel.Id,
-				Vendor:                 accessibleModel.OwnedBy,
+				DisplayName:            displayName,
+				Vendor:                 vendor,
 				Capability:             capability,
-				Recommended:            miaRecommendedModel(accessibleModel.Id, capability),
+				Recommended:            miaRecommendedModel(accessibleModel.Id, capability, videoCapabilities != nil),
+				SupportsVision:         supportsVision,
+				VisionRecommended:      visionRecommended,
+				VideoCapabilities:      videoCapabilities,
 				SupportedEndpointTypes: accessibleModel.SupportedEndpointTypes,
 			}
 		}
@@ -232,15 +262,67 @@ func miaModelCapability(endpointTypes []constant.EndpointType) (string, bool) {
 	return "", false
 }
 
-func miaRecommendedModel(modelID, capability string) bool {
+func miaRecommendedModel(modelID, capability string, miaVideoCompatible bool) bool {
 	switch capability {
 	case "chat":
-		return modelID == miaDefaultChatModel
+		return strings.EqualFold(modelID, miaDefaultChatModel)
 	case "image":
-		return modelID == "gpt-image-2"
+		return strings.EqualFold(modelID, "gpt-image-2")
 	case "video":
-		return strings.EqualFold(modelID, "minimax-h3")
+		return miaVideoCompatible && strings.EqualFold(modelID, "minimax-h3")
 	default:
 		return false
+	}
+}
+
+func miaModelPresentation(modelID, fallbackVendor string) (string, string) {
+	switch strings.ToLower(strings.TrimSpace(modelID)) {
+	case "gemini-2.5-flash-image":
+		return "Nano Banana", "Google"
+	case "gemini-3-pro-image":
+		return "Nano Banana Pro", "Google"
+	case "gemini-3.1-flash-image":
+		return "Nano Banana 2", "Google"
+	case "gpt-image-2":
+		return "GPT Image 2", "OpenAI"
+	case "minimax-h3":
+		return "MiniMax H3", "MiniMax"
+	default:
+		return modelID, fallbackVendor
+	}
+}
+
+func miaModelHasTag(tags, expected string) bool {
+	for _, tag := range strings.FieldsFunc(tags, func(r rune) bool {
+		switch r {
+		case ',', ';', '|', ' ', '\t', '\r', '\n':
+			return true
+		default:
+			return false
+		}
+	}) {
+		if strings.EqualFold(tag, expected) {
+			return true
+		}
+	}
+	return false
+}
+
+// miaVideoModelCapabilities is an allowlist of adapters whose request
+// contract Mia can validate completely. A generic video endpoint alone is not
+// enough: omitting capabilities keeps unsupported models out of Mia selectors
+// while preserving their existing catalog visibility.
+func miaVideoModelCapabilities(modelID, capability string) *miaVideoCapabilities {
+	if capability != "video" || !strings.EqualFold(modelID, "minimax-h3") {
+		return nil
+	}
+	return &miaVideoCapabilities{
+		Modes:              []string{"text_to_video", "image_to_video"},
+		DurationSeconds:    miaIntegerRange{Min: 4, Max: 15, Default: 4},
+		Resolutions:        []string{"768P"},
+		DefaultResolution:  "768P",
+		AspectRatios:       []string{"1:1", "16:9", "9:16"},
+		DefaultAspectRatio: "16:9",
+		MaxReferenceImages: 10,
 	}
 }

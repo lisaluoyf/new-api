@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -200,13 +201,15 @@ func GetAccessibleOpenAIModelsForToken(userID int, token *model.Token) ([]dto.Op
 	if err != nil {
 		return nil, err
 	}
-	allowed := make(map[string]struct{}, len(groupModels))
+	allowed := make(map[string]string, len(groupModels))
 	for _, modelName := range groupModels {
-		allowed[modelName] = struct{}{}
+		allowed[strings.ToLower(strings.TrimSpace(modelName))] = modelName
 	}
 	filtered := make([]dto.OpenAIModels, 0, len(models))
 	for _, accessibleModel := range models {
-		if _, ok := allowed[accessibleModel.Id]; ok {
+		if canonicalID, ok := allowed[strings.ToLower(strings.TrimSpace(accessibleModel.Id))]; ok {
+			accessibleModel.Id = canonicalID
+			accessibleModel.SupportedEndpointTypes = model.GetModelSupportEndpointTypes(canonicalID)
 			filtered = append(filtered, accessibleModel)
 		}
 	}
