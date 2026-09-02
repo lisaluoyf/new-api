@@ -33,7 +33,7 @@ const defaultBillingSettings: BillingSettings = {
   ReferralGPTMinTopupUSD: 10,
   ReferralGPTRewardAmountUSD: 50,
   FirstTopupPromoEnabled: false,
-  FirstTopupPromoDiscount: 0.75,
+  FirstTopupPromoDiscount: 0.85,
   FirstTopupPromoAmount: 10,
   FirstTopupPromoWindowDays: 3,
   GptImage2RaceFallbackEnabled: true,

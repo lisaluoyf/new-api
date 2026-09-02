@@ -17,13 +17,15 @@ func setupAffRatioSnapshotTestDB(t *testing.T) {
 	oldQuotaForNewUser := common.QuotaForNewUser
 	oldQuotaForInvitee := common.QuotaForInvitee
 	oldQuotaForInviter := common.QuotaForInviter
+	oldQuotaPerUnit := common.QuotaPerUnit
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&User{}, &AffLog{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &AffLog{}, &TopUp{}))
 	DB = db
 	common.AffRatio = 10
+	common.QuotaPerUnit = 500000
 	common.QuotaForNewUser = 0
 	common.QuotaForInvitee = 0
 	common.QuotaForInviter = 0
@@ -34,6 +36,7 @@ func setupAffRatioSnapshotTestDB(t *testing.T) {
 		common.QuotaForNewUser = oldQuotaForNewUser
 		common.QuotaForInvitee = oldQuotaForInvitee
 		common.QuotaForInviter = oldQuotaForInviter
+		common.QuotaPerUnit = oldQuotaPerUnit
 	})
 }
 
@@ -116,4 +119,64 @@ func TestProcessAffCommissionHistoricalSnapshotFallsBackToGlobal(t *testing.T) {
 	var inviter User
 	require.NoError(t, DB.First(&inviter, 1).Error)
 	require.Equal(t, 150, inviter.AffQuota)
+}
+
+func TestProcessAffCommissionForTopUpUsesActualPaidUSD(t *testing.T) {
+	setupAffRatioSnapshotTestDB(t)
+
+	require.NoError(t, DB.Create(&User{Id: 1, Username: "inviter", AffCode: "a001"}).Error)
+	require.NoError(t, DB.Create(&User{Id: 2, Username: "invitee", AffCode: "a002", InviterId: 1, AffRatioSnapshot: intPtr(10)}).Error)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId:              2,
+		Amount:              10,
+		CreditedAmount:      10,
+		PaidAmountUSD:       8.5,
+		PaidAmountUSDSource: "order",
+		Money:               8.5,
+		TradeNo:             "promo-paid-8-50",
+		Status:              common.TopUpStatusSuccess,
+	}).Error)
+
+	require.NoError(t, ProcessAffCommissionForTopUp(2, "promo-paid-8-50"))
+
+	var inviter User
+	require.NoError(t, DB.First(&inviter, 1).Error)
+	require.Equal(t, 425000, inviter.AffQuota)
+	require.Equal(t, 425000, inviter.AffHistoryQuota)
+
+	var log AffLog
+	require.NoError(t, DB.First(&log, "invitee_id = ?", 2).Error)
+	require.Equal(t, 4250000, log.TopupAmount)
+	require.Equal(t, 425000, log.Commission)
+}
+
+func TestProcessAffCommissionForTopUpRejectsMissingPaidUSD(t *testing.T) {
+	setupAffRatioSnapshotTestDB(t)
+
+	require.NoError(t, DB.Create(&User{Id: 1, Username: "inviter", AffCode: "a001"}).Error)
+	require.NoError(t, DB.Create(&User{Id: 2, Username: "invitee", AffCode: "a002", InviterId: 1, AffRatioSnapshot: intPtr(10)}).Error)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId:         2,
+		Amount:         10,
+		CreditedAmount: 10,
+		Money:          10,
+		TradeNo:        "missing-paid-usd",
+		Status:         common.TopUpStatusSuccess,
+	}).Error)
+
+	err := ProcessAffCommissionForTopUp(2, "missing-paid-usd")
+	require.ErrorContains(t, err, "missing paid_amount_usd")
+
+	var inviter User
+	require.NoError(t, DB.First(&inviter, 1).Error)
+	require.Zero(t, inviter.AffQuota)
+	var count int64
+	require.NoError(t, DB.Model(&AffLog{}).Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestProcessAffCommissionForTopUpSkipsUsersWithoutInviter(t *testing.T) {
+	setupAffRatioSnapshotTestDB(t)
+	require.NoError(t, DB.Create(&User{Id: 1, Username: "direct-user", AffCode: "a001"}).Error)
+	require.NoError(t, ProcessAffCommissionForTopUp(1, "order-does-not-need-to-exist"))
 }

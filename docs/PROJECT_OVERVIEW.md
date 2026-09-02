@@ -137,7 +137,7 @@ Redis / 内存双实现工厂：`GlobalWebRateLimit`、`GlobalAPIRateLimit`、`C
 
 ### 8.4 充值与返佣
 
-- 支付渠道：Epay、Stripe、PayPal、Creem、Waffo、Platega、Clink、Crypto。成功统一入口 `OnTopupSucceeded()` → 返佣 `ProcessAffCommission`（`commission = quota × AffRatio / 100`，只有邀请者得返佣，入待划转池 `aff_quota`）→ 飞书通知 → GA4 转化上报。
+- 支付渠道：Epay、Stripe、PayPal、Creem、Waffo、Platega、Clink、Crypto。成功统一入口 `OnTopupSucceeded()` → 返佣 `ProcessAffCommission`（`commission = paid_amount_usd × AffRatio / 100`，按实付美元计算，只有邀请者得返佣，入待划转池 `aff_quota`）→ 飞书通知 → GA4 转化上报。
 - 幂等：Epay 靠订单锁 + Pending 状态判断；Stripe/PayPal 靠事务 + `FOR UPDATE` 行锁。
 
 ### 8.5 消费日志 other 字段

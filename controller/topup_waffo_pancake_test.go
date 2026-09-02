@@ -121,7 +121,7 @@ func TestGetWaffoPancakePayMoneyAppliesFirstTopupPromoOnlyOnce(t *testing.T) {
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
 	model.DB = db
 	common.FirstTopupPromoEnabled = true
-	common.FirstTopupPromoDiscount = 0.75
+	common.FirstTopupPromoDiscount = 0.85
 	common.FirstTopupPromoAmount = 10
 	common.FirstTopupPromoWindowDays = 3
 	setting.WaffoPancakeUnitPrice = 1
@@ -129,10 +129,10 @@ func TestGetWaffoPancakePayMoneyAppliesFirstTopupPromoOnlyOnce(t *testing.T) {
 	operation_setting.GetPaymentSetting().AmountDiscount = map[int]float64{}
 	require.NoError(t, db.Create(&model.User{Id: 1, Username: "waffo-promo-user", CreatedAt: common.GetTimestamp() - 3600}).Error)
 
-	require.InDelta(t, 7.5, getWaffoPancakePayMoney(10, "default", 1), 0.000001)
+	require.InDelta(t, 8.5, getWaffoPancakePayMoney(10, "default", 1), 0.000001)
 	require.InDelta(t, 20.0, getWaffoPancakePayMoney(20, "default", 1), 0.000001)
 	require.NoError(t, db.Create(&model.TopUp{
-		UserId: 1, Amount: 10, PaidAmountUSD: 7.5, Money: 7.5, TradeNo: "waffo-promo-success",
+		UserId: 1, Amount: 10, PaidAmountUSD: 8.5, Money: 8.5, TradeNo: "waffo-promo-success",
 		PaymentMethod: model.PaymentMethodWaffoPancake, PaymentProvider: model.PaymentProviderWaffoPancake,
 		Status: common.TopUpStatusSuccess,
 	}).Error)

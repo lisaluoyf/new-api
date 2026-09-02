@@ -611,12 +611,6 @@ func cryptoFirstTopupPromoMinPaidUSD() float64 {
 	if threshold <= 0 {
 		return 0
 	}
-	// Crypto users usually pay round-dollar amounts; floor the nominal threshold
-	// so "$7.5 gets $10" becomes "starting from $7, apply the same uplift rule".
-	floored := math.Floor(threshold + 1e-9)
-	if floored >= 1 {
-		return floored
-	}
 	return threshold
 }
 

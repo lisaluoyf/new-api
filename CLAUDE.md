@@ -490,8 +490,8 @@ new-api 原生仅在新用户注册时发放固定额度（`QuotaForInviter`）�
 1. A 分享邀请链接（?ref=<8位referral_code>）给 B
 2. B 通过链接注册 → apimaster 记录 B.inviter_id = A.id
 3. syncConsoleSession 创建 B 的 new-api 账号时同步传入 inviter_id（A 在 new-api 里的整数 id）
-4. B 充值成功 → 支付回调触发 ProcessAffCommission(B.newApiId, quotaToAdd)
-5. 查 B.inviter_id → A 的 aff_quota += quotaToAdd × AffRatio / 100（进待划转池）
+4. B 充值成功 → 支付回调通过订单 `paid_amount_usd` 触发返佣
+5. 查 B.inviter_id → A 的 aff_quota += paidQuota × AffRatio / 100（进待划转池）
 6. A 手动点"划转到余额"→ POST /api/user/aff_transfer → 进 A 的可用余额
 ```
 
@@ -522,11 +522,11 @@ new-api 原生仅在新用户注册时发放固定额度（`QuotaForInviter`）�
 ### `ProcessAffCommission` 核心逻辑
 
 ```go
-func ProcessAffCommission(userId int, quotaToAdd int) {
+func ProcessAffCommission(userId int, paidQuota int) {
     if common.AffRatio <= 0 { return }
     user, err := GetUserById(userId, false)
     if err != nil || user == nil || user.InviterId == 0 { return }
-    commission := quotaToAdd * common.AffRatio / 100
+    commission := paidQuota * common.AffRatio / 100
     if commission <= 0 { return }
     // 邀请者：写入待划转池（aff_quota）+ 累计历史（aff_history）
     DB.Model(&User{}).Where("id = ?", user.InviterId).Updates(map[string]interface{}{
@@ -535,7 +535,7 @@ func ProcessAffCommission(userId int, quotaToAdd int) {
     })
     // 写 aff_logs 记录
     DB.Create(&AffLog{InviterId: user.InviterId, InviteeId: userId,
-        TopupAmount: quotaToAdd, Commission: commission, CreatedAt: time.Now().Unix()})
+        TopupAmount: paidQuota, Commission: commission, CreatedAt: time.Now().Unix()})
 }
 ```
 
@@ -567,7 +567,7 @@ lib/server/new-api-sync.ts              → syncConsoleSession(session, inviterI
 
 ### 为什么返佣没漏、50U 会漏
 
-- **返佣 10%**：`ProcessAffCommission()` 只看 `quotaAdded` 和 `user.inviter_id`，不依赖 `complete_time`
+- **返佣 10%**：`ProcessAffCommissionForTopUp()` 只按订单冻结的 `paid_amount_usd` 和 `user.inviter_id` 计算，不依赖 `complete_time`，也不回退到到账额度或本币 `Money`
 - **邀请首充 50U**：`ProcessReferralGPTReward()` 会回查 `top_ups.complete_time`，并按完成时间累积成功充值；`complete_time=0` 会直接导致资格判定失败
 
 ### 修复方式

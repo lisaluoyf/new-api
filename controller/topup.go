@@ -325,7 +325,7 @@ func getPayMoney(amount int64, group string, userId int) float64 {
 	return payMoney.InexactFloat64()
 }
 
-// firstTopupPromoFactor 符合新用户首充资格 + 命中 FirstTopupPromoAmount 档位时返回折扣率（如 0.75），否则 1.0。
+// firstTopupPromoFactor 符合新用户首充资格 + 命中 FirstTopupPromoAmount 档位时返回折扣率（如 0.85），否则 1.0。
 func firstTopupPromoFactor(userId int, amount int64) float64 {
 	if common.FirstTopupPromoEnabled && int(amount) == common.FirstTopupPromoAmount {
 		if eligible, _ := model.IsFirstTopupPromoEligible(userId); eligible {
@@ -341,7 +341,7 @@ func GetFirstTopupPromo(c *gin.Context) {
 	amount := common.FirstTopupPromoAmount
 	discount := common.FirstTopupPromoDiscount
 	userId := c.GetInt("id")
-	// never_recharged: 只判断是否曾有真实付费记录，不受时间窗口限制，用于始终展示 $1 档位。
+	// never_recharged: 只判断是否曾有真实付费记录，不受时间窗口限制，用于展示首充档位。
 	neverRecharged := userId == 0 || !model.HasSuccessfulPaidTopUp(userId)
 	if !common.FirstTopupPromoEnabled {
 		common.ApiSuccess(c, gin.H{

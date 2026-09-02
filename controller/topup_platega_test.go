@@ -36,7 +36,7 @@ func TestPlategaFirstTopupPromoOnlyAppliesToEligibleTier(t *testing.T) {
 	model.DB = db
 
 	common.FirstTopupPromoEnabled = true
-	common.FirstTopupPromoDiscount = 0.75
+	common.FirstTopupPromoDiscount = 0.85
 	common.FirstTopupPromoAmount = 10
 	common.FirstTopupPromoWindowDays = 3
 	setting.PlategaUSDRate = 83.55
@@ -44,14 +44,14 @@ func TestPlategaFirstTopupPromoOnlyAppliesToEligibleTier(t *testing.T) {
 	now := common.GetTimestamp()
 	require.NoError(t, db.Create(&model.User{Id: 1, Username: "promo-user", CreatedAt: now - 3600}).Error)
 
-	// Eligible new user's configured $10 tier receives exactly 25% off.
-	require.InDelta(t, 10*83.55*0.75, getPlategaPayRubAmount(10, "default", 1), 0.0001)
+	// Eligible new user's configured $10 tier receives exactly 15% off.
+	require.InDelta(t, 10*83.55*0.85, getPlategaPayRubAmount(10, "default", 1), 0.0001)
 	// The promo is tier-specific; a different amount remains full price.
 	require.InDelta(t, 20*83.55, getPlategaPayRubAmount(20, "default", 1), 0.0001)
 
 	// Once any successful top-up exists, the same $10 tier is full price too.
 	require.NoError(t, db.Create(&model.TopUp{
-		UserId: 1, Amount: 10, PaidAmountUSD: 7.5, Money: 7.5, TradeNo: "promo-test-success",
+		UserId: 1, Amount: 10, PaidAmountUSD: 8.5, Money: 8.5, TradeNo: "promo-test-success",
 		PaymentMethod: model.PaymentMethodPlatega, PaymentProvider: model.PaymentProviderPlatega,
 		Status: common.TopUpStatusSuccess,
 	}).Error)

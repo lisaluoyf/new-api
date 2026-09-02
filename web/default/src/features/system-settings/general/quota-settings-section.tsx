@@ -366,7 +366,7 @@ export function QuotaSettingsSection({
                 </FormControl>
                 <FormDescription>
                   {t(
-                    'e.g. 0.75 = pay $7.5 get $10 (card), or credit ÷ 0.75 (crypto). Changing this updates badges automatically.'
+                    'e.g. 0.85 = pay $8.5 get $10 (card), or credit ÷ 0.85 (crypto). Changing this updates badges automatically.'
                   )}
                 </FormDescription>
                 <FormMessage />

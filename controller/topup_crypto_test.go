@@ -92,8 +92,8 @@ func TestCryptoFirstTopupPromoMinPaidUSD(t *testing.T) {
 	})
 
 	common.FirstTopupPromoAmount = 10
-	common.FirstTopupPromoDiscount = 0.75
-	require.InDelta(t, 7.0, cryptoFirstTopupPromoMinPaidUSD(), 0.000001)
+	common.FirstTopupPromoDiscount = 0.85
+	require.InDelta(t, 8.5, cryptoFirstTopupPromoMinPaidUSD(), 0.000001)
 }
 
 func TestApplyCryptoFirstTopupPromoRequiresMinPaidThreshold(t *testing.T) {
@@ -108,7 +108,7 @@ func TestApplyCryptoFirstTopupPromoRequiresMinPaidThreshold(t *testing.T) {
 
 	common.FirstTopupPromoEnabled = true
 	common.FirstTopupPromoAmount = 10
-	common.FirstTopupPromoDiscount = 0.75
+	common.FirstTopupPromoDiscount = 0.85
 
 	testCases := []struct {
 		name           string
@@ -118,31 +118,24 @@ func TestApplyCryptoFirstTopupPromoRequiresMinPaidThreshold(t *testing.T) {
 		applied        bool
 	}{
 		{
-			name:           "below threshold does not inflate",
-			paid:           6.99,
-			expectedCredit: 6.99,
+			name:           "eight point four nine does not trigger promo",
+			paid:           8.49,
+			expectedCredit: 8.49,
 			expectedBonus:  0,
 			applied:        false,
 		},
 		{
-			name:           "seven dollars starts promo",
-			paid:           7,
-			expectedCredit: 7 / 0.75,
-			expectedBonus:  7/0.75 - 7,
-			applied:        true,
-		},
-		{
-			name:           "seven point five still credits ten",
-			paid:           7.5,
+			name:           "eight point five credits ten",
+			paid:           8.5,
 			expectedCredit: 10,
-			expectedBonus:  2.5,
+			expectedBonus:  1.5,
 			applied:        true,
 		},
 		{
 			name:           "bonus remains capped by configured promo amount",
 			paid:           20,
-			expectedCredit: 20 + 10*(1/0.75-1),
-			expectedBonus:  10 * (1/0.75 - 1),
+			expectedCredit: 20 + 10*(1/0.85-1),
+			expectedBonus:  10 * (1/0.85 - 1),
 			applied:        true,
 		},
 	}

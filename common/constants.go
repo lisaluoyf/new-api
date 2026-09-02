@@ -140,7 +140,7 @@ var ReferralGPTRewardStartTime int64 = 0
 
 // 新用户首充优惠（参数可在「系统设置」改，支持 ABtest / 一键关）
 var FirstTopupPromoEnabled = false // 总开关
-var FirstTopupPromoDiscount = 0.75 // 折扣率 (0~1)，0.75=7.5折；卡类付 amount×discount，crypto 到账 = 实付/discount
+var FirstTopupPromoDiscount = 0.85 // 折扣率 (0~1)，0.85=8.5折；卡类付 amount×discount，crypto 到账 = 实付/discount
 var FirstTopupPromoAmount = 10     // 适用档位（美元）；卡类仅此档打折，crypto 让利封顶按此
 var FirstTopupPromoWindowDays = 3  // 注册后多少天内有效
 
