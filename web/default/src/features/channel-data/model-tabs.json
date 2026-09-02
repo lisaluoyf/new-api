@@ -4,6 +4,7 @@
     "label": "FreeModel",
     "accent": "#f97316"
   },
+  { "model_id": "claude-fable-5.1", "label": "Fable 5.1", "accent": "#a855f7" },
   { "model_id": "claude-fable-5", "label": "Fable 5", "accent": "#a855f7" },
   { "model_id": "claude-sonnet-5", "label": "Sonnet 5", "accent": "#a855f7" },
   { "model_id": "gpt-5.4", "label": "GPT 5.4", "accent": "#22d3ee" },
