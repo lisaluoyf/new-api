@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -190,13 +191,21 @@ func TelegramWebhook(c *gin.Context) {
 	}
 
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+	payload, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false})
+		return
+	}
 	var update telegramWebhookUpdate
-	if err := common.DecodeJson(c.Request.Body, &update); err != nil {
+	if err := common.Unmarshal(payload, &update); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false})
 		return
 	}
 	token, ok := telegramVerificationToken(update)
 	if !ok {
+		if err := forwardTelegramUpdateToMia(c.Request.Context(), payload); err != nil {
+			common.SysError("failed to forward Telegram update to Mia: " + err.Error())
+		}
 		c.JSON(http.StatusOK, gin.H{"success": true})
 		return
 	}

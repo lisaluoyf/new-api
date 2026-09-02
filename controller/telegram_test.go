@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -54,8 +55,11 @@ func setupTelegramWebhookTest(t *testing.T) {
 	oldGroupID := common.TelegramGroupChatID
 	oldGroupURL := common.TelegramGroupURL
 	oldWebhookSecret := common.TelegramWebhookSecret
+	oldMiaWebhookURL := common.MiaTelegramWebhookURL
+	oldMiaServiceKey := common.MiaInternalServiceKey
 	oldAPIBaseURL := telegramAPIBaseURL
 	oldHTTPClient := telegramHTTPClient
+	oldMiaHTTPClient := miaTelegramHTTPClient
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -67,6 +71,8 @@ func setupTelegramWebhookTest(t *testing.T) {
 	common.TelegramGroupChatID = "@apimasterai"
 	common.TelegramGroupURL = "https://t.me/apimasterai"
 	common.TelegramWebhookSecret = "test-webhook-secret-0123456789abcd"
+	common.MiaTelegramWebhookURL = ""
+	common.MiaInternalServiceKey = ""
 
 	t.Cleanup(func() {
 		model.DB = oldDB
@@ -75,9 +81,23 @@ func setupTelegramWebhookTest(t *testing.T) {
 		common.TelegramGroupChatID = oldGroupID
 		common.TelegramGroupURL = oldGroupURL
 		common.TelegramWebhookSecret = oldWebhookSecret
+		common.MiaTelegramWebhookURL = oldMiaWebhookURL
+		common.MiaInternalServiceKey = oldMiaServiceKey
 		telegramAPIBaseURL = oldAPIBaseURL
 		telegramHTTPClient = oldHTTPClient
+		miaTelegramHTTPClient = oldMiaHTTPClient
 	})
+}
+
+func postTelegramUpdate(t *testing.T, payload string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/webhook", strings.NewReader(payload))
+	req.Header.Set(telegramWebhookSecretHeader, common.TelegramWebhookSecret)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = req
+	TelegramWebhook(context)
+	return recorder
 }
 
 func postTelegramWebhook(t *testing.T, secret, token string, telegramID int64) *httptest.ResponseRecorder {
@@ -132,6 +152,75 @@ func TestTelegramWebhookRejectsInvalidSecretAndHandlesReplay(t *testing.T) {
 	recorder = postTelegramWebhook(t, common.TelegramWebhookSecret, token, 10001)
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, 1, sendCount)
+}
+
+func TestTelegramWebhookForwardsNonVerificationUpdatesToMia(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupTelegramWebhookTest(t)
+
+	forwardCount := 0
+	miaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwardCount++
+		require.Equal(t, "test-mia-service-secret", r.Header.Get(miaInternalServiceKeyHeader))
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.JSONEq(t, `{
+			"update_id":9002,
+			"message":{
+				"chat":{"id":-10001,"type":"supergroup"},
+				"from":{"id":10001},
+				"text":"@apimasterai_bot hi",
+				"entities":[{"type":"mention","offset":0,"length":16}]
+			}
+		}`, string(body))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer miaServer.Close()
+	common.MiaTelegramWebhookURL = miaServer.URL
+	common.MiaInternalServiceKey = "test-mia-service-secret"
+	miaTelegramHTTPClient = miaServer.Client()
+
+	recorder := postTelegramUpdate(t, `{
+		"update_id":9002,
+		"message":{
+			"chat":{"id":-10001,"type":"supergroup"},
+			"from":{"id":10001},
+			"text":"@apimasterai_bot hi",
+			"entities":[{"type":"mention","offset":0,"length":16}]
+		}
+	}`)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, 1, forwardCount)
+}
+
+func TestTelegramWebhookDoesNotForwardVerificationCommandsToMia(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupTelegramWebhookTest(t)
+	require.NoError(t, model.DB.Create(&model.User{Id: 1, Username: "telegram-forward-test", AffCode: "telegram-forward-aff"}).Error)
+	_, token, err := model.StartTelegramGroupVerification(1, time.Now())
+	require.NoError(t, err)
+
+	forwardCount := 0
+	miaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwardCount++
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer miaServer.Close()
+	common.MiaTelegramWebhookURL = miaServer.URL
+	common.MiaInternalServiceKey = "test-mia-service-secret"
+	miaTelegramHTTPClient = miaServer.Client()
+
+	telegramServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer telegramServer.Close()
+	telegramAPIBaseURL = telegramServer.URL
+	telegramHTTPClient = telegramServer.Client()
+
+	recorder := postTelegramWebhook(t, common.TelegramWebhookSecret, token, 10001)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Zero(t, forwardCount)
 }
 
 func TestIsValidTelegramWebhookSecret(t *testing.T) {

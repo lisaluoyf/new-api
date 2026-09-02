@@ -127,6 +127,7 @@ func InitEnv() {
 
 	ApimasterInternalSyncKey = GetEnvOrDefaultString("APIMASTER_INTERNAL_SYNC_KEY", "")
 	MiaInternalServiceKey = GetEnvOrDefaultString("MIA_INTERNAL_SERVICE_KEY", "")
+	MiaTelegramWebhookURL = GetEnvOrDefaultString("MIA_TELEGRAM_WEBHOOK_URL", "")
 
 	SearchRateLimitEnable = GetEnvOrDefaultBool("SEARCH_RATE_LIMIT_ENABLE", true)
 	SearchRateLimitNum = GetEnvOrDefault("SEARCH_RATE_LIMIT", 10)
