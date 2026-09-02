@@ -418,6 +418,70 @@ const CHANNEL_DATA_MODEL_IDS = MODEL_TABS.map((tab) => tab.modelId).filter(
   (modelId) => modelId !== 'apimaster-freemodel'
 )
 
+type ModelCategoryKey =
+  | 'all'
+  | 'foreign'
+  | 'domestic'
+  | 'gpt'
+  | 'claude'
+  | 'deepseek'
+  | 'glm'
+  | 'kimi'
+
+const MODEL_CATEGORY_FILTERS: Array<{
+  key: ModelCategoryKey
+  label: string
+}> = [
+  { key: 'all', label: 'All Models' },
+  { key: 'foreign', label: 'Foreign Models' },
+  { key: 'domestic', label: 'Domestic Models' },
+  { key: 'gpt', label: 'GPT' },
+  { key: 'claude', label: 'Claude' },
+  { key: 'deepseek', label: 'DeepSeek' },
+  { key: 'glm', label: 'GLM' },
+  { key: 'kimi', label: 'Kimi' },
+]
+
+const FOREIGN_MODEL_PREFIXES = [
+  'gpt-',
+  'claude-',
+  'gemini-',
+  'grok-',
+  'sora-',
+]
+
+const DOMESTIC_MODEL_PREFIXES = [
+  'deepseek-',
+  'glm-',
+  'kimi-',
+  'qwen',
+  'doubao-',
+  'minimax-',
+  'mimo-',
+  'kling-',
+]
+
+function hasAnyPrefix(modelId: string, prefixes: string[]): boolean {
+  return prefixes.some((prefix) => modelId.startsWith(prefix))
+}
+
+function modelMatchesCategory(
+  modelId: string,
+  category: ModelCategoryKey
+): boolean {
+  if (category === 'all') return true
+  if (category === 'foreign') return hasAnyPrefix(modelId, FOREIGN_MODEL_PREFIXES)
+  if (category === 'domestic') {
+    return hasAnyPrefix(modelId, DOMESTIC_MODEL_PREFIXES)
+  }
+  if (category === 'gpt') return modelId.startsWith('gpt-')
+  if (category === 'claude') return modelId.startsWith('claude-')
+  if (category === 'deepseek') return modelId.startsWith('deepseek-')
+  if (category === 'glm') return modelId.startsWith('glm-')
+  if (category === 'kimi') return modelId.startsWith('kimi-')
+  return true
+}
+
 function getModelLabel(modelId: string): string {
   return MODEL_TABS.find((tab) => tab.modelId === modelId)?.label ?? modelId
 }
@@ -767,6 +831,8 @@ function AnalysisModal({
 export function ChannelDataPage() {
   const { t } = useTranslation()
   const [activeModel, setActiveModel] = useState(MODEL_TABS[0].modelId)
+  const [activeModelCategory, setActiveModelCategory] =
+    useState<ModelCategoryKey>('all')
   const [data, setData] = useState<ModelDataItem[]>([])
   const [loading, setLoading] = useState(false)
   const [allProcurementAlerts, setAllProcurementAlerts] = useState<
@@ -830,6 +896,29 @@ export function ChannelDataPage() {
   )
   const [numericEditSaving, setNumericEditSaving] = useState(false)
   const isFreeModel = activeModel === 'apimaster-freemodel'
+  const visibleModelTabs = useMemo(
+    () =>
+      MODEL_TABS.filter((tab) =>
+        modelMatchesCategory(tab.modelId, activeModelCategory)
+      ),
+    [activeModelCategory]
+  )
+
+  const selectModelCategory = useCallback(
+    (category: ModelCategoryKey) => {
+      setActiveModelCategory(category)
+      const nextTabs = MODEL_TABS.filter((tab) =>
+        modelMatchesCategory(tab.modelId, category)
+      )
+      if (
+        nextTabs.length > 0 &&
+        !nextTabs.some((tab) => tab.modelId === activeModel)
+      ) {
+        setActiveModel(nextTabs[0].modelId)
+      }
+    },
+    [activeModel]
+  )
 
   // Fetch detect config for all tabs once on mount to show filled/hollow dots
   useEffect(() => {
@@ -1365,9 +1454,43 @@ export function ChannelDataPage() {
       <SectionPageLayout.Content>
         {/* Model tabs + toolbar */}
         <div className='mb-5 space-y-3'>
-          <div className='-mx-1 overflow-x-auto pb-1'>
-            <div className='flex min-w-max flex-wrap items-center gap-1.5 px-1'>
-              {MODEL_TABS.map((tab) => {
+          <div className='space-y-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2'>
+            <div className='flex flex-wrap items-center gap-1.5'>
+              {MODEL_CATEGORY_FILTERS.map((category) => {
+                const active = category.key === activeModelCategory
+                const count = MODEL_TABS.filter((tab) =>
+                  modelMatchesCategory(tab.modelId, category.key)
+                ).length
+                return (
+                  <button
+                    key={category.key}
+                    type='button'
+                    onClick={() => selectModelCategory(category.key)}
+                    className={[
+                      'inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                      active
+                        ? 'border-cyan-300 bg-cyan-50 text-cyan-800'
+                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-800',
+                    ].join(' ')}
+                  >
+                    <span>{t(category.label)}</span>
+                    <span
+                      className={[
+                        'rounded-sm px-1 font-mono text-[10px]',
+                        active
+                          ? 'bg-cyan-100 text-cyan-700'
+                          : 'bg-gray-100 text-gray-400',
+                      ].join(' ')}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className='flex flex-wrap items-center gap-1.5'>
+              {visibleModelTabs.map((tab) => {
                 const active = tab.modelId === activeModel
                 return (
                   <button
@@ -1375,7 +1498,7 @@ export function ChannelDataPage() {
                     type='button'
                     onClick={() => setActiveModel(tab.modelId)}
                     className={[
-                      'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-all',
+                      'inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-left text-sm leading-tight font-medium transition-all',
                       active
                         ? 'border-gray-900 bg-gray-900 text-white shadow-sm'
                         : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800',
@@ -1404,7 +1527,7 @@ export function ChannelDataPage() {
                             }
                       }
                     />
-                    {t(tab.label)}
+                    <span className='min-w-0 break-words'>{t(tab.label)}</span>
                   </button>
                 )
               })}
