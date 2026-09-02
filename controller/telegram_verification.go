@@ -103,9 +103,14 @@ func SetupTelegramWebhook(c *gin.Context) {
 		return
 	}
 	payload, err := common.Marshal(telegramSetWebhookRequest{
-		URL:                webhookURL,
-		SecretToken:        common.TelegramWebhookSecret,
-		AllowedUpdates:     []string{"message"},
+		URL:         webhookURL,
+		SecretToken: common.TelegramWebhookSecret,
+		AllowedUpdates: []string{
+			"message",
+			"edited_message",
+			"callback_query",
+			"inline_query",
+		},
 		DropPendingUpdates: input.DropPendingUpdates,
 	})
 	if err != nil {

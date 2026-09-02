@@ -193,6 +193,64 @@ func TestTelegramWebhookForwardsNonVerificationUpdatesToMia(t *testing.T) {
 	require.Equal(t, 1, forwardCount)
 }
 
+func TestTelegramWebhookForwardsCallbackAndInlineUpdatesToMia(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "callback query",
+			payload: `{
+				"update_id":9003,
+				"callback_query":{
+					"id":"callback-1",
+					"from":{"id":10001},
+					"message":{"message_id":42,"chat":{"id":-10001,"type":"supergroup"}},
+					"data":"media:continue_edit:2"
+				}
+			}`,
+		},
+		{
+			name: "inline query",
+			payload: `{
+				"update_id":9004,
+				"inline_query":{
+					"id":"inline-1",
+					"from":{"id":10001},
+					"query":"share-token",
+					"offset":""
+				}
+			}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setupTelegramWebhookTest(t)
+
+			forwardCount := 0
+			miaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				forwardCount++
+				require.Equal(t, "test-mia-service-secret", r.Header.Get(miaInternalServiceKeyHeader))
+				body, err := io.ReadAll(r.Body)
+				require.NoError(t, err)
+				require.Equal(t, tt.payload, string(body))
+				w.WriteHeader(http.StatusAccepted)
+			}))
+			defer miaServer.Close()
+			common.MiaTelegramWebhookURL = miaServer.URL
+			common.MiaInternalServiceKey = "test-mia-service-secret"
+			miaTelegramHTTPClient = miaServer.Client()
+
+			recorder := postTelegramUpdate(t, tt.payload)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.Equal(t, 1, forwardCount)
+		})
+	}
+}
+
 func TestTelegramWebhookDoesNotForwardVerificationCommandsToMia(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupTelegramWebhookTest(t)
@@ -268,7 +326,12 @@ func TestSetupTelegramWebhookUsesConfiguredSecret(t *testing.T) {
 		require.NoError(t, common.DecodeJson(r.Body, &payload))
 		require.Equal(t, "https://apimaster.ai/api/telegram/webhook", payload.URL)
 		require.Equal(t, common.TelegramWebhookSecret, payload.SecretToken)
-		require.Equal(t, []string{"message"}, payload.AllowedUpdates)
+		require.Equal(t, []string{
+			"message",
+			"edited_message",
+			"callback_query",
+			"inline_query",
+		}, payload.AllowedUpdates)
 		require.True(t, payload.DropPendingUpdates)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
