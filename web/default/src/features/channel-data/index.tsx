@@ -424,9 +424,15 @@ type ModelCategoryKey =
   | 'domestic'
   | 'gpt'
   | 'claude'
+  | 'grok'
   | 'deepseek'
   | 'glm'
   | 'kimi'
+  | 'qwen'
+  | 'doubao'
+  | 'minimax'
+  | 'mimo'
+  | 'kling'
 
 const MODEL_CATEGORY_FILTERS: Array<{
   key: ModelCategoryKey
@@ -437,9 +443,15 @@ const MODEL_CATEGORY_FILTERS: Array<{
   { key: 'domestic', label: 'Domestic Models' },
   { key: 'gpt', label: 'GPT' },
   { key: 'claude', label: 'Claude' },
+  { key: 'grok', label: 'Grok' },
   { key: 'deepseek', label: 'DeepSeek' },
   { key: 'glm', label: 'GLM' },
   { key: 'kimi', label: 'Kimi' },
+  { key: 'qwen', label: 'Qwen' },
+  { key: 'doubao', label: 'Doubao' },
+  { key: 'minimax', label: 'MiniMax' },
+  { key: 'mimo', label: 'MiMo' },
+  { key: 'kling', label: 'Kling' },
 ]
 
 const FOREIGN_MODEL_PREFIXES = [
@@ -476,9 +488,15 @@ function modelMatchesCategory(
   }
   if (category === 'gpt') return modelId.startsWith('gpt-')
   if (category === 'claude') return modelId.startsWith('claude-')
+  if (category === 'grok') return modelId.startsWith('grok-')
   if (category === 'deepseek') return modelId.startsWith('deepseek-')
   if (category === 'glm') return modelId.startsWith('glm-')
   if (category === 'kimi') return modelId.startsWith('kimi-')
+  if (category === 'qwen') return modelId.startsWith('qwen')
+  if (category === 'doubao') return modelId.startsWith('doubao-')
+  if (category === 'minimax') return modelId.startsWith('minimax-')
+  if (category === 'mimo') return modelId.startsWith('mimo-')
+  if (category === 'kling') return modelId.startsWith('kling-')
   return true
 }
 
