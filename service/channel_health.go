@@ -115,6 +115,9 @@ func EvaluateChannelHealth(channelError types.ChannelError, err *types.NewAPIErr
 
 	category := ClassifyChannelError(err)
 	recordChannelErrorEvent(channelError.ChannelId, category, err.StatusCode)
+	if category == CategoryDisableWindow && isDistributorNoAvailableError(err) {
+		return HealthProbeBeforeDisable, "上游 distributor 无可用渠道"
+	}
 
 	switch category {
 	case CategorySkip:
@@ -143,6 +146,14 @@ func EvaluateChannelHealth(channelError types.ChannelError, err *types.NewAPIErr
 	default:
 		return HealthSkip, ""
 	}
+}
+
+func isDistributorNoAvailableError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no available channel for model") || strings.Contains(msg, "无可用渠道")
 }
 
 func shouldDisableFaultWindow(channelID int, statusCode int) bool {

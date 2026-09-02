@@ -39,8 +39,9 @@ var (
 		"account remaining balance",
 	}
 
-	distributorSkipMarkers = []string{
+	distributorNoAvailableMarkers = []string{
 		"no available channel for model",
+		"无可用渠道",
 	}
 
 	platformUserQuotaMarkers = []string{
@@ -86,9 +87,12 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 		return CategorySkip
 	}
 
-	for _, m := range distributorSkipMarkers {
+	for _, m := range distributorNoAvailableMarkers {
 		if strings.Contains(msg, m) {
-			return CategorySkip
+			// A distributor response can mean that this channel's upstream
+			// account pool is exhausted. Let the caller run the recovery probe;
+			// a successful probe prevents an unnecessary model disable.
+			return CategoryDisableWindow
 		}
 	}
 

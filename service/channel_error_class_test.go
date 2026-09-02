@@ -30,7 +30,7 @@ func TestClassifyChannelError_wrappedPlatformUserQuota(t *testing.T) {
 	require.Equal(t, CategorySkip, ClassifyChannelError(err))
 }
 
-func TestClassifyChannelError_distributorSkip(t *testing.T) {
+func TestClassifyChannelError_distributorNoAvailableUsesProbe(t *testing.T) {
 	t.Parallel()
 	err := types.NewErrorWithStatusCode(
 		types.NewError(nil, types.ErrorCodeBadResponseStatusCode),
@@ -38,7 +38,14 @@ func TestClassifyChannelError_distributorSkip(t *testing.T) {
 		503,
 	)
 	err.SetMessage("No available channel for model gpt-5.4 under group A-Codex-Sale (distributor)")
-	require.Equal(t, CategorySkip, ClassifyChannelError(err))
+	require.Equal(t, CategoryDisableWindow, ClassifyChannelError(err))
+
+	commonBackup := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() { common.AutomaticDisableChannelEnabled = commonBackup })
+	action, reason := EvaluateChannelHealth(types.ChannelError{ChannelId: 197, AutoBan: true}, err)
+	require.Equal(t, HealthProbeBeforeDisable, action)
+	require.Contains(t, reason, "distributor")
 }
 
 func TestClassifyChannelError_modelAccessForbidden(t *testing.T) {
