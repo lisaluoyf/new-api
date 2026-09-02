@@ -233,6 +233,10 @@ var (
 	// IP rate limits are skipped (see middleware/rate-limit.go).
 	ApimasterInternalSyncKey string
 
+	// Dedicated secret for the Mia Telegram bot to resolve an already-bound
+	// user's API token. It intentionally does not grant APIMaster admin access.
+	MiaInternalServiceKey string
+
 	UploadRateLimitNum            = 10
 	UploadRateLimitDuration int64 = 60
 

@@ -85,6 +85,39 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	return tokens, err
 }
 
+// GetUsableUserTokenForModel returns a deterministic existing token that can
+// be used by a trusted service on the user's behalf. IP-restricted tokens are
+// excluded because the service call may originate from a different address
+// than the one the user configured.
+func GetUsableUserTokenForModel(userId int, modelName string) (*Token, error) {
+	var tokens []Token
+	if err := DB.Where("user_id = ? AND status = ?", userId, common.TokenStatusEnabled).
+		Order("id asc").
+		Find(&tokens).Error; err != nil {
+		return nil, err
+	}
+
+	now := common.GetTimestamp()
+	for i := range tokens {
+		token := &tokens[i]
+		if token.ExpiredTime != -1 && token.ExpiredTime < now {
+			continue
+		}
+		if !token.UnlimitedQuota && token.RemainQuota <= 0 {
+			continue
+		}
+		if len(token.GetIpLimits()) > 0 {
+			continue
+		}
+		if token.ModelLimitsEnabled && !token.GetModelLimitsMap()[modelName] {
+			continue
+		}
+		return token, nil
+	}
+
+	return nil, gorm.ErrRecordNotFound
+}
+
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。
 // 规则：
 //  1. 转义 ! 和 _（使用 ! 作为 ESCAPE 字符，兼容 MySQL/PostgreSQL/SQLite）

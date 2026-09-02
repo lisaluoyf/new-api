@@ -126,6 +126,7 @@ func InitEnv() {
 	CriticalRateLimitDuration = int64(GetEnvOrDefault("CRITICAL_RATE_LIMIT_DURATION", 20*60))
 
 	ApimasterInternalSyncKey = GetEnvOrDefaultString("APIMASTER_INTERNAL_SYNC_KEY", "")
+	MiaInternalServiceKey = GetEnvOrDefaultString("MIA_INTERNAL_SERVICE_KEY", "")
 
 	SearchRateLimitEnable = GetEnvOrDefaultBool("SEARCH_RATE_LIMIT_ENABLE", true)
 	SearchRateLimitNum = GetEnvOrDefault("SEARCH_RATE_LIMIT", 10)
