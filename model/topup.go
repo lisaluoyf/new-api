@@ -119,6 +119,45 @@ func FormatPaymentMethodLabel(method string) string {
 	}
 }
 
+// FormatCountryLabel returns the ISO country code with a Chinese country name
+// for internal operations notifications. Unknown codes keep the code visible
+// so a new country is never silently hidden.
+func FormatCountryLabel(code string) string {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if code == "" {
+		return "—"
+	}
+	name, ok := countryNamesZh[code]
+	if !ok {
+		return fmt.Sprintf("%s（未知国家）", code)
+	}
+	return fmt.Sprintf("%s（%s）", code, name)
+}
+
+var countryNamesZh = map[string]string{
+	"CN": "中国", "TW": "台湾", "HK": "香港", "MO": "澳门",
+	"US": "美国", "GB": "英国", "JP": "日本", "KR": "韩国",
+	"SG": "新加坡", "MY": "马来西亚", "ID": "印度尼西亚", "TH": "泰国",
+	"VN": "越南", "PH": "菲律宾", "IN": "印度", "AU": "澳大利亚",
+	"CA": "加拿大", "DE": "德国", "FR": "法国", "RU": "俄罗斯",
+	"BR": "巴西", "MX": "墨西哥", "NL": "荷兰", "SE": "瑞典",
+	"CH": "瑞士", "IT": "意大利", "ES": "西班牙", "PL": "波兰",
+	"TR": "土耳其", "SA": "沙特阿拉伯", "AE": "阿拉伯联合酋长国", "IL": "以色列",
+	"NZ": "新西兰", "NO": "挪威", "FI": "芬兰", "DK": "丹麦",
+	"PT": "葡萄牙", "CZ": "捷克", "RO": "罗马尼亚", "HU": "匈牙利",
+	"UA": "乌克兰", "PK": "巴基斯坦", "BD": "孟加拉国",
+	"NG": "尼日利亚", "ZA": "南非", "EG": "埃及", "KE": "肯尼亚",
+	"AR": "阿根廷", "CO": "哥伦比亚", "CL": "智利", "UZ": "乌兹别克斯坦",
+	"LV": "拉脱维亚", "IE": "爱尔兰", "YE": "也门", "DO": "多米尼加共和国",
+	"EE": "爱沙尼亚", "KZ": "哈萨克斯坦", "MD": "摩尔多瓦", "OM": "阿曼",
+	"BY": "白俄罗斯", "AT": "奥地利", "KG": "吉尔吉斯斯坦", "BH": "巴林",
+	"IQ": "伊拉克", "AL": "阿尔巴尼亚", "GR": "希腊", "IR": "伊朗",
+	"UY": "乌拉圭", "BE": "比利时", "NP": "尼泊尔", "LT": "立陶宛",
+	"SK": "斯洛伐克", "SN": "塞内加尔", "PE": "秘鲁",
+	"AM": "亚美尼亚", "AZ": "阿塞拜疆", "IS": "冰岛", "MA": "摩洛哥",
+	"GH": "加纳", "JM": "牙买加", "ME": "黑山", "JO": "约旦", "TZ": "坦桑尼亚",
+}
+
 // FormatTopupPaidAmount formats TopUp.Money in the currency actually charged
 // by the payment channel. Do not convert local-currency payments with a fixed
 // exchange rate: Money already stores the original amount paid.
@@ -1346,7 +1385,7 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 			cumulativeLine,
 			fmt.Sprintf("余额：$%.2f", walletBalance),
 			fmt.Sprintf("渠道：%s", channel),
-			fmt.Sprintf("国家：%s", country),
+			fmt.Sprintf("国家：%s", FormatCountryLabel(country)),
 			fmt.Sprintf("语言：%s", language),
 			fmt.Sprintf("方式：%s", methodLabel),
 			fmt.Sprintf("注册于：%s", registeredAt),

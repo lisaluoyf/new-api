@@ -27,6 +27,21 @@ func TestFormatPaymentMethodLabel(t *testing.T) {
 	}
 }
 
+func TestFormatCountryLabel(t *testing.T) {
+	tests := map[string]string{
+		"UZ":   "UZ（乌兹别克斯坦）",
+		"us":   "US（美国）",
+		" RU ": "RU（俄罗斯）",
+		"":     "—",
+		"XX":   "XX（未知国家）",
+	}
+	for input, want := range tests {
+		if got := FormatCountryLabel(input); got != want {
+			t.Fatalf("FormatCountryLabel(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestFormatTopupPaidAmount(t *testing.T) {
 	tests := []struct {
 		name   string
