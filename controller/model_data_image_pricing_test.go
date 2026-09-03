@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/require"
 )
@@ -35,4 +36,18 @@ func TestBuildImagePricingViewAppliesAllChannelCoefficients(t *testing.T) {
 	require.InDelta(t, 0.25*0.05*0.8*3, view.BillingPrices["1K"], 1e-9)
 	require.InDelta(t, 0.30*0.05*0.8*3, view.BillingPrices["2K"], 1e-9)
 	require.InDelta(t, 0.60*0.05*0.8*3, view.BillingPrices["4K"], 1e-9)
+}
+
+func TestFilterImagePricingViewForChannel73KeepsOnly1K(t *testing.T) {
+	view := &VideoMediaPricingView{
+		OfficialPrices:    map[string]float64{"1K": 0.25, "2K": 0.3, "4K": 0.6},
+		ProcurementPrices: map[string]float64{"1K": 0.1, "2K": 0.12, "4K": 0.24},
+		BillingPrices:     map[string]float64{"1K": 0.2, "2K": 0.24, "4K": 0.48},
+	}
+
+	filterImagePricingViewForChannel(view, "gpt-image-2", &model.Channel{Id: 73})
+
+	require.Equal(t, map[string]float64{"1K": 0.25}, view.OfficialPrices)
+	require.Equal(t, map[string]float64{"1K": 0.1}, view.ProcurementPrices)
+	require.Equal(t, map[string]float64{"1K": 0.2}, view.BillingPrices)
 }

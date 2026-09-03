@@ -168,6 +168,21 @@ func TestGptImage2DocumentDrivenChannelCapabilities(t *testing.T) {
 			want: map[int]bool{59: true, 72: true, 73: true, 81: true},
 		},
 		{
+			name: "2k skips the 1k-only channel 73",
+			body: `{"model":"gpt-image-2","prompt":"x","resolution":"2k"}`,
+			want: map[int]bool{59: true, 72: true, 73: false, 81: true},
+		},
+		{
+			name: "4k skips the 1k-only channel 73",
+			body: `{"model":"gpt-image-2","prompt":"x","resolution":"4K"}`,
+			want: map[int]bool{59: true, 72: true, 73: false, 81: true},
+		},
+		{
+			name: "size alone remains a 1k request",
+			body: `{"model":"gpt-image-2","prompt":"x","size":"1536x1024"}`,
+			want: map[int]bool{59: true, 72: true, 73: true, 81: true},
+		},
+		{
 			name: "mask URL is an official APIMart generation capability",
 			body: `{"model":"gpt-image-2","prompt":"x","image_urls":["https://x/a.png"],"mask_url":"https://x/m.png"}`,
 			want: map[int]bool{59: true, 72: false, 73: false, 81: false},
@@ -231,6 +246,27 @@ func TestConfiguredGptImage2CapabilitiesOverrideLegacyChannelIDs(t *testing.T) {
 		GptImage2Capabilities: &dto.GptImage2Capabilities{Version: 1, Enabled: false},
 	})
 	require.False(t, gptImage2ChannelSupportsRequest(disabledLegacy, gptImage2CapabilityRequest{N: 1}))
+}
+
+func TestChannel73ResolutionLimitCannotBeOverriddenByCapabilities(t *testing.T) {
+	t.Parallel()
+	endpoint := &dto.GptImage2EndpointCapabilities{
+		Enabled:        true,
+		MaxN:           1,
+		MaxImageURLs:   0,
+		OptionalFields: []string{"resolution"},
+		AllowedValues:  map[string][]string{"resolution": {"1k", "2k", "4k"}},
+	}
+	channel := &model.Channel{Id: 73}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{
+		GptImage2Capabilities: &dto.GptImage2Capabilities{
+			Version: 1, Enabled: true, Generations: endpoint,
+		},
+	})
+
+	require.True(t, GptImage2ChannelSupportsResolution(channel, "1K"))
+	require.False(t, GptImage2ChannelSupportsResolution(channel, "2K"))
+	require.False(t, GptImage2ChannelSupportsResolution(channel, "4K"))
 }
 
 func TestNormalizeGptImage2ModelName(t *testing.T) {

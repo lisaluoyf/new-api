@@ -844,10 +844,48 @@ func gptImage2ChannelSupportsRequest(ch *model.Channel, req gptImage2CapabilityR
 	if ch == nil {
 		return false
 	}
+	// Channel 73's upstream only produces 1K images. Keep this physical
+	// limitation outside the editable capability matrix so a stale/broad admin
+	// config cannot route 2K/4K requests back to it.
+	if ch.Id == 73 && gptImage2RequestResolutionTier(req) != "1k" {
+		return false
+	}
 	if capabilities := ch.GetOtherSettings().GptImage2Capabilities; capabilities != nil {
 		return configuredGptImage2ChannelSupportsRequest(capabilities, req)
 	}
 	return legacyGptImage2ChannelSupportsRequest(ch, req)
+}
+
+func gptImage2RequestResolutionTier(req gptImage2CapabilityRequest) string {
+	switch strings.ToLower(strings.TrimSpace(req.Resolution)) {
+	case "2k":
+		return "2k"
+	case "4k":
+		return "4k"
+	}
+	// `size` describes aspect ratio (and some OpenAI-compatible 1K pixel
+	// dimensions); only the explicit `resolution` field selects a paid tier.
+	return "1k"
+}
+
+// GptImage2ChannelSupportsResolution exposes the same capability decision used
+// by routing to price presentation. This prevents the marketplace from
+// advertising a resolution tier that the channel can never serve.
+func GptImage2ChannelSupportsResolution(ch *model.Channel, resolution string) bool {
+	if ch == nil {
+		return false
+	}
+	req := gptImage2CapabilityRequest{N: 1}
+	if !strings.EqualFold(strings.TrimSpace(resolution), "1k") {
+		req.Resolution = resolution
+	}
+	if gptImage2ChannelSupportsRequest(ch, req) {
+		return true
+	}
+	// Marketplace prices describe the channel, not one endpoint. Include a tier
+	// when either synchronous or asynchronous generation can serve it.
+	req.AsyncPath = true
+	return gptImage2ChannelSupportsRequest(ch, req)
 }
 
 func legacyGptImage2ChannelSupportsRequest(ch *model.Channel, req gptImage2CapabilityRequest) bool {
@@ -872,7 +910,7 @@ func legacyGptImage2ChannelSupportsRequest(ch *model.Channel, req gptImage2Capab
 		return !req.Multipart && req.ImageURLCount == 0 && !req.HasMaskURL && !req.HasUploadedMask &&
 			!strings.EqualFold(req.OutputFormat, "webp") && !strings.EqualFold(req.Background, "transparent") &&
 			req.InputFidelity == "" && req.Style == ""
-	case 73, 81: // APIMart gpt-image-2 generation
+	case 73, 81: // APIMart gpt-image-2 generation (channel 73 is limited to 1K above)
 		return !req.ExplicitOfficial && !req.EditsPath && !req.Multipart && req.N >= 1 && req.N <= 10 &&
 			req.ImageURLCount <= 16 && !req.HasMaskURL && !req.HasStream && !req.HasPartialImages &&
 			req.Background == "" && req.OutputFormat == "" && !req.OutputCompression &&
