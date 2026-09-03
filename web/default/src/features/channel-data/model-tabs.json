@@ -77,6 +77,11 @@
     "label": "Seedance 2.0",
     "accent": "#fb923c"
   },
+  {
+    "model_id": "glm-5.3-flash",
+    "label": "GLM 5.3 Flash",
+    "accent": "#10b981"
+  },
   { "model_id": "glm-5.3", "label": "GLM 5.3", "accent": "#10b981" },
   { "model_id": "glm-5.2", "label": "GLM 5.2", "accent": "#10b981" },
   { "model_id": "grok-4.5", "label": "Grok 4.5", "accent": "#94a3b8" },
