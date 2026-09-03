@@ -19,12 +19,27 @@ func TestCodingPlanDTOHidesInternalIDFromPublicCatalog(t *testing.T) {
 	publicDTO, err := codingPlanDTO(plan, false)
 	require.NoError(t, err)
 	require.Zero(t, publicDTO.Id)
+	require.False(t, publicDTO.SoldOut)
 	require.Equal(t, "glm-5", publicDTO.Models[0].Model)
 	require.Equal(t, "kimi-k3", publicDTO.Models[1].Model)
 
 	authenticatedDTO, err := codingPlanDTO(plan, true)
 	require.NoError(t, err)
 	require.Equal(t, plan.Id, authenticatedDTO.Id)
+}
+
+func TestCodingPlanDTOExposesSoldOutState(t *testing.T) {
+	plan := model.SubscriptionPlan{
+		Id: 202, Title: "Coding Max", PlanType: model.SubscriptionPlanTypeCodingPlan,
+		PriceAmount: 69, Currency: "USD", DurationUnit: model.SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true, SoldOut: true, TierLevel: 3,
+		CodingOfficialAmountUSD: 69,
+		CodingModelMultipliers:  `{"glm-5":0.450}`,
+	}
+
+	dto, err := codingPlanDTO(plan, false)
+	require.NoError(t, err)
+	require.True(t, dto.SoldOut)
 }
 
 func TestNewPaidSubscriptionOrderPersistsCodingProductType(t *testing.T) {

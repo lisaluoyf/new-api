@@ -17,7 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { type Row } from '@tanstack/react-table'
-import { MoreHorizontal, Pencil, Power, PowerOff, Trash2 } from 'lucide-react'
+import {
+  MoreHorizontal,
+  PackageCheck,
+  PackageX,
+  Pencil,
+  Power,
+  PowerOff,
+  Trash2,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -27,8 +35,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { deletePlan, patchPlanSoldOut } from '../api'
 import type { PlanRecord } from '../types'
-import { deletePlan } from '../api'
 import { useSubscriptions } from './subscriptions-provider'
 
 interface DataTableRowActionsProps {
@@ -74,6 +82,44 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             </>
           )}
         </DropdownMenuItem>
+        {row.original.plan.plan_type === 'coding_plan' ? (
+          <DropdownMenuItem
+            onClick={async () => {
+              const soldOut = row.original.plan.sold_out === true
+              const confirmation = soldOut
+                ? t('Resume sales for this plan?')
+                : t('Mark this plan as sold out?')
+              if (!window.confirm(confirmation)) return
+              try {
+                const result = await patchPlanSoldOut(
+                  row.original.plan.id,
+                  !soldOut
+                )
+                if (!result.success) throw new Error(result.message)
+                toast.success(
+                  soldOut ? t('Sales have resumed') : t('Marked as sold out')
+                )
+                triggerRefresh()
+              } catch (error) {
+                toast.error(
+                  error instanceof Error ? error.message : t('Operation failed')
+                )
+              }
+            }}
+          >
+            {row.original.plan.sold_out ? (
+              <>
+                <PackageCheck className='mr-2 h-4 w-4' />
+                {t('Resume sales')}
+              </>
+            ) : (
+              <>
+                <PackageX className='mr-2 h-4 w-4' />
+                {t('Mark as sold out')}
+              </>
+            )}
+          </DropdownMenuItem>
+        ) : null}
         {row.original.plan.plan_type === 'gpt_subscription' ? (
           <DropdownMenuItem
             className='text-destructive focus:text-destructive'
@@ -86,9 +132,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
                 triggerRefresh()
               } catch (error) {
                 toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : t('Operation failed')
+                  error instanceof Error ? error.message : t('Operation failed')
                 )
               }
             }}

@@ -62,6 +62,16 @@ export async function patchPlanStatus(
   return res.data
 }
 
+export async function patchPlanSoldOut(
+  id: number,
+  soldOut: boolean
+): Promise<ApiResponse> {
+  const res = await api.patch(`/api/subscription/admin/plans/${id}`, {
+    sold_out: soldOut,
+  })
+  return res.data
+}
+
 export async function deletePlan(id: number): Promise<ApiResponse> {
   const res = await api.delete(`/api/subscription/admin/plans/${id}`)
   return res.data

@@ -170,6 +170,7 @@ type SubscriptionPlan struct {
 	CustomSeconds int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
 
 	Enabled   bool `json:"enabled" gorm:"default:true"`
+	SoldOut   bool `json:"sold_out" gorm:"default:false"`
 	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
 
 	StripePriceId  string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`

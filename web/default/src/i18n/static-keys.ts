@@ -411,6 +411,13 @@ export const STATIC_I18N_KEYS = [
   'Edit',
   'Disable',
   'Enable',
+  'Sold out',
+  'Mark as sold out',
+  'Resume sales',
+  'Mark this plan as sold out?',
+  'Resume sales for this plan?',
+  'Marked as sold out',
+  'Sales have resumed',
 
   // User subscription management
   'User Subscription Management',

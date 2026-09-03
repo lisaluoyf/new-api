@@ -92,6 +92,22 @@ func TestCodingPlanQuoteMarksSamePlanAsRenewal(t *testing.T) {
 	require.InDelta(t, 2.5, payable, 0.000001)
 }
 
+func TestSoldOutCodingPlanRemainsUsableButCannotBePurchased(t *testing.T) {
+	setupGPTSubscriptionTestDB(t)
+	plan := SubscriptionPlan{
+		Id: 11021, Title: "Coding Starter", PlanType: SubscriptionPlanTypeCodingPlan,
+		PriceAmount: 19, Currency: "USD", DurationUnit: SubscriptionDurationDay,
+		DurationValue: 30, Enabled: true, SoldOut: true, TierLevel: 1,
+		CodingOfficialAmountUSD: 19, TotalAmount: int64(19 * common.QuotaPerUnit),
+		CodingModelMultipliers: `{"glm":0.600}`,
+	}
+
+	require.True(t, IsCodingPlanPlanUsable(&plan))
+	require.False(t, IsCodingPlanPlanPurchasable(&plan))
+	_, _, _, _, err := CalculateCodingPlanQuote(11022, &plan)
+	require.Error(t, err)
+}
+
 func TestCompleteCodingRenewalStartsFreshCycleNow(t *testing.T) {
 	setupGPTSubscriptionTestDB(t)
 	now := GetDBTimestamp()

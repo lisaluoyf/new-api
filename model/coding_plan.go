@@ -57,6 +57,10 @@ func IsCodingPlanPlanUsable(plan *SubscriptionPlan) bool {
 	return plan != nil && plan.Enabled && plan.CodingOfficialAmountUSD > 0 && plan.TotalAmount > 0
 }
 
+func IsCodingPlanPlanPurchasable(plan *SubscriptionPlan) bool {
+	return IsCodingPlanPlanUsable(plan) && !plan.SoldOut
+}
+
 func GetCodingPlanState(userId int) (CodingPlanState, error) {
 	sub, plan, err := activeCodingPlanTx(DB, userId)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -95,7 +99,7 @@ func GetActiveCodingPlanForModel(userId int, modelName string) (*SubscriptionPla
 }
 
 func CalculateCodingPlanQuote(userId int, target *SubscriptionPlan) (orderType string, previousId int, credit, payable float64, err error) {
-	if target == nil || !IsCodingPlan(target) || !IsCodingPlanPlanUsable(target) {
+	if target == nil || !IsCodingPlan(target) || !IsCodingPlanPlanPurchasable(target) {
 		return "", 0, 0, 0, errors.New("invalid Coding Plan")
 	}
 	orderType, payable = "purchase", target.PriceAmount

@@ -408,6 +408,7 @@ func AdminDeleteSubscriptionPlan(c *gin.Context) {
 
 type AdminUpdateSubscriptionPlanStatusRequest struct {
 	Enabled *bool `json:"enabled"`
+	SoldOut *bool `json:"sold_out"`
 }
 
 func AdminUpdateSubscriptionPlanStatus(c *gin.Context) {
@@ -417,11 +418,27 @@ func AdminUpdateSubscriptionPlanStatus(c *gin.Context) {
 		return
 	}
 	var req AdminUpdateSubscriptionPlanStatusRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Enabled == nil && req.SoldOut == nil) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Update("enabled", *req.Enabled).Error; err != nil {
+	updates := map[string]interface{}{"updated_at": common.GetTimestamp()}
+	if req.Enabled != nil {
+		updates["enabled"] = *req.Enabled
+	}
+	if req.SoldOut != nil {
+		var plan model.SubscriptionPlan
+		if err := model.DB.Where("id = ?", id).First(&plan).Error; err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if !model.IsCodingPlan(&plan) {
+			common.ApiErrorMsg(c, "仅 Coding Plan 支持售罄状态")
+			return
+		}
+		updates["sold_out"] = *req.SoldOut
+	}
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}

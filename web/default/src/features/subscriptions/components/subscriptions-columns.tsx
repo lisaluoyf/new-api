@@ -243,16 +243,22 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           <DataTableColumnHeader column={column} title={t('Status')} />
         ),
         cell: ({ row }) =>
-          row.original.plan.enabled ? (
+          !row.original.plan.enabled ? (
             <StatusBadge
-              label={t('Enable')}
-              variant='success'
+              label={t('Disable')}
+              variant='neutral'
+              copyable={false}
+            />
+          ) : row.original.plan.sold_out ? (
+            <StatusBadge
+              label={t('Sold out')}
+              variant='danger'
               copyable={false}
             />
           ) : (
             <StatusBadge
-              label={t('Disable')}
-              variant='neutral'
+              label={t('Enable')}
+              variant='success'
               copyable={false}
             />
           ),

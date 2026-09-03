@@ -25,6 +25,7 @@ type publicCodingPlanDTO struct {
 	TierLevel         int              `json:"tier_level"`
 	Models            []codingModelDTO `json:"models"`
 	Recommended       bool             `json:"recommended"`
+	SoldOut           bool             `json:"sold_out"`
 	CardDescription   string           `json:"card_description,omitempty"`
 	UpdatedAt         int64            `json:"updated_at"`
 }
@@ -61,7 +62,8 @@ func codingPlanDTO(plan model.SubscriptionPlan, includeID bool) (publicCodingPla
 		Title: plan.Title, Subtitle: plan.Subtitle, PriceAmount: plan.PriceAmount,
 		Currency: plan.Currency, OfficialAmountUSD: plan.CodingOfficialAmountUSD,
 		DurationDays: 30, TierLevel: plan.TierLevel, Models: models,
-		Recommended: plan.Recommended, CardDescription: plan.CardDescription, UpdatedAt: plan.UpdatedAt,
+		Recommended: plan.Recommended, SoldOut: plan.SoldOut,
+		CardDescription: plan.CardDescription, UpdatedAt: plan.UpdatedAt,
 	}
 	if includeID {
 		dto.Id = plan.Id
@@ -139,7 +141,7 @@ func GetCodingPlanQuote(c *gin.Context) {
 		return
 	}
 	plan, err := model.GetSubscriptionPlanById(req.PlanId)
-	if err != nil || !model.IsCodingPlanPlanUsable(plan) {
+	if err != nil || !model.IsCodingPlanPlanPurchasable(plan) {
 		common.ApiErrorMsg(c, "Plan is not available")
 		return
 	}
