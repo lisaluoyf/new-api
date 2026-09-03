@@ -21,6 +21,10 @@ type miaTelegramAPIKeyRequest struct {
 	Model          string `json:"model"`
 }
 
+type miaDebugIdentitiesRequest struct {
+	Emails []string `json:"emails"`
+}
+
 type miaModelCatalogItem struct {
 	ID                     string                  `json:"id"`
 	DisplayName            string                  `json:"display_name"`
@@ -131,6 +135,44 @@ func ResolveMiaTelegramAPIKey(c *gin.Context) {
 			"api_key":  token.GetFullKey(),
 		},
 	})
+}
+
+// ResolveMiaDebugIdentities maps a small server-controlled email allowlist to
+// bound Telegram identities. It is only available to Mia's internal service.
+func ResolveMiaDebugIdentities(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+	var input miaDebugIdentitiesRequest
+	if err := common.DecodeJson(c.Request.Body, &input); err != nil || len(input.Emails) == 0 || len(input.Emails) > 20 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "invalid_request", "message": "invalid request"})
+		return
+	}
+	emails := make([]string, 0, len(input.Emails))
+	seen := make(map[string]struct{})
+	for _, raw := range input.Emails {
+		email := strings.ToLower(strings.TrimSpace(raw))
+		if email == "" || len(email) > 254 || !strings.Contains(email, "@") {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "invalid_request", "message": "invalid request"})
+			return
+		}
+		if _, exists := seen[email]; !exists {
+			seen[email] = struct{}{}
+			emails = append(emails, email)
+		}
+	}
+	type debugIdentity struct {
+		Email      string `json:"email"`
+		TelegramID string `json:"telegram_user_id"`
+	}
+	rows := make([]debugIdentity, 0, len(emails))
+	if err := model.DB.Table("users").
+		Select("LOWER(email) AS email, telegram_id").
+		Where("LOWER(email) IN ? AND telegram_id <> '' AND status = ?", emails, common.UserStatusEnabled).
+		Scan(&rows).Error; err != nil {
+		common.SysError("failed to resolve Mia debug identities: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "identity_lookup_failed", "message": "unable to resolve identities"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"identities": rows}})
 }
 
 func getMiaUsableTokenForModel(userID int, modelName string) (*model.Token, error) {

@@ -66,6 +66,11 @@ func setupMiaTelegramTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 		middleware.RequireMiaInternalService(),
 		GetMiaTelegramModelCatalog,
 	)
+	router.POST(
+		"/api/user/internal/mia-debug-identities",
+		middleware.RequireMiaInternalService(),
+		ResolveMiaDebugIdentities,
+	)
 	return router, db
 }
 
@@ -97,6 +102,31 @@ func TestResolveMiaTelegramAPIKeyRequiresDedicatedAuthentication(t *testing.T) {
 	recorder := performMiaTelegramRequest(router, "", `{"telegram_user_id":"123456"}`)
 	require.Equal(t, http.StatusUnauthorized, recorder.Code)
 	require.NotContains(t, recorder.Body.String(), "test-mia-internal-secret")
+}
+
+func TestResolveMiaDebugIdentitiesReturnsOnlyEnabledBoundUsers(t *testing.T) {
+	router, db := setupMiaTelegramTestRouter(t)
+	users := []model.User{
+		{Username: "lisa-debug", Email: "Lisa.Luoyf@gmail.com", Status: common.UserStatusEnabled, TelegramId: "7553714675", AffCode: "dbg1"},
+		{Username: "unbound-debug", Email: "unbound@example.com", Status: common.UserStatusEnabled, AffCode: "dbg2"},
+		{Username: "disabled-debug", Email: "disabled@example.com", Status: common.UserStatusDisabled, TelegramId: "123456", AffCode: "dbg3"},
+	}
+	for index := range users {
+		require.NoError(t, db.Create(&users[index]).Error)
+	}
+
+	unauthorized := performMiaInternalRequest(router, "/api/user/internal/mia-debug-identities", "", `{"emails":["lisa.luoyf@gmail.com"]}`)
+	require.Equal(t, http.StatusUnauthorized, unauthorized.Code)
+
+	response := performMiaInternalRequest(router, "/api/user/internal/mia-debug-identities", "test-mia-internal-secret", `{"emails":["lisa.luoyf@gmail.com","unbound@example.com","disabled@example.com"]}`)
+	require.Equal(t, http.StatusOK, response.Code)
+	require.JSONEq(t, `{"success":true,"data":{"identities":[{"email":"lisa.luoyf@gmail.com","telegram_user_id":"7553714675"}]}}`, response.Body.String())
+}
+
+func TestResolveMiaDebugIdentitiesRejectsInvalidInput(t *testing.T) {
+	router, _ := setupMiaTelegramTestRouter(t)
+	response := performMiaInternalRequest(router, "/api/user/internal/mia-debug-identities", "test-mia-internal-secret", `{"emails":["not-an-email"]}`)
+	require.Equal(t, http.StatusBadRequest, response.Code)
 }
 
 func TestResolveMiaTelegramAPIKeyReturnsUsableBoundUserToken(t *testing.T) {
