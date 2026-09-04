@@ -1394,9 +1394,17 @@ export function ChannelMutateDrawer({
   // Handle successful submission
   const handleSuccess = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
+    // The edit form is hydrated from the detail query, which is separate from
+    // the paginated list cache. Invalidate it too so a subsequent edit cannot
+    // submit a stale full channel object and overwrite a previous change.
+    if (channelId != null) {
+      queryClient.invalidateQueries({
+        queryKey: channelsQueryKeys.detail(channelId),
+      })
+    }
     onOpenChange(false)
     setOpen(null)
-  }, [queryClient, onOpenChange, setOpen])
+  }, [channelId, queryClient, onOpenChange, setOpen])
 
   // Show missing models confirmation dialog
   const confirmMissingModelMappings = useCallback(
