@@ -72,6 +72,53 @@ func TestClassifyChannelError_moonshotMissingModelIsNotRecharge(t *testing.T) {
 	require.False(t, IsHighConfidenceRecharge(err))
 }
 
+func TestClassifyChannelError_upstreamModelNotFoundDisablesImmediately(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		err  *types.NewAPIError
+	}{
+		{
+			name: "structured model_not_found",
+			err: types.WithOpenAIError(types.OpenAIError{
+				Message: "unknown provider for model gpt-5.6-sol",
+				Type:    "invalid_request_error",
+				Code:    string(types.ErrorCodeModelNotFound),
+			}, http.StatusBadRequest),
+		},
+		{
+			name: "provider omits error code",
+			err: func() *types.NewAPIError {
+				err := types.NewErrorWithStatusCode(
+					types.NewError(nil, types.ErrorCodeBadResponseStatusCode),
+					types.ErrorCodeBadResponseStatusCode,
+					http.StatusBadRequest,
+				)
+				err.SetMessage("status_code=400, unknown provider for model gpt-5.6-sol")
+				return err
+			}(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, CategoryDisableImmediate, ClassifyChannelError(tt.err))
+		})
+	}
+}
+
+func TestClassifyChannelError_genericBadRequestDoesNotDisable(t *testing.T) {
+	t.Parallel()
+	err := types.NewErrorWithStatusCode(
+		types.NewError(nil, types.ErrorCodeBadResponseStatusCode),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusBadRequest,
+	)
+	err.SetMessage("status_code=400, invalid request parameter")
+
+	require.Equal(t, CategorySkip, ClassifyChannelError(err))
+}
+
 func TestClassifyChannelError_legacyDisableKeywordIsNotRecharge(t *testing.T) {
 	t.Parallel()
 	err := types.NewErrorWithStatusCode(

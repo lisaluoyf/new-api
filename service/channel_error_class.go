@@ -102,6 +102,14 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 			return CategoryDisableImmediate
 		}
 	}
+	// The retry path already treats an upstream model_not_found response as a
+	// channel-side capability failure. Keep the health path consistent so a
+	// broken advertised model is removed from this channel's routing abilities
+	// instead of being selected indefinitely. The distributor "no available
+	// channel" case is handled above and still requires a confirmation probe.
+	if code == types.ErrorCodeModelNotFound || isUpstreamModelUnavailableError(err) {
+		return CategoryDisableImmediate
+	}
 
 	if err.StatusCode == 401 {
 		if strings.Contains(msg, "invalid") ||
@@ -203,6 +211,23 @@ func isModelAccessForbiddenError(err *types.NewAPIError) bool {
 		"don't have access to model",
 		"do not have access to model",
 		"model access denied",
+	}
+	for _, marker := range markers {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func isUpstreamModelUnavailableError(err *types.NewAPIError) bool {
+	if err == nil || (err.StatusCode != 400 && err.StatusCode != 404) {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	markers := []string{
+		"unknown provider for model",
+		"unknown model provider",
 	}
 	for _, marker := range markers {
 		if strings.Contains(msg, marker) {
