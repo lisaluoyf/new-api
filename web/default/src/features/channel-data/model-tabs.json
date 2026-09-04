@@ -117,6 +117,11 @@
     "accent": "#4285f4"
   },
   {
+    "model_id": "gemini-3.8-flash",
+    "label": "Gemini 3.8 Flash",
+    "accent": "#4285f4"
+  },
+  {
     "model_id": "gemini-3.6-flash",
     "label": "Gemini 3.6 Flash",
     "accent": "#4285f4"
