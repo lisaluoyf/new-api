@@ -134,7 +134,15 @@ export function CommonLogsFilterBar<TData>(
     getEnabledModels()
       .then((res) => {
         if (res.success && Array.isArray(res.data)) {
-          setEnabledModels(res.data.sort())
+          const models = new Map<string, string>()
+          for (const model of res.data) {
+            const value = String(model).trim()
+            if (!value) continue
+            const key = value.toLowerCase()
+            // Model ids are case-insensitive; keep one stable canonical label.
+            if (!models.has(key) || value === key) models.set(key, key)
+          }
+          setEnabledModels([...models.values()].sort())
         }
       })
       .catch(() => {/* fallback to text input if fetch fails */})
