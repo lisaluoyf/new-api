@@ -11,6 +11,7 @@ var defaultCacheRatio = map[string]float64{
 	"gemini-3-pro-preview":                0.1,
 	"gemini-3.1-pro-preview":              0.1,
 	"gemini-3.7-flash":                    0.1,
+	"gemini-3.8-flash":                    0.1,
 	"gemini-3.6-flash":                    0.1,
 	"gemini-3.5-flash":                    0.1,
 	"gemini-3.1-flash-lite":               0.1,
