@@ -34,11 +34,27 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Combobox } from '@/components/ui/combobox'
 import { MODEL_TABS } from '@/features/channel-data/constants'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+
+const policyModes = ['stream', 'non_stream', 'all'] as const
+
+function normalizePolicyMode(value: unknown): (typeof policyModes)[number] {
+  return policyModes.includes(value as (typeof policyModes)[number])
+    ? (value as (typeof policyModes)[number])
+    : 'stream'
+}
 
 const policySchema = z.object({
   enabled: z.boolean(),
@@ -51,6 +67,7 @@ const policySchema = z.object({
     .number()
     .int('Seconds per MB must be an integer')
     .min(0, 'Seconds per MB must be 0 or greater'),
+  mode: z.preprocess(normalizePolicyMode, z.enum(policyModes)),
 })
 
 const schema = z
@@ -92,6 +109,7 @@ const emptyPolicy: ClientGoneFallbackSettingsValues['policies'][number] = {
   model_id: '',
   frt_timeout_seconds: 20,
   extra_seconds_per_mb: 10,
+  mode: 'stream',
 }
 
 function normalizePolicy(
@@ -102,6 +120,7 @@ function normalizePolicy(
     model_id: String(policy.model_id ?? '').trim(),
     frt_timeout_seconds: Number(policy.frt_timeout_seconds ?? 20),
     extra_seconds_per_mb: Number(policy.extra_seconds_per_mb ?? 0),
+    mode: normalizePolicyMode(policy.mode),
   }
 }
 
@@ -239,7 +258,7 @@ export function ClientGoneFallbackSettingsSection({
     <SettingsSection
       title={t('ClientGone Fallback')}
       description={t(
-        'Race to a second channel when the primary channel produces no first byte within the threshold. Threshold = FRT seconds + seconds per MB × request body size.'
+        'Race to a second channel when the primary channel is slow. Streaming races on first byte; non-streaming races on complete successful response. Threshold = FRT seconds + seconds per MB × request body size.'
       )}
     >
       <Form {...form}>
@@ -264,7 +283,7 @@ export function ClientGoneFallbackSettingsSection({
               </p>
               <p className="text-muted-foreground mt-1 text-sm">
                 {t(
-                  'First byte race: the winner streams to the client, the loser is canceled and not billed to the user.'
+                  'The winner is returned to the client, the loser is canceled and not billed to the user.'
                 )}
               </p>
             </div>
@@ -279,9 +298,10 @@ export function ClientGoneFallbackSettingsSection({
               ) : null}
 
               {fields.length > 0 ? (
-                <div className="hidden grid-cols-[120px_minmax(0,1.5fr)_160px_180px_44px] items-center gap-3 px-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase lg:grid">
+                <div className="hidden grid-cols-[120px_minmax(0,1.5fr)_150px_160px_180px_44px] items-center gap-3 px-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase lg:grid">
                   <span>{t('Enabled')}</span>
                   <span>{t('Model ID')}</span>
+                  <span>{t('Fallback Mode')}</span>
                   <span>{t('FRT Timeout (s)')}</span>
                   <span>{t('Extra Seconds per MB')}</span>
                   <span className="text-right">{t('Remove')}</span>
@@ -293,7 +313,7 @@ export function ClientGoneFallbackSettingsSection({
                   key={field.id}
                   className="rounded-xl border border-border/70 bg-background/60 p-3 shadow-sm transition-colors hover:border-border hover:bg-background"
                 >
-                  <div className="grid gap-3 lg:grid-cols-[120px_minmax(0,1.5fr)_160px_180px_44px] lg:items-start">
+                  <div className="grid gap-3 lg:grid-cols-[120px_minmax(0,1.5fr)_150px_160px_180px_44px] lg:items-start">
                     <FormField
                       control={form.control}
                       name={`policies.${index}.enabled`}
@@ -343,6 +363,46 @@ export function ClientGoneFallbackSettingsSection({
                             {t(
                               'Choose from Model Data, or type a custom request model ID if needed.'
                             )}
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name={`policies.${index}.mode`}
+                      render={({ field: modeField }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel className="text-xs text-muted-foreground lg:sr-only">
+                            {t('Fallback Mode')}
+                          </FormLabel>
+                          <Select
+                            value={normalizePolicyMode(modeField.value)}
+                            onValueChange={modeField.onChange}
+                            disabled={updateOption.isPending || isSubmitting}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent alignItemWithTrigger={false}>
+                              <SelectGroup>
+                                <SelectItem value='stream'>
+                                  {t('Stream mode')}
+                                </SelectItem>
+                                <SelectItem value='non_stream'>
+                                  {t('Non-stream mode')}
+                                </SelectItem>
+                                <SelectItem value='all'>
+                                  {t('All modes')}
+                                </SelectItem>
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-[11px] text-muted-foreground">
+                            {t('Legacy rules without a mode are stream-only.')}
                           </p>
                           <FormMessage />
                         </FormItem>

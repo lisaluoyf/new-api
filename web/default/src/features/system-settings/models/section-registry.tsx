@@ -151,7 +151,7 @@ const MODELS_SECTIONS = [
     id: 'official-fallback',
     titleKey: 'Fallback Config',
     descriptionKey:
-      'Configure official fallback and clientgone fallback (first-byte racing) rules.',
+      'Configure official fallback and race fallback rules.',
     build: (settings: ModelSettings) => (
       <div className="space-y-6">
         <OfficialFallbackSettingsSection

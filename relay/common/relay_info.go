@@ -832,6 +832,19 @@ func (s *HedgeAttemptState) TakeDeferred() (usage any, extraContent []string, ok
 	return s.deferredUsage, s.deferredExtra, true
 }
 
+func (s *HedgeAttemptState) PeekDeferredUsage() (*dto.Usage, bool) {
+	if s == nil {
+		return nil, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.hasDeferred {
+		return nil, false
+	}
+	usage, _ := s.deferredUsage.(*dto.Usage)
+	return usage, usage != nil
+}
+
 func (s *HedgeAttemptState) MarkLoser() {
 	if s == nil {
 		return
