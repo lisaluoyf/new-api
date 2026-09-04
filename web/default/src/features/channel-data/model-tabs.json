@@ -78,6 +78,11 @@
     "accent": "#fb923c"
   },
   {
+    "model_id": "seedance-2.5",
+    "label": "Seedance 2.5",
+    "accent": "#fb923c"
+  },
+  {
     "model_id": "glm-5.3-flash",
     "label": "GLM 5.3 Flash",
     "accent": "#10b981"

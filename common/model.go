@@ -29,6 +29,7 @@ var (
 		"prefix:sora-2",
 		"prefix:kling-",
 		"prefix:doubao-seedance-",
+		"exact:seedance-2.5",
 		"prefix:grok-imagine-video",
 		"prefix:grok-1.5-video-",
 		"prefix:minimax-hailuo-",

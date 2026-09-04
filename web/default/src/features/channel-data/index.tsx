@@ -365,6 +365,7 @@ const NON_LLM_MODEL_IDS = new Set([
   'sora-2',
   'sora-2-pro',
   'doubao-seedance-2.0',
+  'seedance-2.5',
   'kling-v3-motion-control',
   'grok-imagine-video-1.5',
   'grok-1.5-video-10s',
@@ -376,6 +377,7 @@ const VIDEO_MODEL_IDS = new Set([
   'sora-2',
   'sora-2-pro',
   'doubao-seedance-2.0',
+  'seedance-2.5',
   'kling-v3-motion-control',
   'grok-imagine-video-1.5',
   'grok-1.5-video-10s',
@@ -454,13 +456,7 @@ const MODEL_CATEGORY_FILTERS: Array<{
   { key: 'kling', label: 'Kling' },
 ]
 
-const FOREIGN_MODEL_PREFIXES = [
-  'gpt-',
-  'claude-',
-  'gemini-',
-  'grok-',
-  'sora-',
-]
+const FOREIGN_MODEL_PREFIXES = ['gpt-', 'claude-', 'gemini-', 'grok-', 'sora-']
 
 const DOMESTIC_MODEL_PREFIXES = [
   'deepseek-',
@@ -482,7 +478,8 @@ function modelMatchesCategory(
   category: ModelCategoryKey
 ): boolean {
   if (category === 'all') return true
-  if (category === 'foreign') return hasAnyPrefix(modelId, FOREIGN_MODEL_PREFIXES)
+  if (category === 'foreign')
+    return hasAnyPrefix(modelId, FOREIGN_MODEL_PREFIXES)
   if (category === 'domestic') {
     return hasAnyPrefix(modelId, DOMESTIC_MODEL_PREFIXES)
   }

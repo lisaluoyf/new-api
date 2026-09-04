@@ -113,6 +113,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		seconds, _ = strconv.Atoi(req.Seconds)
 	}
 	seconds = normalizeVideoDuration(req.Model, seconds)
+	if normalizeModel(req.Model) == ModelSeedance25 && seconds == -1 {
+		seconds = 30
+	}
 	req.Duration = seconds
 	req.Seconds = strconv.Itoa(seconds)
 	c.Set("task_request", req)
@@ -153,6 +156,10 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported model %q", body.Model), "invalid_model", http.StatusBadRequest)
 	}
 	body.Duration = normalizeVideoDuration(body.Model, body.Duration)
+	billingDuration := body.Duration
+	if body.Model == ModelSeedance25 && billingDuration == -1 {
+		billingDuration = 30
+	}
 	if body.Model == ModelKlingV3Omni {
 		body.Mode = strings.ToLower(strings.TrimSpace(body.Mode))
 		if body.Mode == "" {
@@ -179,6 +186,12 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 	} else if body.Resolution == "" {
 		body.Resolution = "720p"
 	}
+	if body.Model == ModelSeedance25 {
+		resolution := strings.ToLower(strings.TrimSpace(body.Resolution))
+		if resolution != "480p" && resolution != "720p" && resolution != "1080p" {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("seedance-2.5 resolution must be 480p, 720p, or 1080p"), "invalid_request", http.StatusBadRequest)
+		}
+	}
 	if body.AspectRatio == "" {
 		body.AspectRatio = "16:9"
 	}
@@ -189,15 +202,16 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 	store := relaycommon.TaskSubmitReq{
 		Prompt:   body.Prompt,
 		Model:    body.Model,
-		Duration: body.Duration,
+		Duration: billingDuration,
 		Images:   body.ImageURLs,
 		Webhook:  resolveWebhook(body.Webhook),
 		Metadata: map[string]interface{}{
-			"resolution":   body.Resolution,
-			"mode":         body.Mode,
-			"audio":        body.Audio != nil && *body.Audio,
-			"has_video":    len(body.VideoList) > 0 || len(body.VideoURLs) > 0,
-			"aspect_ratio": body.AspectRatio,
+			"resolution":    body.Resolution,
+			"mode":          body.Mode,
+			"audio":         body.Audio != nil && *body.Audio,
+			"has_video":     len(body.VideoList) > 0 || len(body.VideoURLs) > 0,
+			"aspect_ratio":  body.AspectRatio,
+			"auto_duration": body.Model == ModelSeedance25 && body.Duration == -1,
 		},
 	}
 	c.Set("task_request", store)
@@ -412,7 +426,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 				return nil, err
 			}
 			return bytes.NewReader(out), nil
-		} else if publicModel == ModelDoubaoSeedance20 {
+		} else if publicModel == ModelDoubaoSeedance20 || publicModel == ModelSeedance25 {
 			// Seedance 2.0 evolves quickly and supports fields such as video_urls,
 			// audio_urls, image_with_roles, size, and generate_audio. Preserve the
 			// complete request so reference-video inputs are not silently dropped.

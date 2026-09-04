@@ -7,7 +7,7 @@ import (
 )
 
 const VideoModelPricingOption = "VideoModelPricing"
-const defaultVideoModelPricing = `{"minimax-h3":{"unit":"second","prices":{"768P":0.08,"2K":0.13}},"kling-v3-omni":{"unit":"second","prices":{"base":0.084,"sound":0.112,"video":0.126,"pro":0.112,"pro-sound":0.14,"pro-video":0.168,"4k":0.5357,"4k-sound":0.5357}},"doubao-seedance-2.0":{"unit":"second","base_price":0.142,"base_variant":"720P","prices":{"480P":0.066,"480P-input":0.04,"720P":0.142,"720P-input":0.08584,"1080P":0.3544,"1080P-input":0.21568,"4K":0.722,"4K-input":0.44432},"official_prices":{"480P":0.0825,"480P-input":0.05,"720P":0.1775,"720P-input":0.1073,"1080P":0.443,"1080P-input":0.2696,"4K":0.9025,"4K-input":0.5554}}}`
+const defaultVideoModelPricing = `{"minimax-h3":{"unit":"second","prices":{"768P":0.08,"2K":0.13}},"kling-v3-omni":{"unit":"second","prices":{"base":0.084,"sound":0.112,"video":0.126,"pro":0.112,"pro-sound":0.14,"pro-video":0.168,"4k":0.5357,"4k-sound":0.5357}},"doubao-seedance-2.0":{"unit":"second","base_price":0.142,"base_variant":"720P","prices":{"480P":0.066,"480P-input":0.04,"720P":0.142,"720P-input":0.08584,"1080P":0.3544,"1080P-input":0.21568,"4K":0.722,"4K-input":0.44432},"official_prices":{"480P":0.0825,"480P-input":0.05,"720P":0.1775,"720P-input":0.1073,"1080P":0.443,"1080P-input":0.2696,"4K":0.9025,"4K-input":0.5554}},"seedance-2.5":{"unit":"second","base_price":0.216,"base_variant":"720P","prices":{"480P":0.09608,"480P-input":0.0576,"720P":0.216,"720P-input":0.1296,"1080P":0.38488,"1080P-input":0.22992},"official_prices":{"480P":0.1201,"480P-input":0.072,"720P":0.27,"720P-input":0.162,"1080P":0.4811,"1080P-input":0.2874}}}`
 
 type videoModelPricing struct {
 	Unit           string             `json:"unit,omitempty"`

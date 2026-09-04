@@ -85,6 +85,7 @@ func TestNormalizeModel(t *testing.T) {
 	require.True(t, IsVideoModel("sora"))
 	require.Equal(t, ModelDoubaoSeedance20, normalizeModel(ModelDoubaoSeedance20))
 	require.True(t, IsVideoModel(ModelDoubaoSeedance20))
+	require.True(t, IsVideoModel(ModelSeedance25))
 	require.True(t, IsVideoModel(ModelGrokImagineVideo15))
 	require.True(t, IsVideoModel(ModelGrokVideo10s))
 	require.True(t, IsVideoModel(ModelGrokVideo15s))
@@ -111,6 +112,32 @@ func TestNormalizeVideoDuration(t *testing.T) {
 	require.Equal(t, 10, normalizeVideoDuration(ModelKlingV3Omni, 10))
 	require.Equal(t, 15, normalizeVideoDuration(ModelKlingV3Omni, 15))
 	require.Equal(t, 5, normalizeVideoDuration(ModelKlingV3Omni, 16))
+	require.Equal(t, -1, normalizeVideoDuration(ModelSeedance25, -1))
+	require.Equal(t, 4, normalizeVideoDuration(ModelSeedance25, 0))
+	require.Equal(t, 30, normalizeVideoDuration(ModelSeedance25, 31))
+}
+
+func TestSeedance25AutoDurationReservesThirtySecondsAndPreservesRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	raw := []byte(`{"model":"seedance-2.5","prompt":"scene","duration":-1,"resolution":"1080p","generate_audio":true,"audio_urls":["https://example.com/ref.mp3"],"output_format":"mov"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = req
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: ModelSeedance25}, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+	a := &TaskAdaptor{}
+	require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+	ratios := a.EstimateBilling(c, info)
+	require.Equal(t, 30.0, ratios["seconds"])
+	require.InDelta(t, 0.38488/0.216, ratios["size"], 1e-9)
+
+	reader, err := a.BuildRequestBody(c, info)
+	require.NoError(t, err)
+	body, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	for _, expected := range []string{`"model":"seedance-2.5"`, `"duration":-1`, `"generate_audio":true`, `"audio_urls":["https://example.com/ref.mp3"]`, `"output_format":"mov"`} {
+		require.Contains(t, string(body), expected)
+	}
 }
 
 func TestKlingOmniEstimateBillingUsesModeAndMedia(t *testing.T) {

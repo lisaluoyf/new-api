@@ -61,3 +61,15 @@ func TestDefaultVideoModelPricingIncludesSeedanceResolutionPrices(t *testing.T) 
 		require.InDelta(t, want, details.OfficialPrices[variant], 1e-9, variant)
 	}
 }
+
+func TestDefaultVideoModelPricingIncludesSeedance25(t *testing.T) {
+	base, ok := GetVideoModelBasePrice("seedance-2.5")
+	require.True(t, ok)
+	require.InDelta(t, 0.216, base, 1e-9)
+	for variant, want := range map[string]float64{"480P": 0.09608, "480P-input": 0.0576, "720P": 0.216, "720P-input": 0.1296, "1080P": 0.38488, "1080P-input": 0.22992} {
+		got, found := GetVideoModelPrice("seedance-2.5", variant)
+		require.True(t, found, variant)
+		require.InDelta(t, want, got, 1e-9, variant)
+		require.InDelta(t, want/base, GetVideoModelResolutionRatio("seedance-2.5", variant), 1e-9, variant)
+	}
+}

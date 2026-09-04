@@ -58,6 +58,27 @@ const DEFAULT_PRICING = {
       '4K-input': 0.5554,
     },
   },
+  'seedance-2.5': {
+    unit: 'second',
+    base_price: 0.216,
+    base_variant: '720P',
+    prices: {
+      '480P': 0.09608,
+      '480P-input': 0.0576,
+      '720P': 0.216,
+      '720P-input': 0.1296,
+      '1080P': 0.38488,
+      '1080P-input': 0.22992,
+    },
+    official_prices: {
+      '480P': 0.1201,
+      '480P-input': 0.072,
+      '720P': 0.27,
+      '720P-input': 0.162,
+      '1080P': 0.4811,
+      '1080P-input': 0.2874,
+    },
+  },
 }
 
 function parsePricing(raw: string | undefined): Record<
@@ -99,6 +120,21 @@ function parsePricing(raw: string | undefined): Record<
           },
         }
       }
+      if (!pricing['seedance-2.5'])
+        pricing['seedance-2.5'] = DEFAULT_PRICING['seedance-2.5']
+      else
+        pricing['seedance-2.5'] = {
+          ...DEFAULT_PRICING['seedance-2.5'],
+          ...pricing['seedance-2.5'],
+          prices: {
+            ...DEFAULT_PRICING['seedance-2.5'].prices,
+            ...pricing['seedance-2.5'].prices,
+          },
+          official_prices: {
+            ...DEFAULT_PRICING['seedance-2.5'].official_prices,
+            ...pricing['seedance-2.5'].official_prices,
+          },
+        }
       return pricing
     }
   } catch {

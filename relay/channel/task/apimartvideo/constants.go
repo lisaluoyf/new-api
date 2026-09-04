@@ -7,6 +7,7 @@ import (
 const (
 	ModelKlingV3MotionControl = "kling-v3-motion-control"
 	ModelDoubaoSeedance20     = "doubao-seedance-2.0"
+	ModelSeedance25           = "seedance-2.5"
 	ModelGrokImagineVideo15   = "grok-imagine-video-1.5"
 	ModelGrokVideo10s         = "grok-1.5-video-10s"
 	ModelGrokVideo15s         = "grok-1.5-video-15s"
@@ -23,6 +24,7 @@ var ModelList = []string{
 	"sora-2",
 	"sora-2-pro",
 	ModelDoubaoSeedance20,
+	ModelSeedance25,
 	ModelGrokImagineVideo15,
 	ModelGrokVideo10s,
 	ModelGrokVideo15s,
@@ -35,7 +37,7 @@ var ChannelName = "apimart-video"
 
 func IsVideoModel(model string) bool {
 	switch strings.TrimSpace(model) {
-	case "sora", "sora-2", "sora-2-pro", ModelDoubaoSeedance20,
+	case "sora", "sora-2", "sora-2-pro", ModelDoubaoSeedance20, ModelSeedance25,
 		ModelGrokImagineVideo15, ModelGrokVideo10s, ModelGrokVideo15s, ModelGrokVideo6s,
 		ModelKlingV3Omni, ModelKlingV3MotionControl:
 		return true
@@ -62,6 +64,18 @@ func normalizeModel(model string) string {
 }
 
 func normalizeVideoDuration(model string, seconds int) int {
+	if normalizeModel(model) == ModelSeedance25 {
+		if seconds == -1 {
+			return -1
+		}
+		if seconds < 4 {
+			return 4
+		}
+		if seconds > 30 {
+			return 30
+		}
+		return seconds
+	}
 	if normalizeModel(model) == ModelKlingV3Omni {
 		if seconds >= 3 && seconds <= 15 {
 			return seconds

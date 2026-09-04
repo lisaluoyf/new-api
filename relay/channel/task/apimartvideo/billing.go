@@ -134,7 +134,7 @@ func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *rela
 		return 0
 	}
 	modelName := motionControlModelName(task)
-	if normalizeModel(modelName) == ModelDoubaoSeedance20 {
+	if normalizeModel(modelName) == ModelDoubaoSeedance20 || normalizeModel(modelName) == ModelSeedance25 {
 		return seedanceActualQuota(task)
 	}
 	if !IsMotionControlModel(modelName) {
