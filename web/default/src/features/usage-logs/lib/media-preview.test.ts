@@ -35,4 +35,24 @@ describe('isLogMediaVideoModel', () => {
     assert.equal(isLogMediaVideoModel('kling-v3-omni'), true)
     assert.equal(isLogMediaVideoModel(' KLING-V3-OMNI '), true)
   })
+
+  test('recognizes both Seedance models and builds authenticated previews', () => {
+    assert.equal(isLogMediaVideoModel('doubao-seedance-2.0'), true)
+    assert.equal(isLogMediaVideoModel('SEEDANCE-2.5'), true)
+
+    for (const model of ['doubao-seedance-2.0', 'seedance-2.5']) {
+      const preview = getLogMediaPreview(
+        { type: 2, model_name: model } as never,
+        {
+          task_id: 'task_seedance_success',
+          result_url: '/v1/videos/task_seedance_success/content',
+        }
+      )
+      assert.deepEqual(preview, {
+        kind: 'video',
+        url: '/v1/videos/task_seedance_success/content',
+        taskId: 'task_seedance_success',
+      })
+    }
+  })
 })
