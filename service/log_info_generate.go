@@ -76,6 +76,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	AppendChannelAffinityAdminInfo(ctx, adminInfo)
 	appendOfficialFallbackAdminInfo(ctx, adminInfo)
 	AppendFreeModelRouteAdminInfo(ctx, adminInfo)
+	appendNonStreamHedgeWinnerAdminInfo(ctx, adminInfo)
 
 	other["admin_info"] = adminInfo
 	appendChannelRetryFallbackInfo(ctx, other, useChannels)
@@ -90,6 +91,31 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 		AppendClientExclusiveLogInfo(ctx, relayInfo.OriginModelName, other)
 	}
 	return other
+}
+
+func appendNonStreamHedgeWinnerAdminInfo(ctx *gin.Context, adminInfo map[string]interface{}) {
+	if ctx == nil || adminInfo == nil {
+		return
+	}
+	completeResponseMS := ctx.GetInt64("non_stream_hedge_complete_response_ms")
+	if completeResponseMS <= 0 {
+		return
+	}
+	hedgeInfo := map[string]interface{}{
+		"mode":                 "non_stream",
+		"result":               "winner",
+		"complete_response_ms": completeResponseMS,
+	}
+	if role := strings.TrimSpace(ctx.GetString("non_stream_hedge_winner_role")); role != "" {
+		hedgeInfo["role"] = role
+	}
+	if channelID := ctx.GetInt("non_stream_hedge_winner_channel_id"); channelID > 0 {
+		hedgeInfo["winner_channel_id"] = channelID
+	}
+	if channelName := strings.TrimSpace(ctx.GetString("non_stream_hedge_winner_channel_name")); channelName != "" {
+		hedgeInfo["winner_channel_name"] = channelName
+	}
+	adminInfo["hedge"] = hedgeInfo
 }
 
 func appendOfficialFallbackAdminInfo(ctx *gin.Context, adminInfo map[string]interface{}) {

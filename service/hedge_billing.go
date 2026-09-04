@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -33,7 +34,7 @@ func FinalizeHedgeWinnerBilling(ctx *gin.Context, info *relaycommon.RelayInfo) *
 // RecordHedgeLoserConsumption 给竞速败者写一条 quota=0 的消费日志：
 // 不动用户余额、不结算 Billing、不进渠道健康统计，仅在 other["hedge"] 里留存
 // 败者实际消耗的 token 与竞速信息，供对账和效果分析。
-func RecordHedgeLoserConsumption(ctx *gin.Context, info *relaycommon.RelayInfo, loserChannelId int, loserChannelName string, winnerChannelId int) {
+func RecordHedgeLoserConsumption(ctx *gin.Context, info *relaycommon.RelayInfo, loserChannelId int, loserChannelName string, winnerChannelId int, winnerChannelName string, attemptErr *types.NewAPIError) {
 	if ctx == nil || info == nil || info.HedgeState == nil {
 		return
 	}
@@ -49,21 +50,56 @@ func RecordHedgeLoserConsumption(ctx *gin.Context, info *relaycommon.RelayInfo, 
 	if info.HasSendResponse() {
 		frtMs = info.FirstResponseTime.Sub(info.StartTime).Milliseconds()
 	}
+	attemptDurationMs := time.Since(info.StartTime).Milliseconds()
+	mode := "stream"
+	if !info.IsStream {
+		mode = "non_stream"
+	}
+	costStatus := "unknown"
+	if usage != nil {
+		costStatus = "usage_received"
+	} else if info.HedgeState.IsLoser() {
+		costStatus = "canceled_no_usage"
+	} else if attemptErr != nil {
+		costStatus = "failed_no_usage"
+	}
+	attemptResult := "completed_loser"
+	attemptErrorCode := ""
+	attemptStatusCode := 0
+	if attemptErr != nil {
+		attemptResult = "failed"
+		attemptErrorCode = string(attemptErr.GetErrorCode())
+		attemptStatusCode = attemptErr.StatusCode
+		if info.HedgeState.IsLoser() {
+			attemptResult = "canceled"
+		}
+	}
 	// 系统侧记录：user_id/token_id 置 0，普通用户在使用日志里看不到这条；
 	// 真实归属信息进 admin_info.hedge，仅管理端可见
 	other := map[string]interface{}{
 		"admin_info": map[string]interface{}{
 			"hedge": map[string]interface{}{
-				"role":              info.HedgeState.Role,
-				"result":            "loser",
-				"loser_channel_id":  loserChannelId,
-				"winner_channel_id": winnerChannelId,
-				"frt":               frtMs,
-				"has_first_byte":    info.HasSendResponse(),
-				"received_chunks":   info.ReceivedResponseCount,
-				"user_id":           info.UserId,
-				"user_email":        info.UserEmail,
-				"token_id":          info.TokenId,
+				"role":                info.HedgeState.Role,
+				"mode":                mode,
+				"result":              "loser",
+				"attempt_result":      attemptResult,
+				"loser_channel_id":    loserChannelId,
+				"loser_channel_name":  loserChannelName,
+				"winner_channel_id":   winnerChannelId,
+				"winner_channel_name": winnerChannelName,
+				"frt":                 frtMs,
+				"attempt_duration_ms": attemptDurationMs,
+				"has_first_byte":      info.HasSendResponse(),
+				"received_chunks":     info.ReceivedResponseCount,
+				"has_usage":           usage != nil,
+				"cost_status":         costStatus,
+				"loser_cost_unknown":  usage == nil,
+				"canceled":            info.HedgeState.IsLoser(),
+				"attempt_error_code":  attemptErrorCode,
+				"attempt_status_code": attemptStatusCode,
+				"user_id":             info.UserId,
+				"user_email":          info.UserEmail,
+				"token_id":            info.TokenId,
 			},
 		},
 	}

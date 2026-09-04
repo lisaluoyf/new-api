@@ -19,6 +19,35 @@ type RetryParam struct {
 	resetNextTry bool
 }
 
+type RetryParamSnapshot struct {
+	retry        int
+	hasRetry     bool
+	resetNextTry bool
+}
+
+func (p *RetryParam) Snapshot() RetryParamSnapshot {
+	if p == nil || p.Retry == nil {
+		return RetryParamSnapshot{}
+	}
+	return RetryParamSnapshot{
+		retry:        *p.Retry,
+		hasRetry:     true,
+		resetNextTry: p.resetNextTry,
+	}
+}
+
+func (p *RetryParam) Restore(snapshot RetryParamSnapshot) {
+	if p == nil {
+		return
+	}
+	if snapshot.hasRetry {
+		p.SetRetry(snapshot.retry)
+	} else {
+		p.Retry = nil
+	}
+	p.resetNextTry = snapshot.resetNextTry
+}
+
 func (p *RetryParam) GetRetry() int {
 	if p.Retry == nil {
 		return 0

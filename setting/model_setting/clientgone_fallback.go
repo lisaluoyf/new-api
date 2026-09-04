@@ -6,14 +6,20 @@ import (
 	"strings"
 )
 
-// ClientGoneFallbackPolicy 定义"首字竞速"（clientgone fallback）的单模型策略：
-// 主渠道超过 FrtTimeoutSeconds + ExtraSecondsPerMB × body_MB 仍未吐出首字节时，
-// 并行向下一个可用渠道发起 hedge 请求，谁先出首字节谁赢。
+const (
+	ClientGoneFallbackModeStream    = "stream"
+	ClientGoneFallbackModeNonStream = "non_stream"
+	ClientGoneFallbackModeAll       = "all"
+)
+
+// ClientGoneFallbackPolicy 定义竞速 fallback 的单模型策略：
+// 流式请求按首字节竞速，非流式请求按完整成功响应竞速。
 type ClientGoneFallbackPolicy struct {
 	Enabled           bool   `json:"enabled"`
 	ModelID           string `json:"model_id"`
 	FrtTimeoutSeconds int    `json:"frt_timeout_seconds"`
 	ExtraSecondsPerMB int    `json:"extra_seconds_per_mb"`
+	Mode              string `json:"mode,omitempty"`
 }
 
 type ClientGoneFallbackSettings struct {
@@ -68,6 +74,7 @@ func NormalizeAndValidateClientGoneFallbackSettings(settings ClientGoneFallbackS
 		if policy.ExtraSecondsPerMB < 0 {
 			return ClientGoneFallbackSettings{}, fmt.Errorf("clientgone fallback 配置第 %d 行 extra_seconds_per_mb 不能小于 0", index+1)
 		}
+		policy.Mode = normalizeClientGoneFallbackMode(policy.Mode)
 
 		normalized.Policies = append(normalized.Policies, policy)
 	}
@@ -131,6 +138,28 @@ func FindClientGoneFallbackPolicy(modelName string) (ClientGoneFallbackPolicy, b
 		return policy, true
 	}
 	return ClientGoneFallbackPolicy{}, false
+}
+
+func normalizeClientGoneFallbackMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case ClientGoneFallbackModeNonStream:
+		return ClientGoneFallbackModeNonStream
+	case ClientGoneFallbackModeAll:
+		return ClientGoneFallbackModeAll
+	default:
+		return ClientGoneFallbackModeStream
+	}
+}
+
+func (p ClientGoneFallbackPolicy) AppliesToStream(isStream bool) bool {
+	mode := normalizeClientGoneFallbackMode(p.Mode)
+	if mode == ClientGoneFallbackModeAll {
+		return true
+	}
+	if isStream {
+		return mode == ClientGoneFallbackModeStream
+	}
+	return mode == ClientGoneFallbackModeNonStream
 }
 
 // FirstByteTimeout 计算某请求的生效首字超时（秒）：frt_timeout_seconds + extra_seconds_per_mb × bodyMB。
