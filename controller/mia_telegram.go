@@ -324,29 +324,25 @@ func resolveMiaModelPricing(modelName, capability string) *miaModelPricing {
 			pricing.DiscountRatio = float64Ptr(ratio)
 		}
 	case "image":
-		official, ok := service.GlobalImageMediaPricingUSD(modelName)
-		if !ok || official.BasePrice <= 0 {
-			return nil
-		}
-		userPrice, priceErr := service.ChannelBaseUserPriceResolved(channel.Id, modelName, official.BasePrice)
-		if priceErr != nil || userPrice <= 0 {
+		resolved, ok, priceErr := service.ResolveChannelMediaBasePricingUSD(channel.Id, modelName, capability)
+		if priceErr != nil || !ok || resolved.Price <= 0 {
 			return nil
 		}
 		pricing.Unit = "image"
-		pricing.Price = float64Ptr(userPrice)
-		pricing.DiscountRatio = float64Ptr(userPrice / official.BasePrice)
-	case "video":
-		official, ok := service.GlobalVideoMediaPricingUSD(modelName)
-		if !ok || official.BasePrice <= 0 {
-			return nil
+		pricing.Price = float64Ptr(resolved.Price)
+		if resolved.OfficialPrice > 0 {
+			pricing.DiscountRatio = float64Ptr(resolved.Price / resolved.OfficialPrice)
 		}
-		userPrice, priceErr := service.ChannelBaseUserPriceResolved(channel.Id, modelName, official.BasePrice)
-		if priceErr != nil || userPrice <= 0 {
+	case "video":
+		resolved, ok, priceErr := service.ResolveChannelMediaBasePricingUSD(channel.Id, modelName, capability)
+		if priceErr != nil || !ok || resolved.Price <= 0 {
 			return nil
 		}
 		pricing.Unit = "second"
-		pricing.Price = float64Ptr(userPrice)
-		pricing.DiscountRatio = float64Ptr(userPrice / official.BasePrice)
+		pricing.Price = float64Ptr(resolved.Price)
+		if resolved.OfficialPrice > 0 {
+			pricing.DiscountRatio = float64Ptr(resolved.Price / resolved.OfficialPrice)
+		}
 	default:
 		return nil
 	}

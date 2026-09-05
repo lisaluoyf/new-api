@@ -344,6 +344,53 @@ func TestGetMiaTelegramModelCatalogRequiresAuthenticationAndUsableKey(t *testing
 	require.Contains(t, missingKey.Body.String(), "no_usable_api_key")
 }
 
+func TestGetMiaTelegramModelCatalogUsesChannelPriceForVideoWithoutTierTable(t *testing.T) {
+	router, db := setupMiaTelegramTestRouter(t)
+	rechargeRate := 1.25
+	apimasterPriceRatio := 1.2
+	user := model.User{
+		Username: "mia-video-price-user", Password: "unused-test-password",
+		Status: common.UserStatusEnabled, Role: common.RoleCommonUser,
+		Group: "default", TelegramId: "4567890",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 1, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Models: "sora-2",
+		RechargeRate: &rechargeRate, ApimasterPriceRatio: &apimasterPriceRatio,
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group: "default", Model: "sora-2", ChannelId: 1, Enabled: true,
+	}).Error)
+	// sora-2 intentionally has no VideoModelPricing entry. Its direct channel
+	// price is the source used by normal routing and must be exposed to Mia too.
+	require.NoError(t, db.Create(&model.ChannelModelPricing{
+		ChannelId: 1, ModelName: "sora-2", InputPrice: 0.08, GroupRatio: 1,
+	}).Error)
+	require.NoError(t, db.Create(&model.Token{
+		UserId: user.Id, Key: "usable-video-price-key", Status: common.TokenStatusEnabled,
+		ExpiredTime: -1, UnlimitedQuota: true,
+	}).Error)
+	model.InvalidatePricingCache()
+
+	recorder := performMiaInternalRequest(
+		router,
+		"/api/user/internal/mia-models",
+		"test-mia-internal-secret",
+		`{"telegram_user_id":"4567890"}`,
+	)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response miaModelCatalogTestResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Len(t, response.Data.Models, 1)
+	pricing := response.Data.Models[0].Pricing
+	require.NotNil(t, pricing, recorder.Body.String())
+	require.Equal(t, "video", response.Data.Models[0].Capability)
+	require.Equal(t, "second", pricing.Unit)
+	require.NotNil(t, pricing.Price)
+	require.InDelta(t, 0.12, *pricing.Price, 1e-9)
+	require.Nil(t, pricing.DiscountRatio)
+}
+
 func TestMiaModelCapabilityIncludesResponseChatModels(t *testing.T) {
 	capability, ok := miaModelCapability([]constant.EndpointType{constant.EndpointTypeOpenAIResponse})
 	require.True(t, ok)
