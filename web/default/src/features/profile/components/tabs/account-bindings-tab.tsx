@@ -42,6 +42,7 @@ import {
   getSelfOAuthBindings,
   startTelegramGroupVerification,
   startDiscordGroupVerification,
+  unbindTelegramGroupVerification,
   unbindApimasterBinding,
   unbindCustomOAuth,
   type ApimasterTwitterBinding,
@@ -87,6 +88,8 @@ export function AccountBindingsTab({
   const [telegramGroupStatus, setTelegramGroupStatus] =
     useState<TelegramGroupStatus | null>(null)
   const [telegramStarting, setTelegramStarting] = useState(false)
+  const [telegramUnbindOpen, setTelegramUnbindOpen] = useState(false)
+  const [telegramUnbinding, setTelegramUnbinding] = useState(false)
   const [discordGroupStatus, setDiscordGroupStatus] =
     useState<DiscordGroupStatus | null>(null)
   const [discordChecking, setDiscordChecking] = useState(false)
@@ -359,6 +362,29 @@ export function AccountBindingsTab({
     }
   }, [fetchTelegramGroupStatus, t])
 
+  const handleUnbindTelegram = useCallback(async () => {
+    setTelegramUnbinding(true)
+    try {
+      const res = await unbindTelegramGroupVerification()
+      if (!res.success) {
+        throw new Error(res.message || t('Unbind failed'))
+      }
+      setTelegramGroupStatus({
+        configured: true,
+        identified: false,
+        joined: false,
+        status: 'not_started',
+      })
+      toast.success(t('Unbound {{provider}}', { provider: 'Telegram' }))
+      onUpdate()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('Unbind failed'))
+    } finally {
+      setTelegramUnbinding(false)
+      setTelegramUnbindOpen(false)
+    }
+  }, [onUpdate, t])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -512,8 +538,11 @@ export function AccountBindingsTab({
     twitterBinding,
   ])
 
-  const discordId = (profile as unknown as Record<string, unknown>)
-    .discord_id as string | undefined
+  if (!profile || !status || loading) return null
+
+  const profileFields = profile as unknown as Record<string, unknown>
+  const discordId = profileFields.discord_id as string | undefined
+  const telegramId = profileFields.telegram_id as string | undefined
   const showDiscordBinding = Boolean(
     status?.discord_oauth ||
     status?.discord_client_id ||
@@ -523,8 +552,8 @@ export function AccountBindingsTab({
   const discordBound = discordGroupStatus?.bound ?? Boolean(discordId)
   const discordJoined = Boolean(discordGroupStatus?.joined)
   const telegramGroupEnabled = Boolean(status?.telegram_group_enabled)
-
-  if (!profile || !status || loading) return null
+  const telegramBound = Boolean(telegramGroupStatus?.identified || telegramId)
+  const showTelegramBinding = telegramGroupEnabled || telegramBound
 
   let telegramDescription = t(
     'Identify with the Bot, then join the Telegram community'
@@ -670,9 +699,9 @@ export function AccountBindingsTab({
         ))}
       </div>
 
-      {(telegramGroupEnabled || showDiscordBinding) && (
+      {(showTelegramBinding || showDiscordBinding) && (
         <div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2'>
-          {telegramGroupEnabled && (
+          {showTelegramBinding && (
             <div className='rounded-lg border p-3'>
               <div className='flex h-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
                 <div className='flex min-w-0 items-center gap-2.5 sm:gap-3'>
@@ -698,17 +727,33 @@ export function AccountBindingsTab({
                   </div>
                 </div>
                 <div className='flex shrink-0 flex-wrap gap-2'>
-                  <Button
-                    variant={
-                      telegramGroupStatus?.joined ? 'outline' : 'default'
-                    }
-                    size='sm'
-                    className='h-7 px-2.5 text-xs'
-                    onClick={handleTelegramCommunity}
-                    disabled={telegramStarting || telegramGroupStatus?.joined}
-                  >
-                    {telegramActionLabel}
-                  </Button>
+                  {telegramGroupEnabled && (
+                    <Button
+                      variant={
+                        telegramGroupStatus?.joined ? 'outline' : 'default'
+                      }
+                      size='sm'
+                      className='h-7 px-2.5 text-xs'
+                      onClick={handleTelegramCommunity}
+                      disabled={
+                        telegramStarting || telegramGroupStatus?.joined
+                      }
+                    >
+                      {telegramActionLabel}
+                    </Button>
+                  )}
+                  {telegramBound && (
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      className='text-destructive hover:text-destructive h-7 px-2.5 text-xs'
+                      onClick={() => setTelegramUnbindOpen(true)}
+                      disabled={telegramStarting || telegramUnbinding}
+                    >
+                      <Unlink className='mr-1 h-3 w-3' />
+                      {telegramUnbinding ? t('Loading...') : t('Unbind')}
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -837,6 +882,20 @@ export function AccountBindingsTab({
       )}
 
       {/* Custom OAuth Unbind Confirmation */}
+      <ConfirmDialog
+        open={telegramUnbindOpen}
+        onOpenChange={setTelegramUnbindOpen}
+        title={t('Confirm Unbind')}
+        desc={t(
+          'Are you sure you want to unbind {{provider}}? You will no longer be able to log in via this method.',
+          { provider: 'Telegram' }
+        )}
+        confirmText={t('Confirm Unbind')}
+        destructive
+        handleConfirm={handleUnbindTelegram}
+        isLoading={telegramUnbinding}
+      />
+
       <ConfirmDialog
         open={!!unbindTarget}
         onOpenChange={(open) => !open && setUnbindTarget(null)}

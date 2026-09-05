@@ -186,6 +186,29 @@ func TelegramGroupVerificationStatus(c *gin.Context) {
 	telegramGroupStatus(c)
 }
 
+func UnbindTelegramGroupVerification(c *gin.Context) {
+	userID := c.GetInt("id")
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Not logged in"})
+		return
+	}
+
+	claimed, err := model.HasGrantedTrialClaim(userID)
+	if err != nil {
+		common.SysError("failed to check GPT Trial status before Telegram unlink: " + err.Error())
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Unable to unlink Telegram right now"})
+		return
+	}
+	if err := model.ClearTelegramGroupVerification(userID, claimed); err != nil {
+		common.SysError("failed to unlink Telegram verification: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Unable to unlink Telegram"})
+		return
+	}
+
+	model.RecordLog(userID, model.LogTypeManage, "user unlinked Telegram community identity")
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "success"})
+}
+
 func TelegramWebhook(c *gin.Context) {
 	configuredSecret := strings.TrimSpace(common.TelegramWebhookSecret)
 	providedSecret := strings.TrimSpace(c.GetHeader(telegramWebhookSecretHeader))

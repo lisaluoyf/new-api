@@ -168,6 +168,40 @@ func ConsumeTelegramVerification(token, telegramID string, now time.Time) (*Tele
 	return &result, replay, err
 }
 
+// ClearTelegramGroupVerification removes the live profile association and all
+// pending Bot tokens. A Trial-used identity is retained in APIMaster's permanent
+// trial_social_identities table; an unclaimed identity may be released there so
+// the user can correct a mistaken account link.
+func ClearTelegramGroupVerification(userID int, preserveTrialReservation bool) error {
+	var user User
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var verification TelegramGroupVerification
+		query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("user_id = ?", userID).
+			First(&verification)
+		if query.Error != nil && !errors.Is(query.Error, gorm.ErrRecordNotFound) {
+			return query.Error
+		}
+
+		if err := tx.Where("user_id = ?", userID).Delete(&TelegramGroupVerification{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&User{}).Where("id = ?", userID).Update("telegram_id", "").Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", userID).First(&user).Error
+	})
+	if err != nil {
+		return err
+	}
+	if !preserveTrialReservation {
+		if err := ReleaseUnclaimedTelegramTrialReservation(userID); err != nil {
+			return err
+		}
+	}
+	return updateUserCache(user)
+}
+
 func MarkTelegramGroupVerified(userID int, joined bool, now time.Time) error {
 	updates := map[string]interface{}{"verified_at": nil}
 	if joined {

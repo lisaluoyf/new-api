@@ -1,6 +1,63 @@
 package model
 
-import "github.com/QuantumNous/new-api/common"
+import (
+	"fmt"
+
+	"github.com/QuantumNous/new-api/common"
+)
+
+func protectedTrialClaimPredicate(tableAlias string) string {
+	prefix := ""
+	if tableAlias != "" {
+		prefix = tableAlias + "."
+	}
+	if APIMASTER_PG_DB != nil && APIMASTER_PG_DB.Dialector.Name() == "sqlite" {
+		return fmt.Sprintf("(%[1]sclaim_status = 'granted' OR (%[1]sclaim_status = 'claiming' AND %[1]sclaim_started_at >= datetime('now', '-5 minutes')))", prefix)
+	}
+	return fmt.Sprintf("(%[1]sclaim_status = 'granted' OR (%[1]sclaim_status = 'claiming' AND %[1]sclaim_started_at >= now() - interval '5 minutes'))", prefix)
+}
+
+// ReleaseUnclaimedTelegramTrialReservation releases a Telegram identity that
+// was checked but never used to issue a GPT Trial. Once a claim is granted, the
+// reservation must remain permanent and this function is not called.
+func ReleaseUnclaimedTelegramTrialReservation(userID int) error {
+	if APIMASTER_PG_DB == nil {
+		return nil
+	}
+	return APIMASTER_PG_DB.Exec(fmt.Sprintf(`
+		DELETE FROM trial_social_identities
+		WHERE provider = 'telegram'
+		  AND provider_user_id = ?
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM trial_claims
+			WHERE trial_claims.apimaster_user_id = trial_social_identities.apimaster_user_id
+			  AND %s
+		  )
+	`, protectedTrialClaimPredicate("trial_claims")), "newapi:"+fmt.Sprint(userID)).Error
+}
+
+// HasGrantedTrialClaim reports whether the New API user has already received,
+// or is currently receiving, the APIMaster GPT Trial. In-flight claims must be
+// protected from unlink/release races just like granted claims. If
+// APIMASTER_PG_DSN is configured, query failures are returned so callers do not
+// accidentally release a used social identity.
+func HasGrantedTrialClaim(userID int) (bool, error) {
+	if APIMASTER_PG_DB == nil {
+		return false, nil
+	}
+	var count int64
+	err := APIMASTER_PG_DB.Raw(fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM trial_claims
+		JOIN trial_social_identities
+		  ON trial_social_identities.apimaster_user_id = trial_claims.apimaster_user_id
+		WHERE trial_social_identities.provider = 'telegram'
+		  AND trial_social_identities.provider_user_id = ?
+		  AND %s
+	`, protectedTrialClaimPredicate("trial_claims")), "newapi:"+fmt.Sprint(userID)).Scan(&count).Error
+	return count > 0, err
+}
 
 // EnrichUsersTrialClaimStatus batch-loads each user's GPT trial claim_status
 // from apimaster's trial_claims table (keyed directly by newapi_user_id,

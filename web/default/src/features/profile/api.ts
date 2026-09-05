@@ -200,6 +200,11 @@ export async function startTelegramGroupVerification(): Promise<
   return res.data
 }
 
+export async function unbindTelegramGroupVerification(): Promise<ApiResponse> {
+  const res = await api.delete('/api/user/telegram-verification')
+  return res.data
+}
+
 export async function getDiscordGroupStatus(): Promise<
   ApiResponse<DiscordGroupStatus>
 > {

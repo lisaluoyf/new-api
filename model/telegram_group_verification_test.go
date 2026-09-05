@@ -21,6 +21,31 @@ func setupTelegramVerificationTestDB(t *testing.T) {
 	t.Cleanup(func() { DB = oldDB })
 }
 
+func setupApimasterTrialTestDB(t *testing.T) {
+	t.Helper()
+	oldDB := APIMASTER_PG_DB
+	dsn := fmt.Sprintf("file:%s-apimaster?mode=memory&cache=shared", t.Name())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE trial_social_identities (
+			apimaster_user_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			provider_user_id TEXT NOT NULL
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE trial_claims (
+			apimaster_user_id TEXT NOT NULL,
+			newapi_user_id INTEGER,
+			claim_status TEXT NOT NULL,
+			claim_started_at DATETIME
+		)
+	`).Error)
+	APIMASTER_PG_DB = db
+	t.Cleanup(func() { APIMASTER_PG_DB = oldDB })
+}
+
 func createTelegramVerificationTestUser(t *testing.T, id int, username string) {
 	t.Helper()
 	require.NoError(t, DB.Create(&User{Id: id, Username: username, AffCode: fmt.Sprintf("tg-aff-%d", id)}).Error)
@@ -82,4 +107,77 @@ func TestTelegramAccountCannotVerifyMultipleAPIMasterUsers(t *testing.T) {
 	var secondUser User
 	require.NoError(t, DB.First(&secondUser, 2).Error)
 	require.Empty(t, secondUser.TelegramId)
+}
+
+func TestClearTelegramGroupVerificationRemovesLiveBinding(t *testing.T) {
+	setupTelegramVerificationTestDB(t)
+	createTelegramVerificationTestUser(t, 1, "telegram-unbind-user")
+	now := time.Date(2026, 8, 20, 4, 0, 0, 0, time.UTC)
+
+	_, token, err := StartTelegramGroupVerification(1, now)
+	require.NoError(t, err)
+	_, _, err = ConsumeTelegramVerification(token, "10001", now.Add(time.Minute))
+	require.NoError(t, err)
+
+	require.NoError(t, ClearTelegramGroupVerification(1, true))
+	var user User
+	require.NoError(t, DB.First(&user, 1).Error)
+	require.Empty(t, user.TelegramId)
+	_, err = GetTelegramGroupVerificationByUserID(1)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
+func TestReleaseUnclaimedTelegramTrialReservationPreservesGrantedClaim(t *testing.T) {
+	setupApimasterTrialTestDB(t)
+	require.NoError(t, APIMASTER_PG_DB.Exec(`
+		INSERT INTO trial_social_identities (apimaster_user_id, provider, provider_user_id)
+		VALUES ('user-1', 'telegram', 'newapi:1'), ('user-2', 'telegram', 'newapi:2'),
+		       ('user-3', 'telegram', 'newapi:3'), ('user-4', 'telegram', 'newapi:4')
+	`).Error)
+	require.NoError(t, APIMASTER_PG_DB.Exec(`
+		INSERT INTO trial_claims (apimaster_user_id, newapi_user_id, claim_status, claim_started_at)
+		VALUES ('user-2', 2, 'granted', NULL),
+		       ('user-3', NULL, 'claiming', CURRENT_TIMESTAMP),
+		       ('user-4', NULL, 'claiming', datetime('now', '-10 minutes'))
+	`).Error)
+
+	claimed, err := HasGrantedTrialClaim(1)
+	require.NoError(t, err)
+	require.False(t, claimed)
+	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(1))
+
+	claimed, err = HasGrantedTrialClaim(2)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(2))
+	claimed, err = HasGrantedTrialClaim(3)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(3))
+	claimed, err = HasGrantedTrialClaim(4)
+	require.NoError(t, err)
+	require.False(t, claimed)
+	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(4))
+
+	var count int64
+	require.NoError(t, APIMASTER_PG_DB.Raw(`
+		SELECT COUNT(*) FROM trial_social_identities
+		WHERE provider = 'telegram' AND provider_user_id = 'newapi:1'
+	`).Scan(&count).Error)
+	require.Zero(t, count)
+	require.NoError(t, APIMASTER_PG_DB.Raw(`
+		SELECT COUNT(*) FROM trial_social_identities
+		WHERE provider = 'telegram' AND provider_user_id = 'newapi:2'
+	`).Scan(&count).Error)
+	require.EqualValues(t, 1, count)
+	require.NoError(t, APIMASTER_PG_DB.Raw(`
+		SELECT COUNT(*) FROM trial_social_identities
+		WHERE provider = 'telegram' AND provider_user_id = 'newapi:3'
+	`).Scan(&count).Error)
+	require.EqualValues(t, 1, count)
+	require.NoError(t, APIMASTER_PG_DB.Raw(`
+		SELECT COUNT(*) FROM trial_social_identities
+		WHERE provider = 'telegram' AND provider_user_id = 'newapi:4'
+	`).Scan(&count).Error)
+	require.Zero(t, count)
 }

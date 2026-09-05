@@ -313,6 +313,16 @@ func TestTelegramStatusDoesNotTrustLegacyUserTelegramID(t *testing.T) {
 	require.Equal(t, "not_started", response.Data.Status)
 }
 
+func TestUnbindTelegramGroupVerificationRequiresAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupTelegramWebhookTest(t)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodDelete, "/api/user/telegram-verification", nil)
+	UnbindTelegramGroupVerification(context)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
 func TestSetupTelegramWebhookUsesConfiguredSecret(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupTelegramWebhookTest(t)
