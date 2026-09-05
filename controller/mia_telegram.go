@@ -16,6 +16,22 @@ import (
 
 const miaDefaultChatModel = "grok-4.5"
 
+// Mia only aliases IDs that are strictly upstream spellings, never a generic
+// request fallback. Some ModelIDCandidates are separate public products, such
+// as Nano Banana and Nano Banana 2, and must remain independently selectable.
+var miaCatalogModelAliases = map[string]string{
+	"claude-haiku-4-5-20251001":  "claude-haiku-4-5",
+	"anthropic/claude-haiku-4.5": "claude-haiku-4-5",
+}
+
+func miaCatalogModelID(raw string) string {
+	modelID := strings.TrimSpace(raw)
+	if canonical, ok := miaCatalogModelAliases[strings.ToLower(modelID)]; ok {
+		return canonical
+	}
+	return modelID
+}
+
 type miaTelegramAPIKeyRequest struct {
 	TelegramUserID string `json:"telegram_user_id"`
 	Model          string `json:"model"`
@@ -198,7 +214,7 @@ func getMiaUsableTokenForModel(userID int, modelName string) (*model.Token, erro
 			return nil, accessErr
 		}
 		for _, accessibleModel := range accessibleModels {
-			if strings.EqualFold(accessibleModel.Id, modelName) {
+			if strings.EqualFold(miaCatalogModelID(accessibleModel.Id), miaCatalogModelID(modelName)) {
 				return &tokens[i], nil
 			}
 		}
@@ -252,25 +268,30 @@ func GetMiaTelegramModelCatalog(c *gin.Context) {
 			return
 		}
 		for _, accessibleModel := range accessibleModels {
-			capability, ok := miaModelCapability(accessibleModel.SupportedEndpointTypes)
+			canonicalID := miaCatalogModelID(accessibleModel.Id)
+			endpointTypes := model.GetModelSupportEndpointTypes(canonicalID)
+			if len(endpointTypes) == 0 {
+				endpointTypes = accessibleModel.SupportedEndpointTypes
+			}
+			capability, ok := miaModelCapability(endpointTypes)
 			if !ok {
 				continue
 			}
-			pricing := pricingByModel[strings.ToLower(accessibleModel.Id)]
+			pricing := pricingByModel[strings.ToLower(canonicalID)]
 			supportsVision := capability == "chat" && miaModelHasTag(pricing.Tags, "vision")
 			visionRecommended := supportsVision && miaModelHasTag(pricing.Tags, "vision-recommended")
 			videoCapabilities := miaVideoModelCapabilities(capability)
-			modelItems[strings.ToLower(accessibleModel.Id)] = miaModelCatalogItem{
-				ID:                     accessibleModel.Id,
-				DisplayName:            accessibleModel.Id,
+			modelItems[strings.ToLower(canonicalID)] = miaModelCatalogItem{
+				ID:                     canonicalID,
+				DisplayName:            canonicalID,
 				Vendor:                 accessibleModel.OwnedBy,
 				Capability:             capability,
 				Recommended:            miaModelHasTag(pricing.Tags, "recommended"),
 				SupportsVision:         supportsVision,
 				VisionRecommended:      visionRecommended,
 				VideoCapabilities:      videoCapabilities,
-				Pricing:                resolveMiaModelPricing(accessibleModel.Id, capability),
-				SupportedEndpointTypes: accessibleModel.SupportedEndpointTypes,
+				Pricing:                resolveMiaModelPricing(canonicalID, capability),
+				SupportedEndpointTypes: endpointTypes,
 			}
 		}
 	}

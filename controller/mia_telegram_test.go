@@ -414,6 +414,14 @@ func TestMiaModelCapabilityIncludesResponseChatModels(t *testing.T) {
 	require.Equal(t, "chat", capability)
 }
 
+func TestMiaCatalogNormalizesOnlyProviderHaikuAliases(t *testing.T) {
+	require.Equal(t, "claude-haiku-4-5", miaCatalogModelID("claude-haiku-4-5-20251001"))
+	require.Equal(t, "claude-haiku-4-5", miaCatalogModelID("anthropic/claude-haiku-4.5"))
+	// Nano Banana IDs are distinct public products, not aliases of one another.
+	require.Equal(t, "gemini-3.1-flash-image-preview", miaCatalogModelID("gemini-3.1-flash-image-preview"))
+	require.Equal(t, "gemini-2.5-flash-image", miaCatalogModelID("gemini-2.5-flash-image"))
+}
+
 func TestMiaModelVisionTagsAreExplicitAndTokenized(t *testing.T) {
 	require.True(t, miaModelHasTag("chat, vision;vision-recommended", "vision"))
 	require.True(t, miaModelHasTag("chat, vision;vision-recommended", "vision-recommended"))
