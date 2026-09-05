@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -173,6 +175,14 @@ func ConsumeTelegramVerification(token, telegramID string, now time.Time) (*Tele
 // trial_social_identities table; an unclaimed identity may be released there so
 // the user can correct a mistaken account link.
 func ClearTelegramGroupVerification(userID int, preserveTrialReservation bool) error {
+	var linkedUser User
+	if err := DB.Select("id, username").Where("id = ?", userID).First(&linkedUser).Error; err != nil {
+		return err
+	}
+	if err := clearApimasterTelegramLoginBinding(linkedUser.Username); err != nil {
+		return err
+	}
+
 	var user User
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var verification TelegramGroupVerification
@@ -200,6 +210,29 @@ func ClearTelegramGroupVerification(userID int, preserveTrialReservation bool) e
 		}
 	}
 	return updateUserCache(user)
+}
+
+// clearApimasterTelegramLoginBinding removes the APIMaster login identity for
+// the same mirrored console user. Community verification and Telegram login
+// are one user-facing binding, so they must be removed together.
+func clearApimasterTelegramLoginBinding(newAPIUsername string) error {
+	if APIMASTER_PG_DB == nil {
+		return errors.New("APIMASTER_PG_DSN is not configured")
+	}
+	username := strings.TrimSpace(newAPIUsername)
+	if username == "" {
+		return errors.New("new-api username is empty")
+	}
+
+	derivedUsername := "left(replace(apimaster_user_id::text, '-', ''), 20)"
+	if APIMASTER_PG_DB.Dialector.Name() == "sqlite" {
+		derivedUsername = "substr(replace(apimaster_user_id, '-', ''), 1, 20)"
+	}
+	return APIMASTER_PG_DB.Exec(fmt.Sprintf(`
+		DELETE FROM user_social_bindings
+		 WHERE provider = 'telegram'
+		   AND %s = lower(?)
+	`, derivedUsername), strings.ToLower(username)).Error
 }
 
 func MarkTelegramGroupVerified(userID int, joined bool, now time.Time) error {

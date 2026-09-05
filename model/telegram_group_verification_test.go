@@ -42,6 +42,13 @@ func setupApimasterTrialTestDB(t *testing.T) {
 			claim_started_at DATETIME
 		)
 	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE user_social_bindings (
+			apimaster_user_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			provider_user_id TEXT NOT NULL
+		)
+	`).Error)
 	APIMASTER_PG_DB = db
 	t.Cleanup(func() { APIMASTER_PG_DB = oldDB })
 }
@@ -111,7 +118,13 @@ func TestTelegramAccountCannotVerifyMultipleAPIMasterUsers(t *testing.T) {
 
 func TestClearTelegramGroupVerificationRemovesLiveBinding(t *testing.T) {
 	setupTelegramVerificationTestDB(t)
-	createTelegramVerificationTestUser(t, 1, "telegram-unbind-user")
+	setupApimasterTrialTestDB(t)
+	const username = "0123456789abcdef0123"
+	createTelegramVerificationTestUser(t, 1, username)
+	require.NoError(t, APIMASTER_PG_DB.Exec(`
+		INSERT INTO user_social_bindings (apimaster_user_id, provider, provider_user_id)
+		VALUES ('01234567-89ab-cdef-0123-456789abcdef', 'telegram', '10001')
+	`).Error)
 	now := time.Date(2026, 8, 20, 4, 0, 0, 0, time.UTC)
 
 	_, token, err := StartTelegramGroupVerification(1, now)
@@ -125,6 +138,12 @@ func TestClearTelegramGroupVerificationRemovesLiveBinding(t *testing.T) {
 	require.Empty(t, user.TelegramId)
 	_, err = GetTelegramGroupVerificationByUserID(1)
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	var loginBindingCount int64
+	require.NoError(t, APIMASTER_PG_DB.Raw(`
+		SELECT COUNT(*) FROM user_social_bindings
+		WHERE provider = 'telegram' AND provider_user_id = '10001'
+	`).Scan(&loginBindingCount).Error)
+	require.Zero(t, loginBindingCount)
 }
 
 func TestReleaseUnclaimedTelegramTrialReservationPreservesGrantedClaim(t *testing.T) {
