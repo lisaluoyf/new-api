@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -34,7 +35,18 @@ type miaModelCatalogItem struct {
 	SupportsVision         bool                    `json:"supports_vision"`
 	VisionRecommended      bool                    `json:"vision_recommended"`
 	VideoCapabilities      *miaVideoCapabilities   `json:"video_capabilities,omitempty"`
+	Pricing                *miaModelPricing        `json:"pricing,omitempty"`
 	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
+}
+
+type miaModelPricing struct {
+	Unit          string   `json:"unit"`
+	InputPrice    *float64 `json:"input_price,omitempty"`
+	OutputPrice   *float64 `json:"output_price,omitempty"`
+	Price         *float64 `json:"price,omitempty"`
+	Currency      string   `json:"currency"`
+	DiscountRatio *float64 `json:"discount_ratio,omitempty"`
+	ChannelName   string   `json:"channel_name,omitempty"`
 }
 
 type miaIntegerRange struct {
@@ -248,17 +260,17 @@ func GetMiaTelegramModelCatalog(c *gin.Context) {
 			pricing := pricingByModel[strings.ToLower(accessibleModel.Id)]
 			supportsVision := capability == "chat" && miaModelHasTag(pricing.Tags, "vision")
 			visionRecommended := supportsVision && miaModelHasTag(pricing.Tags, "vision-recommended")
-			videoCapabilities := miaVideoModelCapabilities(accessibleModel.Id, capability)
-			displayName, vendor := miaModelPresentation(accessibleModel.Id, accessibleModel.OwnedBy)
+			videoCapabilities := miaVideoModelCapabilities(capability)
 			modelItems[strings.ToLower(accessibleModel.Id)] = miaModelCatalogItem{
 				ID:                     accessibleModel.Id,
-				DisplayName:            displayName,
-				Vendor:                 vendor,
+				DisplayName:            accessibleModel.Id,
+				Vendor:                 accessibleModel.OwnedBy,
 				Capability:             capability,
-				Recommended:            miaRecommendedModel(accessibleModel.Id, capability, videoCapabilities != nil),
+				Recommended:            miaModelHasTag(pricing.Tags, "recommended"),
 				SupportsVision:         supportsVision,
 				VisionRecommended:      visionRecommended,
 				VideoCapabilities:      videoCapabilities,
+				Pricing:                resolveMiaModelPricing(accessibleModel.Id, capability),
 				SupportedEndpointTypes: accessibleModel.SupportedEndpointTypes,
 			}
 		}
@@ -284,6 +296,65 @@ func GetMiaTelegramModelCatalog(c *gin.Context) {
 	})
 }
 
+func resolveMiaModelPricing(modelName, capability string) *miaModelPricing {
+	channel, err := service.SelectCheapestEnabledChannel(nil, modelName)
+	if err != nil || channel == nil {
+		return nil
+	}
+	pricing := &miaModelPricing{Currency: "USD", ChannelName: strings.TrimSpace(channel.Name)}
+	switch capability {
+	case "chat":
+		resolved, ok, resolveErr := service.ChannelUserPricesResolvedForModel(channel.Id, modelName)
+		if resolveErr != nil || !ok || resolved.InputPrice <= 0 {
+			return nil
+		}
+		officialInput, officialOutput, _, _, officialOK := service.GlobalModelPricingUSD(modelName)
+		pricing.Unit = "token_1m"
+		pricing.InputPrice = float64Ptr(resolved.InputPrice)
+		if resolved.OutputPrice > 0 {
+			pricing.OutputPrice = float64Ptr(resolved.OutputPrice)
+		}
+		if officialOK && officialInput > 0 {
+			pricing.DiscountRatio = float64Ptr(resolved.InputPrice / officialInput)
+		}
+		if officialOK && officialOutput > 0 && resolved.OutputPrice > 0 {
+			// Keep one compact discount value while basing it on both axes when
+			// both official prices are available.
+			ratio := (resolved.InputPrice/officialInput + resolved.OutputPrice/officialOutput) / 2
+			pricing.DiscountRatio = float64Ptr(ratio)
+		}
+	case "image":
+		official, ok := service.GlobalImageMediaPricingUSD(modelName)
+		if !ok || official.BasePrice <= 0 {
+			return nil
+		}
+		userPrice, priceErr := service.ChannelBaseUserPriceResolved(channel.Id, modelName, official.BasePrice)
+		if priceErr != nil || userPrice <= 0 {
+			return nil
+		}
+		pricing.Unit = "image"
+		pricing.Price = float64Ptr(userPrice)
+		pricing.DiscountRatio = float64Ptr(userPrice / official.BasePrice)
+	case "video":
+		official, ok := service.GlobalVideoMediaPricingUSD(modelName)
+		if !ok || official.BasePrice <= 0 {
+			return nil
+		}
+		userPrice, priceErr := service.ChannelBaseUserPriceResolved(channel.Id, modelName, official.BasePrice)
+		if priceErr != nil || userPrice <= 0 {
+			return nil
+		}
+		pricing.Unit = "second"
+		pricing.Price = float64Ptr(userPrice)
+		pricing.DiscountRatio = float64Ptr(userPrice / official.BasePrice)
+	default:
+		return nil
+	}
+	return pricing
+}
+
+func float64Ptr(value float64) *float64 { return &value }
+
 func miaModelCapability(endpointTypes []constant.EndpointType) (string, bool) {
 	for _, endpointType := range endpointTypes {
 		if endpointType == constant.EndpointTypeOpenAIVideo {
@@ -297,41 +368,13 @@ func miaModelCapability(endpointTypes []constant.EndpointType) (string, bool) {
 	}
 	for _, endpointType := range endpointTypes {
 		switch endpointType {
-		case constant.EndpointTypeOpenAI:
+		case constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse,
+			constant.EndpointTypeOpenAIResponseCompact, constant.EndpointTypeAnthropic,
+			constant.EndpointTypeGemini:
 			return "chat", true
 		}
 	}
 	return "", false
-}
-
-func miaRecommendedModel(modelID, capability string, miaVideoCompatible bool) bool {
-	switch capability {
-	case "chat":
-		return strings.EqualFold(modelID, miaDefaultChatModel)
-	case "image":
-		return strings.EqualFold(modelID, "gpt-image-2")
-	case "video":
-		return miaVideoCompatible && strings.EqualFold(modelID, "minimax-h3")
-	default:
-		return false
-	}
-}
-
-func miaModelPresentation(modelID, fallbackVendor string) (string, string) {
-	switch strings.ToLower(strings.TrimSpace(modelID)) {
-	case "gemini-2.5-flash-image":
-		return "Nano Banana", "Google"
-	case "gemini-3-pro-image":
-		return "Nano Banana Pro", "Google"
-	case "gemini-3.1-flash-image":
-		return "Nano Banana 2", "Google"
-	case "gpt-image-2":
-		return "GPT Image 2", "OpenAI"
-	case "minimax-h3":
-		return "MiniMax H3", "MiniMax"
-	default:
-		return modelID, fallbackVendor
-	}
 }
 
 func miaModelHasTag(tags, expected string) bool {
@@ -350,19 +393,18 @@ func miaModelHasTag(tags, expected string) bool {
 	return false
 }
 
-// miaVideoModelCapabilities is an allowlist of adapters whose request
-// contract Mia can validate completely. A generic video endpoint alone is not
-// enough: omitting capabilities keeps unsupported models out of Mia selectors
-// while preserving their existing catalog visibility.
-func miaVideoModelCapabilities(modelID, capability string) *miaVideoCapabilities {
-	if capability != "video" || !strings.EqualFold(modelID, "minimax-h3") {
+// miaVideoModelCapabilities supplies only a provider-neutral fallback for
+// video drafts. The model category itself always comes from API Master endpoint
+// metadata; this fallback is not a model allowlist.
+func miaVideoModelCapabilities(capability string) *miaVideoCapabilities {
+	if capability != "video" {
 		return nil
 	}
 	return &miaVideoCapabilities{
 		Modes:              []string{"text_to_video", "image_to_video"},
 		DurationSeconds:    miaIntegerRange{Min: 4, Max: 15, Default: 4},
-		Resolutions:        []string{"768P"},
-		DefaultResolution:  "768P",
+		Resolutions:        []string{"720p"},
+		DefaultResolution:  "720p",
 		AspectRatios:       []string{"1:1", "16:9", "9:16"},
 		DefaultAspectRatio: "16:9",
 		MaxReferenceImages: 10,

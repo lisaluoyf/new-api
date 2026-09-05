@@ -34,6 +34,7 @@ func setupMiaTelegramTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 		&model.Token{},
 		&model.Channel{},
 		&model.Ability{},
+		&model.ChannelModelPricing{},
 		&model.Model{},
 		&model.Vendor{},
 	))
@@ -230,7 +231,7 @@ func TestGetMiaTelegramModelCatalogUnionsUsableTokensAndClassifiesEndpoints(t *t
 		{Group: "other", Model: "grok-other-group", ChannelId: 1, Enabled: true},
 	}).Error)
 	require.NoError(t, db.Create(&[]model.Model{
-		{ModelName: "grok-4.5", Tags: "chat, Vision | vision-recommended", Status: 1},
+		{ModelName: "grok-4.5", Tags: "chat, Vision | vision-recommended;recommended", Status: 1},
 		{ModelName: "vision-pro-no-tag", Tags: "chat", Status: 1},
 	}).Error)
 
@@ -281,29 +282,29 @@ func TestGetMiaTelegramModelCatalogUnionsUsableTokensAndClassifiesEndpoints(t *t
 	require.True(t, byID["grok-4.5"].VisionRecommended)
 	require.False(t, byID["vision-pro-no-tag"].SupportsVision, "vision support must not be inferred from the model name")
 	require.False(t, byID["vision-pro-no-tag"].VisionRecommended)
-	require.Equal(t, "Nano Banana", byID["gemini-2.5-flash-image"].DisplayName)
-	require.Equal(t, "Google", byID["gemini-2.5-flash-image"].Vendor)
-	require.Equal(t, "Nano Banana Pro", byID["gemini-3-pro-image"].DisplayName)
-	require.Equal(t, "Nano Banana 2", byID["gemini-3.1-flash-image"].DisplayName)
+	require.Equal(t, "gemini-2.5-flash-image", byID["gemini-2.5-flash-image"].DisplayName)
+	require.Equal(t, "vertex-ai", byID["gemini-2.5-flash-image"].Vendor)
+	require.Equal(t, "gemini-3-pro-image", byID["gemini-3-pro-image"].DisplayName)
+	require.Equal(t, "gemini-3.1-flash-image", byID["gemini-3.1-flash-image"].DisplayName)
 	require.Equal(t, "image", byID["gpt-image-2"].Capability)
-	require.Equal(t, "GPT Image 2", byID["gpt-image-2"].DisplayName)
+	require.Equal(t, "gpt-image-2", byID["gpt-image-2"].DisplayName)
 	require.False(t, byID["gpt-image-2"].SupportsVision)
 	require.Contains(t, byID["gpt-image-2"].SupportedEndpointTypes, constant.EndpointTypeImageGeneration)
 	require.Equal(t, "video", byID["MiniMax-H3"].Capability)
-	require.Equal(t, "MiniMax H3", byID["MiniMax-H3"].DisplayName)
-	require.True(t, byID["MiniMax-H3"].Recommended)
+	require.Equal(t, "MiniMax-H3", byID["MiniMax-H3"].DisplayName)
+	require.False(t, byID["MiniMax-H3"].Recommended)
 	require.NotNil(t, byID["MiniMax-H3"].VideoCapabilities)
 	require.Equal(t, []string{"text_to_video", "image_to_video"}, byID["MiniMax-H3"].VideoCapabilities.Modes)
 	require.Equal(t, miaIntegerRange{Min: 4, Max: 15, Default: 4}, byID["MiniMax-H3"].VideoCapabilities.DurationSeconds)
-	require.Equal(t, []string{"768P"}, byID["MiniMax-H3"].VideoCapabilities.Resolutions)
-	require.Equal(t, "768P", byID["MiniMax-H3"].VideoCapabilities.DefaultResolution)
+	require.Equal(t, []string{"720p"}, byID["MiniMax-H3"].VideoCapabilities.Resolutions)
+	require.Equal(t, "720p", byID["MiniMax-H3"].VideoCapabilities.DefaultResolution)
 	require.Equal(t, []string{"1:1", "16:9", "9:16"}, byID["MiniMax-H3"].VideoCapabilities.AspectRatios)
 	require.Equal(t, "16:9", byID["MiniMax-H3"].VideoCapabilities.DefaultAspectRatio)
 	require.Equal(t, 10, byID["MiniMax-H3"].VideoCapabilities.MaxReferenceImages)
 	require.Contains(t, byID["MiniMax-H3"].SupportedEndpointTypes, constant.EndpointTypeOpenAIVideo)
 	require.Equal(t, "video", byID["kling-v3-omni"].Capability)
 	require.False(t, byID["kling-v3-omni"].Recommended)
-	require.Nil(t, byID["kling-v3-omni"].VideoCapabilities)
+	require.NotNil(t, byID["kling-v3-omni"].VideoCapabilities)
 	require.NotContains(t, byID, "grok-other-group")
 
 	resolver := performMiaTelegramRequest(
@@ -343,10 +344,10 @@ func TestGetMiaTelegramModelCatalogRequiresAuthenticationAndUsableKey(t *testing
 	require.Contains(t, missingKey.Body.String(), "no_usable_api_key")
 }
 
-func TestMiaModelCapabilityExcludesResponseOnlyModels(t *testing.T) {
+func TestMiaModelCapabilityIncludesResponseChatModels(t *testing.T) {
 	capability, ok := miaModelCapability([]constant.EndpointType{constant.EndpointTypeOpenAIResponse})
-	require.False(t, ok)
-	require.Empty(t, capability)
+	require.True(t, ok)
+	require.Equal(t, "chat", capability)
 }
 
 func TestMiaModelVisionTagsAreExplicitAndTokenized(t *testing.T) {
@@ -357,23 +358,11 @@ func TestMiaModelVisionTagsAreExplicitAndTokenized(t *testing.T) {
 	require.False(t, miaModelHasTag("vision-recommended", "vision"))
 }
 
-func TestMiaVideoCapabilitiesRequireKnownCompatibleAdapter(t *testing.T) {
-	h3 := miaVideoModelCapabilities("MiniMax-H3", "video")
+func TestMiaVideoCapabilitiesCoverVideoCatalog(t *testing.T) {
+	h3 := miaVideoModelCapabilities("video")
 	require.NotNil(t, h3)
 	require.Equal(t, 4, h3.DurationSeconds.Default)
 	require.Equal(t, 10, h3.MaxReferenceImages)
 
-	require.Nil(t, miaVideoModelCapabilities("minimax-h3", "chat"))
-	require.Nil(t, miaVideoModelCapabilities("kling-v3-omni", "video"))
-	require.False(t, miaRecommendedModel("kling-v3-omni", "video", false))
-}
-
-func TestMiaModelPresentationUsesConsumerNames(t *testing.T) {
-	displayName, vendor := miaModelPresentation("GEMINI-3-PRO-IMAGE", "custom")
-	require.Equal(t, "Nano Banana Pro", displayName)
-	require.Equal(t, "Google", vendor)
-
-	displayName, vendor = miaModelPresentation("unknown-model", "custom")
-	require.Equal(t, "unknown-model", displayName)
-	require.Equal(t, "custom", vendor)
+	require.Nil(t, miaVideoModelCapabilities("chat"))
 }

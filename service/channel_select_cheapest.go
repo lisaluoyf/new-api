@@ -224,6 +224,8 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 
 	candidates := ModelPricingLookupNames(modelName)
 	_, hasImageBasePrice := ratio_setting.GetImageModelBasePrice(modelName)
+	_, hasVideoBasePrice := ratio_setting.GetVideoModelBasePrice(modelName)
+	hasMediaBasePrice := hasImageBasePrice || hasVideoBasePrice
 
 	modelsCol := "c.models"
 	abilityGroupCol := "a.`group`"
@@ -249,7 +251,7 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 	var rows []pricedCandidateRow
 
 	pricingJoin := "LEFT JOIN channel_model_pricings p ON p.channel_id = c.id AND p.input_price > 0"
-	if hasImageBasePrice {
+	if hasMediaBasePrice {
 		pricingJoin = "LEFT JOIN channel_model_pricings p ON p.channel_id = c.id AND (p.input_price > 0 OR p.group_ratio > 0)"
 	}
 	q := model.DB.Table("channels c").
@@ -289,7 +291,7 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 		if row.PricingModelName != nil {
 			pricingModelName = *row.PricingModelName
 		}
-		if hasImageBasePrice && row.GroupRatio != nil && *row.GroupRatio > 0 {
+		if hasMediaBasePrice && row.GroupRatio != nil && *row.GroupRatio > 0 {
 			applyPricedCandidateGroupRatio(&candidate, modelName, pricingModelName, *row.GroupRatio)
 		}
 		if row.InputPrice != nil && *row.InputPrice > 0 {
@@ -422,6 +424,25 @@ func routeCandidateUserInputPriceAt(candidate pricedRouteCandidate, modelName st
 			apimasterPriceRatio = 1
 		}
 		price := imageBasePrice * groupRatio * rechargeRate * apimasterPriceRatio
+		return price, price > 0
+	}
+	if videoBasePrice, ok := ratio_setting.GetVideoModelBasePrice(modelName); ok {
+		groupRatio := candidate.GroupRatio
+		if manualGroupRatio := ExtractManualGroupRatio(candidate.Setting); manualGroupRatio > 0 {
+			groupRatio = manualGroupRatio
+		}
+		if groupRatio <= 0 {
+			groupRatio = 1
+		}
+		rechargeRate := candidate.RechargeRate
+		if rechargeRate <= 0 {
+			rechargeRate = 1
+		}
+		apimasterPriceRatio := candidate.ApimasterPriceRatio
+		if apimasterPriceRatio <= 0 {
+			apimasterPriceRatio = 1
+		}
+		price := videoBasePrice * groupRatio * rechargeRate * apimasterPriceRatio
 		return price, price > 0
 	}
 

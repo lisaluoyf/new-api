@@ -9,6 +9,60 @@ type ChannelModelPriceRatios struct {
 	CacheCreationRatio float64
 }
 
+// ChannelUserPricesResolved contains the final user-facing prices for a
+// channel/model pair. Values are USD per 1M tokens for text models; callers
+// may use the same channel multipliers with media base prices via
+// ChannelBaseUserPriceResolved.
+type ChannelUserPricesResolved struct {
+	InputPrice         float64
+	OutputPrice        float64
+	CachePrice         float64
+	CacheCreationPrice float64
+	GroupRatio         float64
+	RechargeRate       float64
+	PriceRatio         float64
+}
+
+// ChannelUserPricesResolvedForModel resolves the complete text price tuple
+// using the same model mapping/manual/global fallbacks as request billing.
+func ChannelUserPricesResolvedForModel(channelID int, modelName string) (ChannelUserPricesResolved, bool, error) {
+	ch, err := loadChannelPricingResolveContext(channelID)
+	if err != nil {
+		return ChannelUserPricesResolved{}, false, err
+	}
+	row, ok := resolveChannelPricingRow(channelID, modelName, ch)
+	applyGroupRatio := false
+	if !ok {
+		input, output, cache, cacheCreation, globalOK := GlobalModelPricingUSD(modelName)
+		if !globalOK || input <= 0 {
+			return ChannelUserPricesResolved{}, false, nil
+		}
+		row = &ChannelPricingLookupRow{
+			InputPrice: input, OutputPrice: output,
+			CachePrice: cache, CacheCreationPrice: cacheCreation,
+			GroupRatio: channelBasePriceGroupRatio(channelID, modelName, ch),
+		}
+		applyGroupRatio = true
+	}
+	groupRatio := 1.0
+	if applyGroupRatio {
+		groupRatio = channelBasePriceGroupRatio(channelID, modelName, ch)
+		if groupRatio <= 0 {
+			groupRatio = 1
+		}
+	}
+	priceRatio := ch.EffectivePriceRatio(modelName)
+	if priceRatio <= 0 {
+		priceRatio = 1
+	}
+	mult := groupRatio * ch.RechargeRate * priceRatio
+	return ChannelUserPricesResolved{
+		InputPrice: row.InputPrice * mult, OutputPrice: row.OutputPrice * mult,
+		CachePrice: row.CachePrice * mult, CacheCreationPrice: row.CacheCreationPrice * mult,
+		GroupRatio: groupRatio, RechargeRate: ch.RechargeRate, PriceRatio: priceRatio,
+	}, true, nil
+}
+
 // EffectiveModelPriceRatio resolves the user-price markup for a (channel, model)
 // pair: per-model override (tried across model name aliases) > channel-level
 // ratio > 1.0. Alias matching mirrors pricing-row lookup so an override keyed

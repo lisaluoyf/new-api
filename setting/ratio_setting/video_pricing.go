@@ -125,10 +125,11 @@ func GetVideoModelResolutionRatio(model, resolution string) float64 {
 // channel price as their billing base.
 func GetVideoModelBasePrice(model string) (float64, bool) {
 	config, ok := getVideoModelPricing(model)
-	if !ok || config.BasePrice <= 0 {
+	if !ok {
 		return 0, false
 	}
-	return config.BasePrice, true
+	base, _ := videoBasePrice(config)
+	return base, base > 0
 }
 
 func GetVideoModelPrice(model, variant string) (float64, bool) {
@@ -146,16 +147,39 @@ func GetVideoModelPrice(model, variant string) (float64, bool) {
 
 func GetVideoModelPricingDetails(model string) (VideoModelPricingDetails, bool) {
 	config, ok := getVideoModelPricing(model)
-	if !ok || config.BasePrice <= 0 || len(config.Prices) == 0 {
+	if !ok || len(config.Prices) == 0 {
+		return VideoModelPricingDetails{}, false
+	}
+	basePrice, baseVariant := videoBasePrice(config)
+	if basePrice <= 0 {
 		return VideoModelPricingDetails{}, false
 	}
 	return VideoModelPricingDetails{
 		Unit:           config.Unit,
-		BasePrice:      config.BasePrice,
-		BaseVariant:    config.BaseVariant,
+		BasePrice:      basePrice,
+		BaseVariant:    baseVariant,
 		Prices:         cloneVideoPrices(config.Prices),
 		OfficialPrices: cloneVideoPrices(config.OfficialPrices),
 	}, true
+}
+
+func videoBasePrice(config videoModelPricing) (float64, string) {
+	if config.BasePrice > 0 {
+		variant := strings.TrimSpace(config.BaseVariant)
+		if variant == "" {
+			variant = "base"
+		}
+		return config.BasePrice, variant
+	}
+	for _, variant := range []string{config.BaseVariant, "base", "768P", "std"} {
+		if strings.TrimSpace(variant) == "" {
+			continue
+		}
+		if price := videoPriceByName(config.Prices, variant); price > 0 {
+			return price, variant
+		}
+	}
+	return 0, ""
 }
 
 func cloneVideoPrices(prices map[string]float64) map[string]float64 {

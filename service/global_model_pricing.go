@@ -25,6 +25,26 @@ type VideoMediaPricingUSD struct {
 	OfficialPrices map[string]float64
 }
 
+type ImageMediaPricingUSD struct {
+	Unit        string
+	BasePrice   float64
+	BaseVariant string
+	Prices      map[string]float64
+}
+
+// GlobalImageMediaPricingUSD resolves the configured per-image price table.
+func GlobalImageMediaPricingUSD(canonical string) (ImageMediaPricingUSD, bool) {
+	for _, name := range ModelPricingLookupNames(canonical) {
+		if pricing, ok := ratio_setting.GetImageModelPricingDetails(name); ok {
+			return ImageMediaPricingUSD{
+				Unit: pricing.Unit, BasePrice: pricing.BasePrice,
+				BaseVariant: pricing.BaseVariant, Prices: pricing.Prices,
+			}, true
+		}
+	}
+	return ImageMediaPricingUSD{}, false
+}
+
 // GlobalVideoMediaPricingUSD resolves the tiered per-unit price table used by
 // both task billing and price presentation. It is the authoritative source for
 // media models that have resolution/input variants.
