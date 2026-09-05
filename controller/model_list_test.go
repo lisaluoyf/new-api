@@ -284,3 +284,43 @@ func TestListModelsShowsFreeModelOnlyToEligibleUsers(t *testing.T) {
 	ListModels(limitedCtx, constant.ChannelTypeOpenAI)
 	require.NotContains(t, decodeListModelsResponse(t, limitedRecorder), service.FreeModelID)
 }
+
+func TestListModelsHidesFreeModelWhenGloballyDisabled(t *testing.T) {
+	originalSelfUse := operation_setting.SelfUseModeEnabled
+	operation_setting.SelfUseModeEnabled = true
+	t.Cleanup(func() { operation_setting.SelfUseModeEnabled = originalSelfUse })
+
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
+	oldSetting, existed := common.OptionMap[service.FreeModelSettingsOptionKey()]
+	common.OptionMap[service.FreeModelSettingsOptionKey()] = `{"enabled":false,"cumulative_paid_enabled":true,"minimum_cumulative_paid_usd":50,"active_subscription_enabled":true,"minimum_subscription_price_usd":20,"account_requests_per_minute":10,"max_attempts":3}`
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if existed {
+			common.OptionMap[service.FreeModelSettingsOptionKey()] = oldSetting
+		} else {
+			delete(common.OptionMap, service.FreeModelSettingsOptionKey())
+		}
+	})
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{Id: 1003, Username: "free-model-admin", AffCode: "free-model-admin", Group: "default", Role: common.RoleAdminUser, Status: common.UserStatusEnabled}).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: service.FreeModelID, ChannelId: 1, Enabled: true}).Error)
+
+	for _, tokenLimited := range []bool{false, true} {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		ctx.Set("id", 1003)
+		if tokenLimited {
+			common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
+			common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{service.FreeModelID: true})
+		}
+		ListModels(ctx, constant.ChannelTypeOpenAI)
+		require.NotContains(t, decodeListModelsResponse(t, recorder), service.FreeModelID)
+	}
+}

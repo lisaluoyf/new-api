@@ -27,6 +27,32 @@ func TestValidateFreeModelSettings(t *testing.T) {
 	require.Error(t, ValidateFreeModelSettings(FreeModelSettings{CumulativePaidEnabled: true, AccountRequestsPerMinute: 0}))
 }
 
+func TestFreeModelGlobalAvailabilityDefaultsOnForExistingSettings(t *testing.T) {
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
+	oldSetting, existed := common.OptionMap[FreeModelSettingsOptionKey()]
+	common.OptionMap[FreeModelSettingsOptionKey()] = `{"cumulative_paid_enabled":true,"minimum_cumulative_paid_usd":50,"active_subscription_enabled":true,"minimum_subscription_price_usd":20,"account_requests_per_minute":10,"max_attempts":3}`
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if existed {
+			common.OptionMap[FreeModelSettingsOptionKey()] = oldSetting
+		} else {
+			delete(common.OptionMap, FreeModelSettingsOptionKey())
+		}
+	})
+
+	require.True(t, IsFreeModelEnabled(), "existing settings without enabled must remain available")
+
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap[FreeModelSettingsOptionKey()] = `{"enabled":false,"cumulative_paid_enabled":true,"minimum_cumulative_paid_usd":50,"active_subscription_enabled":true,"minimum_subscription_price_usd":20,"account_requests_per_minute":10,"max_attempts":3}`
+	common.OptionMapRWMutex.Unlock()
+	require.False(t, IsFreeModelEnabled())
+}
+
 func TestFreeModelEligibilityUsesActualPaidOrSubscription(t *testing.T) {
 	oldDB := model.DB
 	t.Cleanup(func() { model.DB = oldDB })

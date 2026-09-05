@@ -16,6 +16,7 @@ const FreeModelID = "apimaster-freemodel"
 const freeModelSettingsOption = "FreeModelSettings"
 
 type FreeModelSettings struct {
+	Enabled                     bool    `json:"enabled"`
 	CumulativePaidEnabled       bool    `json:"cumulative_paid_enabled"`
 	MinimumCumulativePaidUSD    float64 `json:"minimum_cumulative_paid_usd"`
 	ActiveSubscriptionEnabled   bool    `json:"active_subscription_enabled"`
@@ -26,6 +27,7 @@ type FreeModelSettings struct {
 }
 
 var defaultFreeModelSettings = FreeModelSettings{
+	Enabled:                     true,
 	CumulativePaidEnabled:       true,
 	MinimumCumulativePaidUSD:    50,
 	ActiveSubscriptionEnabled:   true,
@@ -37,6 +39,13 @@ var defaultFreeModelSettings = FreeModelSettings{
 
 func IsFreeModel(modelName string) bool {
 	return strings.TrimSpace(modelName) == FreeModelID
+}
+
+// IsFreeModelEnabled is the global availability switch for the virtual free
+// model. It deliberately leaves channel membership intact so an operator can
+// suspend user access and later restore it without rebuilding the route pool.
+func IsFreeModelEnabled() bool {
+	return GetFreeModelSettings().Enabled
 }
 
 func FreeModelResponseName(originModelName, upstreamModelName string) string {
@@ -161,6 +170,10 @@ func FreeModelNotEligibleError() error {
 		conditions = append(conditions, fmt.Sprintf("an active subscription priced >= $%.2f", s.MinimumSubscriptionPriceUSD))
 	}
 	return fmt.Errorf("FreeModel requires %s", strings.Join(conditions, " or "))
+}
+
+func FreeModelDisabledError() error {
+	return errors.New("FreeModel is temporarily unavailable")
 }
 
 func FreeModelRateLimitKey(userID int) string {

@@ -67,6 +67,10 @@ func Distribute() func(c *gin.Context) {
 		}
 		if service.IsFreeModel(modelRequest.Model) {
 			modelRequest.Model = service.FreeModelID
+			if !service.IsFreeModelEnabled() {
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, service.FreeModelDisabledError().Error(), types.ErrorCode("free_model_disabled"))
+				return
+			}
 			if !isSupportedFreeModelPath(c.Request.URL.Path) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, "apimaster-freemodel is only available on /v1/chat/completions, /v1/responses, and /v1/messages")
 				return

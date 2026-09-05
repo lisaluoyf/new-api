@@ -892,6 +892,7 @@ export function ChannelDataPage() {
     Record<string, boolean>
   >({})
   const [freeSettings, setFreeSettings] = useState({
+    enabled: true,
     cumulative_paid_enabled: true,
     minimum_cumulative_paid_usd: 50,
     active_subscription_enabled: true,
@@ -1562,7 +1563,9 @@ export function ChannelDataPage() {
               )}
               {isFreeModel && (
                 <span className='rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700'>
-                  {t('User billing: Free')}
+                  {freeSettings.enabled
+                    ? t('User billing: Free')
+                    : t('User access: Disabled')}
                 </span>
               )}
               <button
@@ -2511,6 +2514,20 @@ export function ChannelDataPage() {
               <DialogTitle>{t('FreeModel Settings')}</DialogTitle>
             </DialogHeader>
             <div className='space-y-4 py-2'>
+              <label className='flex items-center justify-between gap-4 text-sm'>
+                <span>
+                  <span className='block'>{t('Enable FreeModel')}</span>
+                  <span className='block text-xs text-gray-400'>
+                    {t('When disabled, FreeModel is hidden from API model lists and requests are rejected.')}
+                  </span>
+                </span>
+                <Switch
+                  checked={freeSettings.enabled}
+                  onCheckedChange={(value) =>
+                    setFreeSettings((current) => ({ ...current, enabled: value }))
+                  }
+                />
+              </label>
               <label className='flex items-center justify-between gap-4 text-sm'>
                 <span>{t('Enable cumulative paid eligibility')}</span>
                 <Switch

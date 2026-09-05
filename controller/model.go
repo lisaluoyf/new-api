@@ -260,6 +260,9 @@ func getAccessibleOpenAIModels(userID int, tokenGroup string, modelLimitEnable b
 		}
 		for allowModel, _ := range tokenModelLimit {
 			if service.IsFreeModel(allowModel) {
+				if !service.IsFreeModelEnabled() {
+					continue
+				}
 				eligible, _, eligibilityErr := service.FreeModelEligibility(userID)
 				if eligibilityErr != nil || !eligible || !common.StringsContains(model.GetEnabledModels(), service.FreeModelID) {
 					continue
@@ -311,6 +314,9 @@ func getAccessibleOpenAIModels(userID int, tokenGroup string, modelLimitEnable b
 		}
 		for _, modelName := range models {
 			if service.IsFreeModel(modelName) {
+				if !service.IsFreeModelEnabled() {
+					continue
+				}
 				eligible, _, eligibilityErr := service.FreeModelEligibility(userID)
 				if eligibilityErr == nil && eligible {
 					userOpenAiModels = append(userOpenAiModels, dto.OpenAIModels{Id: service.FreeModelID, Object: "model", Created: 1626777600, OwnedBy: "apimaster", SupportedEndpointTypes: model.GetModelSupportEndpointTypes(service.FreeModelID)})
