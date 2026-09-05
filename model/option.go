@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	model_setting "github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -253,6 +254,7 @@ func loadOptionsFromDatabase() {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
 	}
+	ensureGPT6AstraPricing()
 	if modelFallbackRaw != nil {
 		if err := updateOptionMap("model_fallback_setting", *modelFallbackRaw); err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
@@ -262,6 +264,45 @@ func loadOptionsFromDatabase() {
 	if modelFallbackLegacy != nil {
 		if err := updateOptionMap("model_fallback_setting.policies", *modelFallbackLegacy); err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
+		}
+	}
+}
+
+// ensureGPT6AstraPricing merges the built-in GPT-6 Astra pricing into existing
+// installations whose persisted option maps predate the model. It is
+// intentionally merge-only so operator overrides remain untouched.
+func ensureGPT6AstraPricing() {
+	modelRatio := ratio_setting.GetModelRatioCopy()
+	completionRatio := ratio_setting.GetCompletionRatioCopy()
+	if _, ok := modelRatio["gpt-6-astra"]; !ok {
+		modelRatio["gpt-6-astra"] = 5
+		if raw, err := common.Marshal(modelRatio); err == nil {
+			_ = UpdateOption("ModelRatio", string(raw))
+		}
+	}
+	if _, ok := completionRatio["gpt-6-astra"]; !ok {
+		completionRatio["gpt-6-astra"] = 5
+		if raw, err := common.Marshal(completionRatio); err == nil {
+			_ = UpdateOption("CompletionRatio", string(raw))
+		}
+	}
+	modes := billing_setting.GetBillingModeCopy()
+	exprs := billing_setting.GetBillingExprCopy()
+	changed := false
+	if _, ok := modes["gpt-6-astra"]; !ok {
+		modes["gpt-6-astra"] = billing_setting.BillingModeTieredExpr
+		changed = true
+	}
+	if _, ok := exprs["gpt-6-astra"]; !ok {
+		exprs["gpt-6-astra"] = `len <= 272000 ? tier("standard", p * 10 + c * 50 + cr * 1) : tier("long_context", p * 20 + c * 100 + cr * 2)`
+		changed = true
+	}
+	if changed {
+		if raw, err := common.Marshal(modes); err == nil {
+			_ = UpdateOption("billing_setting.billing_mode", string(raw))
+		}
+		if raw, err := common.Marshal(exprs); err == nil {
+			_ = UpdateOption("billing_setting.billing_expr", string(raw))
 		}
 	}
 }
