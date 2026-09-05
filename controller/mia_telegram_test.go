@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -388,7 +389,31 @@ func TestGetMiaTelegramModelCatalogUsesChannelPriceForVideoWithoutTierTable(t *t
 	require.Equal(t, "second", pricing.Unit)
 	require.NotNil(t, pricing.Price)
 	require.InDelta(t, 0.12, *pricing.Price, 1e-9)
-	require.Nil(t, pricing.DiscountRatio)
+	// Models without a media tier table still inherit the same unified official
+	// price used by marketplace cards when one is configured.
+	require.NotNil(t, pricing.DiscountRatio)
+	require.Greater(t, *pricing.DiscountRatio, 0.0)
+	require.Less(t, *pricing.DiscountRatio, 1.0)
+}
+
+func TestMiaMediaPriceUsesMarketplaceOfficialPriceForSavings(t *testing.T) {
+	_, db := setupMiaTelegramTestRouter(t)
+	rechargeRate := 1.1
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 1, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled,
+		Models: "doubao-seedance-2.0", RechargeRate: &rechargeRate,
+	}).Error)
+	require.NoError(t, db.Create(&model.ChannelModelPricing{
+		ChannelId: 1, ModelName: "doubao-seedance-2.0", GroupRatio: 1,
+	}).Error)
+
+	resolved, ok, err := service.ResolveChannelMediaBasePricingUSD(1, "doubao-seedance-2.0", "video")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.InDelta(t, 0.1562, resolved.Price, 1e-9)
+	// The table's 0.142 is APIMaster's billing base. The public marketplace
+	// uses the separate 720P official price as its crossed-out comparison.
+	require.InDelta(t, 0.1775, resolved.OfficialPrice, 1e-9)
 }
 
 func TestMiaModelCapabilityIncludesResponseChatModels(t *testing.T) {

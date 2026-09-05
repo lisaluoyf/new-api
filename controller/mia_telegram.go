@@ -314,10 +314,10 @@ func resolveMiaModelPricing(modelName, capability string) *miaModelPricing {
 		if resolved.OutputPrice > 0 {
 			pricing.OutputPrice = float64Ptr(resolved.OutputPrice)
 		}
-		if officialOK && officialInput > 0 {
+		if officialOK && officialInput > resolved.InputPrice {
 			pricing.DiscountRatio = float64Ptr(resolved.InputPrice / officialInput)
 		}
-		if officialOK && officialOutput > 0 && resolved.OutputPrice > 0 {
+		if officialOK && officialOutput > resolved.OutputPrice && resolved.OutputPrice > 0 {
 			// Keep one compact discount value while basing it on both axes when
 			// both official prices are available.
 			ratio := (resolved.InputPrice/officialInput + resolved.OutputPrice/officialOutput) / 2
@@ -330,7 +330,7 @@ func resolveMiaModelPricing(modelName, capability string) *miaModelPricing {
 		}
 		pricing.Unit = "image"
 		pricing.Price = float64Ptr(resolved.Price)
-		if resolved.OfficialPrice > 0 {
+		if resolved.OfficialPrice > resolved.Price {
 			pricing.DiscountRatio = float64Ptr(resolved.Price / resolved.OfficialPrice)
 		}
 	case "video":
@@ -340,7 +340,7 @@ func resolveMiaModelPricing(modelName, capability string) *miaModelPricing {
 		}
 		pricing.Unit = "second"
 		pricing.Price = float64Ptr(resolved.Price)
-		if resolved.OfficialPrice > 0 {
+		if resolved.OfficialPrice > resolved.Price {
 			pricing.DiscountRatio = float64Ptr(resolved.Price / resolved.OfficialPrice)
 		}
 	default:

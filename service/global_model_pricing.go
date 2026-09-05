@@ -80,19 +80,22 @@ func GlobalVideoMediaPricingUSD(canonical string) (VideoMediaPricingUSD, bool) {
 // exact price routing would charge, not a fabricated list-price estimate.
 func ResolveChannelMediaBasePricingUSD(channelID int, modelName, capability string) (ResolvedMediaBasePricingUSD, bool, error) {
 	var (
-		basePrice float64
-		unit      string
-		hasTable  bool
+		basePrice     float64
+		officialPrice float64
+		unit          string
+		hasTable      bool
 	)
 
 	switch capability {
 	case "image":
 		if pricing, ok := GlobalImageMediaPricingUSD(modelName); ok && pricing.BasePrice > 0 {
 			basePrice, unit, hasTable = pricing.BasePrice, pricing.Unit, true
+			officialPrice = pricing.BasePrice
 		}
 	case "video":
 		if pricing, ok := GlobalVideoMediaPricingUSD(modelName); ok && pricing.BasePrice > 0 {
 			basePrice, unit, hasTable = pricing.BasePrice, pricing.Unit, true
+			officialPrice = mediaPriceForVariant(pricing.OfficialPrices, pricing.BaseVariant)
 		}
 	default:
 		return ResolvedMediaBasePricingUSD{}, false, nil
@@ -103,7 +106,10 @@ func ResolveChannelMediaBasePricingUSD(channelID int, modelName, capability stri
 		if err != nil || price <= 0 {
 			return ResolvedMediaBasePricingUSD{}, false, err
 		}
-		return ResolvedMediaBasePricingUSD{Unit: unit, Price: price, OfficialPrice: basePrice}, true, nil
+		if officialPrice <= 0 {
+			officialPrice, _, _, _, _ = GlobalModelPricingUSD(modelName)
+		}
+		return ResolvedMediaBasePricingUSD{Unit: unit, Price: price, OfficialPrice: officialPrice}, true, nil
 	}
 
 	// A video model without a tier table is still routable and billable via its
@@ -116,14 +122,24 @@ func ResolveChannelMediaBasePricingUSD(channelID int, modelName, capability stri
 	if err != nil || !ok || resolved.InputPrice <= 0 {
 		return ResolvedMediaBasePricingUSD{}, false, err
 	}
+	officialPrice, _, _, _, _ = GlobalModelPricingUSD(modelName)
 	return ResolvedMediaBasePricingUSD{
-		Unit:  "second",
-		Price: resolved.InputPrice,
-		// The generic model price catalog contains token-price aliases as well
-		// as media entries, so it is not a reliable official list-price source
-		// for a video without an explicit media table. Omit a discount rather
-		// than exposing a false percentage.
+		Unit:          "second",
+		Price:         resolved.InputPrice,
+		OfficialPrice: officialPrice,
 	}, true, nil
+}
+
+// mediaPriceForVariant follows the marketplace's case-insensitive variant
+// lookup. Video pricing tables use the platform billing value as BasePrice,
+// while OfficialPrices is the separate crossed-out list price used for savings.
+func mediaPriceForVariant(prices map[string]float64, variant string) float64 {
+	for name, price := range prices {
+		if price > 0 && strings.EqualFold(strings.TrimSpace(name), strings.TrimSpace(variant)) {
+			return price
+		}
+	}
+	return 0
 }
 
 // GlobalModelPricingUSDAt is the time-aware form used by tests and request
