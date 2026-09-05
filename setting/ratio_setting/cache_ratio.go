@@ -43,6 +43,7 @@ var defaultCacheRatio = map[string]float64{
 	"gpt-5-mini-2025-08-07":               0.1,
 	"gpt-5-nano":                          0.1,
 	"gpt-5-nano-2025-08-07":               0.1,
+	"gpt-6-astra":                         0.1,
 	"deepseek-chat":                       0.25,
 	"deepseek-reasoner":                   0.25,
 	"deepseek-coder":                      0.25,
@@ -82,6 +83,7 @@ var defaultCacheRatio = map[string]float64{
 }
 
 var defaultCreateCacheRatio = map[string]float64{
+	"gpt-6-astra":                         1.25,
 	"qwen3.8-max":                         1.25,
 	"qwen3.8-flash":                       1.333333333333,
 	"claude-3-sonnet-20240229":            1.25,

@@ -167,7 +167,7 @@ const PRESET_GROUPS: PresetGroup[] = [
       {
         key: 'gpt-6-astra',
         label: 'GPT-6 Astra',
-        expr: 'len <= 272000 ? tier("standard", p * 10 + c * 50 + cr * 1) : tier("long_context", p * 20 + c * 100 + cr * 2)',
+        expr: 'len <= 272000 ? tier("standard", p * 10 + c * 50 + cr * 1 + cc * 12.5) : tier("long_context", p * 20 + c * 100 + cr * 2 + cc * 25)',
       },
     ],
   },

@@ -274,6 +274,8 @@ func loadOptionsFromDatabase() {
 func ensureGPT6AstraPricing() {
 	modelRatio := ratio_setting.GetModelRatioCopy()
 	completionRatio := ratio_setting.GetCompletionRatioCopy()
+	cacheRatio := ratio_setting.GetCacheRatioCopy()
+	createCacheRatio := ratio_setting.GetCreateCacheRatioCopy()
 	if _, ok := modelRatio["gpt-6-astra"]; !ok {
 		modelRatio["gpt-6-astra"] = 5
 		if raw, err := common.Marshal(modelRatio); err == nil {
@@ -286,6 +288,18 @@ func ensureGPT6AstraPricing() {
 			_ = UpdateOption("CompletionRatio", string(raw))
 		}
 	}
+	if _, ok := cacheRatio["gpt-6-astra"]; !ok {
+		cacheRatio["gpt-6-astra"] = 0.1
+		if raw, err := common.Marshal(cacheRatio); err == nil {
+			_ = UpdateOption("CacheRatio", string(raw))
+		}
+	}
+	if _, ok := createCacheRatio["gpt-6-astra"]; !ok {
+		createCacheRatio["gpt-6-astra"] = 1.25
+		if raw, err := common.Marshal(createCacheRatio); err == nil {
+			_ = UpdateOption("CreateCacheRatio", string(raw))
+		}
+	}
 	modes := billing_setting.GetBillingModeCopy()
 	exprs := billing_setting.GetBillingExprCopy()
 	changed := false
@@ -294,7 +308,7 @@ func ensureGPT6AstraPricing() {
 		changed = true
 	}
 	if _, ok := exprs["gpt-6-astra"]; !ok {
-		exprs["gpt-6-astra"] = `len <= 272000 ? tier("standard", p * 10 + c * 50 + cr * 1) : tier("long_context", p * 20 + c * 100 + cr * 2)`
+		exprs["gpt-6-astra"] = `len <= 272000 ? tier("standard", p * 10 + c * 50 + cr * 1 + cc * 12.5) : tier("long_context", p * 20 + c * 100 + cr * 2 + cc * 25)`
 		changed = true
 	}
 	if changed {
