@@ -32,15 +32,6 @@ type ImageMediaPricingUSD struct {
 	Prices      map[string]float64
 }
 
-// ResolvedMediaBasePricingUSD is the user-visible base price for one media
-// model on a selected channel. The price is always the same final user price
-// that routing and billing would use for that channel.
-type ResolvedMediaBasePricingUSD struct {
-	Unit          string
-	Price         float64
-	OfficialPrice float64
-}
-
 // GlobalImageMediaPricingUSD resolves the configured per-image price table.
 func GlobalImageMediaPricingUSD(canonical string) (ImageMediaPricingUSD, bool) {
 	for _, name := range ModelPricingLookupNames(canonical) {
@@ -70,76 +61,6 @@ func GlobalVideoMediaPricingUSD(canonical string) (VideoMediaPricingUSD, bool) {
 		}
 	}
 	return VideoMediaPricingUSD{}, false
-}
-
-// ResolveChannelMediaBasePricingUSD resolves the base media price presented to
-// clients. Models with a dedicated media table retain that table as the source
-// of truth so their resolution/mode tiers stay aligned with billing. Older
-// video models that are configured only in the standard channel/global price
-// catalog fall back to the selected channel's final input price. This is the
-// exact price routing would charge, not a fabricated list-price estimate.
-func ResolveChannelMediaBasePricingUSD(channelID int, modelName, capability string) (ResolvedMediaBasePricingUSD, bool, error) {
-	var (
-		basePrice     float64
-		officialPrice float64
-		unit          string
-		hasTable      bool
-	)
-
-	switch capability {
-	case "image":
-		if pricing, ok := GlobalImageMediaPricingUSD(modelName); ok && pricing.BasePrice > 0 {
-			basePrice, unit, hasTable = pricing.BasePrice, pricing.Unit, true
-			officialPrice = pricing.BasePrice
-		}
-	case "video":
-		if pricing, ok := GlobalVideoMediaPricingUSD(modelName); ok && pricing.BasePrice > 0 {
-			basePrice, unit, hasTable = pricing.BasePrice, pricing.Unit, true
-			officialPrice = mediaPriceForVariant(pricing.OfficialPrices, pricing.BaseVariant)
-		}
-	default:
-		return ResolvedMediaBasePricingUSD{}, false, nil
-	}
-
-	if hasTable {
-		price, err := ChannelBaseUserPriceResolved(channelID, modelName, basePrice)
-		if err != nil || price <= 0 {
-			return ResolvedMediaBasePricingUSD{}, false, err
-		}
-		if officialPrice <= 0 {
-			officialPrice, _, _, _, _ = GlobalModelPricingUSD(modelName)
-		}
-		return ResolvedMediaBasePricingUSD{Unit: unit, Price: price, OfficialPrice: officialPrice}, true, nil
-	}
-
-	// A video model without a tier table is still routable and billable via its
-	// normal per-request/per-second model price. Keep that catalog entry visible
-	// instead of making clients report "price unavailable".
-	if capability != "video" {
-		return ResolvedMediaBasePricingUSD{}, false, nil
-	}
-	resolved, ok, err := ChannelUserPricesResolvedForModel(channelID, modelName)
-	if err != nil || !ok || resolved.InputPrice <= 0 {
-		return ResolvedMediaBasePricingUSD{}, false, err
-	}
-	officialPrice, _, _, _, _ = GlobalModelPricingUSD(modelName)
-	return ResolvedMediaBasePricingUSD{
-		Unit:          "second",
-		Price:         resolved.InputPrice,
-		OfficialPrice: officialPrice,
-	}, true, nil
-}
-
-// mediaPriceForVariant follows the marketplace's case-insensitive variant
-// lookup. Video pricing tables use the platform billing value as BasePrice,
-// while OfficialPrices is the separate crossed-out list price used for savings.
-func mediaPriceForVariant(prices map[string]float64, variant string) float64 {
-	for name, price := range prices {
-		if price > 0 && strings.EqualFold(strings.TrimSpace(name), strings.TrimSpace(variant)) {
-			return price
-		}
-	}
-	return 0
 }
 
 // GlobalModelPricingUSDAt is the time-aware form used by tests and request

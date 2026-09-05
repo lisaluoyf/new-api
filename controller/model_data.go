@@ -1096,6 +1096,170 @@ type publicMarketplaceCacheEntry struct {
 	expiresAt int64
 }
 
+// publicMarketplacePricingRow contains only the fields that participate in a
+// marketplace price card. It is shared by the public marketplace and Mia so a
+// model has one canonical displayed current price and official comparison.
+type publicMarketplacePricingRow struct {
+	ChannelID           int
+	Setting             *string
+	ModelMapping        *string
+	InputPrice          *float64
+	OutputPrice         *float64
+	GroupRatio          *float64
+	RechargeRate        *float64
+	ApimasterPriceRatio float64
+	ModelPriceRatios    *string
+	OtherSettings       string
+	Status              int
+}
+
+func publicMarketplacePricingRows(modelName string) []publicMarketplacePricingRow {
+	candidates := service.ModelNameCandidates(modelName)
+	abilityGroupColumn := "a.`group`"
+	if common.UsingPostgreSQL {
+		abilityGroupColumn = `a."group"`
+	}
+	modelsClauses := make([]string, 0, len(candidates))
+	modelsArgs := make([]interface{}, 0, len(candidates)*4)
+	for _, candidate := range candidates {
+		modelsClauses = append(modelsClauses, "c.models = ? OR c.models LIKE ? OR c.models LIKE ? OR c.models LIKE ?")
+		modelsArgs = append(modelsArgs, candidate, candidate+",%", "%,"+candidate, "%,"+candidate+",%")
+	}
+
+	var rows []publicMarketplacePricingRow
+	model.DB.Table("channels c").
+		Select("c.id as channel_id, c.setting, c.model_mapping, p.input_price, p.output_price, p.group_ratio, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.settings as other_settings, c.status").
+		Joins("LEFT JOIN channel_model_pricings p ON c.id = p.channel_id AND p.model_name IN ?", candidates).
+		Joins("LEFT JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND "+abilityGroupColumn+" = 'default'", modelName).
+		Where("c.status = 1").
+		Where("COALESCE(a.enabled, true) = true").
+		Where("("+strings.Join(modelsClauses, " OR ")+")", modelsArgs...).
+		Order("c.id ASC, CASE WHEN p.input_price IS NULL OR p.input_price <= 0 THEN 1 ELSE 0 END, p.input_price ASC").
+		Scan(&rows)
+
+	seen := map[int]bool{}
+	deduped := make([]publicMarketplacePricingRow, 0, len(rows))
+	for _, row := range rows {
+		if seen[row.ChannelID] {
+			continue
+		}
+		seen[row.ChannelID] = true
+		deduped = append(deduped, row)
+	}
+	for index := range deduped {
+		applyModelMappingPricingToRow(
+			deduped[index].ChannelID, deduped[index].ModelMapping, modelName,
+			&deduped[index].InputPrice, &deduped[index].OutputPrice, nil, nil,
+			&deduped[index].GroupRatio, nil,
+		)
+		applyPublicManualPricingToRow(
+			deduped[index].Setting, modelName,
+			&deduped[index].InputPrice, &deduped[index].OutputPrice, nil, nil,
+			&deduped[index].GroupRatio, nil,
+		)
+		applyGlobalModelPricingToRow(
+			modelName,
+			&deduped[index].InputPrice, &deduped[index].OutputPrice, nil, nil,
+			&deduped[index].GroupRatio, nil,
+		)
+	}
+	return deduped
+}
+
+func publicMarketplacePriceItem(modelName string, row publicMarketplacePricingRow) PublicMarketplaceItem {
+	timedPrice, isDeepSeekTimedPrice := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
+	var officialInput, officialOutput *float64
+	if input, output, _, _, ok := service.GlobalModelPricingUSD(modelName); ok {
+		if input > 0 {
+			value := input
+			officialInput = &value
+		}
+		if output > 0 {
+			value := output
+			officialOutput = &value
+		}
+	}
+
+	rechargeRate := 1.0
+	if row.RechargeRate != nil && *row.RechargeRate > 0 {
+		rechargeRate = *row.RechargeRate
+	}
+	channelRatio := row.ApimasterPriceRatio
+	apimasterRatio := service.EffectiveModelPriceRatio(row.ModelPriceRatios, &channelRatio, modelName)
+	var userPrice, outputUserPrice *float64
+	if row.InputPrice != nil {
+		value := *row.InputPrice * rechargeRate * apimasterRatio
+		userPrice = &value
+	}
+	if row.OutputPrice != nil {
+		value := *row.OutputPrice * rechargeRate * apimasterRatio
+		outputUserPrice = &value
+	}
+	if isDeepSeekTimedPrice {
+		groupRatio := 1.0
+		if manual := service.ExtractManualGroupRatio(row.Setting); manual > 0 {
+			groupRatio = manual
+		} else if row.GroupRatio != nil && *row.GroupRatio > 0 {
+			groupRatio = *row.GroupRatio
+		}
+		input := timedPrice.InputPrice * groupRatio * rechargeRate * apimasterRatio
+		output := timedPrice.OutputPrice * groupRatio * rechargeRate * apimasterRatio
+		userPrice, outputUserPrice = &input, &output
+	}
+
+	imageGroupRatio := 1.0
+	if manual := service.ExtractManualGroupRatio(row.Setting); manual > 0 {
+		imageGroupRatio = manual
+	} else if row.GroupRatio != nil && *row.GroupRatio > 0 {
+		imageGroupRatio = *row.GroupRatio
+	}
+	mediaPricing := buildImagePricingView(modelName, imageGroupRatio, rechargeRate, apimasterRatio)
+	filterImagePricingViewForChannel(mediaPricing, modelName, &model.Channel{Id: row.ChannelID, OtherSettings: row.OtherSettings})
+	if mediaPricing == nil {
+		mediaPricing = buildVideoMediaPricingView(modelName, rechargeRate)
+	}
+	var publicMediaPricing *PublicVideoMediaPricingView
+	if mediaPricing != nil {
+		publicMediaPricing = &PublicVideoMediaPricingView{
+			Unit:           mediaPricing.Unit,
+			BaseVariant:    mediaPricing.BaseVariant,
+			OfficialPrices: mediaPricing.OfficialPrices,
+			BillingPrices:  mediaPricing.BillingPrices,
+		}
+		if current := mediaPricing.BillingPrices[mediaPricing.BaseVariant]; current > 0 {
+			value := current
+			userPrice = &value
+		}
+		if official := mediaPricing.OfficialPrices[mediaPricing.BaseVariant]; official > 0 {
+			value := official
+			officialInput = &value
+		}
+	}
+	return PublicMarketplaceItem{
+		ChannelID:             row.ChannelID,
+		ClientExclusive:       modelDataExtractClientExclusive(row.Setting),
+		UserPrice:             userPrice,
+		ActualOutputUserPrice: outputUserPrice,
+		OfficialInputPrice:    officialInput,
+		OfficialOutputPrice:   officialOutput,
+		MediaPricing:          publicMediaPricing,
+		Status:                row.Status,
+	}
+}
+
+func sortPublicMarketplaceItems(items []PublicMarketplaceItem) {
+	sort.SliceStable(items, func(left, right int) bool {
+		leftPrice, rightPrice := items[left].UserPrice, items[right].UserPrice
+		if leftPrice == nil || *leftPrice <= 0 {
+			return false
+		}
+		if rightPrice == nil || *rightPrice <= 0 {
+			return true
+		}
+		return *leftPrice < *rightPrice
+	})
+}
+
 // GetPublicMarketplace returns channel pricing and detection stats for a given model.
 // No authentication required — public-facing data only (status=1 channels, no internal fields).
 // GET /api/public/marketplace?model=<model_name>
@@ -1119,69 +1283,7 @@ func GetPublicMarketplace(c *gin.Context) {
 		publicMarketplaceCache.Unlock()
 	}
 
-	type row struct {
-		ChannelID           int
-		Setting             *string
-		ModelMapping        *string
-		InputPrice          *float64
-		OutputPrice         *float64
-		GroupRatio          *float64
-		RechargeRate        *float64
-		ApimasterPriceRatio float64
-		ModelPriceRatios    *string
-		OtherSettings       string
-		Status              int
-	}
-
-	candidates := service.ModelNameCandidates(modelName)
-
-	modelsClauses := make([]string, 0, len(candidates))
-	modelsArgs := make([]interface{}, 0, len(candidates)*4)
-	for _, m := range candidates {
-		modelsClauses = append(modelsClauses, "c.models = ? OR c.models LIKE ? OR c.models LIKE ? OR c.models LIKE ?")
-		modelsArgs = append(modelsArgs, m, m+",%", "%,"+m, "%,"+m+",%")
-	}
-
-	var rows []row
-	model.DB.Table("channels c").
-		Select("c.id as channel_id, c.setting, c.model_mapping, p.input_price, p.output_price, p.group_ratio, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.settings as other_settings, c.status").
-		Joins("LEFT JOIN channel_model_pricings p ON c.id = p.channel_id AND p.model_name IN ?", candidates).
-		Joins("LEFT JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND a.group = 'default'", modelName).
-		Where("c.status = 1").
-		Where("COALESCE(a.enabled, true) = true").
-		Where("("+strings.Join(modelsClauses, " OR ")+")", modelsArgs...).
-		Order("c.id ASC, CASE WHEN p.input_price IS NULL OR p.input_price <= 0 THEN 1 ELSE 0 END, p.input_price ASC").
-		Scan(&rows)
-
-	// Deduplicate by channel (keep cheapest row per channel).
-	seen := map[int]bool{}
-	deduped := make([]row, 0, len(rows))
-	for _, r := range rows {
-		if seen[r.ChannelID] {
-			continue
-		}
-		seen[r.ChannelID] = true
-		deduped = append(deduped, r)
-	}
-	rows = deduped
-
-	for i := range rows {
-		applyModelMappingPricingToRow(
-			rows[i].ChannelID, rows[i].ModelMapping, modelName,
-			&rows[i].InputPrice, &rows[i].OutputPrice, nil, nil,
-			&rows[i].GroupRatio, nil,
-		)
-		applyPublicManualPricingToRow(
-			rows[i].Setting, modelName,
-			&rows[i].InputPrice, &rows[i].OutputPrice, nil, nil,
-			&rows[i].GroupRatio, nil,
-		)
-		applyGlobalModelPricingToRow(
-			modelName,
-			&rows[i].InputPrice, &rows[i].OutputPrice, nil, nil,
-			&rows[i].GroupRatio, nil,
-		)
-	}
+	rows := publicMarketplacePricingRows(modelName)
 
 	if len(rows) == 0 {
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": []any{}})
@@ -1252,29 +1354,8 @@ func GetPublicMarketplace(c *gin.Context) {
 		}
 	}
 
-	// 官方原价 from the unified official price store (系统设置→模型定价, global
-	// ratio settings) — the same source as /api/pricing. Replaces the old
-	// public_model_prices (romaapi snapshot) lookup.
-	var officialInPtr, officialOutPtr *float64
-	if in, out, _, _, ok := service.GlobalModelPricingUSD(modelName); ok {
-		if in > 0 {
-			v := in
-			officialInPtr = &v
-		}
-		if out > 0 {
-			v := out
-			officialOutPtr = &v
-		}
-	}
-	deepSeekTimedPrice, _ := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
-
 	items := make([]PublicMarketplaceItem, 0, len(rows))
 	for _, r := range rows {
-		rechargeRate := 1.0
-		if r.RechargeRate != nil && *r.RechargeRate > 0 {
-			rechargeRate = *r.RechargeRate
-		}
-
 		fp := []PublicDetectPoint{}
 		up := []PublicDetectPoint{}
 		var latencies []float64
@@ -1288,102 +1369,13 @@ func GetPublicMarketplace(c *gin.Context) {
 			latencies = h.Latencies
 		}
 
-		marketChannelRatio := r.ApimasterPriceRatio
-		apimasterRatio := service.EffectiveModelPriceRatio(r.ModelPriceRatios, &marketChannelRatio, modelName)
-
-		var userPricePtr, actualOutputUserPricePtr *float64
-		itemOfficialInPtr := officialInPtr
-		if r.InputPrice != nil {
-			in := *r.InputPrice
-			actualIn := in * rechargeRate
-			userIn := actualIn * apimasterRatio
-			userPricePtr = &userIn
-		}
-		if r.OutputPrice != nil {
-			out := *r.OutputPrice
-			actualOut := out * rechargeRate
-			userOut := actualOut * apimasterRatio
-			actualOutputUserPricePtr = &userOut
-		}
-		if isDeepSeekTimedPrice {
-			gr := 1.0
-			if manualGroupRatio := service.ExtractManualGroupRatio(r.Setting); manualGroupRatio > 0 {
-				gr = manualGroupRatio
-			} else if r.GroupRatio != nil && *r.GroupRatio > 0 {
-				gr = *r.GroupRatio
-			}
-			userIn := deepSeekTimedPrice.InputPrice * gr * rechargeRate * apimasterRatio
-			userOut := deepSeekTimedPrice.OutputPrice * gr * rechargeRate * apimasterRatio
-			userPricePtr = &userIn
-			actualOutputUserPricePtr = &userOut
-		}
-		var publicMediaPricing *PublicVideoMediaPricingView
-		imageGroupRatio := 1.0
-		if manualGroupRatio := service.ExtractManualGroupRatio(r.Setting); manualGroupRatio > 0 {
-			imageGroupRatio = manualGroupRatio
-		} else if r.GroupRatio != nil && *r.GroupRatio > 0 {
-			imageGroupRatio = *r.GroupRatio
-		}
-		mediaPricing := buildImagePricingView(modelName, imageGroupRatio, rechargeRate, apimasterRatio)
-		filterImagePricingViewForChannel(mediaPricing, modelName, &model.Channel{Id: r.ChannelID, OtherSettings: r.OtherSettings})
-		if mediaPricing == nil {
-			mediaPricing = buildVideoMediaPricingView(modelName, rechargeRate)
-		}
-		if mediaPricing != nil {
-			publicMediaPricing = &PublicVideoMediaPricingView{
-				Unit:           mediaPricing.Unit,
-				BaseVariant:    mediaPricing.BaseVariant,
-				OfficialPrices: mediaPricing.OfficialPrices,
-				BillingPrices:  mediaPricing.BillingPrices,
-			}
-			if current := mediaPricing.BillingPrices[mediaPricing.BaseVariant]; current > 0 {
-				currentCopy := current
-				userPricePtr = &currentCopy
-			}
-			if official := mediaPricing.OfficialPrices[mediaPricing.BaseVariant]; official > 0 {
-				officialCopy := official
-				itemOfficialInPtr = &officialCopy
-			}
-		}
-
-		items = append(items, PublicMarketplaceItem{
-			ChannelID:             r.ChannelID,
-			ClientExclusive:       modelDataExtractClientExclusive(r.Setting),
-			UserPrice:             userPricePtr,
-			ActualOutputUserPrice: actualOutputUserPricePtr,
-			OfficialInputPrice:    itemOfficialInPtr,
-			OfficialOutputPrice:   officialOutPtr,
-			MediaPricing:          publicMediaPricing,
-			FingerprintHistory:    fp,
-			UptimeHistory:         up,
-			LatencyMedianMs:       medianFloat64(latencies),
-			Status:                r.Status,
-		})
+		item := publicMarketplacePriceItem(modelName, r)
+		item.FingerprintHistory = fp
+		item.UptimeHistory = up
+		item.LatencyMedianMs = medianFloat64(latencies)
+		items = append(items, item)
 	}
-
-	// Sort by user-facing price ascending; nil/zero price sinks to bottom.
-	priceRank := func(p *float64) int {
-		if p == nil || *p <= 0 {
-			return 1
-		}
-		return 0
-	}
-	priceVal := func(p *float64) float64 {
-		if p == nil {
-			return 0
-		}
-		return *p
-	}
-	for i := 1; i < len(items); i++ {
-		for j := i; j > 0; j-- {
-			a, b := items[j-1], items[j]
-			ra, rb := priceRank(a.UserPrice), priceRank(b.UserPrice)
-			if ra < rb || (ra == rb && priceVal(a.UserPrice) <= priceVal(b.UserPrice)) {
-				break
-			}
-			items[j], items[j-1] = b, a
-		}
-	}
+	sortPublicMarketplaceItems(items)
 
 	if !isDeepSeekTimedPrice {
 		// Store static-price models in cache for 2 minutes.

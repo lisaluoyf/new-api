@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -297,51 +296,41 @@ func GetMiaTelegramModelCatalog(c *gin.Context) {
 }
 
 func resolveMiaModelPricing(modelName, capability string) *miaModelPricing {
-	channel, err := service.SelectCheapestEnabledChannel(nil, modelName)
-	if err != nil || channel == nil {
+	candidates := make([]PublicMarketplaceItem, 0)
+	for _, row := range publicMarketplacePricingRows(modelName) {
+		item := publicMarketplacePriceItem(modelName, row)
+		if strings.TrimSpace(item.ClientExclusive) != "" || item.UserPrice == nil || *item.UserPrice <= 0 {
+			continue
+		}
+		candidates = append(candidates, item)
+	}
+	if len(candidates) == 0 {
 		return nil
 	}
-	pricing := &miaModelPricing{Currency: "USD", ChannelName: strings.TrimSpace(channel.Name)}
+	sortPublicMarketplaceItems(candidates)
+	lowest := candidates[0]
+	pricing := &miaModelPricing{Currency: "USD"}
 	switch capability {
 	case "chat":
-		resolved, ok, resolveErr := service.ChannelUserPricesResolvedForModel(channel.Id, modelName)
-		if resolveErr != nil || !ok || resolved.InputPrice <= 0 {
-			return nil
-		}
-		officialInput, officialOutput, _, _, officialOK := service.GlobalModelPricingUSD(modelName)
 		pricing.Unit = "token_1m"
-		pricing.InputPrice = float64Ptr(resolved.InputPrice)
-		if resolved.OutputPrice > 0 {
-			pricing.OutputPrice = float64Ptr(resolved.OutputPrice)
+		pricing.InputPrice = lowest.UserPrice
+		if lowest.ActualOutputUserPrice != nil && *lowest.ActualOutputUserPrice > 0 {
+			pricing.OutputPrice = lowest.ActualOutputUserPrice
 		}
-		if officialOK && officialInput > resolved.InputPrice {
-			pricing.DiscountRatio = float64Ptr(resolved.InputPrice / officialInput)
-		}
-		if officialOK && officialOutput > resolved.OutputPrice && resolved.OutputPrice > 0 {
-			// Keep one compact discount value while basing it on both axes when
-			// both official prices are available.
-			ratio := (resolved.InputPrice/officialInput + resolved.OutputPrice/officialOutput) / 2
-			pricing.DiscountRatio = float64Ptr(ratio)
+		if lowest.OfficialInputPrice != nil && *lowest.OfficialInputPrice > *lowest.UserPrice {
+			pricing.DiscountRatio = float64Ptr(*lowest.UserPrice / *lowest.OfficialInputPrice)
 		}
 	case "image":
-		resolved, ok, priceErr := service.ResolveChannelMediaBasePricingUSD(channel.Id, modelName, capability)
-		if priceErr != nil || !ok || resolved.Price <= 0 {
-			return nil
-		}
 		pricing.Unit = "image"
-		pricing.Price = float64Ptr(resolved.Price)
-		if resolved.OfficialPrice > resolved.Price {
-			pricing.DiscountRatio = float64Ptr(resolved.Price / resolved.OfficialPrice)
+		pricing.Price = lowest.UserPrice
+		if lowest.OfficialInputPrice != nil && *lowest.OfficialInputPrice > *lowest.UserPrice {
+			pricing.DiscountRatio = float64Ptr(*lowest.UserPrice / *lowest.OfficialInputPrice)
 		}
 	case "video":
-		resolved, ok, priceErr := service.ResolveChannelMediaBasePricingUSD(channel.Id, modelName, capability)
-		if priceErr != nil || !ok || resolved.Price <= 0 {
-			return nil
-		}
 		pricing.Unit = "second"
-		pricing.Price = float64Ptr(resolved.Price)
-		if resolved.OfficialPrice > resolved.Price {
-			pricing.DiscountRatio = float64Ptr(resolved.Price / resolved.OfficialPrice)
+		pricing.Price = lowest.UserPrice
+		if lowest.OfficialInputPrice != nil && *lowest.OfficialInputPrice > *lowest.UserPrice {
+			pricing.DiscountRatio = float64Ptr(*lowest.UserPrice / *lowest.OfficialInputPrice)
 		}
 	default:
 		return nil

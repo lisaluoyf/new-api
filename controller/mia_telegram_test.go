@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -349,6 +348,7 @@ func TestGetMiaTelegramModelCatalogUsesChannelPriceForVideoWithoutTierTable(t *t
 	router, db := setupMiaTelegramTestRouter(t)
 	rechargeRate := 1.25
 	apimasterPriceRatio := 1.2
+	exclusiveSetting := `{"client_exclusive":"codex"}`
 	user := model.User{
 		Username: "mia-video-price-user", Password: "unused-test-password",
 		Status: common.UserStatusEnabled, Role: common.RoleCommonUser,
@@ -366,6 +366,18 @@ func TestGetMiaTelegramModelCatalogUsesChannelPriceForVideoWithoutTierTable(t *t
 	// price is the source used by normal routing and must be exposed to Mia too.
 	require.NoError(t, db.Create(&model.ChannelModelPricing{
 		ChannelId: 1, ModelName: "sora-2", InputPrice: 0.08, GroupRatio: 1,
+	}).Error)
+	// It is cheaper, but the marketplace marks it Codex-only. Mia must not use
+	// this card as the lowest price because Telegram users cannot route through it.
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 2, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled,
+		Models: "sora-2", Setting: &exclusiveSetting,
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group: "default", Model: "sora-2", ChannelId: 2, Enabled: true,
+	}).Error)
+	require.NoError(t, db.Create(&model.ChannelModelPricing{
+		ChannelId: 2, ModelName: "sora-2", InputPrice: 0.01, GroupRatio: 1,
 	}).Error)
 	require.NoError(t, db.Create(&model.Token{
 		UserId: user.Id, Key: "usable-video-price-key", Status: common.TokenStatusEnabled,
@@ -394,26 +406,6 @@ func TestGetMiaTelegramModelCatalogUsesChannelPriceForVideoWithoutTierTable(t *t
 	require.NotNil(t, pricing.DiscountRatio)
 	require.Greater(t, *pricing.DiscountRatio, 0.0)
 	require.Less(t, *pricing.DiscountRatio, 1.0)
-}
-
-func TestMiaMediaPriceUsesMarketplaceOfficialPriceForSavings(t *testing.T) {
-	_, db := setupMiaTelegramTestRouter(t)
-	rechargeRate := 1.1
-	require.NoError(t, db.Create(&model.Channel{
-		Id: 1, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled,
-		Models: "doubao-seedance-2.0", RechargeRate: &rechargeRate,
-	}).Error)
-	require.NoError(t, db.Create(&model.ChannelModelPricing{
-		ChannelId: 1, ModelName: "doubao-seedance-2.0", GroupRatio: 1,
-	}).Error)
-
-	resolved, ok, err := service.ResolveChannelMediaBasePricingUSD(1, "doubao-seedance-2.0", "video")
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.InDelta(t, 0.1562, resolved.Price, 1e-9)
-	// The table's 0.142 is APIMaster's billing base. The public marketplace
-	// uses the separate 720P official price as its crossed-out comparison.
-	require.InDelta(t, 0.1775, resolved.OfficialPrice, 1e-9)
 }
 
 func TestMiaModelCapabilityIncludesResponseChatModels(t *testing.T) {
