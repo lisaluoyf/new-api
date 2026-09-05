@@ -55,14 +55,15 @@ func SetModelTabsJSON(b []byte) error {
 	return nil
 }
 
-// catalogModelTabLabel returns the current backend catalog label. Unknown
-// models remain selectable and safely fall back to their public API ID.
-func catalogModelTabLabel(modelID string) string {
+// catalogModelTabLabel returns the current backend catalog label. An unknown
+// model is not part of the curated user-facing catalog and must not be shown
+// in products that promise a name and price for every selectable model.
+func catalogModelTabLabel(modelID string) (string, bool) {
 	trimmed := strings.TrimSpace(modelID)
 	if label, exists := catalogModelTabLabels[strings.ToLower(trimmed)]; exists {
-		return label
+		return label, true
 	}
-	return trimmed
+	return trimmed, false
 }
 
 // CatalogExport 只读导出完整的渠道/供应商/模型目录，供下游部署（Roma）定时拉取，

@@ -27,6 +27,7 @@ func setupMiaTelegramTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 		{"model_id":"gemini-3-pro-image","label":"Nano Banana Pro","accent":"#4285f4"},
 		{"model_id":"gemini-3.1-flash-image","label":"Nano Banana 2","accent":"#4285f4"},
 		{"model_id":"gpt-image-2","label":"Image 2","accent":"#22d3ee"},
+		{"model_id":"sora-2","label":"Sora 2","accent":"#22d3ee"},
 		{"model_id":"kling-v3-omni","label":"Kling V3 Omni","accent":"#f97316"},
 		{"model_id":"minimax-h3","label":"MiniMax-H3","accent":"#f97316"}
 	]`)))
@@ -180,7 +181,14 @@ func TestResolveMiaTelegramAPIKeySelectsTokenWhoseGroupCanRouteModel(t *testing.
 		TelegramId: "234567",
 	}
 	require.NoError(t, db.Create(&user).Error)
-	require.NoError(t, db.Create(&model.Channel{Id: 1, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled}).Error)
+	apimasterPriceRatio := 0.5
+	require.NoError(t, db.Create(&model.Channel{
+		Id:                  1,
+		Type:                constant.ChannelTypeOpenAI,
+		Status:              common.ChannelStatusEnabled,
+		ApimasterPriceRatio: &apimasterPriceRatio,
+		Models:              "grok-4.5,vision-pro-no-tag,gemini-2.5-flash-image,gemini-3-pro-image,gemini-3.1-flash-image,gpt-image-2,kling-v3-omni,MiniMax-H3",
+	}).Error)
 	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "grok-4.5", ChannelId: 1, Enabled: true}).Error)
 	tokens := []model.Token{
 		{UserId: user.Id, Key: "wrong-group-key", Status: common.TokenStatusEnabled, ExpiredTime: -1, UnlimitedQuota: true, Group: "other"},
@@ -227,7 +235,14 @@ func TestGetMiaTelegramModelCatalogUnionsUsableTokensAndClassifiesEndpoints(t *t
 		TelegramId: "1234567",
 	}
 	require.NoError(t, db.Create(&user).Error)
-	require.NoError(t, db.Create(&model.Channel{Id: 1, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled}).Error)
+	apimasterPriceRatio := 0.5
+	require.NoError(t, db.Create(&model.Channel{
+		Id:                  1,
+		Type:                constant.ChannelTypeOpenAI,
+		Status:              common.ChannelStatusEnabled,
+		ApimasterPriceRatio: &apimasterPriceRatio,
+		Models:              "grok-4.5,vision-pro-no-tag,gemini-2.5-flash-image,gemini-3-pro-image,gemini-3.1-flash-image,gpt-image-2,kling-v3-omni,MiniMax-H3",
+	}).Error)
 	require.NoError(t, db.Create(&[]model.Ability{
 		{Group: "default", Model: "grok-4.5", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "vision-pro-no-tag", ChannelId: 1, Enabled: true},
@@ -242,6 +257,15 @@ func TestGetMiaTelegramModelCatalogUnionsUsableTokensAndClassifiesEndpoints(t *t
 	require.NoError(t, db.Create(&[]model.Model{
 		{ModelName: "grok-4.5", Tags: "chat, Vision | vision-recommended;recommended", Status: 1},
 		{ModelName: "vision-pro-no-tag", Tags: "chat", Status: 1},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.ChannelModelPricing{
+		{ChannelId: 1, ModelName: "grok-4.5", InputPrice: 1, OutputPrice: 2, GroupRatio: 1},
+		{ChannelId: 1, ModelName: "gemini-2.5-flash-image", InputPrice: 1, GroupRatio: 1},
+		{ChannelId: 1, ModelName: "gemini-3-pro-image", InputPrice: 1, GroupRatio: 1},
+		{ChannelId: 1, ModelName: "gemini-3.1-flash-image", InputPrice: 1, GroupRatio: 1},
+		{ChannelId: 1, ModelName: "gpt-image-2", InputPrice: 1, GroupRatio: 1},
+		{ChannelId: 1, ModelName: "kling-v3-omni", InputPrice: 1, GroupRatio: 1},
+		{ChannelId: 1, ModelName: "MiniMax-H3", InputPrice: 1, GroupRatio: 1},
 	}).Error)
 
 	restrictedIPs := "203.0.113.10"
@@ -279,7 +303,7 @@ func TestGetMiaTelegramModelCatalogUnionsUsableTokensAndClassifiesEndpoints(t *t
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
 	require.Equal(t, user.Id, response.Data.UserID)
-	require.Len(t, response.Data.Models, 8)
+	require.Len(t, response.Data.Models, 7)
 
 	byID := make(map[string]miaModelCatalogItem, len(response.Data.Models))
 	for _, item := range response.Data.Models {
@@ -289,8 +313,7 @@ func TestGetMiaTelegramModelCatalogUnionsUsableTokensAndClassifiesEndpoints(t *t
 	require.True(t, byID["grok-4.5"].Recommended)
 	require.True(t, byID["grok-4.5"].SupportsVision)
 	require.True(t, byID["grok-4.5"].VisionRecommended)
-	require.False(t, byID["vision-pro-no-tag"].SupportsVision, "vision support must not be inferred from the model name")
-	require.False(t, byID["vision-pro-no-tag"].VisionRecommended)
+	require.NotContains(t, byID, "vision-pro-no-tag", "models absent from the backend catalog must not be selectable")
 	require.Equal(t, "Nano Banana", byID["gemini-2.5-flash-image"].DisplayName)
 	require.Equal(t, "vertex-ai", byID["gemini-2.5-flash-image"].Vendor)
 	require.Equal(t, "Nano Banana Pro", byID["gemini-3-pro-image"].DisplayName)
@@ -315,6 +338,13 @@ func TestGetMiaTelegramModelCatalogUnionsUsableTokensAndClassifiesEndpoints(t *t
 	require.False(t, byID["kling-v3-omni"].Recommended)
 	require.NotNil(t, byID["kling-v3-omni"].VideoCapabilities)
 	require.NotContains(t, byID, "grok-other-group")
+	for _, item := range response.Data.Models {
+		require.NotEmpty(t, item.ID)
+		require.NotEmpty(t, item.DisplayName)
+		require.NotNil(t, item.Pricing)
+	}
+	require.NotNil(t, byID["gpt-image-2"].Pricing.DiscountRatio, "a discounted marketplace price must be exposed")
+	require.Less(t, *byID["gpt-image-2"].Pricing.DiscountRatio, 1.0)
 
 	resolver := performMiaTelegramRequest(
 		router,
@@ -442,9 +472,15 @@ func TestMiaCatalogUsesBackendModelTabLabels(t *testing.T) {
 		{"model_id":"gemini-3.1-flash-image","label":"Nano Banana 2","accent":"#4285f4"},
 		{"model_id":"gpt-image-2","label":"Image 2","accent":"#22d3ee"}
 	]`)))
-	require.Equal(t, "Nano Banana 2", catalogModelTabLabel("gemini-3.1-flash-image"))
-	require.Equal(t, "Image 2", catalogModelTabLabel("GPT-IMAGE-2"))
-	require.Equal(t, "future-model", catalogModelTabLabel(" future-model "))
+	label, exists := catalogModelTabLabel("gemini-3.1-flash-image")
+	require.True(t, exists)
+	require.Equal(t, "Nano Banana 2", label)
+	label, exists = catalogModelTabLabel("GPT-IMAGE-2")
+	require.True(t, exists)
+	require.Equal(t, "Image 2", label)
+	label, exists = catalogModelTabLabel(" future-model ")
+	require.False(t, exists)
+	require.Equal(t, "future-model", label)
 }
 
 func TestMiaModelVisionTagsAreExplicitAndTokenized(t *testing.T) {

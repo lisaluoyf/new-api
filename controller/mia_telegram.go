@@ -269,6 +269,10 @@ func GetMiaTelegramModelCatalog(c *gin.Context) {
 		}
 		for _, accessibleModel := range accessibleModels {
 			canonicalID := miaCatalogModelID(accessibleModel.Id)
+			displayName, isCurated := catalogModelTabLabel(canonicalID)
+			if !isCurated {
+				continue
+			}
 			endpointTypes := model.GetModelSupportEndpointTypes(canonicalID)
 			if len(endpointTypes) == 0 {
 				endpointTypes = accessibleModel.SupportedEndpointTypes
@@ -277,20 +281,24 @@ func GetMiaTelegramModelCatalog(c *gin.Context) {
 			if !ok {
 				continue
 			}
+			displayPricing := resolveMiaModelPricing(canonicalID, capability)
+			if displayPricing == nil {
+				continue
+			}
 			pricing := pricingByModel[strings.ToLower(canonicalID)]
 			supportsVision := capability == "chat" && miaModelHasTag(pricing.Tags, "vision")
 			visionRecommended := supportsVision && miaModelHasTag(pricing.Tags, "vision-recommended")
 			videoCapabilities := miaVideoModelCapabilities(capability)
 			modelItems[strings.ToLower(canonicalID)] = miaModelCatalogItem{
 				ID:                     canonicalID,
-				DisplayName:            catalogModelTabLabel(canonicalID),
+				DisplayName:            displayName,
 				Vendor:                 accessibleModel.OwnedBy,
 				Capability:             capability,
 				Recommended:            miaModelHasTag(pricing.Tags, "recommended"),
 				SupportsVision:         supportsVision,
 				VisionRecommended:      visionRecommended,
 				VideoCapabilities:      videoCapabilities,
-				Pricing:                resolveMiaModelPricing(canonicalID, capability),
+				Pricing:                displayPricing,
 				SupportedEndpointTypes: endpointTypes,
 			}
 		}
