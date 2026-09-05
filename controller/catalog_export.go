@@ -19,28 +19,50 @@ import (
 // 由 main 启动时经 SetModelTabsJSON 注入（go:embed 前端 model-tabs.json，单一来源），
 // 随 catalog-export 的 model_tabs 字段下发给下游 Roma 副本。
 var catalogModelTabsJSON []byte
+var catalogModelTabLabels = map[string]string{}
+
+type catalogModelTab struct {
+	ModelID string `json:"model_id"`
+	Label   string `json:"label"`
+	Accent  string `json:"accent"`
+}
 
 // SetModelTabsJSON 校验并注入 model-tabs.json（启动时调用，非法 JSON 直接拒绝启动，
 // 避免坏清单静默下发到下游）。
 func SetModelTabsJSON(b []byte) error {
-	var tabs []struct {
-		ModelID string `json:"model_id"`
-		Label   string `json:"label"`
-		Accent  string `json:"accent"`
-	}
+	var tabs []catalogModelTab
 	if err := common.Unmarshal(b, &tabs); err != nil {
 		return err
 	}
 	if len(tabs) == 0 {
 		return fmt.Errorf("model tabs list is empty")
 	}
-	for i, t := range tabs {
-		if strings.TrimSpace(t.ModelID) == "" || strings.TrimSpace(t.Label) == "" {
+	labels := make(map[string]string, len(tabs))
+	for i, tab := range tabs {
+		modelID := strings.TrimSpace(tab.ModelID)
+		label := strings.TrimSpace(tab.Label)
+		if modelID == "" || label == "" {
 			return fmt.Errorf("model tab #%d missing model_id or label", i)
 		}
+		key := strings.ToLower(modelID)
+		if _, exists := labels[key]; exists {
+			return fmt.Errorf("model tab #%d duplicates model_id %q", i, modelID)
+		}
+		labels[key] = label
 	}
-	catalogModelTabsJSON = b
+	catalogModelTabsJSON = append(catalogModelTabsJSON[:0], b...)
+	catalogModelTabLabels = labels
 	return nil
+}
+
+// catalogModelTabLabel returns the current backend catalog label. Unknown
+// models remain selectable and safely fall back to their public API ID.
+func catalogModelTabLabel(modelID string) string {
+	trimmed := strings.TrimSpace(modelID)
+	if label, exists := catalogModelTabLabels[strings.ToLower(trimmed)]; exists {
+		return label
+	}
+	return trimmed
 }
 
 // CatalogExport 只读导出完整的渠道/供应商/模型目录，供下游部署（Roma）定时拉取，

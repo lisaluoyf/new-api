@@ -21,6 +21,15 @@ import (
 func setupMiaTelegramTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 	t.Helper()
 	initModelListColumnNames(t)
+	require.NoError(t, SetModelTabsJSON([]byte(`[
+		{"model_id":"grok-4.5","label":"Grok 4.5","accent":"#94a3b8"},
+		{"model_id":"gemini-2.5-flash-image","label":"Nano Banana","accent":"#4285f4"},
+		{"model_id":"gemini-3-pro-image","label":"Nano Banana Pro","accent":"#4285f4"},
+		{"model_id":"gemini-3.1-flash-image","label":"Nano Banana 2","accent":"#4285f4"},
+		{"model_id":"gpt-image-2","label":"Image 2","accent":"#22d3ee"},
+		{"model_id":"kling-v3-omni","label":"Kling V3 Omni","accent":"#f97316"},
+		{"model_id":"minimax-h3","label":"MiniMax-H3","accent":"#f97316"}
+	]`)))
 	gin.SetMode(gin.TestMode)
 	common.RedisEnabled = false
 	common.UsingSQLite = true
@@ -282,12 +291,12 @@ func TestGetMiaTelegramModelCatalogUnionsUsableTokensAndClassifiesEndpoints(t *t
 	require.True(t, byID["grok-4.5"].VisionRecommended)
 	require.False(t, byID["vision-pro-no-tag"].SupportsVision, "vision support must not be inferred from the model name")
 	require.False(t, byID["vision-pro-no-tag"].VisionRecommended)
-	require.Equal(t, "gemini-2.5-flash-image", byID["gemini-2.5-flash-image"].DisplayName)
+	require.Equal(t, "Nano Banana", byID["gemini-2.5-flash-image"].DisplayName)
 	require.Equal(t, "vertex-ai", byID["gemini-2.5-flash-image"].Vendor)
-	require.Equal(t, "gemini-3-pro-image", byID["gemini-3-pro-image"].DisplayName)
-	require.Equal(t, "gemini-3.1-flash-image", byID["gemini-3.1-flash-image"].DisplayName)
+	require.Equal(t, "Nano Banana Pro", byID["gemini-3-pro-image"].DisplayName)
+	require.Equal(t, "Nano Banana 2", byID["gemini-3.1-flash-image"].DisplayName)
 	require.Equal(t, "image", byID["gpt-image-2"].Capability)
-	require.Equal(t, "gpt-image-2", byID["gpt-image-2"].DisplayName)
+	require.Equal(t, "Image 2", byID["gpt-image-2"].DisplayName)
 	require.False(t, byID["gpt-image-2"].SupportsVision)
 	require.Contains(t, byID["gpt-image-2"].SupportedEndpointTypes, constant.EndpointTypeImageGeneration)
 	require.Equal(t, "video", byID["MiniMax-H3"].Capability)
@@ -420,6 +429,22 @@ func TestMiaCatalogNormalizesOnlyProviderHaikuAliases(t *testing.T) {
 	// Nano Banana IDs are distinct public products, not aliases of one another.
 	require.Equal(t, "gemini-3.1-flash-image-preview", miaCatalogModelID("gemini-3.1-flash-image-preview"))
 	require.Equal(t, "gemini-2.5-flash-image", miaCatalogModelID("gemini-2.5-flash-image"))
+}
+
+func TestMiaCatalogUsesBackendModelTabLabels(t *testing.T) {
+	originalJSON := append([]byte(nil), catalogModelTabsJSON...)
+	originalLabels := catalogModelTabLabels
+	t.Cleanup(func() {
+		catalogModelTabsJSON = originalJSON
+		catalogModelTabLabels = originalLabels
+	})
+	require.NoError(t, SetModelTabsJSON([]byte(`[
+		{"model_id":"gemini-3.1-flash-image","label":"Nano Banana 2","accent":"#4285f4"},
+		{"model_id":"gpt-image-2","label":"Image 2","accent":"#22d3ee"}
+	]`)))
+	require.Equal(t, "Nano Banana 2", catalogModelTabLabel("gemini-3.1-flash-image"))
+	require.Equal(t, "Image 2", catalogModelTabLabel("GPT-IMAGE-2"))
+	require.Equal(t, "future-model", catalogModelTabLabel(" future-model "))
 }
 
 func TestMiaModelVisionTagsAreExplicitAndTokenized(t *testing.T) {

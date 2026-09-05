@@ -283,7 +283,7 @@ func GetMiaTelegramModelCatalog(c *gin.Context) {
 			videoCapabilities := miaVideoModelCapabilities(capability)
 			modelItems[strings.ToLower(canonicalID)] = miaModelCatalogItem{
 				ID:                     canonicalID,
-				DisplayName:            canonicalID,
+				DisplayName:            catalogModelTabLabel(canonicalID),
 				Vendor:                 accessibleModel.OwnedBy,
 				Capability:             capability,
 				Recommended:            miaModelHasTag(pricing.Tags, "recommended"),
