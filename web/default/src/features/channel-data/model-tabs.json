@@ -12,6 +12,7 @@
   { "model_id": "gpt-5.5", "label": "GPT 5.5", "accent": "#22d3ee" },
   { "model_id": "gpt-5.6-luna", "label": "GPT 5.6 Luna", "accent": "#22d3ee" },
   { "model_id": "gpt-5.6-sol", "label": "GPT 5.6 Sol", "accent": "#22d3ee" },
+  { "model_id": "gpt-6-astra", "label": "GPT 6 Astra", "accent": "#22d3ee" },
   {
     "model_id": "gpt-5.6-terra",
     "label": "GPT 5.6 Terra",

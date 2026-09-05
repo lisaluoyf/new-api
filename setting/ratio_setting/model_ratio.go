@@ -24,6 +24,7 @@ const (
 // 1 === ￥0.014 / 1k tokens
 
 var defaultModelRatio = map[string]float64{
+	"gpt-6-astra":   5,     // $10 / 1M input tokens
 	"kimi-k3":       1.5,   // $3 / 1M input tokens
 	"qwen3.8-max":   1.25,  // $2.5 / 1M input tokens
 	"qwen3.8-flash": 0.075, // $0.15 / 1M input tokens
@@ -563,6 +564,9 @@ func getHardcodedCompletionModelRatio(name string) (float64, bool) {
 			// 配的 completion_ratio 被忽略、output 官方价被高估 (sol 30→40 等)。
 			if strings.HasPrefix(name, "gpt-5.6") {
 				return 6, false
+			}
+			if strings.HasPrefix(name, "gpt-6-astra") {
+				return 5, false
 			}
 			return 8, true
 		}

@@ -164,6 +164,11 @@ const PRESET_GROUPS: PresetGroup[] = [
         label: 'GPT-5.6 Luna',
         expr: 'len <= 272000 ? tier("standard", p * 0.2 + c * 1.2 + cr * 0.02 + cc * 0.25) : tier("long_context", p * 0.4 + c * 1.8 + cr * 0.04 + cc * 0.5)',
       },
+      {
+        key: 'gpt-6-astra',
+        label: 'GPT-6 Astra',
+        expr: 'len <= 272000 ? tier("standard", p * 10 + c * 50 + cr * 1) : tier("long_context", p * 20 + c * 100 + cr * 2)',
+      },
     ],
   },
   {

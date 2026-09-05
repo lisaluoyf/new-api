@@ -769,6 +769,7 @@ const PRESET_GROUPS = [
       { key: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', expr: 'len <= 272000 ? tier("standard", p * 5 + c * 30 + cr * 0.5 + cc * 6.25) : tier("long_context", p * 10 + c * 45 + cr * 1 + cc * 12.5)' },
       { key: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', expr: 'len <= 272000 ? tier("standard", p * 2 + c * 12 + cr * 0.2 + cc * 2.5) : tier("long_context", p * 4 + c * 18 + cr * 0.4 + cc * 5)' },
       { key: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', expr: 'len <= 272000 ? tier("standard", p * 0.2 + c * 1.2 + cr * 0.02 + cc * 0.25) : tier("long_context", p * 0.4 + c * 1.8 + cr * 0.04 + cc * 0.5)' },
+      { key: 'gpt-6-astra', label: 'GPT-6 Astra', expr: 'len <= 272000 ? tier("standard", p * 10 + c * 50 + cr * 1) : tier("long_context", p * 20 + c * 100 + cr * 2)' },
     ],
   },
   {
