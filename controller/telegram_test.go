@@ -147,7 +147,7 @@ func TestTelegramWebhookRejectsInvalidSecretAndHandlesReplay(t *testing.T) {
 	require.Equal(t, 1, sendCount)
 	var user model.User
 	require.NoError(t, model.DB.First(&user, 1).Error)
-	require.Equal(t, "10001", user.TelegramId)
+	require.Empty(t, user.TelegramId)
 
 	recorder = postTelegramWebhook(t, common.TelegramWebhookSecret, token, 10001)
 	require.Equal(t, http.StatusOK, recorder.Code)

@@ -205,7 +205,7 @@ func UnbindTelegramGroupVerification(c *gin.Context) {
 		return
 	}
 
-	model.RecordLog(userID, model.LogTypeManage, "user unlinked Telegram community identity")
+	model.RecordLog(userID, model.LogTypeManage, "user cleared Telegram community verification")
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "success"})
 }
 
@@ -256,7 +256,7 @@ func TelegramWebhook(c *gin.Context) {
 	if err := sendTelegramMessage(
 		c,
 		update.Message.Chat.ID,
-		"APIMaster has identified your Telegram account. Join the community below, then return to APIMaster; the page will verify your membership automatically.",
+		"Telegram identity confirmed for community verification. Join the community below, then return to APIMaster; the page will verify your membership automatically.",
 		"Join APIMaster community",
 		common.TelegramGroupURL,
 	); err != nil {

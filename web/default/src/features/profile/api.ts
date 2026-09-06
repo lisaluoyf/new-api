@@ -145,8 +145,14 @@ export interface ApimasterTwitterBinding {
   display_name?: string | null
 }
 
+export interface ApimasterTelegramBinding extends ApimasterTwitterBinding {
+  avatar_url?: string | null
+  can_unbind?: boolean
+}
+
 export interface ApimasterBindingsResponse {
   twitter?: ApimasterTwitterBinding
+  telegram?: ApimasterTelegramBinding
 }
 
 export interface TelegramGroupStatus {

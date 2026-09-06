@@ -6,8 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -164,26 +162,15 @@ func ConsumeTelegramVerification(token, telegramID string, now time.Time) (*Tele
 		}).Error; err != nil {
 			return err
 		}
-		return tx.Model(&User{}).Where("id = ?", result.UserID).
-			Update("telegram_id", telegramID).Error
+		return nil
 	})
 	return &result, replay, err
 }
 
-// ClearTelegramGroupVerification removes the live profile association and all
-// pending Bot tokens. A Trial-used identity is retained in APIMaster's permanent
-// trial_social_identities table; an unclaimed identity may be released there so
-// the user can correct a mistaken account link.
+// ClearTelegramGroupVerification removes only community verification state.
+// APIMaster login bindings and new-api's Telegram account mirror are separate
+// identity data and must not be changed by a community action.
 func ClearTelegramGroupVerification(userID int, preserveTrialReservation bool) error {
-	var linkedUser User
-	if err := DB.Select("id, username").Where("id = ?", userID).First(&linkedUser).Error; err != nil {
-		return err
-	}
-	if err := clearApimasterTelegramLoginBinding(linkedUser.Username); err != nil {
-		return err
-	}
-
-	var user User
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var verification TelegramGroupVerification
 		query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -196,10 +183,7 @@ func ClearTelegramGroupVerification(userID int, preserveTrialReservation bool) e
 		if err := tx.Where("user_id = ?", userID).Delete(&TelegramGroupVerification{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&User{}).Where("id = ?", userID).Update("telegram_id", "").Error; err != nil {
-			return err
-		}
-		return tx.Where("id = ?", userID).First(&user).Error
+		return nil
 	})
 	if err != nil {
 		return err
@@ -209,30 +193,7 @@ func ClearTelegramGroupVerification(userID int, preserveTrialReservation bool) e
 			return err
 		}
 	}
-	return updateUserCache(user)
-}
-
-// clearApimasterTelegramLoginBinding removes the APIMaster login identity for
-// the same mirrored console user. Community verification and Telegram login
-// are one user-facing binding, so they must be removed together.
-func clearApimasterTelegramLoginBinding(newAPIUsername string) error {
-	if APIMASTER_PG_DB == nil {
-		return errors.New("APIMASTER_PG_DSN is not configured")
-	}
-	username := strings.TrimSpace(newAPIUsername)
-	if username == "" {
-		return errors.New("new-api username is empty")
-	}
-
-	derivedUsername := "left(replace(apimaster_user_id::text, '-', ''), 20)"
-	if APIMASTER_PG_DB.Dialector.Name() == "sqlite" {
-		derivedUsername = "substr(replace(apimaster_user_id, '-', ''), 1, 20)"
-	}
-	return APIMASTER_PG_DB.Exec(fmt.Sprintf(`
-		DELETE FROM user_social_bindings
-		 WHERE provider = 'telegram'
-		   AND %s = lower(?)
-	`, derivedUsername), strings.ToLower(username)).Error
+	return nil
 }
 
 func MarkTelegramGroupVerified(userID int, joined bool, now time.Time) error {

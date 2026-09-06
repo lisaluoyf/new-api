@@ -86,6 +86,9 @@ func TestTelegramVerificationIsSingleUseAndIdempotentForSameAccount(t *testing.T
 	require.False(t, replay)
 	require.NotNil(t, verification.TelegramID)
 	require.Equal(t, "10001", *verification.TelegramID)
+	var user User
+	require.NoError(t, DB.First(&user, 1).Error)
+	require.Empty(t, user.TelegramId)
 
 	_, replay, err = ConsumeTelegramVerification(token, "10001", now.Add(TelegramVerificationTTL+time.Hour))
 	require.NoError(t, err)
@@ -116,11 +119,12 @@ func TestTelegramAccountCannotVerifyMultipleAPIMasterUsers(t *testing.T) {
 	require.Empty(t, secondUser.TelegramId)
 }
 
-func TestClearTelegramGroupVerificationRemovesLiveBinding(t *testing.T) {
+func TestClearTelegramGroupVerificationPreservesAccountBinding(t *testing.T) {
 	setupTelegramVerificationTestDB(t)
 	setupApimasterTrialTestDB(t)
 	const username = "0123456789abcdef0123"
 	createTelegramVerificationTestUser(t, 1, username)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", 1).Update("telegram_id", "10001").Error)
 	require.NoError(t, APIMASTER_PG_DB.Exec(`
 		INSERT INTO user_social_bindings (apimaster_user_id, provider, provider_user_id)
 		VALUES ('01234567-89ab-cdef-0123-456789abcdef', 'telegram', '10001')
@@ -135,7 +139,7 @@ func TestClearTelegramGroupVerificationRemovesLiveBinding(t *testing.T) {
 	require.NoError(t, ClearTelegramGroupVerification(1, true))
 	var user User
 	require.NoError(t, DB.First(&user, 1).Error)
-	require.Empty(t, user.TelegramId)
+	require.Equal(t, "10001", user.TelegramId)
 	_, err = GetTelegramGroupVerificationByUserID(1)
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 	var loginBindingCount int64
@@ -143,7 +147,7 @@ func TestClearTelegramGroupVerificationRemovesLiveBinding(t *testing.T) {
 		SELECT COUNT(*) FROM user_social_bindings
 		WHERE provider = 'telegram' AND provider_user_id = '10001'
 	`).Scan(&loginBindingCount).Error)
-	require.Zero(t, loginBindingCount)
+	require.EqualValues(t, 1, loginBindingCount)
 }
 
 func TestReleaseUnclaimedTelegramTrialReservationPreservesGrantedClaim(t *testing.T) {

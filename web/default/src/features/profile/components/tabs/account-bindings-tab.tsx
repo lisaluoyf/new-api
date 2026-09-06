@@ -46,6 +46,7 @@ import {
   unbindApimasterBinding,
   unbindCustomOAuth,
   type ApimasterTwitterBinding,
+  type ApimasterTelegramBinding,
   type CustomOAuthBinding,
   type DiscordGroupStatus,
   type TelegramGroupStatus,
@@ -64,7 +65,7 @@ interface AccountBindingsTabProps {
 }
 
 type DialogKey = 'email' | 'wechat'
-type ActionTarget = 'twitter' | 'discord'
+type ActionTarget = 'twitter' | 'telegram' | 'discord'
 type AccountBindingItem = BindingItem & {
   onUnbind?: () => void
   busy?: boolean
@@ -80,6 +81,8 @@ export function AccountBindingsTab({
   const [customBindings, setCustomBindings] = useState<CustomOAuthBinding[]>([])
   const [twitterBinding, setTwitterBinding] =
     useState<ApimasterTwitterBinding | null>(null)
+  const [telegramBinding, setTelegramBinding] =
+    useState<ApimasterTelegramBinding | null>(null)
   const [unbindTarget, setUnbindTarget] = useState<CustomOAuthBinding | null>(
     null
   )
@@ -104,9 +107,11 @@ export function AccountBindingsTab({
       const res = await getApimasterBindings()
       if (res.success && res.data) {
         setTwitterBinding(res.data.twitter ?? null)
+        setTelegramBinding(res.data.telegram ?? null)
       }
     } catch {
       setTwitterBinding(null)
+      setTelegramBinding(null)
     }
   }, [])
 
@@ -290,6 +295,26 @@ export function AccountBindingsTab({
       setPendingAction(null)
     }
   }, [fetchApimasterBindings, t])
+
+  const handleStartTelegramBind = useCallback(() => {
+    window.location.href =
+      '/api/auth/telegram/deep-link/start?intent=bind_existing&next=%2Fconsole%2Fpersonal'
+  }, [])
+
+  const handleUnbindTelegramAccount = useCallback(async () => {
+    setPendingAction('telegram')
+    try {
+      const res = await unbindApimasterBinding('telegram')
+      if (!res.success) throw new Error(res.message || t('Unbind failed'))
+      toast.success(t('Unbound {{provider}}', { provider: 'Telegram' }))
+      await fetchApimasterBindings()
+      onUpdate()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('Unbind failed'))
+    } finally {
+      setPendingAction(null)
+    }
+  }, [fetchApimasterBindings, onUpdate, t])
 
   const handleStartDiscordBind = useCallback(async () => {
     if (!status?.discord_client_id) {
@@ -510,6 +535,19 @@ export function AccountBindingsTab({
         busy: pendingAction === 'twitter',
       },
       {
+        id: 'telegram',
+        label: 'Telegram',
+        icon: Send,
+        value: telegramBinding?.username || telegramBinding?.display_name || '',
+        isBound: Boolean(telegramBinding?.bound),
+        isEnabled: true,
+        onBind: handleStartTelegramBind,
+        onUnbind: telegramBinding?.can_unbind
+          ? handleUnbindTelegramAccount
+          : undefined,
+        busy: pendingAction === 'telegram',
+      },
+      {
         id: 'linuxdo',
         label: t('LinuxDO'),
         icon: SiLinux as React.ComponentType<{ className?: string }>,
@@ -531,18 +569,20 @@ export function AccountBindingsTab({
     dialogs,
     handleStartTwitterBind,
     handleUnbindTwitter,
+    handleStartTelegramBind,
+    handleUnbindTelegramAccount,
     pendingAction,
     profile,
     status,
     t,
     twitterBinding,
+    telegramBinding,
   ])
 
   if (!profile || !status || loading) return null
 
   const profileFields = profile as unknown as Record<string, unknown>
   const discordId = profileFields.discord_id as string | undefined
-  const telegramId = profileFields.telegram_id as string | undefined
   const showDiscordBinding = Boolean(
     status?.discord_oauth ||
     status?.discord_client_id ||
@@ -552,8 +592,8 @@ export function AccountBindingsTab({
   const discordBound = discordGroupStatus?.bound ?? Boolean(discordId)
   const discordJoined = Boolean(discordGroupStatus?.joined)
   const telegramGroupEnabled = Boolean(status?.telegram_group_enabled)
-  const telegramBound = Boolean(telegramGroupStatus?.identified || telegramId)
-  const showTelegramBinding = telegramGroupEnabled || telegramBound
+  const telegramIdentified = Boolean(telegramGroupStatus?.identified)
+  const showTelegramBinding = telegramGroupEnabled
 
   let telegramDescription = t(
     'Identify with the Bot, then join the Telegram community'
@@ -735,14 +775,12 @@ export function AccountBindingsTab({
                       size='sm'
                       className='h-7 px-2.5 text-xs'
                       onClick={handleTelegramCommunity}
-                      disabled={
-                        telegramStarting || telegramGroupStatus?.joined
-                      }
+                      disabled={telegramStarting || telegramGroupStatus?.joined}
                     >
                       {telegramActionLabel}
                     </Button>
                   )}
-                  {telegramBound && (
+                  {telegramIdentified && (
                     <Button
                       variant='ghost'
                       size='sm'
@@ -751,7 +789,9 @@ export function AccountBindingsTab({
                       disabled={telegramStarting || telegramUnbinding}
                     >
                       <Unlink className='mr-1 h-3 w-3' />
-                      {telegramUnbinding ? t('Loading...') : t('Unbind')}
+                      {telegramUnbinding
+                        ? t('Loading...')
+                        : t('Clear verification')}
                     </Button>
                   )}
                 </div>
@@ -885,12 +925,11 @@ export function AccountBindingsTab({
       <ConfirmDialog
         open={telegramUnbindOpen}
         onOpenChange={setTelegramUnbindOpen}
-        title={t('Confirm Unbind')}
+        title={t('Clear Telegram community verification?')}
         desc={t(
-          'Are you sure you want to unbind {{provider}}? You will no longer be able to log in via this method.',
-          { provider: 'Telegram' }
+          'This only clears community verification. It does not change your Telegram login or APIMaster account binding.'
         )}
-        confirmText={t('Confirm Unbind')}
+        confirmText={t('Clear verification')}
         destructive
         handleConfirm={handleUnbindTelegram}
         isLoading={telegramUnbinding}
