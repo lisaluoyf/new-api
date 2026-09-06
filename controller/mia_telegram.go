@@ -16,6 +16,8 @@ import (
 
 const miaDefaultChatModel = "grok-4.5"
 
+var errMiaModelUnavailable = errors.New("selected Mia model unavailable")
+
 // Mia only aliases IDs that are strictly upstream spellings, never a generic
 // request fallback. Some ModelIDCandidates are separate public products, such
 // as Nano Banana and Nano Banana 2, and must remain independently selectable.
@@ -137,7 +139,7 @@ func ResolveMiaTelegramAPIKey(c *gin.Context) {
 	}
 	token, err := getMiaUsableTokenForModel(user.Id, modelName)
 	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
+		if !errors.Is(err, gorm.ErrRecordNotFound) && !errors.Is(err, errMiaModelUnavailable) {
 			common.SysError("failed to resolve Mia user token: " + err.Error())
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
@@ -146,10 +148,16 @@ func ResolveMiaTelegramAPIKey(c *gin.Context) {
 			})
 			return
 		}
+		code := "selected_model_unavailable"
+		message := "selected model is not available for this API key"
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			code = "no_usable_api_key"
+			message = "no usable API key"
+		}
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
-			"code":    "no_usable_api_key",
-			"message": "no usable API key",
+			"code":    code,
+			"message": message,
 		})
 		return
 	}
@@ -207,6 +215,9 @@ func getMiaUsableTokenForModel(userID int, modelName string) (*model.Token, erro
 	if err != nil {
 		return nil, err
 	}
+	if len(tokens) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
 	model.GetPricing()
 	for i := range tokens {
 		accessibleModels, accessErr := GetAccessibleOpenAIModelsForToken(userID, &tokens[i])
@@ -219,7 +230,7 @@ func getMiaUsableTokenForModel(userID int, modelName string) (*model.Token, erro
 			}
 		}
 	}
-	return nil, gorm.ErrRecordNotFound
+	return nil, errMiaModelUnavailable
 }
 
 // GetMiaTelegramModelCatalog returns the union of models reachable through at

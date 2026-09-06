@@ -224,6 +224,27 @@ func TestResolveMiaTelegramAPIKeyReportsUnboundAndMissingKey(t *testing.T) {
 	require.Contains(t, missingKey.Body.String(), "no_usable_api_key")
 }
 
+func TestResolveMiaTelegramAPIKeyDistinguishesUnavailableModelFromMissingKey(t *testing.T) {
+	router, db := setupMiaTelegramTestRouter(t)
+	user := model.User{
+		Username: "mia-model-unavailable", Password: "unused-test-password",
+		Status: common.UserStatusEnabled, Role: common.RoleCommonUser, Group: "default",
+		TelegramId: "777777",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, db.Create(&model.Channel{Id: 1, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled}).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "gpt-image-2", ChannelId: 1, Enabled: true}).Error)
+	require.NoError(t, db.Create(&model.Token{
+		UserId: user.Id, Key: "image-only-key", Name: "image only", Status: common.TokenStatusEnabled,
+		ExpiredTime: -1, UnlimitedQuota: true, ModelLimitsEnabled: true, ModelLimits: "gpt-image-2",
+	}).Error)
+
+	response := performMiaTelegramRequest(router, "test-mia-internal-secret", `{"telegram_user_id":"777777","model":"MiniMax-H3"}`)
+	require.Equal(t, http.StatusNotFound, response.Code)
+	require.Contains(t, response.Body.String(), "selected_model_unavailable")
+	require.NotContains(t, response.Body.String(), "no_usable_api_key")
+}
+
 func TestGetMiaTelegramModelCatalogUnionsUsableTokensAndClassifiesEndpoints(t *testing.T) {
 	router, db := setupMiaTelegramTestRouter(t)
 	user := model.User{
