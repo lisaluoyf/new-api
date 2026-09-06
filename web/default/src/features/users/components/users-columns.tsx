@@ -192,6 +192,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
           email: 'Email',
           google: 'Google',
           github: 'GitHub',
+          telegram: 'Telegram',
           twitter: 'Twitter',
         }
         if (!provider || !labels[provider]) {

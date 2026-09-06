@@ -105,6 +105,8 @@ export const getProviderOptions = (t: (key: string) => string) => [
   { label: t('Email'), value: 'email' },
   { label: t('Google'), value: 'google' },
   { label: t('GitHub'), value: 'github' },
+  { label: t('Telegram'), value: 'telegram' },
+  { label: t('Twitter'), value: 'twitter' },
 ]
 
 // ============================================================================
