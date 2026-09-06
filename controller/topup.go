@@ -259,7 +259,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"platega_usd_rate":          setting.PlategaUSDRate,
 		"clink_min_topup":           clinkMinTopup,
 		"amount_options":            operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":                  operation_setting.GetPaymentSetting().AmountDiscount,
+		"discount":                  operation_setting.ActiveAmountDiscounts(time.Now()),
+		"discount_expires_at":       operation_setting.ActiveAmountDiscountExpiries(time.Now()),
 		"topup_link":                common.TopUpLink,
 		"has_successful_paid_topup": hasSuccessfulTopup,
 	}
@@ -309,12 +310,7 @@ func getPayMoney(amount int64, group string, userId int) float64 {
 	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
 	dPrice := decimal.NewFromFloat(operation_setting.Price)
 	// apply optional preset discount by the original request amount (if configured), default 1.0
-	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok {
-		if ds > 0 {
-			discount = ds
-		}
-	}
+	discount := operation_setting.GetActiveAmountDiscount(int(amount), time.Now())
 	dDiscount := decimal.NewFromFloat(discount)
 
 	payMoney := dAmount.Mul(dPrice).Mul(dTopupGroupRatio).Mul(dDiscount)

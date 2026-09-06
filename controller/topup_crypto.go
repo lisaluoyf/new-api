@@ -586,7 +586,8 @@ func matchCryptoAmountDiscountTier(usdValue float64) (int, float64, bool) {
 
 	bestTier := 0
 	bestDiscount := 0.0
-	for amount, discount := range operation_setting.GetPaymentSetting().AmountDiscount {
+	for amount := range operation_setting.GetPaymentSetting().AmountDiscount {
+		discount := operation_setting.GetActiveAmountDiscount(amount, time.Now())
 		if amount <= 0 || discount <= 0 || discount >= 1 {
 			continue
 		}

@@ -136,6 +136,8 @@ export interface TopupInfo {
   amount_options: number[]
   /** Discount rates by amount */
   discount: Record<number, number>
+  /** Unix campaign end times by amount. Expired tiers are omitted by the API. */
+  discount_expires_at?: Record<number, number>
   /** Optional topup link for purchasing codes */
   topup_link?: string
   /** Whether the current user has any successful real paid top-up/subscription */

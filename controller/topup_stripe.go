@@ -504,11 +504,7 @@ func GetChargedAmount(count float64, user model.User) float64 {
 }
 
 func getAmountDiscountFactor(amount int64) float64 {
-	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok && ds > 0 {
-		discount = ds
-	}
-	return discount
+	return operation_setting.GetActiveAmountDiscount(int(amount), time.Now())
 }
 
 func GetChargedAmountWithTierDiscount(amount int64, user model.User) float64 {

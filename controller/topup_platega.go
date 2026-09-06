@@ -77,10 +77,7 @@ func getPlategaPayRubAmount(amount int64, group string, userId int) float64 {
 		topupGroupRatio = 1
 	}
 
-	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok && ds > 0 {
-		discount = ds
-	}
+	discount := operation_setting.GetActiveAmountDiscount(int(amount), time.Now())
 
 	rate := setting.PlategaUSDRate
 	if rate <= 0 {

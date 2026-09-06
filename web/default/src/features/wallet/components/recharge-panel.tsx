@@ -58,9 +58,6 @@ import { WaffoPayMethodHints } from './waffo-pay-method-hints'
 
 const HINT_LS_KEY = 'payment_hint_shown'
 const HINT_COOLDOWN_MS = 24 * 60 * 60 * 1000
-const LIMITED_AMOUNT_DISCOUNT_END_DATES: Record<number, string> = {
-  50: '2026-09-01',
-}
 
 const PRESET_AMOUNTS = [10, 50, 100, 500, 1000]
 
@@ -69,6 +66,15 @@ function formatUsdAmount(value: unknown) {
   if (!Number.isFinite(amount)) return '1'
   if (Number.isInteger(amount)) return String(amount)
   return amount.toFixed(2).replace(/\.?0+$/, '')
+}
+
+function formatCampaignEndDate(timestamp: number | undefined): string | null {
+  if (!timestamp || !Number.isFinite(timestamp)) return null
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(timestamp * 1000))
 }
 
 function extractMinTopupFromMessage(message: string): number | null {
@@ -366,8 +372,9 @@ export function RechargePanel({
                 const hasAmountDiscount =
                   amountDiscountRate > 0 && amountDiscountRate < 1
                 const amountDiscountLabel = getDiscountLabel(amountDiscountRate)
-                const amountDiscountEndDate =
-                  LIMITED_AMOUNT_DISCOUNT_END_DATES[amount]
+                const amountDiscountEndDate = formatCampaignEndDate(
+                  topupInfo?.discount_expires_at?.[amount]
+                )
                 return (
                   <button
                     key={amount}
