@@ -47,6 +47,8 @@ export function buildBillingSummaryColumns(
         row.coding_plan_revenue_usd -
         row.coding_plan_expiry_revenue_usd
     )
+  const getWalletProfit = (row: BillingTableRow) =>
+    getWalletRevenue(row) - getWalletCost(row)
   const getPaidSubscriptionProfit = (row: BillingTableRow) =>
     row.paid_subscription_revenue_usd - row.paid_subscription_cost_usd
   const getCodingPlanProfit = (row: BillingTableRow) =>
@@ -123,8 +125,7 @@ export function buildBillingSummaryColumns(
       size: 50,
       header: () => <span>{t('Profit')}</span>,
       cell: ({ row }) => {
-        const profit =
-          getWalletRevenue(row.original) - getWalletCost(row.original)
+        const profit = getWalletProfit(row.original)
         return (
           <span
             className={`text-xs tabular-nums ${profit < 0 ? 'text-destructive' : ''}`}
@@ -140,10 +141,9 @@ export function buildBillingSummaryColumns(
       header: () => <span>{t('Margin')}</span>,
       cell: ({ row }) => {
         const cost = getWalletCost(row.original)
-        const revenue = getWalletRevenue(row.original)
         if (cost <= 0)
           return <span className='text-muted-foreground text-xs'>—</span>
-        const margin = ((revenue - cost) / cost) * 100
+        const margin = (getWalletProfit(row.original) / cost) * 100
         return (
           <span
             className={`text-xs tabular-nums ${margin < 0 ? 'text-destructive' : ''}`}
@@ -174,6 +174,20 @@ export function buildBillingSummaryColumns(
           {formatUSD(row.original.experience_cost_usd)}
         </span>
       ),
+    },
+    {
+      id: 'experience_cost_rate',
+      size: 58,
+      header: () => <span>{t('Cost Rate')}</span>,
+      cell: ({ row }) => {
+        const profit = getWalletProfit(row.original)
+        if (profit <= 0)
+          return <span className='text-muted-foreground text-xs'>—</span>
+        const costRate = (row.original.experience_cost_usd / profit) * 100
+        return (
+          <span className='text-xs tabular-nums'>{costRate.toFixed(1)}%</span>
+        )
+      },
     },
     {
       accessorKey: 'experience_billing_usd',

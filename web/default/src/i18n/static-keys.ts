@@ -292,6 +292,7 @@ export const STATIC_I18N_KEYS = [
   'Experience Users',
   'Experience Cost',
   'Experience Billing',
+  'Cost Rate',
   'Paid Subscription Users',
   'Paid Subscription Balance',
   'Expiry Revenue',
