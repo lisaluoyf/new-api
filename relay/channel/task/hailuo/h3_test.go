@@ -6,11 +6,32 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
+
+func TestH3UsesAdaptorDefaultWhenMiaOmitsResolution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set("task_request", relaycommon.TaskSubmitReq{
+		Model: "MiniMax-H3", Prompt: "A red paper boat on a calm lake.", Duration: 15,
+		Metadata: map[string]interface{}{"duration": 15, "ratio": "16:9"},
+	})
+	reader, err := (&H3TaskAdaptor{}).BuildRequestBody(c, &relaycommon.RelayInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body h3CreateRequest
+	if err := common.DecodeJson(reader, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Resolution != h3DefaultResolution || body.Duration != 15 || body.Ratio != "16:9" {
+		t.Fatalf("channel defaults or explicit options lost: %+v", body)
+	}
+}
 
 func TestH3BuildRequestBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)

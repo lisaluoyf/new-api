@@ -426,10 +426,12 @@ func miaVideoModelCapabilities(capability string) *miaVideoCapabilities {
 		return nil
 	}
 	return &miaVideoCapabilities{
-		Modes:              []string{"text_to_video", "image_to_video"},
-		DurationSeconds:    miaIntegerRange{Min: 4, Max: 15, Default: 4},
-		Resolutions:        []string{"720p"},
-		DefaultResolution:  "720p",
+		Modes:           []string{"text_to_video", "image_to_video"},
+		DurationSeconds: miaIntegerRange{Min: 4, Max: 15, Default: 4},
+		// The channel is selected at submission time. An empty list is unknown,
+		// not an allowlist; omit resolution to use the selected adaptor's default.
+		Resolutions:        []string{},
+		DefaultResolution:  "",
 		AspectRatios:       []string{"1:1", "16:9", "9:16"},
 		DefaultAspectRatio: "16:9",
 		MaxReferenceImages: 10,
