@@ -397,6 +397,17 @@ func GetSignupGift(c *gin.Context) {
 		if common.QuotaPerUnit > 0 {
 			trialCreditUSD = float64(trialPlan.TotalAmount) / common.QuotaPerUnit
 		}
+		shareTrialCreditUSD := trialCreditUSD
+		shareOfferVariant := "standard_50"
+		legacyReferralTrialReady := model.LegacyReferralTrialCampaignReady(trialPlan)
+		if userId > 0 {
+			if user, userErr := model.GetUserById(userId, true); userErr == nil {
+				if creditUSD, variant, ok := model.ResolveLegacyReferralShareOffer(user.Username, time.Now().UTC(), trialPlan); ok {
+					shareTrialCreditUSD = creditUSD
+					shareOfferVariant = variant
+				}
+			}
+		}
 		common.ApiSuccess(c, gin.H{
 			"enabled":                       true,
 			"eligible":                      userId == 0,
@@ -413,6 +424,10 @@ func GetSignupGift(c *gin.Context) {
 			"trial_seven_day_amount":        trialPlan.SevenDayAmount,
 			"trial_model_allowlist":         trialPlan.ModelAllowlist,
 			"trial_credit_usd":              trialCreditUSD,
+			"offer_variant":                 "standard_50",
+			"share_trial_credit_usd":        shareTrialCreditUSD,
+			"share_offer_variant":           shareOfferVariant,
+			"legacy_referral_trial_ready":   legacyReferralTrialReady,
 			"trial_duration_unit":           trialPlan.DurationUnit,
 			"trial_duration_value":          trialPlan.DurationValue,
 			"trial_duration_custom_seconds": trialPlan.CustomSeconds,

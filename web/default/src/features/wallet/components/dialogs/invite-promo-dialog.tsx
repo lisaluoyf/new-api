@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Gift, Check, Copy, Send } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
@@ -58,7 +58,6 @@ export function InvitePromoDialog({
   })
   const isCopied = copiedText === affiliateLink
   const wasOpenRef = useRef(false)
-  const [trialCreditUsd, setTrialCreditUsd] = useState<number | null>(null)
   const referralMinTopup = rewardSummary?.min_topup_usd ?? 0
 
   useEffect(() => {
@@ -68,26 +67,6 @@ export function InvitePromoDialog({
     wasOpenRef.current = open
   }, [open, preview])
 
-  useEffect(() => {
-    if (!open) return
-
-    let cancelled = false
-    void getSignupGift().then((gift) => {
-      if (
-        !cancelled &&
-        gift?.enabled &&
-        gift.benefit_type === 'trial_subscription' &&
-        Number(gift.trial_credit_usd) > 0
-      ) {
-        setTrialCreditUsd(Number(gift.trial_credit_usd))
-      }
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [open])
-
   async function handleCopy() {
     const success = await copyToClipboard(affiliateLink)
     if (success) {
@@ -95,21 +74,27 @@ export function InvitePromoDialog({
     }
   }
 
-  function shareMessage() {
-    const credit = trialCreditUsd
-      ? `$${Number.isInteger(trialCreditUsd) ? trialCreditUsd : trialCreditUsd.toFixed(2)}`
-      : ''
+  function shareMessage(creditUsd: number) {
+    const credit = `$${Number.isInteger(creditUsd) ? creditUsd : creditUsd.toFixed(2)}`
     return t('Share APIMaster invite', { credit })
   }
 
-  function openShare(target: 'x' | 'telegram') {
-    const message = shareMessage()
+  async function openShare(target: 'x' | 'telegram') {
+    const shareWindow = window.open('about:blank', '_blank')
+    if (shareWindow) shareWindow.opener = null
+    const latestGift = await getSignupGift()
+    const latestCreditUsd = Number(
+      latestGift?.share_trial_credit_usd ?? latestGift?.trial_credit_usd ?? 50
+    )
+    const resolvedCreditUsd = latestCreditUsd > 0 ? latestCreditUsd : 50
+    const message = shareMessage(resolvedCreditUsd)
     const shareUrl =
       target === 'x'
         ? `https://x.com/intent/post?text=${encodeURIComponent(`${message}\n${affiliateLink}`)}`
         : `https://t.me/share/url?url=${encodeURIComponent(affiliateLink)}&text=${encodeURIComponent(message)}`
 
-    window.open(shareUrl, '_blank', 'noopener,noreferrer')
+    if (shareWindow) shareWindow.location.replace(shareUrl)
+    else window.open(shareUrl, '_blank', 'noopener,noreferrer')
   }
 
   return (
