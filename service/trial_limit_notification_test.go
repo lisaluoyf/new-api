@@ -26,6 +26,10 @@ func TestTrialLimitNotificationCopyAndRedirect(t *testing.T) {
 	standard, standardButton := renderGPTTrialLimitNotification(model.TrialLimitNotificationStandard)
 	require.Contains(t, standard, "GPT 体验额度即将用尽")
 	require.Contains(t, standard, "GPT-5.6 可节省 97%")
+	require.Less(t,
+		strings.Index(standard, "体验额度按官方价格计费"),
+		strings.Index(standard, "充值后，无需重新配置"),
+	)
 	require.Equal(t, "🚀 立即充值并继续使用", standardButton)
 
 	promo, promoButton := renderGPTTrialLimitNotification(model.TrialLimitNotificationFirstTopupPromo)

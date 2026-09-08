@@ -104,8 +104,8 @@ func trialLimitNotificationRedirectURL(token string) string {
 func renderGPTTrialLimitNotification(variant string) (string, string) {
 	text := "⚠️ GPT 体验额度即将用尽\n\n" +
 		"💳 继续调用需要充值钱包余额。\n\n" +
-		"🔑 充值后，无需重新配置，当前 API Key 即可继续使用。\n\n" +
 		"💰 体验额度按官方价格计费；钱包余额按折扣价计费，例如 GPT-5.6 可节省 97%。\n\n" +
+		"🔑 充值后，无需重新配置，当前 API Key 即可继续使用。\n\n" +
 		"🤖 一个 API Key 即可使用 GPT、Claude、Gemini、Kimi、GLM、DeepSeek 等主流模型。"
 	if variant != model.TrialLimitNotificationFirstTopupPromo {
 		return text, "🚀 立即充值并继续使用"
