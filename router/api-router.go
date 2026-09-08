@@ -91,6 +91,7 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/internal/telegram-api-key", middleware.RequireMiaInternalService(), controller.ResolveMiaTelegramAPIKey)
 			userRoute.POST("/internal/mia-models", middleware.RequireMiaInternalService(), controller.GetMiaTelegramModelCatalog)
 			userRoute.POST("/internal/mia-debug-identities", middleware.RequireMiaInternalService(), controller.ResolveMiaDebugIdentities)
+			userRoute.POST("/internal/mia-activation-eligibility", middleware.RequireMiaInternalService(), controller.ResolveMiaActivationEligibility)
 			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), controller.Verify2FALogin)
 			userRoute.POST("/passkey/login/begin", middleware.CriticalRateLimit(), controller.PasskeyLoginBegin)
 			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), controller.PasskeyLoginFinish)
