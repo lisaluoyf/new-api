@@ -398,7 +398,7 @@ func GetSignupGift(c *gin.Context) {
 			trialCreditUSD = float64(trialPlan.TotalAmount) / common.QuotaPerUnit
 		}
 		shareTrialCreditUSD := trialCreditUSD
-		shareOfferVariant := "standard_50"
+		shareOfferVariant := "standard_30"
 		legacyReferralTrialReady := model.LegacyReferralTrialCampaignReady(trialPlan)
 		if userId > 0 {
 			if user, userErr := model.GetUserById(userId, true); userErr == nil {
@@ -424,7 +424,7 @@ func GetSignupGift(c *gin.Context) {
 			"trial_seven_day_amount":        trialPlan.SevenDayAmount,
 			"trial_model_allowlist":         trialPlan.ModelAllowlist,
 			"trial_credit_usd":              trialCreditUSD,
-			"offer_variant":                 "standard_50",
+			"offer_variant":                 "standard_30",
 			"share_trial_credit_usd":        shareTrialCreditUSD,
 			"share_offer_variant":           shareOfferVariant,
 			"legacy_referral_trial_ready":   legacyReferralTrialReady,
