@@ -7,6 +7,7 @@ import (
 )
 
 func setAutomaticModelStatus(channelID int, modelName, reason string, enabled bool, source string, expectedVersions ...string) (bool, error) {
+	reason = model.ChannelModelReasonSummary(reason)
 	changed := false
 	err := model.WithChannelOtherInfo(channelID, func(tx *gorm.DB, channel *model.Channel) error {
 		if channel.Status != common.ChannelStatusEnabled {

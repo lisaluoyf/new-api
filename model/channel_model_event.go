@@ -43,8 +43,18 @@ func WithChannelOtherInfo(channelID int, fn func(*gorm.DB, *Channel) error) erro
 func RecordChannelModelEvent(tx *gorm.DB, channelID int, model, action, source, reason string, actorID int) error {
 	return tx.Create(&ChannelModelEvent{
 		ChannelID: channelID, Model: model, Action: action, Source: source,
-		Reason: strings.TrimSpace(reason), ActorID: actorID, CreatedAt: common.GetTimestamp(),
+		Reason: ChannelModelReasonSummary(reason), ActorID: actorID, CreatedAt: common.GetTimestamp(),
 	}).Error
+}
+
+func ChannelModelReasonSummary(reason string) string {
+	// Preserve the diagnostic message without retaining upstream response bodies.
+	reason, _, _ = strings.Cut(reason, ", body:")
+	runes := []rune(common.MaskSensitiveInfo(strings.TrimSpace(reason)))
+	if len(runes) > 2048 {
+		return string(runes[:2048]) + "..."
+	}
+	return string(runes)
 }
 
 // Automatic model disables must survive rebuilding the derived abilities too.

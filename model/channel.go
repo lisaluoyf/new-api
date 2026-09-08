@@ -632,7 +632,7 @@ func (channel *Channel) Update() error {
 		}
 	}
 	return WithChannelOtherInfo(channel.Id, func(tx *gorm.DB, current *Channel) error {
-		preserveDisabled := current.Status == common.ChannelStatusEnabled && channel.Status == common.ChannelStatusEnabled
+		preserveDisabled := current.Status == common.ChannelStatusEnabled && (channel.Status == 0 || channel.Status == common.ChannelStatusEnabled)
 		if err := tx.Model(channel).Omit("other_info").Updates(channel).Error; err != nil {
 			return err
 		}
