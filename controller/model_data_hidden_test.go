@@ -15,7 +15,10 @@ func TestIsHiddenChannelDataModel(t *testing.T) {
 	if !isHiddenChannelDataModel(" KIMI-K2.5 ") {
 		t.Fatal("kimi-k2.5 should be hidden from channel data and marketplace")
 	}
-	if isHiddenChannelDataModel("gemini-3.5-flash") {
-		t.Fatal("gemini-3.5-flash should remain visible")
+	if !isHiddenChannelDataModel(" GEMINI-3.5-FLASH ") {
+		t.Fatal("gemini-3.5-flash should be hidden from channel data and marketplace")
+	}
+	if isHiddenChannelDataModel("gemini-3.6-flash") {
+		t.Fatal("gemini-3.6-flash should remain visible")
 	}
 }

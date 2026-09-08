@@ -132,11 +132,6 @@
     "accent": "#4285f4"
   },
   {
-    "model_id": "gemini-3.5-flash",
-    "label": "Gemini 3.5 Flash",
-    "accent": "#4285f4"
-  },
-  {
     "model_id": "gemini-2.5-flash-image",
     "label": "Nano Banana",
     "accent": "#4285f4"

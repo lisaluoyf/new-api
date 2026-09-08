@@ -163,7 +163,7 @@ const (
 
 func isHiddenChannelDataModel(modelName string) bool {
 	switch strings.ToLower(strings.TrimSpace(modelName)) {
-	case "gemini-3.1-flash-lite", "kimi-k2.5", "gpt-5.4":
+	case "gemini-3.1-flash-lite", "kimi-k2.5", "gpt-5.4", "gemini-3.5-flash":
 		return true
 	default:
 		return false
