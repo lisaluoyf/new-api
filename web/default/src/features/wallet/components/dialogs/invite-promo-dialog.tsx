@@ -84,9 +84,9 @@ export function InvitePromoDialog({
     if (shareWindow) shareWindow.opener = null
     const latestGift = await getSignupGift()
     const latestCreditUsd = Number(
-      latestGift?.share_trial_credit_usd ?? latestGift?.trial_credit_usd ?? 50
+      latestGift?.share_trial_credit_usd ?? latestGift?.trial_credit_usd ?? 30
     )
-    const resolvedCreditUsd = latestCreditUsd > 0 ? latestCreditUsd : 50
+    const resolvedCreditUsd = latestCreditUsd > 0 ? latestCreditUsd : 30
     const message = shareMessage(resolvedCreditUsd)
     const shareUrl =
       target === 'x'
