@@ -1,5 +1,11 @@
 {
   "translation": {
+    "Default Group Ratio for all models": "Group Ratio по умолчанию для всех моделей",
+    "Per-Model Group Ratio": "Group Ratio для модели",
+    "Add model Group Ratio": "Добавить Group Ratio для модели",
+    "Remove model Group Ratio": "Удалить Group Ratio модели",
+    "Group Ratio must be greater than zero": "Group Ratio должен быть больше 0",
+    "Model already has a Group Ratio": "Для модели уже задан Group Ratio",
     "Model status history": "История состояния модели",
     "No recorded status history": "История состояния пока не записана",
     "Load more history": "Загрузить более ранние записи",

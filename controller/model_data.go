@@ -414,6 +414,9 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			&rows[i].InputPrice, &rows[i].OutputPrice, &rows[i].CachePrice, &rows[i].CacheCreationPrice,
 			&rows[i].GroupRatio, &rows[i].PricingSource,
 		)
+		applyModelGroupRatioToRow(rows[i].Setting, modelName,
+			&rows[i].InputPrice, &rows[i].OutputPrice, &rows[i].CachePrice, &rows[i].CacheCreationPrice,
+			&rows[i].GroupRatio)
 	}
 
 	if len(rows) == 0 {
@@ -589,7 +592,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		}
 		if isDeepSeekTimedPrice {
 			gr := 1.0
-			if manualGroupRatio := service.ExtractManualGroupRatio(r.Setting); manualGroupRatio > 0 {
+			if manualGroupRatio := service.EffectiveManualGroupRatio(r.Setting, modelName); manualGroupRatio > 0 {
 				gr = manualGroupRatio
 			} else if r.GroupRatio != nil && *r.GroupRatio > 0 {
 				gr = *r.GroupRatio
@@ -630,7 +633,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			pricingSource = *r.PricingSource
 		}
 		imageGroupRatio := 1.0
-		if manualGroupRatio := service.ExtractManualGroupRatio(r.Setting); manualGroupRatio > 0 {
+		if manualGroupRatio := service.EffectiveManualGroupRatio(r.Setting, modelName); manualGroupRatio > 0 {
 			imageGroupRatio = manualGroupRatio
 		} else if r.GroupRatio != nil && *r.GroupRatio > 0 {
 			imageGroupRatio = *r.GroupRatio
@@ -1121,8 +1124,16 @@ type PublicMarketplaceItem struct {
 // publicMarketplaceCache is a simple per-model TTL cache.
 var publicMarketplaceCache = struct {
 	sync.Mutex
-	data map[string]publicMarketplaceCacheEntry
+	data       map[string]publicMarketplaceCacheEntry
+	generation uint64
 }{data: map[string]publicMarketplaceCacheEntry{}}
+
+func invalidatePublicMarketplaceCache() {
+	publicMarketplaceCache.Lock()
+	defer publicMarketplaceCache.Unlock()
+	clear(publicMarketplaceCache.data)
+	publicMarketplaceCache.generation++
+}
 
 type publicMarketplaceCacheEntry struct {
 	items     []PublicMarketplaceItem
@@ -1200,6 +1211,8 @@ func publicMarketplacePricingRows(modelName string) []publicMarketplacePricingRo
 }
 
 func publicMarketplacePriceItem(modelName string, row publicMarketplacePricingRow) PublicMarketplaceItem {
+	applyModelGroupRatioToRow(row.Setting, modelName,
+		&row.InputPrice, &row.OutputPrice, nil, nil, &row.GroupRatio)
 	timedPrice, isDeepSeekTimedPrice := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
 	var officialInput, officialOutput *float64
 	if input, output, _, _, ok := service.GlobalModelPricingUSD(modelName); ok {
@@ -1230,7 +1243,7 @@ func publicMarketplacePriceItem(modelName string, row publicMarketplacePricingRo
 	}
 	if isDeepSeekTimedPrice {
 		groupRatio := 1.0
-		if manual := service.ExtractManualGroupRatio(row.Setting); manual > 0 {
+		if manual := service.EffectiveManualGroupRatio(row.Setting, modelName); manual > 0 {
 			groupRatio = manual
 		} else if row.GroupRatio != nil && *row.GroupRatio > 0 {
 			groupRatio = *row.GroupRatio
@@ -1241,7 +1254,7 @@ func publicMarketplacePriceItem(modelName string, row publicMarketplacePricingRo
 	}
 
 	imageGroupRatio := 1.0
-	if manual := service.ExtractManualGroupRatio(row.Setting); manual > 0 {
+	if manual := service.EffectiveManualGroupRatio(row.Setting, modelName); manual > 0 {
 		imageGroupRatio = manual
 	} else if row.GroupRatio != nil && *row.GroupRatio > 0 {
 		imageGroupRatio = *row.GroupRatio
@@ -1304,9 +1317,11 @@ func GetPublicMarketplace(c *gin.Context) {
 	}
 
 	_, isDeepSeekTimedPrice := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
+	var cacheGeneration uint64
 	// Time-of-day prices must switch exactly at the Beijing-time boundary.
 	if !isDeepSeekTimedPrice {
 		publicMarketplaceCache.Lock()
+		cacheGeneration = publicMarketplaceCache.generation
 		if e, ok := publicMarketplaceCache.data[modelName]; ok && time.Now().Unix() < e.expiresAt {
 			items := e.items
 			publicMarketplaceCache.Unlock()
@@ -1413,9 +1428,11 @@ func GetPublicMarketplace(c *gin.Context) {
 	if !isDeepSeekTimedPrice {
 		// Store static-price models in cache for 2 minutes.
 		publicMarketplaceCache.Lock()
-		publicMarketplaceCache.data[modelName] = publicMarketplaceCacheEntry{
-			items:     items,
-			expiresAt: time.Now().Unix() + 120,
+		if cacheGeneration == publicMarketplaceCache.generation {
+			publicMarketplaceCache.data[modelName] = publicMarketplaceCacheEntry{
+				items:     items,
+				expiresAt: time.Now().Unix() + 120,
+			}
 		}
 		publicMarketplaceCache.Unlock()
 	}

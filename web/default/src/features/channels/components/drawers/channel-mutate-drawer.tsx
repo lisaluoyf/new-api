@@ -25,6 +25,7 @@ import {
   useRef,
 } from 'react'
 import { useController, useForm, type Control } from 'react-hook-form'
+import { ModelGroupRatiosField } from '../model-group-ratios-field'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -503,7 +504,7 @@ function ManualGroupRatioField({
       name='manual_group_ratio'
       render={({ field }) => (
         <FormItem>
-          <FormLabel>{t('Group Ratio (manual override)')}</FormLabel>
+          <FormLabel>{t('Default Group Ratio for all models')}</FormLabel>
           <FormControl>
             <NumericInput
               step='0.0001'
@@ -2971,6 +2972,8 @@ export function ChannelMutateDrawer({
                 <ClientExclusiveField control={form.control} />
 
                 <ManualGroupRatioField control={form.control} />
+
+                <ModelGroupRatiosField control={form.control} modelOptions={currentModelsArray} />
 
                 <RechargeRateField control={form.control} />
 

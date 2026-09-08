@@ -398,7 +398,7 @@ func routeCandidateUserInputPrice(candidate pricedRouteCandidate, modelName stri
 func routeCandidateUserInputPriceAt(candidate pricedRouteCandidate, modelName string, globalInputUSD float64, at time.Time) (float64, bool) {
 	if timedPrices, ok := DeepSeekV4OfficialPricingAt(modelName, at); ok {
 		groupRatio := candidate.GroupRatio
-		if manualGroupRatio := ExtractManualGroupRatio(candidate.Setting); manualGroupRatio > 0 {
+		if manualGroupRatio := EffectiveManualGroupRatio(candidate.Setting, modelName); manualGroupRatio > 0 {
 			groupRatio = manualGroupRatio
 		}
 		if groupRatio <= 0 {
@@ -409,7 +409,7 @@ func routeCandidateUserInputPriceAt(candidate pricedRouteCandidate, modelName st
 	}
 	if imageBasePrice, ok := ratio_setting.GetImageModelBasePrice(modelName); ok {
 		groupRatio := candidate.GroupRatio
-		if manualGroupRatio := ExtractManualGroupRatio(candidate.Setting); manualGroupRatio > 0 {
+		if manualGroupRatio := EffectiveManualGroupRatio(candidate.Setting, modelName); manualGroupRatio > 0 {
 			groupRatio = manualGroupRatio
 		}
 		if groupRatio <= 0 {
@@ -428,7 +428,7 @@ func routeCandidateUserInputPriceAt(candidate pricedRouteCandidate, modelName st
 	}
 	if videoBasePrice, ok := ratio_setting.GetVideoModelBasePrice(modelName); ok {
 		groupRatio := candidate.GroupRatio
-		if manualGroupRatio := ExtractManualGroupRatio(candidate.Setting); manualGroupRatio > 0 {
+		if manualGroupRatio := EffectiveManualGroupRatio(candidate.Setting, modelName); manualGroupRatio > 0 {
 			groupRatio = manualGroupRatio
 		}
 		if groupRatio <= 0 {
@@ -463,7 +463,9 @@ func routeCandidateUserInputPriceAt(candidate pricedRouteCandidate, modelName st
 
 func routeCandidateInputPrice(candidate pricedRouteCandidate, modelName string, globalInputUSD float64) (float64, bool) {
 	if candidate.HasInputPrice && candidate.InputPrice > 0 {
-		return candidate.InputPrice, true
+		row := ChannelPricingLookupRow{InputPrice: candidate.InputPrice, GroupRatio: candidate.GroupRatio}
+		ApplyModelGroupRatio(candidate.Setting, modelName, &row)
+		return row.InputPrice, true
 	}
 	if manual, ok := LookupPublicManualPricing(candidate.Setting, modelName); ok && manual.InputPrice > 0 {
 		return manual.InputPrice, true

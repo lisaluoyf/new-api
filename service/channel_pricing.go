@@ -508,7 +508,7 @@ type PublicManualPricing struct {
 // LookupPublicManualPricing resolves pricing for one model from the unified 官方原价
 // and the channel's manual_group_ratio (+ optional model_price_ratio) settings.
 func LookupPublicManualPricing(setting *string, modelName string) (PublicManualPricing, bool) {
-	groupMul := ExtractManualGroupRatio(setting)
+	groupMul := EffectiveManualGroupRatio(setting, modelName)
 	if groupMul <= 0 {
 		return PublicManualPricing{}, false
 	}

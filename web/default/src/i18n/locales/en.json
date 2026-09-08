@@ -1,5 +1,11 @@
 {
   "translation": {
+    "Default Group Ratio for all models": "Default Group Ratio for all models",
+    "Per-Model Group Ratio": "Per-Model Group Ratio",
+    "Add model Group Ratio": "Add model Group Ratio",
+    "Remove model Group Ratio": "Remove model Group Ratio",
+    "Group Ratio must be greater than zero": "Group Ratio must be greater than zero",
+    "Model already has a Group Ratio": "Model already has a Group Ratio",
     "Model status history": "Model status history",
     "No recorded status history": "No recorded status history",
     "Load more history": "Load more history",

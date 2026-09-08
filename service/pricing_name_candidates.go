@@ -172,6 +172,7 @@ func loadChannelPricingResolveContext(channelID int) (channelPricingResolveConte
 
 func resolveChannelPricingRow(channelID int, modelName string, ch channelPricingResolveContext) (*ChannelPricingLookupRow, bool) {
 	if row, ok := LookupPreferredChannelPricingRow(channelID, modelName, ch.ModelMapping); ok {
+		ApplyModelGroupRatio(ch.Setting, modelName, row)
 		return row, true
 	}
 	manual, ok := LookupPublicManualPricing(ch.Setting, modelName)
@@ -237,7 +238,7 @@ func ChannelBaseUserPriceResolved(channelID int, modelName string, basePrice flo
 }
 
 func channelBasePriceGroupRatio(channelID int, modelName string, ch channelPricingResolveContext) float64 {
-	if manual := ExtractManualGroupRatio(ch.Setting); manual > 0 {
+	if manual := EffectiveManualGroupRatio(ch.Setting, modelName); manual > 0 {
 		return manual
 	}
 	names := ModelPricingLookupNames(modelName)

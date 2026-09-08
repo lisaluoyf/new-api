@@ -128,6 +128,7 @@ func ChannelModelPriceData(channelID int, modelName string) (ChannelModelPriceRa
 	pricing, ok := LookupPreferredChannelPricingRow(channelID, modelName, ch.ModelMapping)
 	var inputPrice, outputPrice, cachePrice, cacheCreationPrice float64
 	if ok {
+		ApplyModelGroupRatio(ch.Setting, modelName, pricing)
 		inputPrice, outputPrice, cachePrice, cacheCreationPrice =
 			pricing.InputPrice, pricing.OutputPrice, pricing.CachePrice, pricing.CacheCreationPrice
 	} else {

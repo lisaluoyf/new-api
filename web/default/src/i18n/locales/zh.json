@@ -1,5 +1,11 @@
 {
   "translation": {
+    "Default Group Ratio for all models": "所有模型默认 Group Ratio",
+    "Per-Model Group Ratio": "按模型 Group Ratio",
+    "Add model Group Ratio": "添加模型 Group Ratio",
+    "Remove model Group Ratio": "删除模型 Group Ratio",
+    "Group Ratio must be greater than zero": "Group Ratio 必须大于 0",
+    "Model already has a Group Ratio": "该模型已配置 Group Ratio",
     "Model status history": "模型状态历史",
     "No recorded status history": "暂无已记录的状态历史",
     "Load more history": "加载更早记录",

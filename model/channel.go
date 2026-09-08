@@ -984,6 +984,14 @@ func (channel *Channel) ValidateSettings() error {
 	if channelParams.ThinkingToContent && channelParams.StripPrefixThinkBlock {
 		return fmt.Errorf("thinking_to_content and strip_prefix_think_block cannot be enabled together")
 	}
+	for modelName, ratio := range channelParams.ModelGroupRatios {
+		if modelName == "" || strings.TrimSpace(modelName) != modelName || len(modelName) > 255 {
+			return fmt.Errorf("model_group_ratios must use non-empty, trimmed model names of at most 255 bytes")
+		}
+		if ratio <= 0 {
+			return fmt.Errorf("model_group_ratios[%s] must be greater than zero", modelName)
+		}
+	}
 	for _, modelName := range channelParams.StripPrefixThinkModels {
 		if strings.TrimSpace(modelName) == "" {
 			return fmt.Errorf("strip_prefix_think_models cannot contain an empty model name")

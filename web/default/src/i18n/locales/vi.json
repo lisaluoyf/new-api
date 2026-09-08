@@ -1,5 +1,11 @@
 {
   "translation": {
+    "Default Group Ratio for all models": "Group Ratio mặc định cho mọi mô hình",
+    "Per-Model Group Ratio": "Group Ratio theo mô hình",
+    "Add model Group Ratio": "Thêm Group Ratio theo mô hình",
+    "Remove model Group Ratio": "Xóa Group Ratio của mô hình",
+    "Group Ratio must be greater than zero": "Group Ratio phải lớn hơn 0",
+    "Model already has a Group Ratio": "Mô hình này đã có Group Ratio",
     "Model status history": "Lịch sử trạng thái mô hình",
     "No recorded status history": "Chưa có lịch sử trạng thái được ghi lại",
     "Load more history": "Tải bản ghi cũ hơn",

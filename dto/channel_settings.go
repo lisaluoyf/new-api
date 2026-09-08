@@ -3,10 +3,11 @@ package dto
 import "fmt"
 
 type ChannelSettings struct {
-	ForceFormat            bool     `json:"force_format,omitempty"`
-	ThinkingToContent      bool     `json:"thinking_to_content,omitempty"`
-	StripPrefixThinkBlock  bool     `json:"strip_prefix_think_block,omitempty"`
-	StripPrefixThinkModels []string `json:"strip_prefix_think_models,omitempty"`
+	ModelGroupRatios       map[string]float64 `json:"model_group_ratios,omitempty"`
+	ForceFormat            bool               `json:"force_format,omitempty"`
+	ThinkingToContent      bool               `json:"thinking_to_content,omitempty"`
+	StripPrefixThinkBlock  bool               `json:"strip_prefix_think_block,omitempty"`
+	StripPrefixThinkModels []string           `json:"strip_prefix_think_models,omitempty"`
 	// CacheExclusiveModels lists client-facing model names whose upstream
 	// prompt_tokens excludes cache read/write tokens even though the response
 	// uses an OpenAI-compatible JSON shape. Per-response invariants and

@@ -1010,10 +1010,16 @@ func UpdateChannel(c *gin.Context) {
 	}
 	model.InitChannelCache()
 	service.InvalidateChannelRoutingCache()
+	invalidatePublicMarketplaceCache()
 	service.ResetProxyClientCache()
 
 	// Re-fetch pricing after any channel update so key_group / base_url changes are reflected.
-	go service.FetchChannelPricing(&channel.Channel)
+	pricingChannel := channel.Channel
+	go func() {
+		service.FetchChannelPricing(&pricingChannel)
+		service.InvalidateChannelRoutingCache()
+		invalidatePublicMarketplaceCache()
+	}()
 
 	channel.Key = ""
 	clearChannelInfo(&channel.Channel)

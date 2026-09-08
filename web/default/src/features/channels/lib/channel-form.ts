@@ -98,8 +98,20 @@ export const channelFormSchema = z.object({
   upstream_model_update_ignored_models: z.string().optional(),
   // KEY所在分组：该 API Key 在供应商站点属于哪个定价分组（如 aws-q、cc-sale）
   key_group: z.string().optional(),
-  // 手动 Group Ratio：上游 /api/pricing 不返回该分组 group_ratio 时的回退倍率
+  // Channel default override; zero/blank preserves the upstream group ratio.
   manual_group_ratio: z.number().min(0).optional(),
+  model_group_ratios: z.array(z.object({
+    model: z.string().trim().min(1, 'Select model'),
+    ratio: z.number().positive('Group Ratio must be greater than zero'),
+  })).superRefine((rows, ctx) => {
+    const seen = new Set<string>()
+    rows.forEach((row, index) => {
+      if (seen.has(row.model)) {
+        ctx.addIssue({ code: 'custom', path: [index, 'model'], message: 'Model already has a Group Ratio' })
+      }
+      seen.add(row.model)
+    })
+  }).optional(),
   // 充值汇率：USD cost per 1 USDT of upstream credit (e.g. 1.0 for USD direct, 1/7.3 for 1RMB=1USDT)
   recharge_rate: z.number().min(0).optional(),
   // APIMaster 价格倍率：用户最终价格 = 采购价 × 此倍率；留空/0 = 1.0（不加价），影响实际计费与广场展示价
@@ -176,6 +188,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   upstream_model_update_ignored_models: '',
   key_group: '',
   manual_group_ratio: undefined,
+  model_group_ratios: [],
   recharge_rate: undefined,
   apimaster_price_ratio: undefined,
   model_price_ratio: undefined,
@@ -207,6 +220,7 @@ export function transformChannelToFormDefaults(
     system_prompt_override: false,
     key_group: '',
     manual_group_ratio: 0,
+    model_group_ratios: [] as { model: string; ratio: number }[],
     model_price_ratio: 0,
     api_format: 'openai-compatible',
     client_exclusive: '' as '' | 'codex' | 'claude_code',
@@ -231,6 +245,10 @@ export function transformChannelToFormDefaults(
         system_prompt_override: parsed.system_prompt_override || false,
         key_group: parsed.key_group || '',
         manual_group_ratio: parsed.manual_group_ratio || 0,
+        model_group_ratios: Object.entries(parsed.model_group_ratios || {}).map(([model, ratio]) => ({
+          model,
+          ratio: Number(ratio),
+        })),
         model_price_ratio: parsed.model_price_ratio || 0,
         api_format: parsed.api_format || 'openai-compatible',
         client_exclusive: (parsed.client_exclusive === 'codex' || parsed.client_exclusive === 'claude_code'
@@ -374,6 +392,7 @@ function buildSettingJSON(formData: ChannelFormValues): string {
     system_prompt_override: formData.system_prompt_override || false,
     key_group: formData.key_group || '',
     manual_group_ratio: formData.manual_group_ratio || 0,
+    model_group_ratios: Object.fromEntries((formData.model_group_ratios || []).map(({ model, ratio }) => [model, ratio])),
     model_price_ratio: formData.model_price_ratio || 0,
     ...(formData.client_exclusive ? { client_exclusive: formData.client_exclusive } : {}),
   }

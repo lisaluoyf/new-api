@@ -1,5 +1,11 @@
 {
   "translation": {
+    "Default Group Ratio for all models": "全モデルの既定 Group Ratio",
+    "Per-Model Group Ratio": "モデル別 Group Ratio",
+    "Add model Group Ratio": "モデル別 Group Ratio を追加",
+    "Remove model Group Ratio": "モデル別 Group Ratio を削除",
+    "Group Ratio must be greater than zero": "Group Ratio は 0 より大きい値が必要です",
+    "Model already has a Group Ratio": "このモデルには既に Group Ratio が設定されています",
     "Model status history": "モデル状態の履歴",
     "No recorded status history": "記録された状態履歴はありません",
     "Load more history": "過去の履歴を読み込む",

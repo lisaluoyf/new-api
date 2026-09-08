@@ -134,7 +134,7 @@ func deepSeekV4ChannelMultipliers(channelID int, modelName string) (groupRatio, 
 	rechargeRate = ch.RechargeRate
 	userPriceRatio = ch.EffectivePriceRatio(modelName)
 
-	if manualGroupRatio := ExtractManualGroupRatio(ch.Setting); manualGroupRatio > 0 {
+	if manualGroupRatio := EffectiveManualGroupRatio(ch.Setting, modelName); manualGroupRatio > 0 {
 		groupRatio = manualGroupRatio
 	} else if row, ok := LookupPreferredChannelPricingRow(channelID, modelName, ch.ModelMapping); ok {
 		groupRatio = row.GroupRatio
