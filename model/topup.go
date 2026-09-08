@@ -1008,6 +1008,9 @@ func RechargeWaffoPancake(tradeNo string, callerIp string) (err error) {
 // only need one call here instead of wiring each individually.
 func OnTopupSucceeded(userId int, quotaAdded int, paymentMethod string, tradeNo string) {
 	EnsureSuccessfulTopUpCompleteTime(tradeNo)
+	if err := MarkTrialLimitNotificationConverted(userId, tradeNo); err != nil {
+		common.SysLog(fmt.Sprintf("trial-limit notification conversion update failed user_id=%d trade_no=%s: %v", userId, tradeNo, err))
+	}
 	if err := ProcessAffCommissionForTopUp(userId, tradeNo); err != nil {
 		common.SysLog(fmt.Sprintf("ProcessAffCommission skipped user_id=%d trade_no=%s: %v", userId, tradeNo, err))
 	}

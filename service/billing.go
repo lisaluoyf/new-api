@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -78,6 +79,9 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 
 		if err := relayInfo.Billing.Settle(actualQuota); err != nil {
 			return err
+		}
+		if relayInfo.BillingSource == BillingSourceSubscription && relayInfo.SubscriptionPlanType == model.SubscriptionPlanTypeGPTTrial {
+			EnqueueGPTTrialLimitNotification(relayInfo.UserId, relayInfo.SubscriptionId)
 		}
 
 		// 发送额度通知（订阅计费使用订阅剩余额度）

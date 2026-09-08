@@ -51,6 +51,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/rankings", controller.GetRankings)
 		apiRouter.GET("/public/marketplace", controller.GetPublicMarketplace)
 		apiRouter.GET("/subscription/gpt/catalog", controller.GetPublicGPTSubscriptionCatalog)
+		apiRouter.GET("/trial-limit/redirect/:token", controller.RedirectTrialLimitNotification)
 		apiRouter.GET("/subscription/coding/catalog", controller.GetPublicCodingPlanCatalog)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
@@ -229,6 +230,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			subscriptionAdminRoute.GET("/plans", controller.AdminListSubscriptionPlans)
 			subscriptionAdminRoute.GET("/gpt/access", controller.AdminGetGPTSubscriptionAccess)
+			subscriptionAdminRoute.GET("/trial-limit-notifications/daily", controller.AdminGetTrialLimitNotificationDailyMetrics)
 			subscriptionAdminRoute.PUT("/gpt/access", controller.AdminUpdateGPTSubscriptionAccess)
 			subscriptionAdminRoute.POST("/plans", controller.AdminCreateSubscriptionPlan)
 			subscriptionAdminRoute.PUT("/plans/:id", controller.AdminUpdateSubscriptionPlan)
