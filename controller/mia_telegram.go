@@ -43,6 +43,10 @@ type miaDebugIdentitiesRequest struct {
 	Emails []string `json:"emails"`
 }
 
+type miaActivationEligibilityRequest struct {
+	TelegramUserIDs []string `json:"telegram_user_ids"`
+}
+
 type miaModelCatalogItem struct {
 	ID                     string                  `json:"id"`
 	DisplayName            string                  `json:"display_name"`
@@ -208,6 +212,44 @@ func ResolveMiaDebugIdentities(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"identities": rows}})
+}
+
+// ResolveMiaActivationEligibility returns only the binding state required for
+// Mia's opt-in activation flow. It intentionally never exposes API tokens.
+func ResolveMiaActivationEligibility(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8192)
+	var input miaActivationEligibilityRequest
+	if err := common.DecodeJson(c.Request.Body, &input); err != nil || len(input.TelegramUserIDs) == 0 || len(input.TelegramUserIDs) > 200 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "invalid_request", "message": "invalid request"})
+		return
+	}
+	ids := make([]string, 0, len(input.TelegramUserIDs))
+	seen := make(map[string]struct{})
+	for _, raw := range input.TelegramUserIDs {
+		id := strings.TrimSpace(raw)
+		if _, err := strconv.ParseInt(id, 10, 64); err != nil || id == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "invalid_request", "message": "invalid request"})
+			return
+		}
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	type eligibility struct {
+		TelegramID string `json:"telegram_user_id"`
+		BoundAt    int64  `json:"bound_at"`
+	}
+	rows := make([]eligibility, 0, len(ids))
+	if err := model.DB.Table("users").
+		Select("telegram_id AS telegram_id, CASE WHEN telegram_bound_at > 0 THEN telegram_bound_at ELSE created_at END AS bound_at").
+		Where("telegram_id IN ? AND telegram_id <> '' AND status = ?", ids, common.UserStatusEnabled).
+		Scan(&rows).Error; err != nil {
+		common.SysError("failed to resolve Mia activation eligibility: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "eligibility_lookup_failed", "message": "unable to resolve eligibility"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"eligible": rows}})
 }
 
 func getMiaUsableTokenForModel(userID int, modelName string) (*model.Token, error) {

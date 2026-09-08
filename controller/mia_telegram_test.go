@@ -82,6 +82,11 @@ func setupMiaTelegramTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 		middleware.RequireMiaInternalService(),
 		ResolveMiaDebugIdentities,
 	)
+	router.POST(
+		"/api/user/internal/mia-activation-eligibility",
+		middleware.RequireMiaInternalService(),
+		ResolveMiaActivationEligibility,
+	)
 	return router, db
 }
 
@@ -138,6 +143,21 @@ func TestResolveMiaDebugIdentitiesRejectsInvalidInput(t *testing.T) {
 	router, _ := setupMiaTelegramTestRouter(t)
 	response := performMiaInternalRequest(router, "/api/user/internal/mia-debug-identities", "test-mia-internal-secret", `{"emails":["not-an-email"]}`)
 	require.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestResolveMiaActivationEligibilityReturnsOnlyEnabledBoundUsers(t *testing.T) {
+	router, db := setupMiaTelegramTestRouter(t)
+	users := []model.User{
+		{Username: "activation-enabled", Email: "activation-enabled@example.com", Status: common.UserStatusEnabled, TelegramId: "111", TelegramBoundAt: 1700000000, AffCode: "act1"},
+		{Username: "activation-disabled", Email: "activation-disabled@example.com", Status: common.UserStatusDisabled, TelegramId: "222", TelegramBoundAt: 1700000001, AffCode: "act2"},
+	}
+	for index := range users {
+		require.NoError(t, db.Create(&users[index]).Error)
+	}
+
+	response := performMiaInternalRequest(router, "/api/user/internal/mia-activation-eligibility", "test-mia-internal-secret", `{"telegram_user_ids":["111","222","333"]}`)
+	require.Equal(t, http.StatusOK, response.Code)
+	require.JSONEq(t, `{"success":true,"data":{"eligible":[{"telegram_user_id":"111","bound_at":1700000000}]}}`, response.Body.String())
 }
 
 func TestResolveMiaTelegramAPIKeyReturnsUsableBoundUserToken(t *testing.T) {

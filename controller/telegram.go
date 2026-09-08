@@ -50,6 +50,7 @@ func TelegramBind(c *gin.Context) {
 		return
 	}
 	user.TelegramId = telegramId
+	user.TelegramBoundAt = time.Now().Unix()
 	if err := user.Update(false); err != nil {
 		returnTelegramBindResult(c, "error", err.Error())
 		return
