@@ -86,26 +86,9 @@ func (channel *Channel) clearAutoDisabledModels(modelNames []string) {
 
 // SetChannelModelsManuallyDisabled atomically updates both the routing abilities
 // and their persistent source-of-truth metadata.
-func SetChannelModelsManuallyDisabled(channelID int, modelNames []string, disabled bool) (int64, error) {
+func SetChannelModelsManuallyDisabled(channelID int, modelNames []string, disabled bool, actorIDs ...int) (int64, error) {
 	if channelID <= 0 || len(modelNames) == 0 {
 		return 0, errors.New("channel and model are required")
-	}
-
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return 0, tx.Error
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-			panic(r)
-		}
-	}()
-
-	var channel Channel
-	if err := tx.First(&channel, "id = ?", channelID).Error; err != nil {
-		tx.Rollback()
-		return 0, err
 	}
 
 	normalized := make([]string, 0, len(modelNames))
@@ -122,44 +105,48 @@ func SetChannelModelsManuallyDisabled(channelID int, modelNames []string, disabl
 		normalized = append(normalized, name)
 	}
 	if len(normalized) == 0 {
-		tx.Rollback()
 		return 0, errors.New("model is required")
 	}
-
-	result := tx.Model(&Ability{}).
-		Where("channel_id = ? AND model IN ?", channelID, normalized).
-		Select("enabled").
-		Update("enabled", !disabled)
-	if result.Error != nil {
-		tx.Rollback()
-		return 0, result.Error
-	}
-	if result.RowsAffected == 0 {
-		tx.Rollback()
-		return 0, gorm.ErrRecordNotFound
-	}
-
-	persisted := channel.GetManuallyDisabledModels()
-	for _, name := range normalized {
-		if disabled {
-			persisted[name] = struct{}{}
-		} else {
-			delete(persisted, name)
+	var affected int64
+	err := WithChannelOtherInfo(channelID, func(tx *gorm.DB, channel *Channel) error {
+		var actual []string
+		if err := tx.Model(&Ability{}).Where("channel_id = ? AND model IN ?", channelID, normalized).
+			Distinct("model").Pluck("model", &actual).Error; err != nil {
+			return err
 		}
-	}
-	channel.setManuallyDisabledModels(persisted)
-	// An explicit operator action supersedes automatic disable/recovery state.
-	// Otherwise a later fingerprint recovery could undo a manual disable.
-	channel.clearAutoDisabledModels(normalized)
-	if err := tx.Model(&Channel{}).
-		Where("id = ?", channelID).
-		Update("other_info", channel.OtherInfo).Error; err != nil {
-		tx.Rollback()
-		return 0, err
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		return 0, err
-	}
-	return result.RowsAffected, nil
+		if len(actual) == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		result := tx.Model(&Ability{}).Where("channel_id = ? AND model IN ?", channelID, normalized).
+			Select("enabled").Update("enabled", !disabled)
+		if result.Error != nil {
+			return result.Error
+		}
+		affected = result.RowsAffected
+		persisted := channel.GetManuallyDisabledModels()
+		for _, name := range normalized {
+			if disabled {
+				persisted[name] = struct{}{}
+			} else {
+				delete(persisted, name)
+			}
+		}
+		channel.setManuallyDisabledModels(persisted)
+		channel.clearAutoDisabledModels(normalized)
+		action, reason := "enable", "Manually enabled"
+		if disabled {
+			action, reason = "disable", "Manually disabled"
+		}
+		actorID := 0
+		if len(actorIDs) > 0 {
+			actorID = actorIDs[0]
+		}
+		for _, name := range actual {
+			if err := RecordChannelModelEvent(tx, channelID, name, action, "manual", reason, actorID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return affected, err
 }

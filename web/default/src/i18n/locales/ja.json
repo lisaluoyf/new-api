@@ -1,5 +1,18 @@
 {
   "translation": {
+    "Model status history": "モデル状態の履歴",
+    "No recorded status history": "記録された状態履歴はありません",
+    "Load more history": "過去の履歴を読み込む",
+    "Disable reason missing": "無効化の理由が不明",
+    "Historical disable reason missing": "過去の無効化理由が記録されていません",
+    "Manual operation": "手動操作",
+    "Health probe": "正常性プローブ",
+    "Recovery probe": "復旧プローブ",
+    "Fingerprint recovery": "フィンガープリントによる復旧",
+    "Manually disabled": "手動で無効化",
+    "Manually enabled": "手動で有効化",
+    "Recovery probe passed": "復旧プローブに合格",
+    "Fingerprint recovery threshold reached": "フィンガープリントの復旧しきい値に到達",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

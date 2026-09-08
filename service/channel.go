@@ -265,35 +265,13 @@ func DisableChannelModel(channelError types.ChannelError, modelName string, reas
 		return
 	}
 
-	channel, err := model.GetChannelById(channelError.ChannelId, true)
+	changed, err := setAutomaticModelStatus(channelError.ChannelId, modelName, reason, false, "health_probe")
 	if err != nil {
-		common.SysError(fmt.Sprintf("failed to load channel #%d for model disable: %v", channelError.ChannelId, err))
+		common.SysError(fmt.Sprintf("failed to disable model atomically: channel_id=%d model=%s error=%v", channelError.ChannelId, modelName, err))
 		return
 	}
-	if channel.Status == common.ChannelStatusManuallyDisabled {
-		common.SysLog(fmt.Sprintf("通道「%s」（#%d）已手动禁用，跳过模型级自动禁用", channelError.ChannelName, channelError.ChannelId))
+	if !changed {
 		return
-	}
-
-	result := model.DB.Table("abilities").
-		Where("channel_id = ? AND model = ? AND enabled = ?", channelError.ChannelId, modelName, true).
-		Update("enabled", false)
-	if result.Error != nil {
-		common.SysError(fmt.Sprintf("failed to disable ability: channel_id=%d model=%s error=%v", channelError.ChannelId, modelName, result.Error))
-		return
-	}
-	if result.RowsAffected == 0 {
-		common.SysLog(fmt.Sprintf("通道「%s」（#%d）模型「%s」已不可路由，跳过重复禁用", channelError.ChannelName, channelError.ChannelId, modelName))
-		return
-	}
-
-	info := channel.GetOtherInfo()
-	autoDisabledModels := autoDisabledModelInfo(info)
-	autoDisabledModels[modelName] = newAutoDisabledModelEntry(common.GetTimestamp(), reason)
-	info[autoDisabledModelsInfoKey] = autoDisabledModels
-	channel.SetOtherInfo(info)
-	if err := model.DB.Model(&model.Channel{}).Where("id = ?", channelError.ChannelId).Update("other_info", channel.OtherInfo).Error; err != nil {
-		common.SysError(fmt.Sprintf("failed to save model disable metadata: channel_id=%d model=%s error=%v", channelError.ChannelId, modelName, err))
 	}
 
 	model.InitChannelCache()
@@ -314,42 +292,19 @@ func EnableChannel(channelId int, usingKey string, channelName string) {
 	}
 }
 
-func EnableChannelModel(channelId int, modelName string, channelName string) {
+func EnableChannelModel(channelId int, modelName string, channelName string, expectedVersions ...string) {
 	modelName = strings.TrimSpace(modelName)
 	if channelId <= 0 || modelName == "" {
 		return
 	}
 
-	channel, err := model.GetChannelById(channelId, true)
-	if err == nil && channel != nil {
-		if _, manuallyDisabled := channel.GetManuallyDisabledModels()[modelName]; manuallyDisabled {
-			common.SysLog(fmt.Sprintf("通道「%s」（#%d）模型「%s」已被手动禁用，跳过自动恢复", channelName, channelId, modelName))
-			return
-		}
-	}
-
-	result := model.DB.Table("abilities").
-		Where("channel_id = ? AND model = ?", channelId, modelName).
-		Update("enabled", true)
-	if result.Error != nil {
-		common.SysError(fmt.Sprintf("failed to enable ability: channel_id=%d model=%s error=%v", channelId, modelName, result.Error))
+	changed, err := setAutomaticModelStatus(channelId, modelName, "Recovery probe passed", true, "recovery_probe", expectedVersions...)
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to enable model atomically: channel_id=%d model=%s error=%v", channelId, modelName, err))
 		return
 	}
-
-	channel, err = model.GetChannelById(channelId, true)
-	if err == nil && channel != nil {
-		info := channel.GetOtherInfo()
-		autoDisabledModels := autoDisabledModelInfo(info)
-		delete(autoDisabledModels, modelName)
-		if len(autoDisabledModels) == 0 {
-			delete(info, autoDisabledModelsInfoKey)
-		} else {
-			info[autoDisabledModelsInfoKey] = autoDisabledModels
-		}
-		channel.SetOtherInfo(info)
-		if err := model.DB.Model(&model.Channel{}).Where("id = ?", channelId).Update("other_info", channel.OtherInfo).Error; err != nil {
-			common.SysError(fmt.Sprintf("failed to clear model auto-disabled metadata: channel_id=%d model=%s error=%v", channelId, modelName, err))
-		}
+	if !changed {
+		return
 	}
 
 	model.InitChannelCache()

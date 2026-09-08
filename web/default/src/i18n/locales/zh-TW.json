@@ -1,5 +1,18 @@
 {
   "translation": {
+    "Model status history": "模型狀態歷史",
+    "No recorded status history": "尚無已記錄的狀態歷史",
+    "Load more history": "載入更早記錄",
+    "Disable reason missing": "停用原因缺失",
+    "Historical disable reason missing": "歷史停用原因缺失",
+    "Manual operation": "手動操作",
+    "Health probe": "健康探針",
+    "Recovery probe": "恢復探針",
+    "Fingerprint recovery": "指紋檢測恢復",
+    "Manually disabled": "手動停用",
+    "Manually enabled": "手動啟用",
+    "Recovery probe passed": "恢復探針通過",
+    "Fingerprint recovery threshold reached": "指紋檢測達到恢復門檻",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

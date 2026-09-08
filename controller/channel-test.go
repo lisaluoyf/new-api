@@ -34,6 +34,7 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
+	"gorm.io/gorm"
 
 	"github.com/gin-gonic/gin"
 )
@@ -1124,10 +1125,18 @@ func commonAutoReenableShouldProbe(channel *model.Channel) bool {
 	}
 	if disabledAt <= 0 {
 		disabledAt = now
-		info["auto_disabled_at"] = disabledAt
-		info["status_time"] = disabledAt
-		channel.SetOtherInfo(info)
-		_ = model.DB.Model(channel).Update("other_info", channel.OtherInfo).Error
+		if err := model.WithChannelOtherInfo(channel.Id, func(tx *gorm.DB, current *model.Channel) error {
+			latest := current.GetOtherInfo()
+			if commonAutoReenableInt64(latest, "status_time") <= 0 {
+				latest["auto_disabled_at"] = disabledAt
+				latest["status_time"] = disabledAt
+				current.SetOtherInfo(latest)
+			}
+			return nil
+		}); err != nil {
+			common.SysError(fmt.Sprintf("failed to record recovery start channel=%d: %v", channel.Id, err))
+			return false
+		}
 	}
 	lastProbeAt := commonAutoReenableInt64(info, "last_reenable_probe_at")
 	if lastProbeAt <= 0 {
@@ -1142,22 +1151,27 @@ func recordCommonAutoReenableProbe(channel *model.Channel, result testResult, la
 	if channel == nil {
 		return
 	}
-	info := commonAutoReenableInfo(channel)
-	info["last_reenable_probe_at"] = common.GetTimestamp()
-	info["last_reenable_probe_latency_ms"] = latencyMs
-	if result.newAPIError == nil && result.localErr == nil {
-		info["last_reenable_probe_result"] = "success"
-		delete(info, "last_reenable_probe_reason")
-	} else {
-		info["last_reenable_probe_result"] = "failed"
-		if result.newAPIError != nil {
-			info["last_reenable_probe_reason"] = result.newAPIError.ErrorWithStatusCode()
-		} else if result.localErr != nil {
-			info["last_reenable_probe_reason"] = result.localErr.Error()
+	err := model.WithChannelOtherInfo(channel.Id, func(tx *gorm.DB, channel *model.Channel) error {
+		info := commonAutoReenableInfo(channel)
+		info["last_reenable_probe_at"] = common.GetTimestamp()
+		info["last_reenable_probe_latency_ms"] = latencyMs
+		if result.newAPIError == nil && result.localErr == nil {
+			info["last_reenable_probe_result"] = "success"
+			delete(info, "last_reenable_probe_reason")
+		} else {
+			info["last_reenable_probe_result"] = "failed"
+			if result.newAPIError != nil {
+				info["last_reenable_probe_reason"] = result.newAPIError.ErrorWithStatusCode()
+			} else if result.localErr != nil {
+				info["last_reenable_probe_reason"] = result.localErr.Error()
+			}
 		}
+		channel.SetOtherInfo(info)
+		return nil
+	})
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to record recovery probe channel=%d: %v", channel.Id, err))
 	}
-	channel.SetOtherInfo(info)
-	_ = model.DB.Model(channel).Update("other_info", channel.OtherInfo).Error
 }
 
 type commonAutoDisabledModel struct {
@@ -1212,32 +1226,44 @@ func recordCommonAutoReenableModelProbe(channel *model.Channel, modelName string
 	if channel == nil || strings.TrimSpace(modelName) == "" {
 		return
 	}
-	info := commonAutoReenableInfo(channel)
-	raw, ok := info["auto_disabled_models"].(map[string]interface{})
-	if !ok {
-		raw = map[string]interface{}{}
-	}
-	entry, _ := raw[modelName].(map[string]interface{})
-	if entry == nil {
-		entry = map[string]interface{}{}
-	}
-	entry["last_reenable_probe_at"] = common.GetTimestamp()
-	entry["last_reenable_probe_latency_ms"] = latencyMs
-	if result.newAPIError == nil && result.localErr == nil {
-		entry["last_reenable_probe_result"] = "success"
-		delete(entry, "last_reenable_probe_reason")
-	} else {
-		entry["last_reenable_probe_result"] = "failed"
-		if result.newAPIError != nil {
-			entry["last_reenable_probe_reason"] = result.newAPIError.ErrorWithStatusCode()
-		} else if result.localErr != nil {
-			entry["last_reenable_probe_reason"] = result.localErr.Error()
+	expectedVersion := channel.AutoDisabledModelVersion(modelName)
+	err := model.WithChannelOtherInfo(channel.Id, func(tx *gorm.DB, channel *model.Channel) error {
+		if expectedVersion == "" || channel.AutoDisabledModelVersion(modelName) != expectedVersion {
+			return nil
 		}
+		if _, manual := channel.GetManuallyDisabledModels()[modelName]; manual {
+			return nil
+		}
+		info := commonAutoReenableInfo(channel)
+		raw, ok := info["auto_disabled_models"].(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		entry, _ := raw[modelName].(map[string]interface{})
+		if entry == nil {
+			return nil
+		}
+		entry["last_reenable_probe_at"] = common.GetTimestamp()
+		entry["last_reenable_probe_latency_ms"] = latencyMs
+		if result.newAPIError == nil && result.localErr == nil {
+			entry["last_reenable_probe_result"] = "success"
+			delete(entry, "last_reenable_probe_reason")
+		} else {
+			entry["last_reenable_probe_result"] = "failed"
+			if result.newAPIError != nil {
+				entry["last_reenable_probe_reason"] = result.newAPIError.ErrorWithStatusCode()
+			} else if result.localErr != nil {
+				entry["last_reenable_probe_reason"] = result.localErr.Error()
+			}
+		}
+		raw[modelName] = entry
+		info["auto_disabled_models"] = raw
+		channel.SetOtherInfo(info)
+		return nil
+	})
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to record model recovery probe channel=%d model=%s: %v", channel.Id, modelName, err))
 	}
-	raw[modelName] = entry
-	info["auto_disabled_models"] = raw
-	channel.SetOtherInfo(info)
-	_ = model.DB.Model(channel).Update("other_info", channel.OtherInfo).Error
 }
 
 func commonAutoReenableCandidates() ([]*model.Channel, error) {
@@ -1328,7 +1354,7 @@ func testCommonAutoDisabledChannels() error {
 				result, milliseconds := probeChannelForAutomation(channel, disabledModel.Model)
 				recordCommonAutoReenableModelProbe(channel, disabledModel.Model, result, milliseconds)
 				if result.newAPIError == nil && result.localErr == nil {
-					service.EnableChannelModel(channel.Id, disabledModel.Model, channel.Name)
+					service.EnableChannelModel(channel.Id, disabledModel.Model, channel.Name, channel.AutoDisabledModelVersion(disabledModel.Model))
 				}
 				channel.UpdateResponseTime(milliseconds)
 				time.Sleep(common.RequestInterval)

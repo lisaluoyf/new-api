@@ -87,8 +87,9 @@ type ModelDataItem struct {
 	ConsecutiveFingerprintPass int                        `json:"consecutive_fingerprint_pass"` // recovery counter; only meaningful when status=3
 	ModelEnabled               bool                       `json:"model_enabled"`                // abilities.enabled for this (channel, model) — false = disabled for this model only
 	StatusReason               string                     `json:"status_reason"`                // why auto-disabled; empty when status != 3
-	StatusTime                 int64                      `json:"status_time"`                  // unix ts of disable event; 0 if unknown
-	BaseURL                    string                     `json:"base_url"`                     // channel base URL, used for analysis lookup
+	StatusSource               string                     `json:"status_source"`
+	StatusTime                 int64                      `json:"status_time"` // unix ts of disable event; 0 if unknown
+	BaseURL                    string                     `json:"base_url"`    // channel base URL, used for analysis lookup
 	FreeModelConfig            *FreeModelMemberConfigView `json:"free_model_config,omitempty"`
 	FreeModelHealth            *FreeModelHealthView       `json:"free_model_health,omitempty"`
 }
@@ -673,6 +674,15 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		upstreamModel := service.ModelMappingTarget(r.ModelMapping, modelName)
 
 		statusReason, statusTime, recoveryPassCount := modelDataStatusMetadata(r.Status, r.ModelEnabled, r.OtherInfo, modelName, r.ConsecutiveFingerprintPass)
+		statusSource := modelDataStatusSource(r.Status, r.ModelEnabled, r.OtherInfo, modelName)
+		if statusReason == "" {
+			switch statusSource {
+			case "manual", "channel_manual":
+				statusReason = "Manually disabled"
+			case "unknown":
+				statusReason = "Historical disable reason missing"
+			}
+		}
 		var freeConfig *FreeModelMemberConfigView
 		var freeHealth *FreeModelHealthView
 		if service.IsFreeModel(modelName) {
@@ -738,6 +748,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			ConsecutiveFingerprintPass: recoveryPassCount,
 			ModelEnabled:               r.ModelEnabled,
 			StatusReason:               statusReason,
+			StatusSource:               statusSource,
 			StatusTime:                 statusTime,
 			BaseURL: func() string {
 				if r.BaseURL != nil {
@@ -894,6 +905,28 @@ func modelDataStatusMetadata(channelStatus int, modelEnabled bool, otherInfo *st
 		reason = modelDataString(entry, "last_reenable_probe_reason")
 	}
 	return reason, modelDataInt64(entry, "disabled_at"), int(modelDataInt64(entry, "pass_count"))
+}
+
+func modelDataStatusSource(channelStatus int, modelEnabled bool, otherInfo *string, modelName string) string {
+	if channelStatus == common.ChannelStatusAutoDisabled {
+		return "channel_auto"
+	}
+	if channelStatus == common.ChannelStatusManuallyDisabled {
+		return "channel_manual"
+	}
+	if modelEnabled {
+		return "enabled"
+	}
+	if otherInfo != nil {
+		channel := model.Channel{OtherInfo: *otherInfo}
+		if _, manual := channel.GetManuallyDisabledModels()[modelName]; manual {
+			return "manual"
+		}
+		if modelDataAutoDisabledModelEntry(channel.GetOtherInfo(), modelName) != nil {
+			return "auto"
+		}
+	}
+	return "unknown"
 }
 
 func modelDataAutoDisabledModelEntry(info map[string]interface{}, modelName string) map[string]interface{} {
@@ -1414,7 +1447,7 @@ func ToggleChannelStatus(c *gin.Context) {
 	modelCandidates := service.ModelNameCandidates(req.Model)
 	// Persist the operator's choice in channels.other_info as well as abilities.
 	// abilities is a derived table and is rebuilt whenever a channel is edited.
-	if _, err := model.SetChannelModelsManuallyDisabled(req.ChannelID, modelCandidates, !enabled); err != nil {
+	if _, err := model.SetChannelModelsManuallyDisabled(req.ChannelID, modelCandidates, !enabled, c.GetInt("id")); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "channel model ability not found"})
 			return

@@ -46,6 +46,7 @@ import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
 import { parseGroupsList } from '@/features/channels/lib'
 import { MODEL_TABS } from './constants'
+import { StatusHistory } from './status-history'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -109,6 +110,7 @@ interface ModelDataItem {
   status: number // 1 enabled / 2 manual-disabled / 3 auto-disabled
   consecutive_fingerprint_pass: number // recovery counter; meaningful when status=3
   model_enabled: boolean // abilities.enabled for this (channel, model) pair
+  status_source?: string
   pricing_source: string // "api" | "manual" | ""
   status_reason?: string // why auto-disabled; empty when status !== 3
   status_time?: number // unix ts of disable event; 0 if unknown
@@ -1188,7 +1190,7 @@ export function ChannelDataPage() {
             })
         }, 6000)
       })
-  }, [activeModel, loadAllProcurementAudit, pricingRefreshing])
+  }, [activeModel, loadAllProcurementAudit, pricingRefreshing, t])
 
   // Re-fetch hub.romaapi.com aggregator pricing (clears the backend TTL cache),
   // then reload the table so the HUB 价格 column shows fresh values.
@@ -1214,7 +1216,7 @@ export function ChannelDataPage() {
             setHubRefreshMsg('')
           })
       })
-  }, [activeModel, hubRefreshing])
+  }, [activeModel, hubRefreshing, t])
 
   // Rewrite channel_model_pricings.group_ratio so 渠道原价 matches 官方原价 for this
   // row. Display-only — input_price / 采购价 / billing are untouched. Rows sourced
@@ -1865,10 +1867,12 @@ export function ChannelDataPage() {
                 const isModelAutoDisabled =
                   !isModelEnabled &&
                   !isAutoDisabled &&
-                  Boolean(
-                    (item.status_reason && item.status_reason.trim()) ||
-                    (item.status_time && item.status_time > 0)
-                  )
+                  (item.status_source === 'auto' ||
+                    (!item.status_source &&
+                      Boolean(
+                        (item.status_reason && item.status_reason.trim()) ||
+                        (item.status_time && item.status_time > 0)
+                      )))
                 const showAutoDisabledBadge =
                   isAutoDisabled || isModelAutoDisabled
                 // Effectively enabled = model ability on AND channel not disabled/auto-disabled
@@ -1912,7 +1916,17 @@ export function ChannelDataPage() {
                       className={`w-36 max-w-[144px] px-3 py-2.5 font-medium text-gray-800 ${dim}`}
                     >
                       <div className='flex flex-col gap-0.5'>
-                        <span className='truncate'>{item.channel_name}</span>
+                        <div className='flex items-center gap-1'>
+                          <span className='min-w-0 flex-1 truncate'>
+                            {item.channel_name}
+                          </span>
+                          <StatusHistory
+                            channelID={item.channel_id}
+                            channelName={item.channel_name}
+                            model={activeModel}
+                            reason={item.status_reason}
+                          />
+                        </div>
                         <div className='flex flex-wrap gap-1'>
                           {showAutoDisabledBadge && (
                             <TooltipProvider delay={0}>
@@ -1953,8 +1967,13 @@ export function ChannelDataPage() {
                             </TooltipProvider>
                           )}
                           {!isModelEnabled && !isModelAutoDisabled && (
-                            <span className='rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500'>
-                              {t('Disabled')}
+                            <span
+                              title={t(item.status_reason || 'Disabled')}
+                              className='rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500'
+                            >
+                              {item.status_source === 'unknown'
+                                ? t('Disable reason missing')
+                                : t('Disabled')}
                             </span>
                           )}
                         </div>
@@ -2518,13 +2537,18 @@ export function ChannelDataPage() {
                 <span>
                   <span className='block'>{t('Enable FreeModel')}</span>
                   <span className='block text-xs text-gray-400'>
-                    {t('When disabled, FreeModel is hidden from API model lists and requests are rejected.')}
+                    {t(
+                      'When disabled, FreeModel is hidden from API model lists and requests are rejected.'
+                    )}
                   </span>
                 </span>
                 <Switch
                   checked={freeSettings.enabled}
                   onCheckedChange={(value) =>
-                    setFreeSettings((current) => ({ ...current, enabled: value }))
+                    setFreeSettings((current) => ({
+                      ...current,
+                      enabled: value,
+                    }))
                   }
                 />
               </label>

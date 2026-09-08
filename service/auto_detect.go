@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/bytedance/gopkg/util/gopool"
+	"gorm.io/gorm"
 )
 
 const (
@@ -343,49 +344,54 @@ func recoverModelForFingerprint(ch *model.Channel, targetModel string, updates m
 	if ch == nil || targetModel == "" {
 		return
 	}
-	if _, manuallyDisabled := ch.GetManuallyDisabledModels()[targetModel]; manuallyDisabled {
+	recovered := false
+	err := model.WithChannelOtherInfo(ch.Id, func(tx *gorm.DB, current *model.Channel) error {
+		if ch.AutoDisabledModelVersion(targetModel) == "" || ch.AutoDisabledModelVersion(targetModel) != current.AutoDisabledModelVersion(targetModel) {
+			return nil
+		}
+		if current.Status != common.ChannelStatusEnabled {
+			return nil
+		}
+		if _, manual := current.GetManuallyDisabledModels()[targetModel]; manual {
+			return nil
+		}
+		info := current.GetOtherInfo()
+		entries := autoDisabledModelInfo(info)
+		entry, ok := entries[targetModel].(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		passCount := autoDisabledModelPassCount(entry) + 1
+		if passCount < fingerprintRecoveryThreshold {
+			entry["pass_count"] = passCount
+		} else {
+			result := tx.Model(&model.Ability{}).Where("channel_id = ? AND model = ? AND enabled = ?", ch.Id, targetModel, false).Update("enabled", true)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected > 0 {
+				if err := model.RecordChannelModelEvent(tx, ch.Id, targetModel, "enable", "fingerprint_recovery", "Fingerprint recovery threshold reached", 0); err != nil {
+					return err
+				}
+				recovered = true
+			}
+			delete(entries, targetModel)
+		}
+		if len(entries) == 0 {
+			delete(info, autoDisabledModelsInfoKey)
+		} else {
+			info[autoDisabledModelsInfoKey] = entries
+		}
+		current.SetOtherInfo(info)
+		return nil
+	})
+	if err != nil {
+		logger.LogWarn(context.Background(), fmt.Sprintf("auto-detect: failed to recover channel=%d model=%s: %v", ch.Id, targetModel, err))
 		return
 	}
-
-	info := ch.GetOtherInfo()
-	autoDisabledModels := autoDisabledModelInfo(info)
-	raw, ok := autoDisabledModels[targetModel]
-	if !ok {
-		return
-	}
-
-	entry, ok := raw.(map[string]interface{})
-	if !ok {
-		entry = map[string]interface{}{}
-	}
-	passCount := autoDisabledModelPassCount(entry) + 1
-	if passCount < fingerprintRecoveryThreshold {
-		entry["pass_count"] = passCount
-		autoDisabledModels[targetModel] = entry
-		info[autoDisabledModelsInfoKey] = autoDisabledModels
-		ch.SetOtherInfo(info)
-		updates["other_info"] = ch.OtherInfo
-		return
-	}
-
-	result := model.DB.Table("abilities").
-		Where("channel_id = ? AND model = ?", ch.Id, targetModel).
-		Update("enabled", true)
-	if result.Error != nil {
-		logger.LogWarn(context.Background(), fmt.Sprintf("auto-detect: failed to re-enable ability channel=%d model=%s: %v", ch.Id, targetModel, result.Error))
-		return
-	}
-
-	delete(autoDisabledModels, targetModel)
-	if len(autoDisabledModels) == 0 {
-		delete(info, autoDisabledModelsInfoKey)
-	} else {
-		info[autoDisabledModelsInfoKey] = autoDisabledModels
-	}
-	ch.SetOtherInfo(info)
-	updates["other_info"] = ch.OtherInfo
-	model.InitChannelCache()
-	if result.RowsAffected > 0 {
+	if recovered {
+		model.InitChannelCache()
+		InvalidateChannelRoutingCache()
 		notifyFeishuChannelEnabled(ch.Id, ch.Name, targetModel)
 	}
 }

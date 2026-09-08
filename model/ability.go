@@ -159,7 +159,7 @@ func GetChannel(group string, model string, retry int, filter ChannelPickFilter)
 func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 	models_ := strings.Split(channel.Models, ",")
 	groups_ := strings.Split(channel.Group, ",")
-	manuallyDisabledModels := channel.GetManuallyDisabledModels()
+	manuallyDisabledModels := channel.GetDisabledModels()
 	abilitySet := make(map[string]struct{})
 	abilities := make([]Ability, 0, len(models_))
 	for _, model := range models_ {
@@ -205,35 +205,41 @@ func (channel *Channel) DeleteAbilities() error {
 
 // UpdateAbilities updates abilities of this channel.
 // Make sure the channel is completed before calling this function.
-func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
-	isNewTx := false
-	// 如果没有传入事务，创建新的事务
+func (channel *Channel) UpdateAbilities(tx *gorm.DB, preserveDisabled ...bool) error {
 	if tx == nil {
-		tx = DB.Begin()
-		if tx.Error != nil {
-			return tx.Error
-		}
-		isNewTx = true
-		defer func() {
-			if r := recover(); r != nil {
-				tx.Rollback()
-			}
-		}()
+		return WithChannelOtherInfo(channel.Id, func(tx *gorm.DB, current *Channel) error {
+			return current.UpdateAbilities(tx, current.Status == common.ChannelStatusEnabled)
+		})
 	}
-
+	var current Channel
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, "id = ?", channel.Id).Error; err != nil {
+		return err
+	}
+	channel = &current
+	disabledModels := channel.GetDisabledModels()
+	preserve := channel.Status == common.ChannelStatusEnabled
+	if len(preserveDisabled) > 0 {
+		preserve = preserveDisabled[0]
+	}
+	if preserve {
+		var names []string
+		if err := tx.Model(&Ability{}).Where("channel_id = ? AND enabled = ?", channel.Id, false).Distinct("model").Pluck("model", &names).Error; err != nil {
+			return err
+		}
+		for _, name := range names {
+			disabledModels[name] = struct{}{}
+		}
+	}
 	// First delete all abilities of this channel
 	err := tx.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
 	if err != nil {
-		if isNewTx {
-			tx.Rollback()
-		}
 		return err
 	}
 
 	// Then add new abilities
 	models_ := strings.Split(channel.Models, ",")
 	groups_ := strings.Split(channel.Group, ",")
-	manuallyDisabledModels := channel.GetManuallyDisabledModels()
+	manuallyDisabledModels := disabledModels
 	abilitySet := make(map[string]struct{})
 	abilities := make([]Ability, 0, len(models_))
 	for _, model := range models_ {
@@ -261,54 +267,38 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 		for _, chunk := range lo.Chunk(abilities, 50) {
 			err = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&chunk).Error
 			if err != nil {
-				if isNewTx {
-					tx.Rollback()
-				}
 				return err
 			}
 		}
-	}
-
-	// 如果是新创建的事务，需要提交
-	if isNewTx {
-		return tx.Commit().Error
 	}
 
 	return nil
 }
 
 func UpdateAbilityStatus(channelId int, status bool) error {
-	if !status {
-		return DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", false).Error
-	}
+	return WithChannelOtherInfo(channelId, func(tx *gorm.DB, channel *Channel) error {
+		return updateAbilityStatusTx(tx, channel, status)
+	})
+}
 
-	var channel Channel
-	if err := DB.First(&channel, "id = ?", channelId).Error; err != nil {
+func updateAbilityStatusTx(tx *gorm.DB, channel *Channel, status bool) error {
+	if err := tx.Model(&Ability{}).Where("channel_id = ?", channel.Id).Select("enabled").Update("enabled", status).Error; err != nil {
 		return err
 	}
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	if err := tx.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", true).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	disabled := channel.GetManuallyDisabledModels()
-	if len(disabled) > 0 {
+	disabled := channel.GetDisabledModels()
+	if status && len(disabled) > 0 {
 		modelNames := make([]string, 0, len(disabled))
 		for modelName := range disabled {
 			modelNames = append(modelNames, modelName)
 		}
 		if err := tx.Model(&Ability{}).
-			Where("channel_id = ? AND model IN ?", channelId, modelNames).
+			Where("channel_id = ? AND model IN ?", channel.Id, modelNames).
 			Select("enabled").
 			Update("enabled", false).Error; err != nil {
-			tx.Rollback()
 			return err
 		}
 	}
-	return tx.Commit().Error
+	return nil
 }
 
 func UpdateAbilityStatusByTag(tag string, status bool) error {
@@ -350,20 +340,6 @@ func FixAbility() (int, int, error) {
 	}
 	defer fixLock.Unlock()
 
-	// truncate abilities table
-	if common.UsingSQLite {
-		err := DB.Exec("DELETE FROM abilities").Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
-			return 0, 0, err
-		}
-	} else {
-		err := DB.Exec("TRUNCATE TABLE abilities").Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Truncate abilities failed: %s", err.Error()))
-			return 0, 0, err
-		}
-	}
 	var channels []*Channel
 	// Find all channels
 	err := DB.Model(&Channel{}).Find(&channels).Error
@@ -375,25 +351,19 @@ func FixAbility() (int, int, error) {
 	}
 	successCount := 0
 	failCount := 0
-	for _, chunk := range lo.Chunk(channels, 50) {
-		ids := lo.Map(chunk, func(c *Channel, _ int) int { return c.Id })
-		// Delete all abilities of this channel
-		err = DB.Where("channel_id IN ?", ids).Delete(&Ability{}).Error
+	// Rebuild one locked channel at a time so routing and disable metadata stay
+	// consistent, including historical disabled abilities with missing reasons.
+	for _, channel := range channels {
+		err = channel.UpdateAbilities(nil)
 		if err != nil {
-			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
-			failCount += len(chunk)
-			continue
+			common.SysLog(fmt.Sprintf("Add abilities for channel %d failed: %s", channel.Id, err.Error()))
+			failCount++
+		} else {
+			successCount++
 		}
-		// Then add new abilities
-		for _, channel := range chunk {
-			err = channel.AddAbilities(nil)
-			if err != nil {
-				common.SysLog(fmt.Sprintf("Add abilities for channel %d failed: %s", channel.Id, err.Error()))
-				failCount++
-			} else {
-				successCount++
-			}
-		}
+	}
+	if err := DB.Where("channel_id NOT IN (?)", DB.Model(&Channel{}).Select("id")).Delete(&Ability{}).Error; err != nil {
+		return successCount, failCount, err
 	}
 	InitChannelCache()
 	return successCount, failCount, nil

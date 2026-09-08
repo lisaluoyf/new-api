@@ -1,5 +1,18 @@
 {
   "translation": {
+    "Model status history": "История состояния модели",
+    "No recorded status history": "История состояния пока не записана",
+    "Load more history": "Загрузить более ранние записи",
+    "Disable reason missing": "Причина отключения отсутствует",
+    "Historical disable reason missing": "Историческая причина отключения отсутствует",
+    "Manual operation": "Ручная операция",
+    "Health probe": "Проверка доступности",
+    "Recovery probe": "Проверка восстановления",
+    "Fingerprint recovery": "Восстановление по отпечатку",
+    "Manually disabled": "Отключено вручную",
+    "Manually enabled": "Включено вручную",
+    "Recovery probe passed": "Проверка восстановления пройдена",
+    "Fingerprint recovery threshold reached": "Достигнут порог восстановления по отпечатку",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

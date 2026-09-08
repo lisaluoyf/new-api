@@ -306,6 +306,7 @@ func SetApiRouter(router *gin.Engine) {
 			adminRoute.PUT("/free-model/channels/:channel_id/route-price", controller.SaveFreeModelRoutePrice)
 			adminRoute.PUT("/free-model/channels/:channel_id/config", controller.SaveFreeModelMember)
 			adminRoute.GET("/channel-data/audit", controller.GetChannelDataAudit)
+			adminRoute.GET("/channel-data/status-history", controller.GetChannelModelEvents)
 			adminRoute.GET("/channel-data/audit-batch", controller.GetChannelDataAuditBatch)
 			adminRoute.POST("/channel-data/toggle", controller.ToggleChannelStatus)
 			adminRoute.POST("/channel-data/refresh-pricing", controller.RefreshModelPricing)

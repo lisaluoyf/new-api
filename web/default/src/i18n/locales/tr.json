@@ -1,5 +1,18 @@
 {
   "translation": {
+    "Model status history": "Model durum geçmişi",
+    "No recorded status history": "Kaydedilmiş durum geçmişi yok",
+    "Load more history": "Önceki kayıtları yükle",
+    "Disable reason missing": "Devre dışı bırakma nedeni eksik",
+    "Historical disable reason missing": "Geçmiş devre dışı bırakma nedeni eksik",
+    "Manual operation": "Manuel işlem",
+    "Health probe": "Sağlık kontrolü",
+    "Recovery probe": "Kurtarma kontrolü",
+    "Fingerprint recovery": "Parmak iziyle kurtarma",
+    "Manually disabled": "Manuel devre dışı bırakıldı",
+    "Manually enabled": "Manuel etkinleştirildi",
+    "Recovery probe passed": "Kurtarma kontrolü başarılı",
+    "Fingerprint recovery threshold reached": "Parmak izi kurtarma eşiğine ulaşıldı",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

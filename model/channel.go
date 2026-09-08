@@ -386,14 +386,14 @@ func (channel *Channel) GetAutoBan() bool {
 }
 
 func (channel *Channel) Save() error {
-	return DB.Save(channel).Error
+	return DB.Omit("other_info").Save(channel).Error
 }
 
 func (channel *Channel) SaveWithoutKey() error {
 	if channel.Id == 0 {
 		return errors.New("channel ID is 0")
 	}
-	return DB.Omit("key").Save(channel).Error
+	return DB.Omit("key", "other_info").Save(channel).Error
 }
 
 func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool, sortOptions ...ChannelSortOptions) ([]*Channel, error) {
@@ -631,14 +631,16 @@ func (channel *Channel) Update() error {
 			}
 		}
 	}
-	var err error
-	err = DB.Model(channel).Updates(channel).Error
-	if err != nil {
-		return err
-	}
-	DB.Model(channel).First(channel, "id = ?", channel.Id)
-	err = channel.UpdateAbilities(nil)
-	return err
+	return WithChannelOtherInfo(channel.Id, func(tx *gorm.DB, current *Channel) error {
+		preserveDisabled := current.Status == common.ChannelStatusEnabled && channel.Status == common.ChannelStatusEnabled
+		if err := tx.Model(channel).Omit("other_info").Updates(channel).Error; err != nil {
+			return err
+		}
+		if err := tx.First(channel, "id = ?", channel.Id).Error; err != nil {
+			return err
+		}
+		return channel.UpdateAbilities(tx, preserveDisabled)
+	})
 }
 
 func (channel *Channel) UpdateResponseTime(responseTime int64) {
@@ -772,48 +774,41 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 		}
 	}
 
-	shouldUpdateAbilities := false
-	defer func() {
-		if shouldUpdateAbilities {
-			err := UpdateAbilityStatus(channelId, status == common.ChannelStatusEnabled)
-			if err != nil {
-				common.SysLog(fmt.Sprintf("failed to update ability status: channel_id=%d, error=%v", channelId, err))
-			}
-		}
-	}()
-	channel, err := GetChannelById(channelId, true)
-	if err != nil {
-		return false
-	} else {
+	changed := false
+	err := WithChannelOtherInfo(channelId, func(tx *gorm.DB, channel *Channel) error {
 		if channel.Status == status {
-			return false
+			return nil
 		}
-
+		beforeStatus := channel.Status
 		if channel.ChannelInfo.IsMultiKey {
-			beforeStatus := channel.Status
 			// Protect map writes with the same per-channel lock used by readers
 			pollingLock := GetChannelPollingLock(channelId)
 			pollingLock.Lock()
 			handlerMultiKeyUpdate(channel, usingKey, status, reason)
 			pollingLock.Unlock()
-			if beforeStatus != channel.Status {
-				shouldUpdateAbilities = true
-			}
 		} else {
 			info := channel.GetOtherInfo()
 			info["status_reason"] = reason
 			info["status_time"] = common.GetTimestamp()
 			channel.SetOtherInfo(info)
 			channel.Status = status
-			shouldUpdateAbilities = true
 		}
-		err = channel.SaveWithoutKey()
-		if err != nil {
-			common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channel.Id, status, err))
-			return false
+		if err := tx.Model(channel).Select("status", "channel_info").Updates(channel).Error; err != nil {
+			return err
 		}
+		if beforeStatus != channel.Status {
+			if err := updateAbilityStatusTx(tx, channel, channel.Status == common.ChannelStatusEnabled); err != nil {
+				return err
+			}
+		}
+		changed = true
+		return nil
+	})
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channelId, status, err))
+		return false
 	}
-	return true
+	return changed
 }
 
 func EnableChannelByTag(tag string) error {

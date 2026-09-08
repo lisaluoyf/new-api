@@ -1,5 +1,18 @@
 {
   "translation": {
+    "Model status history": "Modellstatusverlauf",
+    "No recorded status history": "Kein aufgezeichneter Statusverlauf",
+    "Load more history": "Ältere Einträge laden",
+    "Disable reason missing": "Deaktivierungsgrund fehlt",
+    "Historical disable reason missing": "Historischer Deaktivierungsgrund fehlt",
+    "Manual operation": "Manuelle Aktion",
+    "Health probe": "Zustandsprüfung",
+    "Recovery probe": "Wiederherstellungsprüfung",
+    "Fingerprint recovery": "Fingerprint-Wiederherstellung",
+    "Manually disabled": "Manuell deaktiviert",
+    "Manually enabled": "Manuell aktiviert",
+    "Recovery probe passed": "Wiederherstellungsprüfung bestanden",
+    "Fingerprint recovery threshold reached": "Fingerprint-Wiederherstellungsschwelle erreicht",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

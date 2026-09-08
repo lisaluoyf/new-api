@@ -1,5 +1,18 @@
 {
   "translation": {
+    "Model status history": "Model status history",
+    "No recorded status history": "No recorded status history",
+    "Load more history": "Load more history",
+    "Disable reason missing": "Disable reason missing",
+    "Historical disable reason missing": "Historical disable reason missing",
+    "Manual operation": "Manual operation",
+    "Health probe": "Health probe",
+    "Recovery probe": "Recovery probe",
+    "Fingerprint recovery": "Fingerprint recovery",
+    "Manually disabled": "Manually disabled",
+    "Manually enabled": "Manually enabled",
+    "Recovery probe passed": "Recovery probe passed",
+    "Fingerprint recovery threshold reached": "Fingerprint recovery threshold reached",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

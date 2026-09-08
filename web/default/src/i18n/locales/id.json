@@ -1,5 +1,18 @@
 {
   "translation": {
+    "Model status history": "Riwayat status model",
+    "No recorded status history": "Belum ada riwayat status tercatat",
+    "Load more history": "Muat riwayat sebelumnya",
+    "Disable reason missing": "Alasan penonaktifan tidak tersedia",
+    "Historical disable reason missing": "Alasan penonaktifan sebelumnya tidak tersedia",
+    "Manual operation": "Operasi manual",
+    "Health probe": "Probe kesehatan",
+    "Recovery probe": "Probe pemulihan",
+    "Fingerprint recovery": "Pemulihan sidik jari",
+    "Manually disabled": "Dinonaktifkan secara manual",
+    "Manually enabled": "Diaktifkan secara manual",
+    "Recovery probe passed": "Probe pemulihan berhasil",
+    "Fingerprint recovery threshold reached": "Ambang pemulihan sidik jari tercapai",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

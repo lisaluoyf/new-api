@@ -294,6 +294,7 @@ func migrateDB() error {
 		&Channel{},
 		&FreeModelMember{},
 		&ChannelDetectLog{},
+		&ChannelModelEvent{},
 		&ChannelModelPricing{},
 		&PublicModelPrice{},
 		&Token{},
@@ -374,6 +375,7 @@ func migrateDBFast() error {
 	}{
 		{&Channel{}, "Channel"},
 		{&ChannelDetectLog{}, "ChannelDetectLog"},
+		{&ChannelModelEvent{}, "ChannelModelEvent"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
 		{&PasskeyCredential{}, "PasskeyCredential"},

@@ -1,5 +1,18 @@
 {
   "translation": {
+    "Model status history": "Lịch sử trạng thái mô hình",
+    "No recorded status history": "Chưa có lịch sử trạng thái được ghi lại",
+    "Load more history": "Tải bản ghi cũ hơn",
+    "Disable reason missing": "Thiếu lý do vô hiệu hóa",
+    "Historical disable reason missing": "Thiếu lý do vô hiệu hóa trước đây",
+    "Manual operation": "Thao tác thủ công",
+    "Health probe": "Kiểm tra tình trạng",
+    "Recovery probe": "Kiểm tra khôi phục",
+    "Fingerprint recovery": "Khôi phục bằng dấu vân tay",
+    "Manually disabled": "Đã vô hiệu hóa thủ công",
+    "Manually enabled": "Đã bật thủ công",
+    "Recovery probe passed": "Kiểm tra khôi phục thành công",
+    "Fingerprint recovery threshold reached": "Đạt ngưỡng khôi phục bằng dấu vân tay",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

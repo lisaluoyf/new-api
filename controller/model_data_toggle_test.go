@@ -23,7 +23,7 @@ func setupModelDataToggleTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.Channel{}, &model.Ability{}); err != nil {
+	if err := db.AutoMigrate(&model.Channel{}, &model.Ability{}, &model.ChannelModelEvent{}); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
 	model.DB = db

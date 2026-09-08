@@ -1,5 +1,18 @@
 {
   "translation": {
+    "Model status history": "모델 상태 기록",
+    "No recorded status history": "기록된 상태 이력이 없습니다",
+    "Load more history": "이전 기록 불러오기",
+    "Disable reason missing": "비활성화 사유 누락",
+    "Historical disable reason missing": "이전 비활성화 사유가 없습니다",
+    "Manual operation": "수동 작업",
+    "Health probe": "상태 확인 프로브",
+    "Recovery probe": "복구 프로브",
+    "Fingerprint recovery": "핑거프린트 복구",
+    "Manually disabled": "수동 비활성화",
+    "Manually enabled": "수동 활성화",
+    "Recovery probe passed": "복구 프로브 통과",
+    "Fingerprint recovery threshold reached": "핑거프린트 복구 임계값 도달",
     "360": "360",
     "1000": "1000",
     "10000": "10000",
