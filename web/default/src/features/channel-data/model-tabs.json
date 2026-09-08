@@ -41,6 +41,11 @@
     "label": "DeepSeek Vision",
     "accent": "#a78bfa"
   },
+  {
+    "model_id": "deepseek-v3.2",
+    "label": "DeepSeek V3.2",
+    "accent": "#a78bfa"
+  },
   { "model_id": "minimax-m3", "label": "MiniMax M3", "accent": "#f97316" },
   {
     "model_id": "kimi-k2.7-code",
