@@ -496,9 +496,9 @@ export interface SignupGiftInfo {
   enabled: boolean
   benefit_type: 'wallet_credit' | 'trial_subscription' | 'none'
   trial_credit_usd?: number
-  offer_variant?: 'standard_30' | 'standard_50' | 'legacy_inviter_100'
+  offer_variant?: 'standard_20' | 'standard_30' | 'standard_50' | 'legacy_inviter_100'
   share_trial_credit_usd?: number
-  share_offer_variant?: 'standard_30' | 'standard_50' | 'legacy_inviter_100'
+  share_offer_variant?: 'standard_20' | 'standard_30' | 'standard_50' | 'legacy_inviter_100'
   referral_gpt_reward_enabled?: boolean
   referral_gpt_reward_usd?: number
   referral_gpt_min_topup_usd?: number
