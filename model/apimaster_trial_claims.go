@@ -20,43 +20,56 @@ func protectedTrialClaimPredicate(tableAlias string) string {
 // ReleaseUnclaimedTelegramTrialReservation releases a Telegram identity that
 // was checked but never used to issue a GPT Trial. Once a claim is granted, the
 // reservation must remain permanent and this function is not called.
-func ReleaseUnclaimedTelegramTrialReservation(userID int) error {
+func ReleaseUnclaimedTelegramTrialReservation(userID int, telegramID string) error {
 	if APIMASTER_PG_DB == nil {
 		return nil
 	}
 	return APIMASTER_PG_DB.Exec(fmt.Sprintf(`
 		DELETE FROM trial_social_identities
 		WHERE provider = 'telegram'
-		  AND provider_user_id = ?
+		  AND provider_user_id IN (?, ?)
 		  AND NOT EXISTS (
 			SELECT 1
 			FROM trial_claims
 			WHERE trial_claims.apimaster_user_id = trial_social_identities.apimaster_user_id
 			  AND %s
 		  )
-	`, protectedTrialClaimPredicate("trial_claims")), "newapi:"+fmt.Sprint(userID)).Error
+	`, protectedTrialClaimPredicate("trial_claims")), "newapi:"+fmt.Sprint(userID), telegramID).Error
 }
 
-// HasGrantedTrialClaim reports whether the New API user has already received,
-// or is currently receiving, the APIMaster GPT Trial. In-flight claims must be
-// protected from unlink/release races just like granted claims. If
-// APIMASTER_PG_DSN is configured, query failures are returned so callers do not
-// accidentally release a used social identity.
-func HasGrantedTrialClaim(userID int) (bool, error) {
+// HasProtectedTelegramTrialClaim reports whether this New API user has already
+// received, or is currently receiving, the APIMaster GPT Trial. The immutable
+// newapi_user_id covers completed claims. During the short claiming state that
+// ID has not necessarily been persisted yet, so the current real Telegram ID
+// and the legacy per-user surrogate both protect the reservation from unlink
+// races.
+func HasProtectedTelegramTrialClaim(userID int, telegramID string) (bool, error) {
 	if APIMASTER_PG_DB == nil {
 		return false, nil
 	}
 	var count int64
 	err := APIMASTER_PG_DB.Raw(fmt.Sprintf(`
 		SELECT COUNT(*)
-		FROM trial_claims
-		JOIN trial_social_identities
-		  ON trial_social_identities.apimaster_user_id = trial_claims.apimaster_user_id
-		WHERE trial_social_identities.provider = 'telegram'
-		  AND trial_social_identities.provider_user_id = ?
+		FROM trial_claims tc
+		WHERE (
+			 tc.newapi_user_id = ?
+			 OR EXISTS (
+				SELECT 1
+				FROM trial_social_identities tsi
+				WHERE tsi.apimaster_user_id = tc.apimaster_user_id
+				  AND tsi.provider = 'telegram'
+				  AND tsi.provider_user_id IN (?, ?)
+			 )
+		)
 		  AND %s
-	`, protectedTrialClaimPredicate("trial_claims")), "newapi:"+fmt.Sprint(userID)).Scan(&count).Error
+	`, protectedTrialClaimPredicate("tc")), userID, telegramID, "newapi:"+fmt.Sprint(userID)).Scan(&count).Error
 	return count > 0, err
+}
+
+// HasGrantedTrialClaim retains the public helper for callers that only need
+// the durable completed/in-flight New API user linkage.
+func HasGrantedTrialClaim(userID int) (bool, error) {
+	return HasProtectedTelegramTrialClaim(userID, "")
 }
 
 // EnrichUsersTrialClaimStatus batch-loads each user's GPT trial claim_status

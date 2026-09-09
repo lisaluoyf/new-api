@@ -154,7 +154,7 @@ func TestReleaseUnclaimedTelegramTrialReservationPreservesGrantedClaim(t *testin
 	setupApimasterTrialTestDB(t)
 	require.NoError(t, APIMASTER_PG_DB.Exec(`
 		INSERT INTO trial_social_identities (apimaster_user_id, provider, provider_user_id)
-		VALUES ('user-1', 'telegram', 'newapi:1'), ('user-2', 'telegram', 'newapi:2'),
+		VALUES ('user-1', 'telegram', '10001'), ('user-2', 'telegram', 'newapi:2'),
 		       ('user-3', 'telegram', 'newapi:3'), ('user-4', 'telegram', 'newapi:4')
 	`).Error)
 	require.NoError(t, APIMASTER_PG_DB.Exec(`
@@ -164,28 +164,28 @@ func TestReleaseUnclaimedTelegramTrialReservationPreservesGrantedClaim(t *testin
 		       ('user-4', NULL, 'claiming', datetime('now', '-10 minutes'))
 	`).Error)
 
-	claimed, err := HasGrantedTrialClaim(1)
+	claimed, err := HasProtectedTelegramTrialClaim(1, "10001")
 	require.NoError(t, err)
 	require.False(t, claimed)
-	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(1))
+	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(1, "10001"))
 
-	claimed, err = HasGrantedTrialClaim(2)
+	claimed, err = HasProtectedTelegramTrialClaim(2, "10002")
 	require.NoError(t, err)
 	require.True(t, claimed)
-	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(2))
-	claimed, err = HasGrantedTrialClaim(3)
+	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(2, "10002"))
+	claimed, err = HasProtectedTelegramTrialClaim(3, "10003")
 	require.NoError(t, err)
 	require.True(t, claimed)
-	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(3))
-	claimed, err = HasGrantedTrialClaim(4)
+	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(3, "10003"))
+	claimed, err = HasProtectedTelegramTrialClaim(4, "10004")
 	require.NoError(t, err)
 	require.False(t, claimed)
-	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(4))
+	require.NoError(t, ReleaseUnclaimedTelegramTrialReservation(4, "10004"))
 
 	var count int64
 	require.NoError(t, APIMASTER_PG_DB.Raw(`
 		SELECT COUNT(*) FROM trial_social_identities
-		WHERE provider = 'telegram' AND provider_user_id = 'newapi:1'
+		WHERE provider = 'telegram' AND provider_user_id = '10001'
 	`).Scan(&count).Error)
 	require.Zero(t, count)
 	require.NoError(t, APIMASTER_PG_DB.Raw(`
@@ -193,6 +193,14 @@ func TestReleaseUnclaimedTelegramTrialReservationPreservesGrantedClaim(t *testin
 		WHERE provider = 'telegram' AND provider_user_id = 'newapi:2'
 	`).Scan(&count).Error)
 	require.EqualValues(t, 1, count)
+	require.NoError(t, APIMASTER_PG_DB.Exec(`
+		UPDATE trial_social_identities
+		SET provider_user_id = '10002'
+		WHERE apimaster_user_id = 'user-2'
+	`).Error)
+	claimed, err = HasProtectedTelegramTrialClaim(2, "10002")
+	require.NoError(t, err)
+	require.True(t, claimed)
 	require.NoError(t, APIMASTER_PG_DB.Raw(`
 		SELECT COUNT(*) FROM trial_social_identities
 		WHERE provider = 'telegram' AND provider_user_id = 'newapi:3'

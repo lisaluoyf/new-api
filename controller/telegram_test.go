@@ -57,6 +57,7 @@ func setupTelegramWebhookTest(t *testing.T) {
 	oldWebhookSecret := common.TelegramWebhookSecret
 	oldMiaWebhookURL := common.MiaTelegramWebhookURL
 	oldMiaServiceKey := common.MiaInternalServiceKey
+	oldApimasterInternalSyncKey := common.ApimasterInternalSyncKey
 	oldAPIBaseURL := telegramAPIBaseURL
 	oldHTTPClient := telegramHTTPClient
 	oldMiaHTTPClient := miaTelegramHTTPClient
@@ -73,6 +74,7 @@ func setupTelegramWebhookTest(t *testing.T) {
 	common.TelegramWebhookSecret = "test-webhook-secret-0123456789abcd"
 	common.MiaTelegramWebhookURL = ""
 	common.MiaInternalServiceKey = ""
+	common.ApimasterInternalSyncKey = "test-apimaster-internal-sync-key"
 
 	t.Cleanup(func() {
 		model.DB = oldDB
@@ -83,6 +85,7 @@ func setupTelegramWebhookTest(t *testing.T) {
 		common.TelegramWebhookSecret = oldWebhookSecret
 		common.MiaTelegramWebhookURL = oldMiaWebhookURL
 		common.MiaInternalServiceKey = oldMiaServiceKey
+		common.ApimasterInternalSyncKey = oldApimasterInternalSyncKey
 		telegramAPIBaseURL = oldAPIBaseURL
 		telegramHTTPClient = oldHTTPClient
 		miaTelegramHTTPClient = oldMiaHTTPClient
@@ -311,6 +314,61 @@ func TestTelegramStatusDoesNotTrustLegacyUserTelegramID(t *testing.T) {
 	require.True(t, response.Success)
 	require.False(t, response.Data.Identified)
 	require.Equal(t, "not_started", response.Data.Status)
+}
+
+func TestTelegramStatusReturnsIdentityOnlyToApimasterInternalSync(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupTelegramWebhookTest(t)
+	require.NoError(t, model.DB.Create(&model.User{
+		Id: 1, Username: "telegram-status-user", AffCode: "telegram-status-aff",
+	}).Error)
+	telegramID := "10001"
+	require.NoError(t, model.DB.Create(&model.TelegramGroupVerification{
+		UserID:          1,
+		TokenHash:       strings.Repeat("a", 64),
+		TelegramID:      &telegramID,
+		TokenExpiresAt:  time.Now().Add(time.Hour),
+		TokenConsumedAt: ptrTime(time.Now()),
+		IdentifiedAt:    ptrTime(time.Now()),
+	}).Error)
+
+	telegramServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/bottest-token/getChatMember", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"status":"member"}}`))
+	}))
+	defer telegramServer.Close()
+	telegramAPIBaseURL = telegramServer.URL
+	telegramHTTPClient = telegramServer.Client()
+
+	status := func(internal bool) map[string]any {
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/user/telegram-verification/status", nil)
+		if internal {
+			req.Header.Set("X-Apimaster-Internal-Key", common.ApimasterInternalSyncKey)
+		}
+		context, _ := gin.CreateTestContext(recorder)
+		context.Request = req
+		context.Set("id", 1)
+		TelegramGroupVerificationStatus(context)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		var response struct {
+			Success bool           `json:"success"`
+			Data    map[string]any `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		require.True(t, response.Success)
+		return response.Data
+	}
+
+	public := status(false)
+	require.NotContains(t, public, "telegram_id")
+	internal := status(true)
+	require.Equal(t, telegramID, internal["telegram_id"])
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
 }
 
 func TestUnbindTelegramGroupVerificationRequiresAuth(t *testing.T) {

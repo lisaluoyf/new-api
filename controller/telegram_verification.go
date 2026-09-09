@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
@@ -193,10 +194,27 @@ func UnbindTelegramGroupVerification(c *gin.Context) {
 		return
 	}
 
-	claimed, err := model.HasGrantedTrialClaim(userID)
+	telegramID := ""
+	verification, verificationErr := model.GetTelegramGroupVerificationByUserID(userID)
+	if verificationErr != nil && !errors.Is(verificationErr, gorm.ErrRecordNotFound) {
+		common.SysError("failed to load Telegram verification before unlink: " + verificationErr.Error())
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Unable to unlink Telegram right now"})
+		return
+	}
+	if verificationErr == nil && verification.TelegramID != nil {
+		telegramID = strings.TrimSpace(*verification.TelegramID)
+	}
+	claimed, err := model.HasProtectedTelegramTrialClaim(userID, telegramID)
 	if err != nil {
 		common.SysError("failed to check GPT Trial status before Telegram unlink: " + err.Error())
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Unable to unlink Telegram right now"})
+		return
+	}
+	if claimed {
+		c.JSON(http.StatusConflict, gin.H{
+			"success": false,
+			"message": "Telegram community verification is permanently retained after a GPT Trial has been claimed",
+		})
 		return
 	}
 	if err := model.ClearTelegramGroupVerification(userID, claimed); err != nil {
@@ -367,12 +385,19 @@ func telegramGroupStatus(c *gin.Context) {
 	if err := model.MarkTelegramGroupVerified(userID, joined, time.Now()); err != nil {
 		common.SysError("failed to persist Telegram group verification status: " + err.Error())
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+	data := gin.H{
 		"configured": true,
 		"identified": true,
 		"joined":     joined,
 		"status":     status,
 		"group_url":  common.TelegramGroupURL,
 		"checked_at": time.Now().UTC().Format(time.RFC3339),
-	}})
+	}
+	// The raw Telegram ID is required to reserve a Trial identity across
+	// APIMaster accounts. It is an internal-only field and is never returned to
+	// browser requests.
+	if middleware.IsApimasterInternalSyncRequest(c) {
+		data["telegram_id"] = *verification.TelegramID
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }

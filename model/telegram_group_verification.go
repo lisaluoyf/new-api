@@ -171,6 +171,7 @@ func ConsumeTelegramVerification(token, telegramID string, now time.Time) (*Tele
 // APIMaster login bindings and new-api's Telegram account mirror are separate
 // identity data and must not be changed by a community action.
 func ClearTelegramGroupVerification(userID int, preserveTrialReservation bool) error {
+	telegramID := ""
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var verification TelegramGroupVerification
 		query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -178,6 +179,9 @@ func ClearTelegramGroupVerification(userID int, preserveTrialReservation bool) e
 			First(&verification)
 		if query.Error != nil && !errors.Is(query.Error, gorm.ErrRecordNotFound) {
 			return query.Error
+		}
+		if verification.TelegramID != nil {
+			telegramID = *verification.TelegramID
 		}
 
 		if err := tx.Where("user_id = ?", userID).Delete(&TelegramGroupVerification{}).Error; err != nil {
@@ -189,7 +193,7 @@ func ClearTelegramGroupVerification(userID int, preserveTrialReservation bool) e
 		return err
 	}
 	if !preserveTrialReservation {
-		if err := ReleaseUnclaimedTelegramTrialReservation(userID); err != nil {
+		if err := ReleaseUnclaimedTelegramTrialReservation(userID, telegramID); err != nil {
 			return err
 		}
 	}
