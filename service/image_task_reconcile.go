@@ -105,6 +105,11 @@ func runImageTaskReconcile(job imageReconcileJob) {
 }
 
 func pollUpstreamImageTaskStatus(baseURL, apiKey, taskID string, deadline time.Time) (status string, imageURL string, failReason string) {
+	poll := pollUpstreamImageTaskResult(baseURL, apiKey, taskID, deadline)
+	return poll.Status, poll.ImageURL, poll.DisplayFailReason()
+}
+
+func pollUpstreamImageTaskResult(baseURL, apiKey, taskID string, deadline time.Time) ImageTaskPollResult {
 	for time.Now().Before(deadline) {
 		poll, err := fetchImageTaskStatusOnce(baseURL, apiKey, taskID)
 		if err != nil {
@@ -114,11 +119,11 @@ func pollUpstreamImageTaskStatus(baseURL, apiKey, taskID string, deadline time.T
 		}
 		switch poll.Status {
 		case "failed", "error", "cancelled", "succeeded", "success", "completed":
-			return poll.Status, poll.ImageURL, poll.DisplayFailReason()
+			return poll
 		}
 		time.Sleep(4 * time.Second)
 	}
-	return "timeout", "", ""
+	return ImageTaskPollResult{Status: "timeout"}
 }
 
 // fetchImageTaskStatusOnce issues a single GET /v1/tasks/{taskID} against baseURL and
@@ -180,6 +185,7 @@ func fetchImageTaskStatusOnce(baseURL, apiKey, taskID string) (ImageTaskPollResu
 			return ImageTaskPollResult{
 				Status:       result.Data.Status,
 				ImageURL:     url,
+				ImageURLs:    extractImageTaskURLs(result.Data.URL, result.Data.Result.Images),
 				UpstreamCost: result.Data.Cost,
 				CreditsCost:  result.Data.CreditsCost,
 			}, nil
@@ -188,8 +194,9 @@ func fetchImageTaskStatusOnce(baseURL, apiKey, taskID string) (ImageTaskPollResu
 			// Normalize to a data URI so callers can treat it exactly like a URL —
 			// CacheImageLocally/RewriteImageResponseBody already no-op on "data:" prefixes.
 			return ImageTaskPollResult{
-				Status:   result.Data.Status,
-				ImageURL: "data:image/png;base64," + result.Data.B64,
+				Status:    result.Data.Status,
+				ImageURL:  "data:image/png;base64," + result.Data.B64,
+				ImageURLs: []string{"data:image/png;base64," + result.Data.B64},
 			}, nil
 		}
 		return ImageTaskPollResult{Status: result.Data.Status}, nil
@@ -203,23 +210,33 @@ type imageTaskPollImage struct {
 }
 
 func extractImageTaskURL(flatURL string, images []imageTaskPollImage) string {
+	urls := extractImageTaskURLs(flatURL, images)
+	if len(urls) > 0 {
+		return urls[0]
+	}
+	return ""
+}
+
+func extractImageTaskURLs(flatURL string, images []imageTaskPollImage) []string {
 	if flatURL != "" {
-		return flatURL
+		return []string{flatURL}
 	}
-	if len(images) == 0 {
-		return ""
-	}
-	switch v := images[0].URL.(type) {
-	case string:
-		return v
-	case []any:
-		if len(v) > 0 {
-			if s, ok := v[0].(string); ok {
-				return s
+	var urls []string
+	for _, image := range images {
+		switch v := image.URL.(type) {
+		case string:
+			if v != "" {
+				urls = append(urls, v)
+			}
+		case []any:
+			for _, value := range v {
+				if s, ok := value.(string); ok && s != "" {
+					urls = append(urls, s)
+				}
 			}
 		}
 	}
-	return ""
+	return urls
 }
 
 func finalizeImageReconcileSuccess(job imageReconcileJob) {

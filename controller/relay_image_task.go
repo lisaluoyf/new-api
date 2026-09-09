@@ -139,7 +139,7 @@ func serveTrackedImageTask(c *gin.Context, taskID string) bool {
 		if cachedURL := service.EnsureCachedTaskImageResultURL(task); cachedURL != "" {
 			resultURL = cachedURL
 		}
-		c.JSON(http.StatusOK, buildImageTaskStatusResponse("succeeded", resultURL))
+		c.JSON(http.StatusOK, buildImageTaskStatusResponse("succeeded", resultURL, task.PrivateData.ImageResultURLs...))
 		return true
 	case model.TaskStatusFailure:
 		service.RefundImageAsyncTaskQuota(c.Request.Context(), task, task.FailReason)
@@ -194,6 +194,9 @@ func serveTrackedImageTask(c *gin.Context, taskID string) bool {
 		}
 		cachedURL := service.CacheImageLocallyWithHeaders(imageURL, cacheHeaders)
 		task.PrivateData.ResultURL = cachedURL
+		for _, url := range winner.ImageURLs {
+			task.PrivateData.ImageResultURLs = append(task.PrivateData.ImageResultURLs, service.CacheImageLocallyWithHeaders(url, cacheHeaders))
+		}
 		if winner.ChannelID != task.ChannelId {
 			task.ChannelId = winner.ChannelID
 			task.PrivateData.UpstreamTaskID = winner.TaskID
@@ -227,7 +230,7 @@ func serveTrackedImageTask(c *gin.Context, taskID string) bool {
 				logger.LogWarn(c.Request.Context(), fmt.Sprintf("failed to backfill real duration for task %s: %v", task.TaskID, uerr))
 			}
 		}
-		c.JSON(http.StatusOK, buildImageTaskStatusResponse("succeeded", task.GetResultURL()))
+		c.JSON(http.StatusOK, buildImageTaskStatusResponse("succeeded", task.GetResultURL(), task.PrivateData.ImageResultURLs...))
 	case "failed", "error", "cancelled":
 		if failReason == "" {
 			failReason = "upstream task failed"
@@ -263,10 +266,17 @@ func serveTrackedImageTask(c *gin.Context, taskID string) bool {
 // buildImageTaskStatusResponse mirrors the upstream task-poll JSON shape
 // ({"data":{"status":...,"result":{"images":[{"url":...}]}}}) so existing clients
 // (which already parse that shape from the legacy proxy path) don't need to change.
-func buildImageTaskStatusResponse(status, imageURL string) gin.H {
+func buildImageTaskStatusResponse(status, imageURL string, imageURLs ...string) gin.H {
 	data := gin.H{"status": status}
-	if imageURL != "" {
-		data["result"] = gin.H{"images": []gin.H{{"url": imageURL}}}
+	if len(imageURLs) == 0 && imageURL != "" {
+		imageURLs = []string{imageURL}
+	}
+	if len(imageURLs) > 0 {
+		images := make([]gin.H, 0, len(imageURLs))
+		for _, url := range imageURLs {
+			images = append(images, gin.H{"url": url})
+		}
+		data["result"] = gin.H{"images": images}
 	}
 	return gin.H{"data": data}
 }

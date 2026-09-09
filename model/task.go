@@ -98,10 +98,11 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
-	Key              string `json:"key,omitempty"`
-	UpstreamTaskID   string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
-	ResultURL        string `json:"result_url,omitempty"`       // 返回给客户端的视频 URL（通常为代理地址）
-	UpstreamVideoURL string `json:"upstream_video_url,omitempty"`
+	ImageResultURLs  []string `json:"image_result_urls,omitempty"`
+	Key              string   `json:"key,omitempty"`
+	UpstreamTaskID   string   `json:"upstream_task_id,omitempty"` // 上游真实 task ID
+	ResultURL        string   `json:"result_url,omitempty"`       // 返回给客户端的视频 URL（通常为代理地址）
+	UpstreamVideoURL string   `json:"upstream_video_url,omitempty"`
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）
 	BillingSource  string              `json:"billing_source,omitempty"`  // "wallet" 或 "subscription"
 	SubscriptionId int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
@@ -164,10 +165,14 @@ func (p *TaskPrivateData) Scan(val interface{}) error {
 }
 
 func (p TaskPrivateData) Value() (driver.Value, error) {
-	if (p == TaskPrivateData{}) {
+	data, err := common.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+	if string(data) == "{}" {
 		return nil, nil
 	}
-	return common.Marshal(p)
+	return data, nil
 }
 
 // SyncTaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段

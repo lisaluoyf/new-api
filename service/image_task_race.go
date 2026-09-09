@@ -52,6 +52,7 @@ func rewriteImageRequestModelForChannel(requestBody []byte, channel *model.Chann
 // ImageTaskTarget is one upstream channel candidate (the primary submission or
 // a hedge submitted to a second channel) being raced for an image task result.
 type ImageTaskTarget struct {
+	ImageURLs []string
 	ChannelID int
 	BaseURL   string
 	APIKey    string
@@ -125,8 +126,9 @@ func RaceImageTask(targets []ImageTaskTarget, deadline time.Time) (won ImageTask
 	for _, t := range targets {
 		t := t
 		go func() {
-			status, url, _ := pollUpstreamImageTaskStatus(t.BaseURL, t.APIKey, t.TaskID, deadline)
-			resultCh <- imageRaceResult{target: t, status: status, imageURL: url}
+			poll := pollUpstreamImageTaskResult(t.BaseURL, t.APIKey, t.TaskID, deadline)
+			t.ImageURLs = poll.ImageURLs
+			resultCh <- imageRaceResult{target: t, status: poll.Status, imageURL: poll.ImageURL}
 		}()
 	}
 	for i := 0; i < len(targets); i++ {
@@ -161,6 +163,7 @@ func CheckImageTaskTargetsOnce(targets []ImageTaskTarget) (won ImageTaskTarget, 
 			if err != nil {
 				poll.Status = ""
 			}
+			t.ImageURLs = poll.ImageURLs
 			resultCh <- checkResult{
 				target:     t,
 				status:     poll.Status,

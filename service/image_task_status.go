@@ -8,10 +8,11 @@ import (
 
 // ImageTaskPollResult is the parsed outcome of a single upstream GET /v1/tasks/{id}.
 type ImageTaskPollResult struct {
-	Status      string
-	ImageURL    string
-	FailCode    string
-	FailReason  string
+	Status       string
+	ImageURL     string
+	ImageURLs    []string
+	FailCode     string
+	FailReason   string
 	UpstreamCost float64
 	CreditsCost  float64
 }

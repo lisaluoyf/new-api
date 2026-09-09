@@ -89,6 +89,14 @@ func ProcessMediaTaskWebhook(ctx context.Context, body []byte) error {
 		}
 		if task.Platform == constant.TaskPlatformOpenAIImage {
 			task.PrivateData.ResultURL = resultURL
+			var images struct {
+				Images []imageTaskPollImage `json:"images"`
+			}
+			if common.Unmarshal(payload.Result, &images) == nil {
+				for _, imageURL := range extractImageTaskURLs("", images.Images) {
+					task.PrivateData.ImageResultURLs = append(task.PrivateData.ImageResultURLs, CacheImageLocally(imageURL))
+				}
+			}
 		} else if resultURL == "" {
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		}

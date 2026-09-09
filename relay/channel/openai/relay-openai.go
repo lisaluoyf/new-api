@@ -892,14 +892,15 @@ func pollAsyncImageTask(c *gin.Context, info *relaycommon.RelayInfo, taskID stri
 	time.Sleep(3 * time.Second)
 
 	var imageURL string
+	var winner service.ImageTaskTarget
 	var ok bool
 
 	if common.GptImage2RaceFallbackEnabled && raceDeadline.Before(fullDeadline) {
-		_, imageURL, ok = service.RaceImageTask([]service.ImageTaskTarget{primary}, raceDeadline)
+		winner, imageURL, ok = service.RaceImageTask([]service.ImageTaskTarget{primary}, raceDeadline)
 		if !ok {
 			if hedgeTarget, hedgeChannel, hedgeOK := startImageRaceHedge(c, info); hedgeOK {
-				_, imageURL, ok = service.RaceImageTask([]service.ImageTaskTarget{primary, hedgeTarget}, fullDeadline)
-				if ok && hedgeTarget.ChannelID == hedgeChannel.Id && info != nil {
+				winner, imageURL, ok = service.RaceImageTask([]service.ImageTaskTarget{primary, hedgeTarget}, fullDeadline)
+				if ok && winner.ChannelID == hedgeChannel.Id && info != nil {
 					if setupErr := middleware.SetupContextForSelectedChannel(c, hedgeChannel, info.OriginModelName); setupErr == nil {
 						meta := &types.TokenCountMeta{}
 						if imageRequest, requestOK := info.Request.(*dto.ImageRequest); requestOK {
@@ -912,22 +913,30 @@ func pollAsyncImageTask(c *gin.Context, info *relaycommon.RelayInfo, taskID stri
 					addImageRaceHedgeChannel(c, hedgeChannel.Id)
 				}
 			} else {
-				_, imageURL, ok = service.RaceImageTask([]service.ImageTaskTarget{primary}, fullDeadline)
+				winner, imageURL, ok = service.RaceImageTask([]service.ImageTaskTarget{primary}, fullDeadline)
 			}
 		}
 	} else {
-		_, imageURL, ok = service.RaceImageTask([]service.ImageTaskTarget{primary}, fullDeadline)
+		winner, imageURL, ok = service.RaceImageTask([]service.ImageTaskTarget{primary}, fullDeadline)
 	}
 
 	if ok && imageURL != "" {
-		cachedURL := service.CacheImageLocallyWithHeaders(imageURL, imageCacheAuthHeaders(c))
+		urls := winner.ImageURLs
+		if len(urls) == 0 {
+			urls = []string{imageURL}
+		}
+		images := make([]map[string]string, 0, len(urls))
+		for _, url := range urls {
+			images = append(images, map[string]string{"url": service.CacheImageLocallyWithHeaders(url, imageCacheAuthHeaders(c))})
+		}
+		cachedURL := images[0]["url"]
 		if cachedURL != "" {
 			c.Set("image_result_url", cachedURL)
 		}
 		c.Set(imagePollTaskIDContextKey, taskID)
 		openaiResp, _ := common.Marshal(map[string]interface{}{
 			"created": time.Now().Unix(),
-			"data":    []map[string]string{{"url": cachedURL}},
+			"data":    images,
 		})
 		return asyncImagePollOutcome{body: openaiResp}
 	}
