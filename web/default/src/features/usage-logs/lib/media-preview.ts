@@ -23,6 +23,7 @@ export type LogMediaPreview =
   | {
       kind: 'image'
       url: string
+      urls?: string[]
       taskId?: string
       errorMessage?: string
       errorCode?: string
@@ -41,6 +42,8 @@ export function isLogMediaImageModel(modelName: string): boolean {
   const model = modelName.trim().toLowerCase()
   return (
     model.startsWith('gpt-image-2') ||
+    model === 'midjourney-v8.2' ||
+    model === 'midjourney-niji-7' ||
     model.includes('flash-image') ||
     model.startsWith('gemini-3-pro-image')
   )
@@ -93,8 +96,22 @@ export function getLogMediaPreview(
   const taskFailCode = other.task_fail_code?.trim()
 
   if (isLogMediaImageModel(modelName)) {
-    if (resultURL && isValidMediaPreviewURL(resultURL)) {
-      return { kind: 'image', url: resultURL, taskId: taskId || undefined }
+    const candidates = Array.isArray(other.result_urls) ? other.result_urls : []
+    const urls = [
+      ...new Set(
+        [resultURL, ...candidates]
+          .filter((url): url is string => typeof url === 'string')
+          .map((url) => url.trim())
+          .filter(isValidMediaPreviewURL)
+      ),
+    ]
+    if (urls.length > 0) {
+      return {
+        kind: 'image',
+        url: urls[0],
+        ...(urls.length > 1 ? { urls } : {}),
+        taskId: taskId || undefined,
+      }
     }
     if (taskId && (resultURL || other.request_data || taskFailReason)) {
       const legacyInvalidURL =
@@ -121,8 +138,9 @@ export function getLogMediaPreview(
         kind: 'video',
         url: proxyURL,
         taskId,
-        fallbackUrl:
-          resultURL && resultURL !== proxyURL ? resultURL : undefined,
+        ...(resultURL && resultURL !== proxyURL
+          ? { fallbackUrl: resultURL }
+          : {}),
       }
     }
     if (resultURL && isValidMediaPreviewURL(resultURL)) {

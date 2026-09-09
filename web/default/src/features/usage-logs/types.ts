@@ -194,6 +194,7 @@ export interface LogOtherData {
   is_task?: boolean
   task_id?: string
   result_url?: string
+  result_urls?: string[]
   task_fail_reason?: string
   task_fail_code?: string
   request_data?: Record<string, unknown>

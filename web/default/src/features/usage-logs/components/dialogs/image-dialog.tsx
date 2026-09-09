@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { CopyButton } from '@/components/copy-button'
 import {
   Dialog,
   DialogContent,
@@ -28,13 +27,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
-import { isValidMediaPreviewURL } from '../../lib/media-preview'
+import { CopyButton } from '@/components/copy-button'
 import { downloadMediaFile } from '../../lib/download-media'
+import { isValidMediaPreviewURL } from '../../lib/media-preview'
 import { MediaDialogFooter } from './media-dialog-footer'
 import { RequestDataPanel } from './request-data-panel'
 
 interface ImageDialogProps {
   imageUrl: string
+  imageUrls?: string[]
   taskId?: string
   errorMessage?: string
   errorCode?: string
@@ -44,7 +45,8 @@ interface ImageDialogProps {
 }
 
 export function ImageDialog({
-  imageUrl,
+  imageUrl: initialImageUrl,
+  imageUrls,
   taskId,
   errorMessage,
   errorCode,
@@ -53,6 +55,9 @@ export function ImageDialog({
   onOpenChange,
 }: ImageDialogProps) {
   const { t } = useTranslation()
+  const [selectedUrl, setSelectedUrl] = useState('')
+  const urls = imageUrls?.length ? imageUrls : [initialImageUrl]
+  const imageUrl = urls.includes(selectedUrl) ? selectedUrl : initialImageUrl
   const hasValidUrl = isValidMediaPreviewURL(imageUrl)
   const [isLoading, setIsLoading] = useState(hasValidUrl)
   const [hasError, setHasError] = useState(!hasValidUrl)
@@ -65,6 +70,7 @@ export function ImageDialog({
   }, [open, imageUrl, hasValidUrl])
 
   const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) setSelectedUrl('')
     if (newOpen) {
       setIsLoading(hasValidUrl)
       setHasError(!hasValidUrl)
@@ -94,7 +100,9 @@ export function ImageDialog({
 
   const failureText =
     errorMessage ||
-    (hasError && !hasValidUrl ? t('Image generation failed') : t('Failed to load image'))
+    (hasError && !hasValidUrl
+      ? t('Image generation failed')
+      : t('Failed to load image'))
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -114,7 +122,9 @@ export function ImageDialog({
               />
             </div>
           ) : (
-            <DialogDescription>{t('View the generated image')}</DialogDescription>
+            <DialogDescription>
+              {t('View the generated image')}
+            </DialogDescription>
           )}
         </DialogHeader>
 
@@ -129,7 +139,9 @@ export function ImageDialog({
                 {isLoading && !hasError && (
                   <div className='absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4'>
                     <Loader2 className='text-muted-foreground size-6 animate-spin' />
-                    <p className='text-muted-foreground text-sm'>{t('Loading image...')}</p>
+                    <p className='text-muted-foreground text-sm'>
+                      {t('Loading image...')}
+                    </p>
                   </div>
                 )}
 
@@ -146,7 +158,9 @@ export function ImageDialog({
 
                 {hasError && (
                   <div className='absolute inset-0 z-10 flex items-center justify-center px-4 text-center'>
-                    <p className='text-muted-foreground text-sm'>{failureText}</p>
+                    <p className='text-muted-foreground text-sm'>
+                      {failureText}
+                    </p>
                   </div>
                 )}
               </>
@@ -156,7 +170,9 @@ export function ImageDialog({
                   {failureText}
                 </p>
                 {errorCode ? (
-                  <p className='text-muted-foreground font-mono text-xs'>{errorCode}</p>
+                  <p className='text-muted-foreground font-mono text-xs'>
+                    {errorCode}
+                  </p>
                 ) : null}
               </div>
             )}
@@ -164,6 +180,27 @@ export function ImageDialog({
 
           {hasValidUrl ? (
             <>
+              {urls.length > 1 && (
+                <div className='flex flex-wrap justify-center gap-2'>
+                  {urls.map((url, index) => (
+                    <button
+                      key={url}
+                      type='button'
+                      aria-label={`${t('Generated image')} ${index + 1}`}
+                      aria-pressed={url === imageUrl}
+                      title={`${t('Generated image')} ${index + 1}`}
+                      className={`size-14 shrink-0 overflow-hidden rounded-md border-2 focus-visible:outline-2 focus-visible:outline-offset-2 ${url === imageUrl ? 'border-primary' : 'border-transparent'}`}
+                      onClick={() => setSelectedUrl(url)}
+                    >
+                      <img
+                        src={url}
+                        alt=''
+                        className='size-full object-cover'
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
               <p className='text-muted-foreground text-center text-xs'>
                 {t('Generated images and videos are only kept for 3 days.')}
               </p>

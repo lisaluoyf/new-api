@@ -413,6 +413,7 @@ function MediaPreviewCell({
       {preview.kind === 'image' ? (
         <ImageDialog
           imageUrl={preview.url}
+          imageUrls={preview.urls}
           taskId={preview.taskId}
           errorMessage={preview.errorMessage}
           errorCode={preview.kind === 'image' ? preview.errorCode : undefined}
