@@ -217,10 +217,13 @@ function fmtPrice(price: number | null | undefined): string {
   // 0/负数 → 异常值，同样视为"无价格"
   // 显示破折号而不是 "0"，避免被误认为"免费"渠道。
   if (price == null || price <= 0) return '—'
-  return parseFloat(price.toFixed(4)).toString()
+  return parseFloat(price.toFixed(5)).toString()
 }
 
 const MEDIA_VARIANT_ORDER = [
+  'relax',
+  'fast',
+  'turbo',
   '1K',
   '2K',
   '4K',

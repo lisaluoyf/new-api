@@ -2934,6 +2934,7 @@
     "Per 1M tokens": "За 1M токенов",
     "per request": "за запрос",
     "Per request": "За запрос",
+    "Per generation": "За генерацию",
     "Per Request": "За запрос",
     "Per-call": "По вызову",
     "Per-feature metered windows split by model or capability.": "Окна с поминутной тарификацией по фиче, в разбивке по модели или возможностям.",

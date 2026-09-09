@@ -2917,6 +2917,7 @@
     "Per 1M tokens": "Par 1M tokens",
     "per request": "par requête",
     "Per request": "Par requête",
+    "Per generation": "Par génération",
     "Per Request": "Par demande",
     "Per-call": "Par appel",
     "Per-feature metered windows split by model or capability.": "Fenêtres mesurées par fonction, réparties par modèle ou capacité.",

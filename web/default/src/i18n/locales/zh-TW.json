@@ -2911,6 +2911,7 @@
     "Per 1M tokens": "每 1M tokens",
     "per request": "每次請求",
     "Per request": "每次請求",
+    "Per generation": "每次生成",
     "Per Request": "按請求",
     "Per-call": "每次呼叫",
     "Per-feature metered windows split by model or capability.": "按模型或能力拆分的附加計費能力視窗。",

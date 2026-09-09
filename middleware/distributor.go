@@ -66,6 +66,18 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if c.Request.Method == http.MethodPost && (strings.HasPrefix(c.Request.URL.Path, "/v1/midjourney/generations") || strings.HasPrefix(modelRequest.Model, "midjourney-")) {
+			var payload map[string]any
+			if err := common.UnmarshalBodyReusable(c, &payload); err != nil {
+				abortWithOpenAiMessage(c, 400, "Invalid Imagine request")
+				return
+			}
+			body, _ := common.Marshal(payload)
+			if _, err := dto.ParseImagineRequest(body); err != nil {
+				abortWithOpenAiMessage(c, 400, err.Error())
+				return
+			}
+		}
 		if service.IsFreeModel(modelRequest.Model) {
 			modelRequest.Model = service.FreeModelID
 			if !service.IsFreeModelEnabled() {

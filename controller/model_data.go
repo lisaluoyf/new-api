@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -829,6 +830,14 @@ func buildVideoMediaPricingView(modelName string, rechargeRate float64) *VideoMe
 
 func buildImagePricingView(modelName string, groupRatio, rechargeRate, apimasterRatio float64) *VideoMediaPricingView {
 	pricing, ok := ratio_setting.GetImageModelPricingDetails(modelName)
+	if dto.IsMidjourneyImagineModel(modelName) {
+		media, found := ratio_setting.GetVideoModelPricingDetails(modelName)
+		if !found {
+			return nil
+		}
+		pricing.Unit, pricing.BasePrice, pricing.BaseVariant, pricing.Prices = media.Unit, media.BasePrice, media.BaseVariant, media.Prices
+		ok = true
+	}
 	if !ok || pricing.BasePrice <= 0 || len(pricing.Prices) == 0 {
 		return nil
 	}

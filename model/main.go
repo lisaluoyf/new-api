@@ -332,6 +332,10 @@ func migrateDB() error {
 		&ReferralGPTRewardLog{},
 		&ResellerModelRule{},
 		&BillingHold{},
+		&ImagineBatch{},
+		&ImagineTask{},
+		&ImagineBillingEvent{},
+		&ImagineLogDelivery{},
 		&GAPurchaseLog{},
 		&CryptoDepositIntent{},
 		&FailedRequestSnapshot{},
@@ -389,6 +393,10 @@ func migrateDBFast() error {
 		{&PlategaOrder{}, "PlategaOrder"},
 		{&QuotaData{}, "QuotaData"},
 		{&Task{}, "Task"},
+		{&ImagineBatch{}, "ImagineBatch"},
+		{&ImagineTask{}, "ImagineTask"},
+		{&ImagineBillingEvent{}, "ImagineBillingEvent"},
+		{&ImagineLogDelivery{}, "ImagineLogDelivery"},
 		{&Model{}, "Model"},
 		{&Vendor{}, "Vendor"},
 		{&PrefillGroup{}, "PrefillGroup"},
@@ -453,6 +461,9 @@ func migrateDBFast() error {
 
 func migrateLOGDB() error {
 	var err error
+	if err = LOG_DB.AutoMigrate(&ImagineLogDelivery{}); err != nil {
+		return err
+	}
 	if err = LOG_DB.AutoMigrate(&Log{}); err != nil {
 		return err
 	}

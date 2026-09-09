@@ -149,6 +149,7 @@ func main() {
 
 	// Billing hold reconcile (HoldRefund timeout release)
 	service.StartBillingHoldReconcileTask()
+	service.StartImagineTaskWorker()
 
 	// Platform billing hourly summary (平台账单)
 	service.StartBillingSummaryTask()

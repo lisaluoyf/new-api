@@ -10,6 +10,8 @@ var (
 		"o4-mini-deep-research",
 	}
 	ImageGenerationModels = []string{
+		"midjourney-v8.2",
+		"midjourney-niji-7",
 		"dall-e-3",
 		"dall-e-2",
 		"gpt-image-1",

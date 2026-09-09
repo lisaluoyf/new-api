@@ -22,6 +22,10 @@ import (
 // Optional query: ?model=gpt-image-2 (defaults to gpt-image-2 for channel selection).
 func RelayImageTask(c *gin.Context) {
 	taskID := strings.TrimSpace(c.Param("task_id"))
+	if strings.HasPrefix(taskID, "imagine_") {
+		RelayImagineTask(c)
+		return
+	}
 	if taskID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": gin.H{

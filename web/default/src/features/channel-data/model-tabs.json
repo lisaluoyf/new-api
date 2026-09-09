@@ -152,8 +152,22 @@
     "accent": "#4285f4"
   },
   { "model_id": "gpt-image-2", "label": "Image 2", "accent": "#22d3ee" },
-  {"model_id": "gpt-image-2.5-sunburst", "label": "Image 2.5 Sunburst", "accent": "#22d3ee"},
-  {"model_id": "gpt-image-2.5-flare", "label": "Image 2.5 Flare", "accent": "#22d3ee"},
+  {
+    "model_id": "gpt-image-2.5-sunburst",
+    "label": "Image 2.5 Sunburst",
+    "accent": "#22d3ee"
+  },
+  {
+    "model_id": "gpt-image-2.5-flare",
+    "label": "Image 2.5 Flare",
+    "accent": "#22d3ee"
+  },
+  {
+    "model_id": "midjourney-v8.2",
+    "label": "Midjourney 8.2",
+    "accent": "#10b981"
+  },
+  { "model_id": "midjourney-niji-7", "label": "Niji 7", "accent": "#ec4899" },
   {
     "model_id": "gpt-image-2-fd",
     "label": "Image 2 FD",

@@ -79,6 +79,8 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/payment/platega/callback", controller.PlategaCallback)
 		apiRouter.POST("/payment/clink/webhook", controller.ClinkWebhook)
 		apiRouter.POST("/tasks/callback", controller.MediaTaskCallback)
+		apiRouter.POST("/tasks/imagine/:token/callback", controller.ImagineCallback)
+		apiRouter.GET("/tasks/imagine/stats", middleware.AdminAuth(), controller.ImagineSpeedStats)
 
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)

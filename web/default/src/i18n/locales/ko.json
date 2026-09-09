@@ -2908,6 +2908,7 @@
     "Per 1M tokens": "Per 1M tokens",
     "per request": "per request",
     "Per request": "Per request",
+    "Per generation": "생성당",
     "Per Request": "Per Request",
     "Per-call": "Per-call",
     "Per-feature metered windows split by model or capability.": "Per-feature metered windows split by model or capability.",

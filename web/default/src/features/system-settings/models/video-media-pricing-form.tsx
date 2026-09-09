@@ -398,6 +398,7 @@ export function VideoMediaPricingForm({
                   <option value='second'>{t('Per second')}</option>
                   <option value='minute'>{t('Per minute')}</option>
                   <option value='request'>{t('Per request')}</option>
+                  <option value='generation'>{t('Per generation')}</option>
                 </select>
                 <Button
                   variant='ghost'
