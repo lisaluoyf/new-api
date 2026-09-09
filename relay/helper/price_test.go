@@ -176,14 +176,23 @@ func TestImagePriceUsesResolutionBaseAndAllChannelCoefficients(t *testing.T) {
 		UsingGroup:      "default",
 	}
 
-	tests := map[string]float64{"1K": 0.25, "2K": 0.30, "4K": 0.60}
-	for resolution, basePrice := range tests {
-		price, priceErr := ModelPriceHelper(ctx, info, 0, &types.TokenCountMeta{ImagePriceVariant: resolution})
-		require.NoError(t, priceErr, resolution)
-		// channel group 0.2 × recharge 0.5 × APIMaster 2.0 = 0.2.
-		want := basePrice * 0.2
-		require.InDelta(t, want, price.ModelPrice, 1e-9, resolution)
-		require.Equal(t, int(want*common.QuotaPerUnit*price.GroupRatioInfo.GroupRatio), price.QuotaToPreConsume, resolution)
+	for _, modelName := range []string{"gpt-image-2", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare"} {
+		require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings
+			(channel_id, model_name, input_price, group_ratio, pricing_source)
+			SELECT 1, ?, 0.002, 0.2, 'api' WHERE NOT EXISTS
+			(SELECT 1 FROM channel_model_pricings WHERE model_name = ?)`, modelName, modelName).Error)
+		info.OriginModelName = modelName
+		for _, mode := range []int{relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits} {
+			info.RelayMode = mode
+			for resolution, basePrice := range map[string]float64{"1K": 0.25, "2K": 0.30, "4K": 0.60} {
+				price, priceErr := ModelPriceHelper(ctx, info, 0, &types.TokenCountMeta{ImagePriceVariant: resolution})
+				require.NoError(t, priceErr, modelName+resolution)
+				// channel group 0.2 × recharge 0.5 × APIMaster 2.0 = 0.2.
+				want := basePrice * 0.2
+				require.InDelta(t, want, price.ModelPrice, 1e-9, modelName+resolution)
+				require.Equal(t, int(want*common.QuotaPerUnit*price.GroupRatioInfo.GroupRatio), price.QuotaToPreConsume, modelName+resolution)
+			}
+		}
 	}
 }
 

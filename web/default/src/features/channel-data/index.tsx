@@ -363,6 +363,8 @@ const NON_LLM_MODEL_IDS = new Set([
   'gemini-3.1-flash-image',
   'gemini-3.1-flash-image-preview',
   'gpt-image-2',
+  'gpt-image-2.5-sunburst',
+  'gpt-image-2.5-flare',
   'gpt-image-2-fd',
   'sora-2',
   'sora-2-pro',
@@ -393,6 +395,8 @@ const IMAGE_MODEL_IDS = new Set([
   'gemini-3.1-flash-image',
   'gemini-3.1-flash-image-preview',
   'gpt-image-2',
+  'gpt-image-2.5-sunburst',
+  'gpt-image-2.5-flare',
   'gpt-image-2-fd',
 ])
 

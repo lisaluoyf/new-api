@@ -3,6 +3,8 @@ package ratio_setting
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,5 +57,37 @@ func TestDefaultImageModelPricingIncludesResolutionPrices(t *testing.T) {
 			require.InDelta(t, want, got, 1e-9, model+" "+resolution)
 			require.InDelta(t, want/test.base, GetImageModelPriceRatio(model, resolution), 1e-9, model+" "+resolution)
 		}
+	}
+}
+
+func TestImage25PricesCanBeChangedIndependently(t *testing.T) {
+	common.OptionMapRWMutex.Lock()
+	previous := common.OptionMap
+	common.OptionMap = map[string]string{ImageModelPricingOption: DefaultImageModelPricingJSON()}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previous
+		common.OptionMapRWMutex.Unlock()
+	})
+	var configs map[string]imageModelPricing
+	require.NoError(t, common.Unmarshal([]byte(DefaultImageModelPricingJSON()), &configs))
+	for _, name := range []string{"gpt-image-2.5-sunburst", "gpt-image-2.5-flare"} {
+		for tier, expected := range map[string]float64{"1K": 0.25, "2K": 0.3, "4K": 0.6} {
+			price, ok := GetImageModelPrice(name, tier)
+			require.True(t, ok)
+			require.InDelta(t, expected, price, 1e-9)
+		}
+	}
+	configs["gpt-image-2.5-sunburst"].Prices["4K"] = 0.9
+	raw, err := common.Marshal(configs)
+	require.NoError(t, err)
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap[ImageModelPricingOption] = string(raw)
+	common.OptionMapRWMutex.Unlock()
+	for name, expected := range map[string]float64{"gpt-image-2": 0.6, "gpt-image-2.5-flare": 0.6, "gpt-image-2.5-sunburst": 0.9} {
+		price, ok := GetImageModelPrice(name, "4K")
+		require.True(t, ok)
+		require.InDelta(t, expected, price, 1e-9, name)
 	}
 }
