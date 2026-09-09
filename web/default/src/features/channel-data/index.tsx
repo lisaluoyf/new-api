@@ -361,6 +361,8 @@ const STATUS_LABEL_KEY: Record<string, string> = {
 }
 
 const NON_LLM_MODEL_IDS = new Set([
+  'midjourney-v8.2',
+  'midjourney-niji-7',
   'gemini-2.5-flash-image',
   'gemini-3-pro-image',
   'gemini-3.1-flash-image',
@@ -420,6 +422,8 @@ function isLLMModel(modelId: string): boolean {
 }
 
 function getPriceUnit(modelId: string): string {
+  if (modelId === 'midjourney-v8.2' || modelId === 'midjourney-niji-7')
+    return '$/generation'
   if (VIDEO_MODEL_IDS.has(modelId)) return '$/s'
   if (IMAGE_MODEL_IDS.has(modelId)) return '$/req'
   return '$/1M'
@@ -1614,7 +1618,7 @@ export function ChannelDataPage() {
                 >
                   {t('Official Price')}
                   <span className='font-semibold text-gray-900 tabular-nums'>
-                    ${official.input_price.toFixed(4)}
+                    ${fmtPrice(official.input_price)}
                   </span>
                   {official.output_price > 0 && (
                     <span className='text-gray-400 tabular-nums'>

@@ -91,3 +91,11 @@ func TestBuildChannelDataAuditTreatsGlobalFallbackAsAnomaly(t *testing.T) {
 func floatPtr(v float64) *float64 {
 	return &v
 }
+
+func TestImaginePricingAuditDoesNotRequireTokenPrices(t *testing.T) {
+	for _, name := range []string{"midjourney-v8.2", "midjourney-niji-7"} {
+		items, _, _ := buildChannelDataAudit(name, []ModelDataItem{{ChannelID: 225, PricingSource: "image", ActualPrice: floatPtr(.04504)}})
+		require.Empty(t, items[0].MissingFields)
+		require.False(t, channelDataAuditShouldAlert(items[0]))
+	}
+}

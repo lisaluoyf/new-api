@@ -124,6 +124,11 @@ func RelayImagine(c *gin.Context) {
 		imagineError(c, 502, "Submission outcome pending verification")
 		return
 	}
+	if err := model.DB.Model(batch).Update("submission_response", string(responseBody)).Error; err != nil {
+		markImagineSubmissionUnknown(batch.ID)
+		imagineError(c, 503, "Submission outcome pending verification")
+		return
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		if response.StatusCode >= 400 && response.StatusCode < 500 && response.StatusCode != 408 {
 			_ = model.RejectImagineSubmission(batch.ID)
@@ -138,11 +143,6 @@ func RelayImagine(c *gin.Context) {
 		return
 	}
 	ids := []string{}
-	if err := model.DB.Model(batch).Update("submission_response", string(responseBody)).Error; err != nil {
-		markImagineSubmissionUnknown(batch.ID)
-		imagineError(c, 503, "Submission outcome pending verification")
-		return
-	}
 	for _, item := range gjson.GetBytes(responseBody, "data").Array() {
 		if id := item.Get("task_id").String(); id != "" {
 			ids = append(ids, id)

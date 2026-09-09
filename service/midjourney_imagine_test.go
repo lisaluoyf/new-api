@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -46,9 +47,11 @@ func TestImagineCallbackValidationAndDurableInbox(t *testing.T) {
 	defer sqlDB.Close()
 	model.DB = db
 	common.RedisEnabled = false
-	require.NoError(t, db.AutoMigrate(&model.ImagineBatch{}, &model.ImagineTask{}))
+	require.NoError(t, db.AutoMigrate(&model.ImagineBatch{}, &model.ImagineTask{}, &model.User{}, &model.ImagineBillingEvent{}))
 	secret := strings.Repeat("a", 64)
-	require.NoError(t, db.Create(&model.ImagineBatch{ID: "batch", RequestID: "req", Status: "submitted", CallbackToken: secret}).Error)
+	user := model.User{Username: "callback-test", Quota: 1000000 - 22520}
+	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, db.Create(&model.ImagineBatch{ID: "batch", RequestID: "req", Status: "submitted", CallbackToken: secret, UserID: user.Id, BillingSource: "wallet", ReservedQuota: 22520, UnitQuota: 22520}).Error)
 	require.NoError(t, db.Create(&model.ImagineTask{ID: "public", BatchID: "batch", Provider: "apimart", UpstreamID: "up", Status: "queued"}).Error)
 	code, _ := SaveImagineCallback(strings.Repeat("b", 64), []byte(`{"id":"up","status":"failed"}`))
 	require.Equal(t, 403, code)
@@ -71,6 +74,21 @@ func TestImagineCallbackValidationAndDurableInbox(t *testing.T) {
 	require.Contains(t, task.CallbackPayload, "rejected")
 	code, _ = SaveImagineCallback(secret, []byte(`{"id":"up","status":"processing"}`))
 	require.Equal(t, 400, code)
+	for i := 0; i < 3; i++ {
+		require.NoError(t, QueryImagineTask(context.Background(), &task))
+		code, err := SaveImagineCallback(secret, []byte(`{"id":"up","status":"failed","error":{"message":"rejected"}}`))
+		require.NoError(t, err)
+		require.Equal(t, 200, code)
+	}
+	require.NoError(t, db.First(&task, "id = ?", "public").Error)
+	require.Equal(t, "failed", task.Status)
+	require.Equal(t, "webhook", task.CompletionSource)
+	require.Equal(t, "refunded", task.RefundStatus)
+	require.NoError(t, db.First(&user, user.Id).Error)
+	require.Equal(t, 1000000, user.Quota)
+	var count int64
+	require.NoError(t, db.Model(&model.ImagineBillingEvent{}).Count(&count).Error)
+	require.Equal(t, int64(1), count)
 }
 
 func TestImagineSpeedPercentiles(t *testing.T) {

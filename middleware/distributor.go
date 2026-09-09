@@ -66,6 +66,21 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if c.Request.Method == http.MethodGet && strings.HasPrefix(c.Request.URL.Path, "/v1/tasks/imagine_") {
+			id := c.Param("task_id")
+			var batch *model.ImagineBatch
+			if strings.HasPrefix(id, "imagine_batch_") {
+				batch, err = model.GetImagineBatch(id)
+			} else {
+				_, batch, err = model.GetImagineTask(id, c.GetInt("id"))
+			}
+			if err != nil || batch == nil || batch.UserID != c.GetInt("id") {
+				abortWithOpenAiMessage(c, http.StatusNotFound, "Task not found")
+				return
+			}
+			// Model permissions must use the saved task, not the image API default or a query override.
+			modelRequest.Model = batch.Model
+		}
 		if c.Request.Method == http.MethodPost && (strings.HasPrefix(c.Request.URL.Path, "/v1/midjourney/generations") || strings.HasPrefix(modelRequest.Model, "midjourney-")) {
 			var payload map[string]any
 			if err := common.UnmarshalBodyReusable(c, &payload); err != nil {

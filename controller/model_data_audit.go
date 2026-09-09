@@ -236,6 +236,8 @@ func channelDataAuditShouldAlert(item ChannelDataAuditItem) bool {
 
 func channelDataAuditRequiresFourPiece(modelName string) bool {
 	switch strings.TrimSpace(modelName) {
+	case "midjourney-v8.2", "midjourney-niji-7":
+		return false
 	case "gemini-2.5-flash-image", "gemini-3-pro-image", "gemini-3.1-flash-image", "gemini-3.1-flash-image-preview", "gpt-image-2", "gpt-image-2-fd", "sora-2", "sora-2-pro", "doubao-seedance-2.0", "seedance-2.5", "kling-v3-motion-control", "grok-imagine-video-1.5", "grok-1.5-video-10s", "grok-1.5-video-15s", "grok-1.5-video-6s":
 		return false
 	default:

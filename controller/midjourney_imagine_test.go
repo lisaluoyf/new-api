@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,12 @@ import (
 )
 
 func TestImagineSubmissionMapsModelAndChargesActualTasks(t *testing.T) {
+	for _, status := range []int{200, 401, 402, 403, 404, 422, 429, 500, 502} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) { testImagineSubmission(t, status) })
+	}
+}
+
+func testImagineSubmission(t *testing.T, upstreamStatus int) {
 	oldDB, oldOptions, oldRedis := model.DB, common.OptionMap, common.RedisEnabled
 	oldCallback := operation_setting.CustomCallbackAddress
 	t.Cleanup(func() {
@@ -56,6 +63,11 @@ func TestImagineSubmissionMapsModelAndChargesActualTasks(t *testing.T) {
 		require.NotContains(t, body, "model")
 		require.Contains(t, body["webhook"], "https://apimaster.ai/api/tasks/imagine/")
 		w.Header().Set("Content-Type", "application/json")
+		if upstreamStatus != 200 {
+			w.WriteHeader(upstreamStatus)
+			_, _ = w.Write([]byte(`{"error":{"message":"provider-test sensitive error","code":"provider_error"}}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{"code":200,"data":[{"task_id":"provider-one","status":"submitted"}]}`))
 	}))
 	defer upstream.Close()
@@ -78,6 +90,32 @@ func TestImagineSubmissionMapsModelAndChargesActualTasks(t *testing.T) {
 	common.SetContextKey(ctx, constant.ContextKeyChannelBaseUrl, upstream.URL)
 	common.SetContextKey(ctx, constant.ContextKeyChannelKey, "provider-test")
 	RelayImagine(ctx)
+	if upstreamStatus != 200 {
+		expected := upstreamStatus
+		if upstreamStatus == 401 || upstreamStatus == 402 || upstreamStatus == 403 {
+			expected = 503
+		}
+		require.Equal(t, expected, recorder.Code)
+		require.NotContains(t, recorder.Body.String(), "provider-test")
+		var batch model.ImagineBatch
+		require.NoError(t, db.First(&batch).Error)
+		require.Contains(t, batch.SubmissionResponse, "provider_error")
+		require.NoError(t, db.First(&user, user.Id).Error)
+		if upstreamStatus < 500 {
+			require.Equal(t, "rejected", batch.Status)
+			require.Equal(t, batch.ReservedQuota, batch.RefundedQuota)
+			require.Equal(t, 1000000, user.Quota)
+			require.NoError(t, model.RejectImagineSubmission(batch.ID))
+			require.NoError(t, db.First(&user, user.Id).Error)
+			require.Equal(t, 1000000, user.Quota)
+		} else {
+			require.Equal(t, "submission_unknown", batch.Status)
+			require.Zero(t, batch.RefundedQuota)
+			require.Equal(t, 1000000-batch.ReservedQuota, user.Quota)
+			require.Equal(t, batch.ID, recorder.Header().Get("X-Task-ID"))
+		}
+		return
+	}
 	require.Equal(t, 200, recorder.Code, recorder.Body.String())
 	require.NotContains(t, recorder.Body.String(), "provider-one")
 	require.NotContains(t, recorder.Body.String(), "provider-test")
