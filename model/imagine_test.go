@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,6 +28,56 @@ func setupImagineTest(t *testing.T, repeat int, upstreamIDs []string) (*ImagineB
 	var tasks []ImagineTask
 	require.NoError(t, DB.Where("batch_id = ?", batch.ID).Order("id").Find(&tasks).Error)
 	return batch, tasks
+}
+
+func TestImagineLogsPreserveRequestDataWithoutCallbackSecrets(t *testing.T) {
+	for _, name := range []string{"midjourney-v8.2", "midjourney-niji-7"} {
+		for _, status := range []string{"completed", "failed"} {
+			t.Run(name+"/"+status, func(t *testing.T) {
+				batch, tasks := setupImagineTest(t, 1, []string{"upstream-one"})
+				request := map[string]any{"model": name, "prompt": "A blue teapot", "speed": "fast", "size": "16:9", "seed": 0, "raw": false,
+					"image_urls": []string{"https://example.com/reference.png"}, "webhook": "https://example.com/callback-secret"}
+				body, err := common.Marshal(request)
+				require.NoError(t, err)
+				require.NoError(t, DB.Model(batch).Updates(map[string]any{"model": name, "request_data": string(body)}).Error)
+				require.NoError(t, ApplyImagineResult(tasks[0].ID, ImagineTask{Status: status, Images: `["https://example.com/result.png"]`}))
+				var event ImagineBillingEvent
+				require.NoError(t, DB.First(&event, "id = ?", tasks[0].ID+":"+status).Error)
+				require.NotContains(t, event.LogData, "callback-secret")
+				require.NoError(t, DeliverImagineBillingEvents())
+				var row Log
+				require.NoError(t, LOG_DB.Where("request_id = ?", batch.RequestID).First(&row).Error)
+				var other map[string]any
+				require.NoError(t, common.UnmarshalJsonStr(row.Other, &other))
+				require.Contains(t, other, "admin_info")
+				formatUserLogs([]*Log{&row}, 0)
+				other = nil
+				require.NoError(t, common.UnmarshalJsonStr(row.Other, &other))
+				require.NotContains(t, other, "admin_info")
+				delete(request, "webhook")
+				expected, err := common.Marshal(request)
+				require.NoError(t, err)
+				actual, err := common.Marshal(other["request_data"])
+				require.NoError(t, err)
+				require.JSONEq(t, string(expected), string(actual))
+			})
+		}
+	}
+}
+
+func TestImagineInvalidStoredRequestDataDoesNotBlockSettlement(t *testing.T) {
+	for _, body := range []string{"", "null", "{}", "[]", "invalid", `{"webhook":"secret"}`} {
+		t.Run(body, func(t *testing.T) {
+			batch, tasks := setupImagineTest(t, 1, []string{"upstream-one"})
+			require.NoError(t, DB.Model(batch).Update("request_data", body).Error)
+			require.NoError(t, ApplyImagineResult(tasks[0].ID, ImagineTask{Status: "completed"}))
+			var event ImagineBillingEvent
+			require.NoError(t, DB.First(&event, "id = ?", tasks[0].ID+":completed").Error)
+			var row Log
+			require.NoError(t, common.UnmarshalJsonStr(event.LogData, &row))
+			require.NotContains(t, row.Other, "request_data")
+		})
+	}
 }
 
 func TestImagineFourImagesAreOneTaskAndConcurrentSettlementIsIdempotent(t *testing.T) {
