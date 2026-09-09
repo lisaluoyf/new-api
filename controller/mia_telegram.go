@@ -18,6 +18,11 @@ const miaDefaultChatModel = "grok-4.5"
 
 var errMiaModelUnavailable = errors.New("selected Mia model unavailable")
 
+// miaTelegramBotTokenName is the dedicated user-visible token created for a
+// newly registered Telegram user. It takes precedence for Mia requests while
+// preserving the legacy lowest-ID token selection as a fallback.
+const miaTelegramBotTokenName = "mia_tg_bot"
+
 // Mia only aliases IDs that are strictly upstream spellings, never a generic
 // request fallback. Some ModelIDCandidates are separate public products, such
 // as Nano Banana and Nano Banana 2, and must remain independently selectable.
@@ -261,6 +266,7 @@ func getMiaUsableTokenForModel(userID int, modelName string) (*model.Token, erro
 		return nil, gorm.ErrRecordNotFound
 	}
 	model.GetPricing()
+	var fallback *model.Token
 	for i := range tokens {
 		accessibleModels, accessErr := GetAccessibleOpenAIModelsForToken(userID, &tokens[i])
 		if accessErr != nil {
@@ -268,9 +274,18 @@ func getMiaUsableTokenForModel(userID int, modelName string) (*model.Token, erro
 		}
 		for _, accessibleModel := range accessibleModels {
 			if strings.EqualFold(miaCatalogModelID(accessibleModel.Id), miaCatalogModelID(modelName)) {
-				return &tokens[i], nil
+				if tokens[i].Name == miaTelegramBotTokenName {
+					return &tokens[i], nil
+				}
+				if fallback == nil {
+					fallback = &tokens[i]
+				}
+				break
 			}
 		}
+	}
+	if fallback != nil {
+		return fallback, nil
 	}
 	return nil, errMiaModelUnavailable
 }

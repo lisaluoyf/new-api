@@ -224,6 +224,46 @@ func TestResolveMiaTelegramAPIKeySelectsTokenWhoseGroupCanRouteModel(t *testing.
 	require.NotContains(t, recorder.Body.String(), "wrong-group-key")
 }
 
+func TestResolveMiaTelegramAPIKeyPrefersDedicatedTelegramBotToken(t *testing.T) {
+	router, db := setupMiaTelegramTestRouter(t)
+	user := model.User{
+		Username: "mia-preferred-token-user", Password: "unused-test-password",
+		Status: common.UserStatusEnabled, Role: common.RoleCommonUser, Group: "default", TelegramId: "345678",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, db.Create(&model.Channel{Id: 1, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled}).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "grok-4.5", ChannelId: 1, Enabled: true}).Error)
+	legacy := model.Token{UserId: user.Id, Key: "legacy-key", Name: "legacy", Status: common.TokenStatusEnabled, ExpiredTime: -1, UnlimitedQuota: true, Group: "default"}
+	preferred := model.Token{UserId: user.Id, Key: "mia-tg-bot-key", Name: miaTelegramBotTokenName, Status: common.TokenStatusEnabled, ExpiredTime: -1, UnlimitedQuota: true, Group: "default"}
+	require.NoError(t, db.Create(&legacy).Error)
+	require.NoError(t, db.Create(&preferred).Error)
+
+	recorder := performMiaTelegramRequest(router, "test-mia-internal-secret", `{"telegram_user_id":"345678","model":"grok-4.5"}`)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "mia-tg-bot-key")
+	require.NotContains(t, recorder.Body.String(), "legacy-key")
+}
+
+func TestResolveMiaTelegramAPIKeyFallsBackWhenDedicatedTokenCannotRouteModel(t *testing.T) {
+	router, db := setupMiaTelegramTestRouter(t)
+	user := model.User{
+		Username: "mia-preferred-token-fallback-user", Password: "unused-test-password",
+		Status: common.UserStatusEnabled, Role: common.RoleCommonUser, Group: "default", TelegramId: "456789",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, db.Create(&model.Channel{Id: 1, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled}).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "grok-4.5", ChannelId: 1, Enabled: true}).Error)
+	legacy := model.Token{UserId: user.Id, Key: "legacy-key", Name: "legacy", Status: common.TokenStatusEnabled, ExpiredTime: -1, UnlimitedQuota: true, Group: "default"}
+	preferred := model.Token{UserId: user.Id, Key: "mia-tg-bot-key", Name: miaTelegramBotTokenName, Status: common.TokenStatusEnabled, ExpiredTime: -1, UnlimitedQuota: true, Group: "other"}
+	require.NoError(t, db.Create(&legacy).Error)
+	require.NoError(t, db.Create(&preferred).Error)
+
+	recorder := performMiaTelegramRequest(router, "test-mia-internal-secret", `{"telegram_user_id":"456789","model":"grok-4.5"}`)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "legacy-key")
+	require.NotContains(t, recorder.Body.String(), "mia-tg-bot-key")
+}
+
 func TestResolveMiaTelegramAPIKeyReportsUnboundAndMissingKey(t *testing.T) {
 	router, db := setupMiaTelegramTestRouter(t)
 
