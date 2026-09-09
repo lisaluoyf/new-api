@@ -65,7 +65,7 @@ func imageDataURIsFromMultipart(mf *multipart.Form) ([]string, error) {
 		}
 	}
 	for field, files := range mf.File {
-		if strings.HasPrefix(field, "image[") {
+		if field != "image[]" && strings.HasPrefix(field, "image[") {
 			headers = append(headers, files...)
 		}
 	}

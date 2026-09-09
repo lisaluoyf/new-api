@@ -48,7 +48,16 @@ const (
 func IsGptImage2Family(modelName string) bool {
 	name := strings.TrimSpace(modelName)
 	return name == gptImage2CanonicalModel || name == gptImage2OfficialAliasModel ||
-		strings.HasPrefix(name, gptImage2CanonicalModel+"-")
+		strings.HasPrefix(name, gptImage2CanonicalModel+"-") || IsGptImage25Model(name)
+}
+
+func IsGptImage25Model(modelName string) bool {
+	switch strings.TrimSpace(modelName) {
+	case "gpt-image-2.5-sunburst", "gpt-image-2.5-flare":
+		return true
+	default:
+		return false
+	}
 }
 
 // NormalizeGptImage2ModelName maps legacy official alias to the public model id.

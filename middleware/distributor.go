@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -116,6 +117,10 @@ func Distribute() func(c *gin.Context) {
 			service.SetFreeModelCandidatePlan(c, plan)
 			// Token-level channel pinning must never bypass pool membership.
 			ok = false
+		}
+		if err := helper.NormalizeGptImage25ReferenceRequest(c, modelRequest.Model); err != nil {
+			abortWithOpenAiMessage(c, http.StatusBadRequest, err.Error(), types.ErrorCodeInvalidRequest)
+			return
 		}
 		modelRequest.Model = service.PrepareGptImage2ModelRequest(c, modelRequest.Model)
 		if modelRequest.Model != "" && common.IsImageGenerationModel(modelRequest.Model) && isTextCompletionPath(c.Request.URL.Path) {
