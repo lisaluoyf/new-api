@@ -1327,7 +1327,7 @@ const banEmailSubject = "Your APIMaster.ai account has been suspended"
 const banEmailHTML = `<p>Hello,</p>
 <p>We're writing to inform you that your APIMaster.ai account has been <strong>suspended</strong> following a review by our risk and security systems.</p>
 <p>Activity associated with your account was flagged by our automated risk controls as violating our Terms of Service. To protect our platform and our users, access to the account and its services has been disabled.</p>
-<p>If you believe this was a mistake, please contact us at <a href="mailto:support@apimaster.ai">support@apimaster.ai</a> and our team will review your case. To help us look into it faster, kindly include your registered email address and any details you think are relevant.</p>
+<p>If you believe this was a mistake, please email us at <a href="mailto:support@apimaster.ai">support@apimaster.ai</a> or contact <a href="https://t.me/Lizgogogo">@Lizgogogo on Telegram</a> for direct assistance, and our team will review your case. To help us look into it faster, kindly include your registered email address and any details you think are relevant.</p>
 <p>Thank you for your understanding.</p>
 <p>Best regards,<br/>The APIMaster.ai Team</p>`
 
