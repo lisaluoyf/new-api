@@ -36,6 +36,19 @@ type MappingRow = {
   to: string
 }
 
+function parseMappingRows(json: string): MappingRow[] | null {
+  try {
+    if (!json.trim()) return []
+    return Object.entries(JSON.parse(json)).map(([from, to], index) => ({
+      id: `${Date.now()}-${index}`,
+      from,
+      to: String(to),
+    }))
+  } catch {
+    return null
+  }
+}
+
 export function ModelMappingEditor({
   value,
   onChange,
@@ -43,7 +56,11 @@ export function ModelMappingEditor({
 }: ModelMappingEditorProps) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<'visual' | 'json'>('visual')
-  const [rows, setRows] = useState<MappingRow[]>([])
+  // A reopened drawer can mount with its saved value already in the cache.
+  // Initialize rows here because the echo guard below skips that initial value.
+  const [rows, setRows] = useState<MappingRow[]>(
+    () => parseMappingRows(value) ?? []
+  )
   const [jsonValue, setJsonValue] = useState(value)
   // Track the JSON we last emitted so we can ignore the parent echoing it back —
   // otherwise re-parsing regenerates row IDs (Date.now()) → React remounts the
@@ -51,23 +68,11 @@ export function ModelMappingEditor({
   const lastEmittedRef = useRef<string>(value)
 
   const parseJsonToRows = (json: string) => {
-    try {
-      if (!json.trim()) {
-        setRows([])
-        return
-      }
-      const parsed = JSON.parse(json)
-      const newRows: MappingRow[] = Object.entries(parsed).map(
-        ([from, to], index) => ({
-          id: `${Date.now()}-${index}`,
-          from,
-          to: String(to),
-        })
-      )
+    const newRows = parseMappingRows(json)
+    if (newRows !== null) {
       setRows(newRows)
-    } catch (_error) {
-      // Invalid JSON, keep current rows
     }
+    // Invalid JSON leaves the current visual rows intact while editing.
   }
 
   // Parse JSON to rows when value changes externally (not from our own onChange).
