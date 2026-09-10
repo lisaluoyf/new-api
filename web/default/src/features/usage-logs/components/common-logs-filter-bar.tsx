@@ -24,6 +24,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsAdmin } from '@/hooks/use-admin'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -247,6 +248,10 @@ export function CommonLogsFilterBar<TData>(
 
   const inputClass = 'w-full sm:w-[140px] lg:w-[160px]'
   const sensitiveType = sensitiveVisible ? 'text' : 'password'
+  const modelFilterOptions = [
+    { value: 'all', label: t('All Models') },
+    ...enabledModels.map((model) => ({ value: model, label: model })),
+  ]
 
   const statsBar = (
     <div className='flex flex-wrap items-center gap-2'>
@@ -304,29 +309,21 @@ export function CommonLogsFilterBar<TData>(
       additionalSearch={
         <>
           {enabledModels.length > 0 ? (
-            <Select
-              value={filters.model || ''}
-              onValueChange={(value) =>
+            <Combobox
+              options={modelFilterOptions}
+              value={filters.model || 'all'}
+              onValueChange={(value) => {
+                const selectedModel = value || 'all'
                 handleChange(
                   'model',
-                  value ? (value === 'all' ? undefined : value) : undefined
+                  selectedModel === 'all' ? undefined : selectedModel
                 )
-              }
-            >
-              <SelectTrigger className={inputClass}>
-                <SelectValue placeholder={t('Model Name')} />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  <SelectItem value='all'>{t('All Models')}</SelectItem>
-                  {enabledModels.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+              }}
+              placeholder={t('Model Name')}
+              searchPlaceholder={t('Search models...')}
+              emptyText={t('No model found.')}
+              className={inputClass}
+            />
           ) : (
             <Input
               placeholder={t('Model Name')}
