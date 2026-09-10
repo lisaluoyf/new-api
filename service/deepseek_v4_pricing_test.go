@@ -15,6 +15,38 @@ func beijingTime(t *testing.T, hour, minute int) time.Time {
 	return time.Date(2026, time.August, 17, hour, minute, 0, 0, deepSeekV4Timezone)
 }
 
+func TestDeepSeekFlashOfficialPricingAt(t *testing.T) {
+	for _, tt := range []struct {
+		at     string
+		period string
+		input  float64
+		output float64
+		cache  float64
+	}{
+		{"2026-09-10T00:59:59Z", "off_peak", 0.15, 0.6, 0.003},
+		{"2026-09-10T01:00:00Z", "peak", 0.3, 1.2, 0.006},
+		{"2026-09-10T04:00:00Z", "off_peak", 0.15, 0.6, 0.003},
+		{"2026-09-10T06:00:00Z", "peak", 0.3, 1.2, 0.006},
+		{"2026-09-10T10:00:00Z", "off_peak", 0.15, 0.6, 0.003},
+		{"2026-09-12T02:00:00Z", "off_peak", 0.15, 0.6, 0.003},
+		{"2026-09-13T07:00:00Z", "off_peak", 0.15, 0.6, 0.003},
+	} {
+		t.Run(tt.at, func(t *testing.T) {
+			at, err := time.Parse(time.RFC3339, tt.at)
+			require.NoError(t, err)
+			period, ok := DeepSeekV4PricingPeriodAt("deepseek-flash", at)
+			require.True(t, ok)
+			require.Equal(t, tt.period, period)
+			input, output, cache, cacheCreation, ok := GlobalModelPricingUSDAt("deepseek-flash", at)
+			require.True(t, ok)
+			require.InDelta(t, tt.input, input, 1e-9)
+			require.InDelta(t, tt.output, output, 1e-9)
+			require.InDelta(t, tt.cache, cache, 1e-9)
+			require.InDelta(t, tt.input, cacheCreation, 1e-9)
+		})
+	}
+}
+
 func TestDeepSeekV4OfficialPricingAtBoundaries(t *testing.T) {
 	tests := []struct {
 		name      string

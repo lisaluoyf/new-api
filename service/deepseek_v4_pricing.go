@@ -40,6 +40,14 @@ func DeepSeekV4OfficialPricingAt(modelName string, at time.Time) (ModelUnitPrice
 
 	var offPeak ModelUnitPricesUSD
 	switch canonicalModel {
+	case "deepseek-flash":
+		// DeepSeek-V4.1-Flash prices verified on 2026-09-10.
+		offPeak = ModelUnitPricesUSD{
+			InputPrice:         0.15,
+			OutputPrice:        0.6,
+			CachePrice:         0.003,
+			CacheCreationPrice: 0.15,
+		}
 	case "deepseek-v4-flash", "deepseek-v4-flash-vision-exp":
 		offPeak = ModelUnitPricesUSD{
 			InputPrice:         0.22,
@@ -91,7 +99,7 @@ func deepSeekV4PricingModel(modelName string) (string, bool) {
 		}
 	}
 	switch canonical {
-	case "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp":
+	case "deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp":
 		return canonical, true
 	default:
 		return "", false

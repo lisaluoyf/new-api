@@ -202,4 +202,7 @@ func TestDeepSeekTimedRoutePriceUsesOfficialBaseAndChannelMultipliers(t *testing
 	if math.Abs(got-want) > 1e-9 {
 		t.Fatalf("price=%v want %v", got, want)
 	}
+	got, ok = routeCandidateUserInputPriceAt(candidate, "deepseek-flash", 9, beijingTime(t, 15, 0))
+	require.True(t, ok)
+	require.InDelta(t, 0.3*0.8*0.5*1.1, got, 1e-9)
 }

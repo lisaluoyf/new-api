@@ -28,6 +28,7 @@ export interface DeepSeekV4TimedPricingDisplay {
 }
 
 const DEEPSEEK_V4_TIMED_PRICING_MODELS = new Set([
+  'deepseek-flash',
   'deepseek-v4-flash',
   'deepseek-v4-pro',
   'deepseek-v4-flash-vision-exp',

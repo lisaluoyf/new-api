@@ -12,6 +12,23 @@ function usageLog(modelName: string, isoTime: string): UsageLog {
 }
 
 describe('getDeepSeekV4TimedPricingDisplay', () => {
+  test('uses the archived Flash price and period across a peak boundary', () => {
+    const display = getDeepSeekV4TimedPricingDisplay(
+      usageLog('deepseek-flash', '2026-09-10T01:01:00Z'),
+      {
+        model_ratio: 0.075,
+        completion_ratio: 4,
+        ch_price_period: 'off_peak',
+      } as LogOtherData
+    )
+
+    assert.deepEqual(display, {
+      currentPeriod: 'off_peak',
+      currentInput: 0.15,
+      currentOutput: 0.6,
+    })
+  })
+
   test('formats DeepSeek V4 Vision with the archived peak period', () => {
     const display = getDeepSeekV4TimedPricingDisplay(
       usageLog('deepseek-v4-flash-vision-exp', '2026-08-24T02:08:01Z'),

@@ -64,6 +64,18 @@ func TestDeepSeekV4PriceUsesOfficialScheduleAndUserMultiplier(t *testing.T) {
 	require.InDelta(t, 3, price.CompletionRatio, 0.0000001)
 	require.InDelta(t, 0.007/0.22, price.CacheRatio, 0.0000001)
 	require.InDelta(t, 1, price.CacheCreationRatio, 0.0000001)
+
+	// The new Flash model must override stale upstream prices and keep the
+	// request's off-peak time when deriving the four-to-one output ratio.
+	require.NoError(t, db.Exec(`UPDATE channels SET model_price_ratios = '{"deepseek-flash":0.8}' WHERE id = 1`).Error)
+	require.NoError(t, db.Exec(`UPDATE channel_model_pricings SET model_name = 'deepseek-flash' WHERE channel_id = 1`).Error)
+	info.OriginModelName = "deepseek-flash"
+	price, err = ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.InDelta(t, 0.006/service.PlatformUSDPerModelRatio, price.ModelRatio, 1e-9)
+	require.InDelta(t, 4, price.CompletionRatio, 1e-9)
+	require.InDelta(t, 0.02, price.CacheRatio, 1e-9)
+	require.InDelta(t, 1, price.CacheCreationRatio, 1e-9)
 }
 
 func TestForceFreeModelPriceDataClearsAllUserCharges(t *testing.T) {

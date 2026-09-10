@@ -27,6 +27,11 @@
   { "model_id": "claude-opus-4-8", "label": "Opus 4.8", "accent": "#a855f7" },
   { "model_id": "claude-haiku-4-5", "label": "Haiku 4.5", "accent": "#a855f7" },
   {
+    "model_id": "deepseek-flash",
+    "label": "DeepSeek V4.1 Flash",
+    "accent": "#a78bfa"
+  },
+  {
     "model_id": "deepseek-v4-flash",
     "label": "DeepSeek Flash",
     "accent": "#a78bfa"
