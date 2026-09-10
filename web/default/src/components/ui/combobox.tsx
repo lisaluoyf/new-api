@@ -46,6 +46,7 @@ type LegacyComboboxProps = {
   emptyText?: string
   allowCustomValue?: boolean
   className?: string
+  dropdownClassName?: string
   id?: string
 }
 
@@ -68,6 +69,7 @@ function Combobox(
         placeholder={props.searchPlaceholder ?? props.placeholder}
         emptyText={props.emptyText}
         className={props.className}
+        dropdownClassName={props.dropdownClassName}
         allowCustomValue={props.allowCustomValue}
       />
     )

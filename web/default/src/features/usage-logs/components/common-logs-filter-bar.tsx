@@ -322,7 +322,8 @@ export function CommonLogsFilterBar<TData>(
               placeholder={t('Model Name')}
               searchPlaceholder={t('Search models...')}
               emptyText={t('No model found.')}
-              className={inputClass}
+              className='w-full sm:w-[240px] lg:w-[280px]'
+              dropdownClassName='sm:min-w-[440px]'
             />
           ) : (
             <Input

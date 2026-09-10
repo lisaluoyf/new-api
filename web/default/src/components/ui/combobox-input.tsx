@@ -35,6 +35,7 @@ interface ComboboxInputProps {
   placeholder?: string
   emptyText?: string
   className?: string
+  dropdownClassName?: string
   id?: string
   allowCustomValue?: boolean
 }
@@ -46,6 +47,7 @@ export function ComboboxInput({
   placeholder = 'Select or type...',
   emptyText = 'No option found.',
   className,
+  dropdownClassName,
   id,
   allowCustomValue = false,
 }: ComboboxInputProps) {
@@ -185,7 +187,12 @@ export function ComboboxInput({
       <ChevronsUpDown className='pointer-events-none absolute top-1/2 right-3 size-4 shrink-0 -translate-y-1/2 opacity-50' />
 
       {showDropdown && (
-        <div className='bg-popover text-popover-foreground absolute top-full z-100 mt-1 w-full rounded-md border shadow-md'>
+        <div
+          className={cn(
+            'bg-popover text-popover-foreground absolute top-full z-100 mt-1 w-full rounded-md border shadow-md',
+            dropdownClassName
+          )}
+        >
           {filteredOptions.length > 0 ? (
             <ul
               ref={listRef}
@@ -217,7 +224,9 @@ export function ComboboxInput({
                     )}
                   />
                   {option.icon && <span>{option.icon}</span>}
-                  <span className='truncate'>{option.label}</span>
+                  <span className='min-w-0 truncate' title={option.label}>
+                    {option.label}
+                  </span>
                 </li>
               ))}
             </ul>
