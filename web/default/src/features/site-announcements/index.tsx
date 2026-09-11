@@ -18,6 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useState } from 'react'
 import {
+  getCoreRowModel,
+  useReactTable,
+  type PaginationState,
+} from '@tanstack/react-table'
+import {
   Eraser,
   Eye,
   EyeOff,
@@ -70,6 +75,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { DataTablePagination } from '@/components/data-table/pagination'
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
 
@@ -254,6 +260,11 @@ export function SiteAnnouncementsPage() {
 function AnnouncementManager() {
   const { t } = useTranslation()
   const [items, setItems] = useState<AdminAnnouncement[]>([])
+  const [total, setTotal] = useState(0)
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 20,
+  })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -278,9 +289,18 @@ function AnnouncementManager() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(ADMIN_API, { credentials: 'include' })
+      // Server-side paging: the table is the only consumer, and the list is
+      // unbounded, so never pull every row just to slice it in the browser.
+      const query = new URLSearchParams({
+        page: String(pagination.pageIndex + 1),
+        pageSize: String(pagination.pageSize),
+      })
+      const res = await fetch(`${ADMIN_API}?${query}`, {
+        credentials: 'include',
+      })
       if (!res.ok) {
         setItems([])
+        setTotal(0)
         setLoadError(
           res.status === 403
             ? t('Only APIMaster administrators can manage site announcements')
@@ -288,20 +308,49 @@ function AnnouncementManager() {
         )
         return
       }
-      const data = (await res.json()) as { items?: AdminAnnouncement[] }
+      const data = (await res.json()) as {
+        items?: AdminAnnouncement[]
+        total?: number
+      }
       setItems(Array.isArray(data.items) ? data.items : [])
+      setTotal(typeof data.total === 'number' ? data.total : 0)
       setLoadError(null)
     } catch {
       setItems([])
+      setTotal(0)
       setLoadError(t('Failed to load announcements'))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, pagination])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // Deleting the last row of the last page would otherwise leave the user on a
+  // blank page; step back one page and let the effect above refetch.
+  useEffect(() => {
+    const lastPage = Math.max(0, Math.ceil(total / pagination.pageSize) - 1)
+    if (pagination.pageIndex > lastPage) {
+      setPagination((prev) => ({ ...prev, pageIndex: lastPage }))
+    }
+  }, [total, pagination.pageSize, pagination.pageIndex])
+
+  /**
+   * Only for the pager state — the table body is rendered by hand below, so no
+   * column definitions are needed.
+   */
+  const table = useReactTable({
+    data: items,
+    columns: [],
+    state: { pagination },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
+    pageCount: Math.ceil(total / pagination.pageSize),
+    rowCount: total,
+  })
 
   function openCreate() {
     setFormError(null)
@@ -585,88 +634,93 @@ function AnnouncementManager() {
           )}
         </p>
       ) : (
-        <div className='rounded-lg border'>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('Title')}</TableHead>
-                <TableHead>{t('Slug')}</TableHead>
-                <TableHead>{t('Level')}</TableHead>
-                <TableHead>{t('Publish Date')}</TableHead>
-                <TableHead>{t('Expires At')}</TableHead>
-                <TableHead>{t('Status')}</TableHead>
-                <TableHead className='text-right'>{t('Actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className='max-w-[240px] truncate font-medium'>
-                    {item.title.zh || item.title.en || item.slug}
-                  </TableCell>
-                  <TableCell className='text-muted-foreground font-mono text-xs'>
-                    {item.slug}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge
-                      variant={levelVariant(item.level)}
-                      label={t(
-                        LEVELS.find((level) => level.value === item.level)
-                          ?.labelKey ?? 'Info'
-                      )}
-                    />
-                  </TableCell>
-                  <TableCell className='text-xs whitespace-nowrap'>
-                    {formatMoment(item.publishedAt)}
-                  </TableCell>
-                  <TableCell className='text-xs whitespace-nowrap'>
-                    {item.expiresAt ? formatMoment(item.expiresAt) : t('Never')}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge
-                      variant={item.active ? 'success' : 'neutral'}
-                      label={item.active ? t('Published') : t('Unpublished')}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className='flex items-center justify-end gap-1'>
-                      <Button
-                        type='button'
-                        size='sm'
-                        variant='ghost'
-                        onClick={() => void toggleActive(item)}
-                        title={item.active ? t('Unpublish') : t('Publish')}
-                      >
-                        {item.active ? (
-                          <EyeOff className='size-4' />
-                        ) : (
-                          <Eye className='size-4' />
-                        )}
-                      </Button>
-                      <Button
-                        type='button'
-                        size='sm'
-                        variant='ghost'
-                        onClick={() => openEdit(item)}
-                        title={t('Edit')}
-                      >
-                        <Pencil className='size-4' />
-                      </Button>
-                      <Button
-                        type='button'
-                        size='sm'
-                        variant='ghost'
-                        onClick={() => setDeleteTarget(item)}
-                        title={t('Delete')}
-                      >
-                        <Trash2 className='text-destructive size-4' />
-                      </Button>
-                    </div>
-                  </TableCell>
+        <div className='space-y-3'>
+          <div className='rounded-lg border'>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('Title')}</TableHead>
+                  <TableHead>{t('Slug')}</TableHead>
+                  <TableHead>{t('Level')}</TableHead>
+                  <TableHead>{t('Publish Date')}</TableHead>
+                  <TableHead>{t('Expires At')}</TableHead>
+                  <TableHead>{t('Status')}</TableHead>
+                  <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {items.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className='max-w-[240px] truncate font-medium'>
+                      {item.title.zh || item.title.en || item.slug}
+                    </TableCell>
+                    <TableCell className='text-muted-foreground font-mono text-xs'>
+                      {item.slug}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        variant={levelVariant(item.level)}
+                        label={t(
+                          LEVELS.find((level) => level.value === item.level)
+                            ?.labelKey ?? 'Info'
+                        )}
+                      />
+                    </TableCell>
+                    <TableCell className='text-xs whitespace-nowrap'>
+                      {formatMoment(item.publishedAt)}
+                    </TableCell>
+                    <TableCell className='text-xs whitespace-nowrap'>
+                      {item.expiresAt
+                        ? formatMoment(item.expiresAt)
+                        : t('Never')}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        variant={item.active ? 'success' : 'neutral'}
+                        label={item.active ? t('Published') : t('Unpublished')}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className='flex items-center justify-end gap-1'>
+                        <Button
+                          type='button'
+                          size='sm'
+                          variant='ghost'
+                          onClick={() => void toggleActive(item)}
+                          title={item.active ? t('Unpublish') : t('Publish')}
+                        >
+                          {item.active ? (
+                            <EyeOff className='size-4' />
+                          ) : (
+                            <Eye className='size-4' />
+                          )}
+                        </Button>
+                        <Button
+                          type='button'
+                          size='sm'
+                          variant='ghost'
+                          onClick={() => openEdit(item)}
+                          title={t('Edit')}
+                        >
+                          <Pencil className='size-4' />
+                        </Button>
+                        <Button
+                          type='button'
+                          size='sm'
+                          variant='ghost'
+                          onClick={() => setDeleteTarget(item)}
+                          title={t('Delete')}
+                        >
+                          <Trash2 className='text-destructive size-4' />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DataTablePagination table={table} />
         </div>
       )}
 
