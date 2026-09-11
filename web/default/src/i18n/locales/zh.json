@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Seller protection": "卖家保障",
+    "Partial seller protection": "部分卖家保障",
+    "Item not received": "未收到商品",
+    "Unauthorized transaction": "未经授权交易",
+    "Eligibility does not guarantee dispute coverage": "符合资格不代表争议一定获赔",
     "Default Group Ratio for all models": "所有模型默认 Group Ratio",
     "Per-Model Group Ratio": "按模型 Group Ratio",
     "Add model Group Ratio": "添加模型 Group Ratio",

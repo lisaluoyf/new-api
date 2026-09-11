@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Seller protection": "Seller protection",
+    "Partial seller protection": "Partial seller protection",
+    "Item not received": "Item not received",
+    "Unauthorized transaction": "Unauthorized transaction",
+    "Eligibility does not guarantee dispute coverage": "Eligibility does not guarantee dispute coverage",
     "Default Group Ratio for all models": "Default Group Ratio for all models",
     "Per-Model Group Ratio": "Per-Model Group Ratio",
     "Add model Group Ratio": "Add model Group Ratio",

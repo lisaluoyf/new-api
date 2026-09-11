@@ -17,10 +17,12 @@ import (
 )
 
 type TopUp struct {
-	Id             int     `json:"id"`
-	UserId         int     `json:"user_id" gorm:"index"`
-	Amount         int64   `json:"amount"`
-	CreditedAmount float64 `json:"credited_amount" gorm:"type:decimal(18,6);default:0"`
+	PayPalCaptureID        string                 `json:"paypal_capture_id,omitempty" gorm:"column:paypal_capture_id;type:varchar(64);default:''"`
+	PayPalSellerProtection PayPalSellerProtection `json:"paypal_seller_protection" gorm:"embedded;embeddedPrefix:paypal_seller_protection_"`
+	Id                     int                    `json:"id"`
+	UserId                 int                    `json:"user_id" gorm:"index"`
+	Amount                 int64                  `json:"amount"`
+	CreditedAmount         float64                `json:"credited_amount" gorm:"type:decimal(18,6);default:0"`
 	// PaidAmountUSD freezes the amount actually paid, normalized to USD. It is
 	// intentionally separate from CreditedAmount because promotions may credit
 	// more USD than the customer paid.
@@ -370,7 +372,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	return nil
 }
 
-func RechargePayPal(referenceId string, callerIp string) (err error) {
+func RechargePayPal(referenceId string, callerIp string, captures ...PayPalCaptureMetadata) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -397,6 +399,9 @@ func RechargePayPal(referenceId string, callerIp string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
+		if len(captures) > 0 {
+			topUp.ApplyPayPalCapture(captures[0])
+		}
 		MarkTopUpSuccess(topUp)
 		err = tx.Save(topUp).Error
 		if err != nil {
@@ -1393,6 +1398,12 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 			fmt.Sprintf("方式：%s", methodLabel),
 			fmt.Sprintf("注册于：%s", registeredAt),
 		)
+
+		if topUp := GetTopUpByTradeNo(tradeNo); topUp != nil && topUp.UserId == userId {
+			if line := topUp.PayPalProtectionNotificationLine(); line != "" {
+				lines = append(lines, line)
+			}
+		}
 
 		title := fmt.Sprintf("💰 付款成功（第 %d 次）", payCount)
 		if paymentContext.IsSubscription {

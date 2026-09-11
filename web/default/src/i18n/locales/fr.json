@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Seller protection": "Protection des vendeurs",
+    "Partial seller protection": "Protection partielle des vendeurs",
+    "Item not received": "Objet non reçu",
+    "Unauthorized transaction": "Transaction non autorisée",
+    "Eligibility does not guarantee dispute coverage": "L’éligibilité ne garantit pas la couverture des litiges",
     "Default Group Ratio for all models": "Group Ratio par défaut pour tous les modèles",
     "Per-Model Group Ratio": "Group Ratio par modèle",
     "Add model Group Ratio": "Ajouter un Group Ratio par modèle",

@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Seller protection": "Ochrona sprzedających",
+    "Partial seller protection": "Częściowa ochrona sprzedających",
+    "Item not received": "Nieotrzymany przedmiot",
+    "Unauthorized transaction": "Nieautoryzowana transakcja",
+    "Eligibility does not guarantee dispute coverage": "Kwalifikacja nie gwarantuje ochrony w sporze",
     "Model status history": "Historia stanu modelu",
     "No recorded status history": "Brak zapisanej historii stanu",
     "Load more history": "Wczytaj starsze wpisy",

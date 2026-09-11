@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Seller protection": "Perlindungan penjual",
+    "Partial seller protection": "Perlindungan penjual sebagian",
+    "Item not received": "Barang tidak diterima",
+    "Unauthorized transaction": "Transaksi tidak sah",
+    "Eligibility does not guarantee dispute coverage": "Kelayakan tidak menjamin perlindungan sengketa",
     "Model status history": "Riwayat status model",
     "No recorded status history": "Belum ada riwayat status tercatat",
     "Load more history": "Muat riwayat sebelumnya",

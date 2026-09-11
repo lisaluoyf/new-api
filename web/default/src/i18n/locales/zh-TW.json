@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Seller protection": "賣家保障",
+    "Partial seller protection": "部分賣家保障",
+    "Item not received": "未收到商品",
+    "Unauthorized transaction": "未經授權交易",
+    "Eligibility does not guarantee dispute coverage": "符合資格不代表爭議一定獲賠",
     "Model status history": "模型狀態歷史",
     "No recorded status history": "尚無已記錄的狀態歷史",
     "Load more history": "載入更早記錄",

@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Seller protection": "Bảo vệ người bán",
+    "Partial seller protection": "Bảo vệ người bán một phần",
+    "Item not received": "Chưa nhận được hàng",
+    "Unauthorized transaction": "Giao dịch trái phép",
+    "Eligibility does not guarantee dispute coverage": "Đủ điều kiện không đảm bảo được bảo vệ khi có tranh chấp",
     "Default Group Ratio for all models": "Group Ratio mặc định cho mọi mô hình",
     "Per-Model Group Ratio": "Group Ratio theo mô hình",
     "Add model Group Ratio": "Thêm Group Ratio theo mô hình",

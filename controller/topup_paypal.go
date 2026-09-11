@@ -46,6 +46,7 @@ type payPalOrderResource struct {
 }
 
 type payPalCaptureResource struct {
+	model.PayPalCaptureMetadata
 	CustomID string `json:"custom_id"`
 	Amount   struct {
 		Value        string `json:"value"`
@@ -310,7 +311,7 @@ func handlePayPalOrderApproved(ctx context.Context, resource json.RawMessage, ca
 
 func handlePayPalCaptureCompleted(ctx context.Context, resource json.RawMessage, callerIP string) {
 	var capture payPalCaptureResource
-	if err := json.Unmarshal(resource, &capture); err != nil {
+	if err := common.Unmarshal(resource, &capture); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("PayPal capture.completed 解析失败 client_ip=%s error=%q", callerIP, err.Error()))
 		return
 	}
@@ -340,7 +341,7 @@ func handlePayPalCaptureCompleted(ctx context.Context, resource json.RawMessage,
 		return
 	}
 
-	if err := model.RechargePayPal(referenceID, callerIP); err != nil {
+	if err := model.RechargePayPal(referenceID, callerIP, capture.PayPalCaptureMetadata); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("PayPal 充值处理失败 trade_no=%s client_ip=%s error=%q", referenceID, callerIP, err.Error()))
 		return
 	}

@@ -298,6 +298,11 @@ export type TopupStatus = 'success' | 'pending' | 'expired' | 'refunded'
  * Topup billing record
  */
 export interface TopupRecord {
+  payment_provider?: string
+  paypal_seller_protection?: {
+    status: string
+    dispute_categories?: string[]
+  }
   /** Record ID */
   id: number
   /** User ID */

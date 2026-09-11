@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Seller protection": "판매자 보호",
+    "Partial seller protection": "부분 판매자 보호",
+    "Item not received": "상품 미수령",
+    "Unauthorized transaction": "승인되지 않은 거래",
+    "Eligibility does not guarantee dispute coverage": "자격 충족이 분쟁 보상을 보장하지는 않습니다",
     "Model status history": "모델 상태 기록",
     "No recorded status history": "기록된 상태 이력이 없습니다",
     "Load more history": "이전 기록 불러오기",

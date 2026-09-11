@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Seller protection": "Satıcı koruması",
+    "Partial seller protection": "Kısmi satıcı koruması",
+    "Item not received": "Ürün teslim alınmadı",
+    "Unauthorized transaction": "Yetkisiz işlem",
+    "Eligibility does not guarantee dispute coverage": "Uygunluk, anlaşmazlık kapsamını garanti etmez",
     "Model status history": "Model durum geçmişi",
     "No recorded status history": "Kaydedilmiş durum geçmişi yok",
     "Load more history": "Önceki kayıtları yükle",

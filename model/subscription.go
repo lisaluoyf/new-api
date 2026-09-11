@@ -907,6 +907,7 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 				CompleteTime:        order.CompleteTime,
 				Status:              order.Status,
 			}
+			applySubscriptionPayPalCapture(&topup, order)
 			return tx.Create(&topup).Error
 		}
 		return err
@@ -929,6 +930,7 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	}
 	topup.CompleteTime = order.CompleteTime
 	topup.Status = order.Status
+	applySubscriptionPayPalCapture(&topup, order)
 	return tx.Save(&topup).Error
 }
 

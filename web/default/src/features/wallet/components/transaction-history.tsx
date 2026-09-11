@@ -41,6 +41,7 @@ import {
   formatPaidAmount,
 } from '../lib/billing'
 import type { TopupStatus } from '../types'
+import { PayPalProtectionBadge } from './paypal-protection-badge'
 
 const STATUS_TABS = [
   { value: '', labelKey: 'All' },
@@ -460,6 +461,7 @@ export function TransactionHistory() {
                       )}
                       <td className='text-muted-foreground px-4 py-3'>
                         {getPaymentMethodName(record.payment_method, t)}
+                        <PayPalProtectionBadge record={record} />
                       </td>
                       <td className='px-4 py-3 text-right font-mono'>
                         {formatRechargeAmount(creditedAmount)}
