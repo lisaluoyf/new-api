@@ -69,6 +69,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
 
@@ -269,6 +270,10 @@ function AnnouncementManager() {
   } | null>(null)
   const [translateError, setTranslateError] = useState<string | null>(null)
   const [overwrite, setOverwrite] = useState(false)
+  const [clearTarget, setClearTarget] = useState<{
+    dropped: LocaleCode[]
+    source: LocaleCode
+  } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -435,20 +440,18 @@ function AnnouncementManager() {
       setTranslateError(t('There is nothing to clear'))
       return
     }
-    if (
-      !window.confirm(
-        t(
-          'Clear the title and body of {{count}} languages ({{locales}})? {{source}} stays as the source language. This only takes effect after saving.',
-          {
-            count: dropped.length,
-            locales: dropped.join(', '),
-            source,
-          }
-        )
-      )
-    ) {
-      return
-    }
+
+    // The console runs inside a sandboxed iframe without `allow-modals`, so
+    // window.confirm() is silently swallowed and returns false — a native
+    // confirm here reads as "the button does nothing". Ask in-page instead.
+    setClearTarget({ dropped, source })
+  }
+
+  function applyClearTranslations() {
+    if (!draft || !clearTarget) return
+
+    const { dropped, source } = clearTarget
+    setClearTarget(null)
 
     const title: Record<string, string> = {}
     const body: Record<string, string> = {}
@@ -458,6 +461,11 @@ function AnnouncementManager() {
     setTranslateError(null)
     setDraft({ ...draft, title, body })
     setEditLocale(source)
+    toast.success(
+      t('Cleared {{count}} languages, save to apply.', {
+        count: dropped.length,
+      })
+    )
   }
 
   async function save() {
@@ -887,6 +895,22 @@ function AnnouncementManager() {
           </DialogContent>
         </Dialog>
       ) : null}
+
+      <ConfirmDialog
+        open={clearTarget !== null}
+        onOpenChange={(open) => (!open ? setClearTarget(null) : null)}
+        title={t('Clear translations')}
+        desc={t(
+          'Clear the title and body of {{count}} languages ({{locales}})? {{source}} stays as the source language. This only takes effect after saving.',
+          {
+            count: clearTarget?.dropped.length ?? 0,
+            locales: clearTarget?.dropped.join(', ') ?? '',
+            source: clearTarget?.source ?? '',
+          }
+        )}
+        confirmText={t('Clear translations')}
+        handleConfirm={applyClearTranslations}
+      />
 
       <AlertDialog
         open={deleteTarget !== null}
