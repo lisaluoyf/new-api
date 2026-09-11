@@ -664,7 +664,7 @@ function AnnouncementManager() {
 
       {draft ? (
         <Dialog open onOpenChange={(open) => (!open ? setDraft(null) : null)}>
-          <DialogContent className='max-w-3xl'>
+          <DialogContent className='max-h-[88vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-4xl lg:max-w-5xl'>
             <DialogHeader>
               <DialogTitle>
                 {draft.id ? t('Edit Announcement') : t('New Announcement')}
@@ -676,188 +676,192 @@ function AnnouncementManager() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className='grid gap-4 sm:grid-cols-2'>
-              <div className='space-y-2'>
-                <label className='text-sm font-medium'>{t('Slug')}</label>
-                <Input
-                  value={draft.slug}
-                  placeholder='gpt-instability-2026-09'
-                  onChange={(event) =>
-                    setDraft({ ...draft, slug: event.target.value })
-                  }
-                />
-              </div>
-              <div className='space-y-2'>
-                <label className='text-sm font-medium'>{t('Level')}</label>
-                <Select
-                  value={draft.level}
-                  onValueChange={(value) =>
-                    setDraft({ ...draft, level: value as Level })
-                  }
-                >
-                  <SelectTrigger className='w-full'>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent alignItemWithTrigger={false}>
-                    <SelectGroup>
-                      {LEVELS.map((level) => (
-                        <SelectItem key={level.value} value={level.value}>
-                          {t(level.labelKey)}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className='space-y-2'>
-                <label className='text-sm font-medium'>
-                  {t('Publish Date')}
-                </label>
-                <Input
-                  type='datetime-local'
-                  value={draft.publishedAt}
-                  onChange={(event) =>
-                    setDraft({ ...draft, publishedAt: event.target.value })
-                  }
-                />
-              </div>
-              <div className='space-y-2'>
-                <label className='text-sm font-medium'>
-                  {t('Expires At')}
-                  <span className='text-muted-foreground ml-1 text-xs font-normal'>
-                    {t('(optional)')}
-                  </span>
-                </label>
-                <div className='flex items-center gap-2'>
+            <div className='min-h-0 space-y-4 overflow-y-auto pr-1'>
+              <div className='grid gap-4 sm:grid-cols-2'>
+                <div className='space-y-2'>
+                  <label className='text-sm font-medium'>{t('Slug')}</label>
                   <Input
-                    type='datetime-local'
-                    value={draft.expiresAt}
+                    value={draft.slug}
+                    placeholder='gpt-instability-2026-09'
                     onChange={(event) =>
-                      setDraft({ ...draft, expiresAt: event.target.value })
+                      setDraft({ ...draft, slug: event.target.value })
                     }
                   />
-                  {draft.expiresAt ? (
-                    <Button
-                      type='button'
-                      size='sm'
-                      variant='ghost'
-                      onClick={() => setDraft({ ...draft, expiresAt: '' })}
-                    >
-                      <X className='size-4' />
-                    </Button>
-                  ) : null}
+                </div>
+                <div className='space-y-2'>
+                  <label className='text-sm font-medium'>{t('Level')}</label>
+                  <Select
+                    value={draft.level}
+                    onValueChange={(value) =>
+                      setDraft({ ...draft, level: value as Level })
+                    }
+                  >
+                    <SelectTrigger className='w-full'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        {LEVELS.map((level) => (
+                          <SelectItem key={level.value} value={level.value}>
+                            {t(level.labelKey)}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className='space-y-2'>
+                  <label className='text-sm font-medium'>
+                    {t('Publish Date')}
+                  </label>
+                  <Input
+                    type='datetime-local'
+                    value={draft.publishedAt}
+                    onChange={(event) =>
+                      setDraft({ ...draft, publishedAt: event.target.value })
+                    }
+                  />
+                </div>
+                <div className='space-y-2'>
+                  <label className='text-sm font-medium'>
+                    {t('Expires At')}
+                    <span className='text-muted-foreground ml-1 text-xs font-normal'>
+                      {t('(optional)')}
+                    </span>
+                  </label>
+                  <div className='flex items-center gap-2'>
+                    <Input
+                      type='datetime-local'
+                      value={draft.expiresAt}
+                      onChange={(event) =>
+                        setDraft({ ...draft, expiresAt: event.target.value })
+                      }
+                    />
+                    {draft.expiresAt ? (
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant='ghost'
+                        onClick={() => setDraft({ ...draft, expiresAt: '' })}
+                      >
+                        <X className='size-4' />
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className='flex items-center gap-3'>
-              <Switch
-                checked={draft.active}
-                onCheckedChange={(checked: boolean) =>
-                  setDraft({ ...draft, active: checked })
-                }
-              />
-              <div className='text-sm'>
-                <p className='font-medium'>{t('Publish now')}</p>
+              <div className='flex items-center gap-3'>
+                <Switch
+                  checked={draft.active}
+                  onCheckedChange={(checked: boolean) =>
+                    setDraft({ ...draft, active: checked })
+                  }
+                />
+                <div className='text-sm'>
+                  <p className='font-medium'>{t('Publish now')}</p>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'Off keeps it as a draft. Visitors never see drafts, even after the publish time.'
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className='space-y-3'>
+                <div className='flex flex-wrap items-center gap-2 border-b pb-3'>
+                  <Button
+                    type='button'
+                    size='sm'
+                    variant='outline'
+                    disabled={translating}
+                    onClick={() => void translateAll()}
+                  >
+                    {translating ? (
+                      <Loader2 className='size-4 animate-spin' />
+                    ) : (
+                      <Languages className='size-4' />
+                    )}
+                    {translating && translateProgress
+                      ? t('Translating {{done}}/{{total}}', {
+                          done: translateProgress.done,
+                          total: translateProgress.total,
+                        })
+                      : t('Translate All')}
+                  </Button>
+                  <label className='text-muted-foreground flex items-center gap-1.5 text-xs'>
+                    <input
+                      type='checkbox'
+                      className='size-3.5'
+                      checked={overwrite}
+                      onChange={(event) => setOverwrite(event.target.checked)}
+                    />
+                    {t('Overwrite existing translations')}
+                  </label>
+                  <Button
+                    type='button'
+                    size='sm'
+                    variant='ghost'
+                    className='ml-auto'
+                    disabled={translating}
+                    onClick={clearTranslations}
+                  >
+                    <Eraser className='size-4' />
+                    {t('Clear translations')}
+                  </Button>
+                </div>
+                {translateError ? (
+                  <p className='text-xs text-amber-500'>{translateError}</p>
+                ) : null}
+                <div className='flex flex-wrap gap-1.5'>
+                  {LOCALES.map((locale) => {
+                    const filled = Boolean(
+                      draft.title[locale]?.trim() || draft.body[locale]?.trim()
+                    )
+                    return (
+                      <button
+                        key={locale}
+                        type='button'
+                        onClick={() => setEditLocale(locale)}
+                        className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                          editLocale === locale
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'hover:bg-accent'
+                        }`}
+                      >
+                        {locale}
+                        {filled ? ' •' : ''}
+                      </button>
+                    )
+                  })}
+                </div>
+                <Input
+                  value={draft.title[editLocale] ?? ''}
+                  placeholder={t('Title ({{locale}})', { locale: editLocale })}
+                  onChange={(event) =>
+                    setLocalized('title', event.target.value)
+                  }
+                />
+                <Textarea
+                  rows={12}
+                  className='font-mono text-sm'
+                  value={draft.body[editLocale] ?? ''}
+                  placeholder={t('Body ({{locale}}), Markdown', {
+                    locale: editLocale,
+                  })}
+                  onChange={(event) => setLocalized('body', event.target.value)}
+                />
                 <p className='text-muted-foreground text-xs'>
                   {t(
-                    'Off keeps it as a draft. Visitors never see drafts, even after the publish time.'
+                    'Line breaks are kept as-is; a blank line starts a new paragraph. "- " or "1. " starts a list.'
                   )}
                 </p>
               </div>
-            </div>
 
-            <div className='space-y-3'>
-              <div className='flex flex-wrap items-center gap-2 border-b pb-3'>
-                <Button
-                  type='button'
-                  size='sm'
-                  variant='outline'
-                  disabled={translating}
-                  onClick={() => void translateAll()}
-                >
-                  {translating ? (
-                    <Loader2 className='size-4 animate-spin' />
-                  ) : (
-                    <Languages className='size-4' />
-                  )}
-                  {translating && translateProgress
-                    ? t('Translating {{done}}/{{total}}', {
-                        done: translateProgress.done,
-                        total: translateProgress.total,
-                      })
-                    : t('Translate All')}
-                </Button>
-                <label className='text-muted-foreground flex items-center gap-1.5 text-xs'>
-                  <input
-                    type='checkbox'
-                    className='size-3.5'
-                    checked={overwrite}
-                    onChange={(event) => setOverwrite(event.target.checked)}
-                  />
-                  {t('Overwrite existing translations')}
-                </label>
-                <Button
-                  type='button'
-                  size='sm'
-                  variant='ghost'
-                  className='ml-auto'
-                  disabled={translating}
-                  onClick={clearTranslations}
-                >
-                  <Eraser className='size-4' />
-                  {t('Clear translations')}
-                </Button>
-              </div>
-              {translateError ? (
-                <p className='text-xs text-amber-500'>{translateError}</p>
+              {formError ? (
+                <p className='text-destructive text-sm'>{formError}</p>
               ) : null}
-              <div className='flex flex-wrap gap-1.5'>
-                {LOCALES.map((locale) => {
-                  const filled = Boolean(
-                    draft.title[locale]?.trim() || draft.body[locale]?.trim()
-                  )
-                  return (
-                    <button
-                      key={locale}
-                      type='button'
-                      onClick={() => setEditLocale(locale)}
-                      className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
-                        editLocale === locale
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'hover:bg-accent'
-                      }`}
-                    >
-                      {locale}
-                      {filled ? ' •' : ''}
-                    </button>
-                  )
-                })}
-              </div>
-              <Input
-                value={draft.title[editLocale] ?? ''}
-                placeholder={t('Title ({{locale}})', { locale: editLocale })}
-                onChange={(event) => setLocalized('title', event.target.value)}
-              />
-              <Textarea
-                rows={12}
-                className='font-mono text-sm'
-                value={draft.body[editLocale] ?? ''}
-                placeholder={t('Body ({{locale}}), Markdown', {
-                  locale: editLocale,
-                })}
-                onChange={(event) => setLocalized('body', event.target.value)}
-              />
-              <p className='text-muted-foreground text-xs'>
-                {t(
-                  'Line breaks are kept as-is; a blank line starts a new paragraph. "- " or "1. " starts a list.'
-                )}
-              </p>
             </div>
-
-            {formError ? (
-              <p className='text-destructive text-sm'>{formError}</p>
-            ) : null}
 
             <DialogFooter>
               <Button
