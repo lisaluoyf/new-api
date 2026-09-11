@@ -69,8 +69,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
-import { SettingsSection } from '../components/settings-section'
 
 /**
  * Announcements shown in the APIMaster site header and popup.
@@ -232,7 +232,25 @@ function emptyDraft(): Draft {
   }
 }
 
-export function AnnouncementCenterSection() {
+export function SiteAnnouncementsPage() {
+  const { t } = useTranslation()
+
+  return (
+    <SectionPageLayout>
+      <SectionPageLayout.Title>
+        {t('Site Announcements')}
+      </SectionPageLayout.Title>
+      <SectionPageLayout.Content>
+        <AnnouncementManager />
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
+  )
+}
+
+/**
+ * Announcement CRUD against the APIMaster admin API.
+ */
+function AnnouncementManager() {
   const { t } = useTranslation()
   const [items, setItems] = useState<AdminAnnouncement[]>([])
   const [loading, setLoading] = useState(true)
@@ -540,12 +558,13 @@ export function AnnouncementCenterSection() {
   }
 
   return (
-    <SettingsSection
-      title={t('Site Announcements')}
-      description={t(
-        'Shown on the APIMaster website header and as an unread popup. Signed-out visitors see them too. Markdown is supported; line breaks are preserved.'
-      )}
-    >
+    <div className='space-y-4'>
+      <p className='text-muted-foreground text-sm'>
+        {t(
+          'Shown on the APIMaster website header and as an unread popup. Signed-out visitors see them too. Markdown is supported; line breaks are preserved.'
+        )}
+      </p>
+
       <div className='flex flex-wrap items-center gap-2'>
         <Button type='button' onClick={openCreate}>
           <Plus className='size-4' />
@@ -902,6 +921,6 @@ export function AnnouncementCenterSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </SettingsSection>
+    </div>
   )
 }

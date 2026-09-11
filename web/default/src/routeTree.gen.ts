@@ -53,6 +53,7 @@ import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChannelDataIndexRouteImport } from './routes/_authenticated/channel-data/index'
 import { Route as AuthenticatedBillingSummaryIndexRouteImport } from './routes/_authenticated/billing-summary/index'
+import { Route as AuthenticatedAnnouncementsIndexRouteImport } from './routes/_authenticated/announcements/index'
 import { Route as AuthenticatedAffiliateIndexRouteImport } from './routes/_authenticated/affiliate/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
@@ -309,6 +310,12 @@ const AuthenticatedBillingSummaryIndexRoute =
     path: '/billing-summary/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAnnouncementsIndexRoute =
+  AuthenticatedAnnouncementsIndexRouteImport.update({
+    id: '/announcements/',
+    path: '/announcements/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAffiliateIndexRoute =
   AuthenticatedAffiliateIndexRouteImport.update({
     id: '/affiliate/',
@@ -466,6 +473,7 @@ export interface FileRoutesByFullPath {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/affiliate/': typeof AuthenticatedAffiliateIndexRoute
+  '/announcements/': typeof AuthenticatedAnnouncementsIndexRoute
   '/billing-summary/': typeof AuthenticatedBillingSummaryIndexRoute
   '/channel-data/': typeof AuthenticatedChannelDataIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
@@ -530,6 +538,7 @@ export interface FileRoutesByTo {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/affiliate': typeof AuthenticatedAffiliateIndexRoute
+  '/announcements': typeof AuthenticatedAnnouncementsIndexRoute
   '/billing-summary': typeof AuthenticatedBillingSummaryIndexRoute
   '/channel-data': typeof AuthenticatedChannelDataIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
@@ -598,6 +607,7 @@ export interface FileRoutesById {
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/affiliate/': typeof AuthenticatedAffiliateIndexRoute
+  '/_authenticated/announcements/': typeof AuthenticatedAnnouncementsIndexRoute
   '/_authenticated/billing-summary/': typeof AuthenticatedBillingSummaryIndexRoute
   '/_authenticated/channel-data/': typeof AuthenticatedChannelDataIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
@@ -665,6 +675,7 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/usage-logs/$section'
     | '/affiliate/'
+    | '/announcements/'
     | '/billing-summary/'
     | '/channel-data/'
     | '/channels/'
@@ -729,6 +740,7 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/usage-logs/$section'
     | '/affiliate'
+    | '/announcements'
     | '/billing-summary'
     | '/channel-data'
     | '/channels'
@@ -796,6 +808,7 @@ export interface FileRouteTypes {
     | '/_authenticated/models/$section'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/affiliate/'
+    | '/_authenticated/announcements/'
     | '/_authenticated/billing-summary/'
     | '/_authenticated/channel-data/'
     | '/_authenticated/channels/'
@@ -1162,6 +1175,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBillingSummaryIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/announcements/': {
+      id: '/_authenticated/announcements/'
+      path: '/announcements'
+      fullPath: '/announcements/'
+      preLoaderRoute: typeof AuthenticatedAnnouncementsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/affiliate/': {
       id: '/_authenticated/affiliate/'
       path: '/affiliate'
@@ -1402,6 +1422,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedAffiliateIndexRoute: typeof AuthenticatedAffiliateIndexRoute
+  AuthenticatedAnnouncementsIndexRoute: typeof AuthenticatedAnnouncementsIndexRoute
   AuthenticatedBillingSummaryIndexRoute: typeof AuthenticatedBillingSummaryIndexRoute
   AuthenticatedChannelDataIndexRoute: typeof AuthenticatedChannelDataIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
@@ -1430,6 +1451,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedAffiliateIndexRoute: AuthenticatedAffiliateIndexRoute,
+  AuthenticatedAnnouncementsIndexRoute: AuthenticatedAnnouncementsIndexRoute,
   AuthenticatedBillingSummaryIndexRoute: AuthenticatedBillingSummaryIndexRoute,
   AuthenticatedChannelDataIndexRoute: AuthenticatedChannelDataIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,

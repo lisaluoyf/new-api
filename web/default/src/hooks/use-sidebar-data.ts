@@ -38,6 +38,7 @@ import {
   Gift,
   Play,
   DollarSign,
+  Megaphone,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
@@ -175,6 +176,11 @@ export function useSidebarData(): SidebarData {
             title: t('Subscription Management'),
             url: '/subscriptions',
             icon: CreditCard,
+          },
+          {
+            title: t('Site Announcements'),
+            url: '/announcements',
+            icon: Megaphone,
           },
           {
             title: t('System Settings'),
