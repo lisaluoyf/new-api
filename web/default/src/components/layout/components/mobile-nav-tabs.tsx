@@ -19,13 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
 import { useSidebarData } from '@/hooks/use-sidebar-data'
 import { getNavGroupsForPath } from '../lib/workspace-registry'
 import { type NavLink } from '../types'
-import { cn } from '@/lib/utils'
 
 function isNavLink(item: unknown): item is NavLink {
   return typeof (item as NavLink).url === 'string'
@@ -48,7 +48,7 @@ export function MobileNavTabs() {
   }, [configFilteredNavGroups, userRole])
 
   return (
-    <div className='no-scrollbar sticky top-0 z-20 flex gap-1 overflow-x-auto border-b border-sidebar-border bg-sidebar px-3 py-2 md:hidden'>
+    <div className='no-scrollbar flex gap-1 overflow-x-auto px-3 py-2 md:hidden'>
       {tabs.map((tab) => {
         const isActive =
           pathname === tab.url ||

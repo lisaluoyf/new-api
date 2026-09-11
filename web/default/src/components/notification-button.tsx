@@ -46,6 +46,7 @@ export function NotificationButton({
         onClick={onClick}
         className={cn('h-9 w-9', className)}
         aria-label={t('Notifications')}
+        title={t('Notifications')}
       >
         <Bell className='size-[1.2rem]' />
       </Button>
@@ -53,7 +54,7 @@ export function NotificationButton({
       {unreadCount > 0 && (
         <Badge
           variant='destructive'
-          className='absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center px-1 text-[10px] font-semibold tabular-nums'
+          className='pointer-events-none absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center px-1 text-[10px] font-semibold tabular-nums'
         >
           {unreadCount > 99 ? '99+' : unreadCount}
         </Badge>
