@@ -4932,7 +4932,14 @@
     "Every language is already translated. Tick \"Overwrite existing translations\" to redo them.": "所有语言都已有译文，勾选「覆盖已有译文」可重新翻译",
     "These languages failed, you can retry: {{locales}}": "以下语言翻译失败，可重试：{{locales}}",
     "There is nothing to clear": "没有可清空的译文",
-    "Clear the title and body of {{count}} languages ({{locales}})? {{source}} stays as the source language. This only takes effect after saving.": "清空 {{count}} 个语言（{{locales}}）的标题和正文？保留 {{source}} 作为源语言。保存后才真正生效。"
+    "Clear the title and body of {{count}} languages ({{locales}})? {{source}} stays as the source language. This only takes effect after saving.": "清空 {{count}} 个语言（{{locales}}）的标题和正文？保留 {{source}} 作为源语言。保存后才真正生效。",
+    "Level": "级别",
+    "Info": "普通",
+    "Critical": "严重",
+    "Title": "标题",
+    "Unpublished": "已下架",
+    "Publish": "上架",
+    "Unpublish": "下架"
   },
   "Coding Plan Users": "Coding Plan 用户",
   "Coding Plan Balance": "Coding Plan 余额"

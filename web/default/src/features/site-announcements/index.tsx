@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Eraser,
   Eye,
@@ -297,18 +297,6 @@ function AnnouncementManager() {
   useEffect(() => {
     void load()
   }, [load])
-
-  const translatedCount = useMemo(() => {
-    const counts: Partial<Record<LocaleCode, number>> = {}
-    for (const item of items) {
-      for (const locale of LOCALES) {
-        if (item.title[locale]?.trim() || item.body[locale]?.trim()) {
-          counts[locale] = (counts[locale] ?? 0) + 1
-        }
-      }
-    }
-    return counts
-  }, [items])
 
   function openCreate() {
     setFormError(null)
@@ -829,7 +817,6 @@ function AnnouncementManager() {
                   const filled = Boolean(
                     draft.title[locale]?.trim() || draft.body[locale]?.trim()
                   )
-                  const count = translatedCount[locale]
                   return (
                     <button
                       key={locale}
@@ -840,9 +827,6 @@ function AnnouncementManager() {
                           ? 'border-primary bg-primary text-primary-foreground'
                           : 'hover:bg-accent'
                       }`}
-                      title={
-                        count ? t('{{count}} announcements', { count }) : ''
-                      }
                     >
                       {locale}
                       {filled ? ' •' : ''}
