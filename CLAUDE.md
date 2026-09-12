@@ -59,6 +59,12 @@ APIMaster fork 改为全部参与重试：
 | `retryTimes` 耗尽（默认 3 次，共 4 轮） | 已经试过所有可用渠道 |
 | `specific_channel_id` 请求头指定了渠道 | 调试/定向请求，不走自动路由 |
 
+### HTTP 200 假成功（2026-09-12）
+
+OpenAI Responses 上游即使返回 HTTP 2xx，只要在客户端响应开始前出现结构化错误、空响应、生命周期帧后直接结束或其他“无有效输出”异常，就转成可重试的 502 并进入多渠道 fallback。生命周期帧 `response.created`、`response.in_progress` 不算有效输出。
+
+诊断写入 `logs.other.upstream_false_success`；如果后续渠道成功，最终成功日志在 `logs.other.admin_info.upstream_false_success` 保留汇总。每次命中还会发送 `NewAPI HTTP 200 假成功拦截` 飞书卡片。完整背景、判定矩阵、日志字段、查询方法和实现边界见 `docs/diagnostics/2026-09-12-http-200-false-success-fallback.md`。
+
 ---
 
 ## Overview
