@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
@@ -117,10 +118,7 @@ func OidcAuth(c *gin.Context) {
 		return
 	}
 	if !system_setting.GetOIDCSettings().Enabled {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "管理员未开启通过 OIDC 登录以及注册",
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, map[string]any{"Provider": "OIDC"})
 		return
 	}
 	code := c.Query("code")
@@ -163,19 +161,13 @@ func OidcAuth(c *gin.Context) {
 				return
 			}
 		} else {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "管理员关闭了新用户注册",
-			})
+			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
 			return
 		}
 	}
 
 	if user.Status != common.UserStatusEnabled {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "用户已被封禁",
-			"success": false,
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthUserBanned)
 		return
 	}
 	setupLogin(&user, c)
@@ -183,10 +175,7 @@ func OidcAuth(c *gin.Context) {
 
 func OidcBind(c *gin.Context) {
 	if !system_setting.GetOIDCSettings().Enabled {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "管理员未开启通过 OIDC 登录以及注册",
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, map[string]any{"Provider": "OIDC"})
 		return
 	}
 	code := c.Query("code")
@@ -199,10 +188,7 @@ func OidcBind(c *gin.Context) {
 		OidcId: oidcUser.OpenID,
 	}
 	if model.IsOidcIdAlreadyTaken(user.OidcId) {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "该 OIDC 账户已被绑定",
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, map[string]any{"Provider": "OIDC"})
 		return
 	}
 	session := sessions.Default(c)

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -16,12 +17,12 @@ func RecordInvitePromoEvent(c *gin.Context) {
 	userId := c.GetInt("id")
 	var req InvitePromoEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	event := strings.TrimSpace(req.Event)
 	if !model.IsValidInvitePromoEvent(event) {
-		common.ApiErrorMsg(c, "无效事件")
+		common.ApiErrorI18n(c, i18n.MsgInvitePromoInvalidEvent)
 		return
 	}
 	if err := model.RecordInvitePromoEvent(userId, event); err != nil {

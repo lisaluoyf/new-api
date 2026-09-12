@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Shield, User, Users } from 'lucide-react'
-import { COUNTRY_NAMES } from '@/lib/country'
+import { COUNTRY_CODES, parseCountry } from '@/lib/country'
 import type { User as UserType } from './types'
 
 // ============================================================================
@@ -138,11 +138,14 @@ export const getLanguageOptions = () =>
 // Country Configuration
 // ============================================================================
 
-export const getCountryOptions = () =>
-  Object.entries(COUNTRY_NAMES).map(([code, name]) => ({
-    label: name ? `${code} ${name}` : code,
+export const getCountryOptions = (locale = 'en') =>
+  COUNTRY_CODES.map((code) => {
+    const country = parseCountry(code, locale)
+    return {
+    label: country?.name ? `${code} ${country.name}` : code,
     value: code,
-  }))
+    }
+  })
 
 // ============================================================================
 // Trial Status Configuration

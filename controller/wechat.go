@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -55,10 +56,7 @@ func getWeChatIdByCode(code string) (string, error) {
 
 func WeChatAuth(c *gin.Context) {
 	if !common.WeChatAuthEnabled {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "管理员未开启通过微信登录以及注册",
-			"success": false,
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, map[string]any{"Provider": "WeChat"})
 		return
 	}
 	code := c.Query("code")
@@ -83,10 +81,7 @@ func WeChatAuth(c *gin.Context) {
 			return
 		}
 		if user.Id == 0 {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "用户已注销",
-			})
+			common.ApiErrorI18n(c, i18n.MsgOAuthUserDeleted)
 			return
 		}
 	} else {
@@ -104,19 +99,13 @@ func WeChatAuth(c *gin.Context) {
 				return
 			}
 		} else {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "管理员关闭了新用户注册",
-			})
+			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
 			return
 		}
 	}
 
 	if user.Status != common.UserStatusEnabled {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "用户已被封禁",
-			"success": false,
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthUserBanned)
 		return
 	}
 	setupLogin(&user, c)
@@ -128,18 +117,12 @@ type wechatBindRequest struct {
 
 func WeChatBind(c *gin.Context) {
 	if !common.WeChatAuthEnabled {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "管理员未开启通过微信登录以及注册",
-			"success": false,
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, map[string]any{"Provider": "WeChat"})
 		return
 	}
 	var req wechatBindRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无效的请求",
-		})
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	code := req.Code
@@ -152,10 +135,7 @@ func WeChatBind(c *gin.Context) {
 		return
 	}
 	if model.IsWeChatIdAlreadyTaken(wechatId) {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "该微信账号已被绑定",
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, map[string]any{"Provider": "WeChat"})
 		return
 	}
 	session := sessions.Default(c)

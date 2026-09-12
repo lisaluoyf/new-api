@@ -5,39 +5,45 @@ package i18n
 
 // Common error messages
 const (
-	MsgInvalidParams     = "common.invalid_params"
-	MsgDatabaseError     = "common.database_error"
-	MsgRetryLater        = "common.retry_later"
-	MsgGenerateFailed    = "common.generate_failed"
-	MsgNotFound          = "common.not_found"
-	MsgUnauthorized      = "common.unauthorized"
-	MsgForbidden         = "common.forbidden"
-	MsgInvalidId         = "common.invalid_id"
-	MsgIdEmpty           = "common.id_empty"
-	MsgFeatureDisabled   = "common.feature_disabled"
-	MsgOperationSuccess  = "common.operation_success"
-	MsgOperationFailed   = "common.operation_failed"
-	MsgUpdateSuccess     = "common.update_success"
-	MsgUpdateFailed      = "common.update_failed"
-	MsgCreateSuccess     = "common.create_success"
-	MsgCreateFailed      = "common.create_failed"
-	MsgDeleteSuccess     = "common.delete_success"
-	MsgDeleteFailed      = "common.delete_failed"
-	MsgAlreadyExists     = "common.already_exists"
-	MsgNameCannotBeEmpty = "common.name_cannot_be_empty"
-	MsgBatchTooMany      = "common.batch_too_many"
+	MsgInvalidParams      = "common.invalid_params"
+	MsgDatabaseError      = "common.database_error"
+	MsgRetryLater         = "common.retry_later"
+	MsgGenerateFailed     = "common.generate_failed"
+	MsgNotFound           = "common.not_found"
+	MsgUnauthorized       = "common.unauthorized"
+	MsgForbidden          = "common.forbidden"
+	MsgInvalidId          = "common.invalid_id"
+	MsgIdEmpty            = "common.id_empty"
+	MsgFeatureDisabled    = "common.feature_disabled"
+	MsgOperationSuccess   = "common.operation_success"
+	MsgOperationFailed    = "common.operation_failed"
+	MsgUpdateSuccess      = "common.update_success"
+	MsgUpdateFailed       = "common.update_failed"
+	MsgCreateSuccess      = "common.create_success"
+	MsgCreateFailed       = "common.create_failed"
+	MsgDeleteSuccess      = "common.delete_success"
+	MsgDeleteFailed       = "common.delete_failed"
+	MsgAlreadyExists      = "common.already_exists"
+	MsgNameCannotBeEmpty  = "common.name_cannot_be_empty"
+	MsgBatchTooMany       = "common.batch_too_many"
+	MsgEndpointDeprecated = "common.endpoint_deprecated"
 )
 
 // Auth middleware messages
 const (
-	MsgAuthNotLoggedIn           = "auth.not_logged_in"
-	MsgAuthAccessTokenInvalid    = "auth.access_token_invalid"
-	MsgAuthUserInfoInvalid       = "auth.user_info_invalid"
-	MsgAuthUserIdNotProvided     = "auth.user_id_not_provided"
-	MsgAuthUserIdFormatError     = "auth.user_id_format_error"
-	MsgAuthUserIdMismatch        = "auth.user_id_mismatch"
-	MsgAuthUserBanned            = "auth.user_banned"
-	MsgAuthInsufficientPrivilege = "auth.insufficient_privilege"
+	MsgAuthNotLoggedIn              = "auth.not_logged_in"
+	MsgAuthAccessTokenInvalid       = "auth.access_token_invalid"
+	MsgAuthUserInfoInvalid          = "auth.user_info_invalid"
+	MsgAuthUserIdNotProvided        = "auth.user_id_not_provided"
+	MsgAuthUserIdFormatError        = "auth.user_id_format_error"
+	MsgAuthUserIdMismatch           = "auth.user_id_mismatch"
+	MsgAuthUserBanned               = "auth.user_banned"
+	MsgAuthInsufficientPrivilege    = "auth.insufficient_privilege"
+	MsgAuthClientIPInvalid          = "auth.client_ip_invalid"
+	MsgAuthClientIPForbidden        = "auth.client_ip_forbidden"
+	MsgAuthGroupForbidden           = "auth.group_forbidden"
+	MsgAuthGroupDeprecated          = "auth.group_deprecated"
+	MsgAuthSpecificChannelForbidden = "auth.specific_channel_forbidden"
 )
 
 // Token related messages
@@ -55,6 +61,7 @@ const (
 	MsgTokenExhausted            = "token.exhausted"
 	MsgTokenStatusUnavailable    = "token.status_unavailable"
 	MsgTokenDbError              = "token.db_error"
+	MsgTokenCountLimit           = "token.count_limit"
 )
 
 // Redemption related messages
@@ -138,6 +145,14 @@ const (
 	MsgSubscriptionPurchaseMax      = "subscription.purchase_max"
 	MsgSubscriptionInvalidId        = "subscription.invalid_id"
 	MsgSubscriptionInvalidUserId    = "subscription.invalid_user_id"
+	MsgSubscriptionTierQuotaNeg     = "subscription.tier_quota_negative"
+	MsgSubscriptionInvalidType      = "subscription.invalid_type"
+	MsgSubscriptionPaidOnlyDelete   = "subscription.paid_only_delete"
+	MsgSubscriptionHasRecords       = "subscription.has_records"
+	MsgSubscriptionSoldOutCoding    = "subscription.sold_out_coding_only"
+	MsgSubscriptionInvalidSubId     = "subscription.invalid_subscription_id"
+	MsgSubscriptionEmailAllowlist   = "subscription.invalid_email_allowlist"
+	MsgSubscriptionOrderType        = "subscription.invalid_order_type"
 )
 
 // Payment related messages
@@ -156,14 +171,14 @@ const (
 
 // Topup related messages
 const (
-	MsgTopupNotProvided    = "topup.not_provided"
-	MsgTopupOrderNotExists = "topup.order_not_exists"
-	MsgTopupOrderStatus    = "topup.order_status"
-	MsgTopupFailed         = "topup.failed"
-	MsgTopupInvalidQuota   = "topup.invalid_quota"
-	MsgTopupAmountTooLow   = "topup.amount_too_low"
-	MsgTopupAmountMin      = "topup.amount_min"
-	MsgTopupAmountMax      = "topup.amount_max"
+	MsgTopupNotProvided         = "topup.not_provided"
+	MsgTopupOrderNotExists      = "topup.order_not_exists"
+	MsgTopupOrderStatus         = "topup.order_status"
+	MsgTopupFailed              = "topup.failed"
+	MsgTopupInvalidQuota        = "topup.invalid_quota"
+	MsgTopupAmountTooLow        = "topup.amount_too_low"
+	MsgTopupAmountMin           = "topup.amount_min"
+	MsgTopupAmountMax           = "topup.amount_max"
 	MsgPaymentRedirectUntrusted = "payment.redirect_untrusted"
 )
 
@@ -180,16 +195,43 @@ const (
 	MsgChannelNoValidUpstream    = "channel.no_valid_upstream"
 	MsgChannelUpstreamSaturated  = "channel.upstream_saturated"
 	MsgChannelGetAvailableFailed = "channel.get_available_failed"
+	MsgChannelCredentialRefresh  = "channel.credential_refresh_failed"
+	MsgChannelUnsupportedAddMode = "channel.unsupported_add_mode"
+	MsgChannelTagEmpty           = "channel.tag_empty"
+	MsgChannelParamJSONInvalid   = "channel.param_override_json_invalid"
+	MsgChannelHeaderJSONInvalid  = "channel.header_override_json_invalid"
+	MsgChannelAppendKeyInvalid   = "channel.append_key_invalid"
+	MsgChannelCloneFailed        = "channel.clone_failed"
+	MsgChannelMultiKeyRequired   = "channel.multi_key_required"
+	MsgChannelKeyIndexDisable    = "channel.key_index_disable_required"
+	MsgChannelKeyIndexEnable     = "channel.key_index_enable_required"
+	MsgChannelKeyIndexDelete     = "channel.key_index_delete_required"
+	MsgChannelKeyIndexRange      = "channel.key_index_out_of_range"
+	MsgChannelKeyDisabled        = "channel.key_disabled"
+	MsgChannelKeyEnabled         = "channel.key_enabled"
+	MsgChannelKeyDeleted         = "channel.key_deleted"
+	MsgChannelNoKeyToDisable     = "channel.no_key_to_disable"
+	MsgChannelLastKeyDelete      = "channel.last_key_delete_forbidden"
+	MsgChannelNoAutoKeyDelete    = "channel.no_auto_disabled_key"
+	MsgChannelUnsupportedAction  = "channel.unsupported_action"
+	MsgChannelMultiKeyBalance    = "channel.multi_key_balance_unsupported"
+	MsgChannelFetchModelsFailed  = "channel.fetch_models_failed"
+	MsgChannelKeysEnabled        = "channel.keys_enabled"
+	MsgChannelKeysDisabled       = "channel.keys_disabled"
+	MsgChannelKeysDeleted        = "channel.keys_deleted"
+	MsgChannelOllamaOnly         = "channel.ollama_only"
+	MsgChannelFetchVersionFailed = "channel.fetch_version_failed"
 )
 
 // Model related messages
 const (
-	MsgModelNameEmpty     = "model.name_empty"
-	MsgModelNameExists    = "model.name_exists"
-	MsgModelIdMissing     = "model.id_missing"
-	MsgModelGetListFailed = "model.get_list_failed"
-	MsgModelGetFailed     = "model.get_failed"
-	MsgModelResetSuccess  = "model.reset_success"
+	MsgModelNameEmpty           = "model.name_empty"
+	MsgModelNameExists          = "model.name_exists"
+	MsgModelIdMissing           = "model.id_missing"
+	MsgModelGetListFailed       = "model.get_list_failed"
+	MsgModelGetFailed           = "model.get_failed"
+	MsgModelResetSuccess        = "model.reset_success"
+	MsgModelUpstreamFetchFailed = "model.upstream_fetch_failed"
 )
 
 // Vendor related messages
@@ -212,24 +254,45 @@ const (
 	MsgCheckinAlreadyToday = "checkin.already_today"
 	MsgCheckinFailed       = "checkin.failed"
 	MsgCheckinQuotaFailed  = "checkin.quota_failed"
+	MsgCheckinSuccess      = "checkin.success"
 )
 
 // Passkey related messages
 const (
-	MsgPasskeyCreateFailed  = "passkey.create_failed"
-	MsgPasskeyLoginAbnormal = "passkey.login_abnormal"
-	MsgPasskeyUpdateFailed  = "passkey.update_failed"
-	MsgPasskeyInvalidUserId = "passkey.invalid_user_id"
-	MsgPasskeyVerifyFailed  = "passkey.verify_failed"
+	MsgPasskeyCreateFailed         = "passkey.create_failed"
+	MsgPasskeyLoginAbnormal        = "passkey.login_abnormal"
+	MsgPasskeyUpdateFailed         = "passkey.update_failed"
+	MsgPasskeyInvalidUserId        = "passkey.invalid_user_id"
+	MsgPasskeyVerifyFailed         = "passkey.verify_failed"
+	MsgPasskeyVerificationRequired = "passkey.verification_required"
+	MsgPasskeyMatchingVerification = "passkey.matching_verification_required"
+	MsgPasskeyNotBound             = "passkey.not_bound"
+	MsgPasskeyRegisterSuccess      = "passkey.register_success"
+	MsgPasskeyUnbindSuccess        = "passkey.unbind_success"
+	MsgPasskeyResetSuccess         = "passkey.reset_success"
+	MsgPasskeyVerifySuccess        = "passkey.verify_success"
 )
 
 // 2FA related messages
 const (
-	MsgTwoFANotEnabled    = "twofa.not_enabled"
-	MsgTwoFAUserIdEmpty   = "twofa.user_id_empty"
-	MsgTwoFAAlreadyExists = "twofa.already_exists"
-	MsgTwoFARecordIdEmpty = "twofa.record_id_empty"
-	MsgTwoFACodeInvalid   = "twofa.code_invalid"
+	MsgTwoFANotEnabled       = "twofa.not_enabled"
+	MsgTwoFAUserIdEmpty      = "twofa.user_id_empty"
+	MsgTwoFAAlreadyExists    = "twofa.already_exists"
+	MsgTwoFARecordIdEmpty    = "twofa.record_id_empty"
+	MsgTwoFACodeInvalid      = "twofa.code_invalid"
+	MsgTwoFAAlreadyEnabled   = "twofa.already_enabled"
+	MsgTwoFASecretFailed     = "twofa.secret_generate_failed"
+	MsgTwoFABackupFailed     = "twofa.backup_generate_failed"
+	MsgTwoFABackupSaveFailed = "twofa.backup_save_failed"
+	MsgTwoFASetupSuccess     = "twofa.setup_success"
+	MsgTwoFASetupRequired    = "twofa.setup_required"
+	MsgTwoFAEnableSuccess    = "twofa.enable_success"
+	MsgTwoFADisableSuccess   = "twofa.disable_success"
+	MsgTwoFABackupSuccess    = "twofa.backup_regenerate_success"
+	MsgTwoFASessionExpired   = "twofa.session_expired"
+	MsgTwoFASessionInvalid   = "twofa.session_invalid"
+	MsgTwoFAAdminForbidden   = "twofa.admin_forbidden"
+	MsgTwoFAAdminDisabled    = "twofa.admin_disable_success"
 )
 
 // Secure verification related messages
@@ -253,23 +316,82 @@ const (
 
 // Rate limit related messages
 const (
-	MsgRateLimitReached      = "rate_limit.reached"
-	MsgRateLimitTotalReached = "rate_limit.total_reached"
+	MsgRateLimitReached                  = "rate_limit.reached"
+	MsgRateLimitTotalReached             = "rate_limit.total_reached"
+	MsgEmailVerificationRateLimited      = "rate_limit.email_verification"
+	MsgEmailVerificationRateLimitedLater = "rate_limit.email_verification_later"
+)
+
+// Turnstile related messages
+const (
+	MsgTurnstileTokenEmpty         = "turnstile.token_empty"
+	MsgTurnstileUnavailable        = "turnstile.unavailable"
+	MsgTurnstileVerificationFailed = "turnstile.verification_failed"
 )
 
 // Setting related messages
 const (
-	MsgSettingInvalidType      = "setting.invalid_type"
-	MsgSettingWebhookEmpty     = "setting.webhook_empty"
-	MsgSettingWebhookInvalid   = "setting.webhook_invalid"
-	MsgSettingEmailInvalid     = "setting.email_invalid"
-	MsgSettingBarkUrlEmpty     = "setting.bark_url_empty"
-	MsgSettingBarkUrlInvalid   = "setting.bark_url_invalid"
-	MsgSettingGotifyUrlEmpty   = "setting.gotify_url_empty"
-	MsgSettingGotifyTokenEmpty = "setting.gotify_token_empty"
-	MsgSettingGotifyUrlInvalid = "setting.gotify_url_invalid"
-	MsgSettingUrlMustHttp      = "setting.url_must_http"
-	MsgSettingSaved            = "setting.saved"
+	MsgSettingInvalidType             = "setting.invalid_type"
+	MsgSettingWebhookEmpty            = "setting.webhook_empty"
+	MsgSettingWebhookInvalid          = "setting.webhook_invalid"
+	MsgSettingEmailInvalid            = "setting.email_invalid"
+	MsgSettingBarkUrlEmpty            = "setting.bark_url_empty"
+	MsgSettingBarkUrlInvalid          = "setting.bark_url_invalid"
+	MsgSettingGotifyUrlEmpty          = "setting.gotify_url_empty"
+	MsgSettingGotifyTokenEmpty        = "setting.gotify_token_empty"
+	MsgSettingGotifyUrlInvalid        = "setting.gotify_url_invalid"
+	MsgSettingUrlMustHttp             = "setting.url_must_http"
+	MsgSettingSaved                   = "setting.saved"
+	MsgSettingOAuthConfigRequired     = "setting.oauth_config_required"
+	MsgSettingEmailDomainRequired     = "setting.email_domain_required"
+	MsgSettingWeChatConfigRequired    = "setting.wechat_config_required"
+	MsgSettingTurnstileConfigRequired = "setting.turnstile_config_required"
+	MsgSettingTelegramBotRequired     = "setting.telegram_bot_required"
+	MsgSettingTelegramSecretInvalid   = "setting.telegram_secret_invalid"
+	MsgSettingThemeInvalid            = "setting.theme_invalid"
+	MsgSettingRatioUpdateFailed       = "setting.ratio_update_failed"
+)
+
+// Email related messages
+const (
+	MsgEmailInvalid           = "email.invalid"
+	MsgEmailDomainNotAllowed  = "email.domain_not_allowed"
+	MsgEmailAliasNotAllowed   = "email.alias_not_allowed"
+	MsgEmailAlreadyTaken      = "email.already_taken"
+	MsgEmailResetLinkInvalid  = "email.reset_link_invalid"
+	MsgEmailDomainUnavailable = "email.domain_unavailable"
+)
+
+// Usage related messages
+const (
+	MsgUsageTimeRangeTooLong = "usage.time_range_too_long"
+)
+
+// Initial setup related messages
+const (
+	MsgSetupAlreadyComplete      = "setup.already_complete"
+	MsgSetupUsernameTooLong      = "setup.username_too_long"
+	MsgSetupPasswordMismatch     = "setup.password_mismatch"
+	MsgSetupPasswordTooShort     = "setup.password_too_short"
+	MsgSetupSystemError          = "setup.system_error"
+	MsgSetupCreateAdminFailed    = "setup.create_admin_failed"
+	MsgSetupSaveModeFailed       = "setup.save_mode_failed"
+	MsgSetupInitializationFailed = "setup.initialization_failed"
+	MsgSetupSuccess              = "setup.success"
+)
+
+// Codex channel related messages
+const (
+	MsgCodexChannelTypeInvalid        = "codex.channel_type_invalid"
+	MsgCodexMultiKeyUnsupported       = "codex.multi_key_unsupported"
+	MsgCodexCredentialInvalid         = "codex.credential_invalid"
+	MsgCodexAccessTokenRequired       = "codex.access_token_required"
+	MsgCodexAccountIDRequired         = "codex.account_id_required"
+	MsgCodexUsageFailed               = "codex.usage_failed"
+	MsgCodexAuthorizationInputInvalid = "codex.authorization_input_invalid"
+	MsgCodexOAuthSessionExpired       = "codex.oauth_session_expired"
+	MsgCodexCodeExchangeFailed        = "codex.code_exchange_failed"
+	MsgCodexAccountIDExtractFailed    = "codex.account_id_extract_failed"
 )
 
 // Deployment related messages (io.net)
@@ -351,4 +473,20 @@ const (
 	MsgCustomOAuthHasBindings       = "custom_oauth.has_bindings"
 	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
 	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
+	MsgCustomOAuthDiscoveryRequired = "custom_oauth.discovery_required"
+	MsgCustomOAuthDiscoveryURL      = "custom_oauth.discovery_url_invalid"
+	MsgCustomOAuthDiscoveryCreate   = "custom_oauth.discovery_request_failed"
+	MsgCustomOAuthDiscoveryFetch    = "custom_oauth.discovery_fetch_failed"
+	MsgCustomOAuthDiscoveryParse    = "custom_oauth.discovery_parse_failed"
+	MsgCustomOAuthSlugConflict      = "custom_oauth.slug_builtin_conflict"
+	MsgCustomOAuthBindingCheck      = "custom_oauth.binding_check_failed"
+)
+
+// Administration and promotion messages
+const (
+	MsgAdminRootRequired                = "admin.root_required"
+	MsgDistributorDiscountInvalid       = "distributor.discount_invalid"
+	MsgInvitePromoInvalidEvent          = "invite_promo.invalid_event"
+	MsgModelPricingOfficialPriceMissing = "model_pricing.official_price_missing"
+	MsgModelPricingChannelRowNotFound   = "model_pricing.channel_row_not_found"
 )

@@ -49,12 +49,12 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 	id := c.GetInt("id")
 	minTopup := getStripeMinTopup(id)
 	if req.Amount < minTopup {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", minTopup)})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMin, map[string]any{"Min": minTopup})})
 		return
 	}
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgOperationFailed)})
 		return
 	}
 	payMoney := getStripePayMoney(float64(req.Amount), group)
@@ -77,7 +77,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		return
 	}
 	if req.Amount > 10000 {
-		c.JSON(http.StatusOK, gin.H{"message": "Top-up amount cannot be greater than 10000", "data": 10})
+		c.JSON(http.StatusOK, gin.H{"message": i18n.T(c, i18n.MsgTopupAmountMax, map[string]any{"Max": 10000}), "data": 10})
 		return
 	}
 

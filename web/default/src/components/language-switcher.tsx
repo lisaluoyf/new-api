@@ -33,7 +33,15 @@ import {
 
 const languages = [
   { code: 'zh', label: '中文' },
+  { code: 'zh-TW', label: '繁體中文' },
   { code: 'en', label: 'English' },
+  { code: 'ja', label: '日本語' },
+  { code: 'pt', label: 'Português' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'fr', label: 'Français' },
+  { code: 'tr', label: 'Türkçe' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'pl', label: 'Polski' },
   { code: 'id', label: 'Bahasa' },
   { code: 'ko', label: '한국어' },
   { code: 'es', label: 'Español' },

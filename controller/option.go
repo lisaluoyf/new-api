@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
@@ -116,10 +117,7 @@ func UpdateOption(c *gin.Context) {
 	var option OptionUpdateRequest
 	err := common.DecodeJson(c.Request.Body, &option)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "无效的参数",
-		})
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgInvalidParams)
 		return
 	}
 	switch option.Value.(type) {
@@ -135,83 +133,53 @@ func UpdateOption(c *gin.Context) {
 	switch option.Key {
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 GitHub OAuth，请先填入 GitHub Client Id 以及 GitHub Client Secret！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingOAuthConfigRequired, map[string]any{"Provider": "GitHub"})
 			return
 		}
 	case "discord.enabled":
 		if option.Value == "true" && system_setting.GetDiscordSettings().ClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 Discord OAuth，请先填入 Discord Client Id 以及 Discord Client Secret！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingOAuthConfigRequired, map[string]any{"Provider": "Discord"})
 			return
 		}
 	case "oidc.enabled":
 		if option.Value == "true" && system_setting.GetOIDCSettings().ClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 OIDC 登录，请先填入 OIDC Client Id 以及 OIDC Client Secret！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingOAuthConfigRequired, map[string]any{"Provider": "OIDC"})
 			return
 		}
 	case "LinuxDOOAuthEnabled":
 		if option.Value == "true" && common.LinuxDOClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 LinuxDO OAuth，请先填入 LinuxDO Client Id 以及 LinuxDO Client Secret！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingOAuthConfigRequired, map[string]any{"Provider": "Linux DO"})
 			return
 		}
 	case "EmailDomainRestrictionEnabled":
 		if option.Value == "true" && len(common.EmailDomainWhitelist) == 0 {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用邮箱域名限制，请先填入限制的邮箱域名！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingEmailDomainRequired)
 			return
 		}
 	case "WeChatAuthEnabled":
 		if option.Value == "true" && common.WeChatServerAddress == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用微信登录，请先填入微信登录相关配置信息！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingWeChatConfigRequired)
 			return
 		}
 	case "TurnstileCheckEnabled":
 		if option.Value == "true" && common.TurnstileSiteKey == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 Turnstile 校验，请先填入 Turnstile 校验相关配置信息！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingTurnstileConfigRequired)
 
 			return
 		}
 	case "TelegramOAuthEnabled":
 		if option.Value == "true" && common.TelegramBotToken == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 Telegram OAuth，请先填入 Telegram Bot Token！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingTelegramBotRequired)
 			return
 		}
 	case "TelegramWebhookSecret":
 		if !isValidTelegramWebhookSecret(option.Value.(string)) {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "Telegram Webhook 密钥必须为 32-256 位，只能包含字母、数字、下划线和连字符",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingTelegramSecretInvalid)
 			return
 		}
 	case "theme.frontend":
 		if option.Value != "default" && option.Value != "classic" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无效的主题值，可选值：default（新版前端）、classic（经典前端）",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingThemeInvalid)
 			return
 		}
 	case "GroupRatio":
@@ -226,37 +194,25 @@ func UpdateOption(c *gin.Context) {
 	case "ImageRatio":
 		err = ratio_setting.UpdateImageRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "图片倍率设置失败: " + err.Error(),
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingRatioUpdateFailed, map[string]any{"Type": "Image", "Error": err.Error()})
 			return
 		}
 	case "AudioRatio":
 		err = ratio_setting.UpdateAudioRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "音频倍率设置失败: " + err.Error(),
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingRatioUpdateFailed, map[string]any{"Type": "Audio", "Error": err.Error()})
 			return
 		}
 	case "AudioCompletionRatio":
 		err = ratio_setting.UpdateAudioCompletionRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "音频补全倍率设置失败: " + err.Error(),
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingRatioUpdateFailed, map[string]any{"Type": "Audio completion", "Error": err.Error()})
 			return
 		}
 	case "CreateCacheRatio":
 		err = ratio_setting.UpdateCreateCacheRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "缓存创建倍率设置失败: " + err.Error(),
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingRatioUpdateFailed, map[string]any{"Type": "Cache creation", "Error": err.Error()})
 			return
 		}
 	case "ModelRequestRateLimitGroup":

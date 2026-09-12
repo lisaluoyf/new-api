@@ -30,6 +30,15 @@ import { resolveUserGroupDescription } from '@/lib/user-group-i18n'
 // Base URL: empty string for same-origin API requests
 const baseURL = ''
 
+export function resolveApiErrorMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== 'object') return fallback
+  const value = payload as { code?: unknown; message?: unknown }
+  if (typeof value.code === 'string' && value.code && i18next.exists(value.code)) {
+    return i18next.t(value.code)
+  }
+  return typeof value.message === 'string' && value.message ? value.message : fallback
+}
+
 // Create axios instance with default config
 export const api = axios.create({
   baseURL,
@@ -86,7 +95,7 @@ api.interceptors.response.use(
     ) {
       if (!response.data.success) {
         // Show error toast for business failures
-        const msg = response.data.message || 'Request failed'
+        const msg = resolveApiErrorMessage(response.data, i18next.t('Request failed'))
         toast.error(msg)
       }
     }
@@ -109,8 +118,10 @@ api.interceptors.response.use(
         }
       } else {
         // Other errors: show error message from response or default
-        const msg =
-          error?.response?.data?.message || error?.message || 'Request error'
+        const msg = resolveApiErrorMessage(
+          error?.response?.data,
+          error?.message || i18next.t('Request error')
+        )
         toast.error(msg)
       }
     }
@@ -159,7 +170,12 @@ export function getCommonHeaders(): Record<string, string> {
 
 function acceptLanguageHeader(): string {
   const lang = i18next.language || 'en'
-  if (lang.startsWith('zh-TW') || lang === 'zh-HK') return 'zh-TW'
+  if (
+    lang.startsWith('zh-TW') ||
+    lang.startsWith('zh-HK') ||
+    lang.startsWith('zh-MO') ||
+    lang.startsWith('zh-Hant')
+  ) return 'zh-TW'
   if (lang.startsWith('zh')) return 'zh-CN'
   return lang
 }

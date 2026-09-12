@@ -30,29 +30,28 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { TitledCard } from '@/components/ui/titled-card'
-import { setPanelLanguage } from '@/i18n/config'
+import { normalizeLanguage, setPanelLanguage } from '@/i18n/config'
 import { updateUserLanguage } from '../api'
 import { parseUserSettings } from '../lib'
 import type { UserProfile } from '../types'
 
 const LANGUAGE_OPTIONS = [
   { value: 'zh', label: '中文' },
+  { value: 'zh-TW', label: '繁體中文' },
   { value: 'en', label: 'English' },
+  { value: 'ja', label: '日本語' },
+  { value: 'pt', label: 'Português' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'fr', label: 'Français' },
+  { value: 'tr', label: 'Türkçe' },
+  { value: 'it', label: 'Italiano' },
+  { value: 'pl', label: 'Polski' },
   { value: 'id', label: 'Bahasa' },
   { value: 'ko', label: '한국어' },
   { value: 'es', label: 'Español' },
   { value: 'ru', label: 'Русский' },
   { value: 'vi', label: 'Tiếng Việt' },
 ] as const
-
-function normalizeLanguage(value?: string | null): string {
-  if (!value) return 'en'
-  const normalized = value.trim().replace(/_/g, '-').toLowerCase()
-  if (normalized.startsWith('zh')) return 'zh'
-  return LANGUAGE_OPTIONS.some((lang) => lang.value === normalized)
-    ? normalized
-    : 'en'
-}
 
 type LanguagePreferencesCardProps = {
   profile: UserProfile | null
@@ -66,7 +65,7 @@ export function LanguagePreferencesCard(props: LanguagePreferencesCardProps) {
 
   const savedLanguage = useMemo(() => {
     const settings = parseUserSettings(props.profile?.setting)
-    return normalizeLanguage(settings.language || i18n.language)
+    return normalizeLanguage(settings.language || i18n.language || 'en')
   }, [props.profile?.setting, i18n.language])
 
   const [currentLanguage, setCurrentLanguage] = useState(savedLanguage)

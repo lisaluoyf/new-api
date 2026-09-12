@@ -28,6 +28,8 @@ const (
 	DefaultPingInterval         = 10 * time.Second
 )
 
+const ContextKeySuppressStreamPing = "suppress_stream_ping"
+
 func getScannerBufferSize() int {
 	if constant.StreamScannerMaxBufferMB > 0 {
 		return constant.StreamScannerMaxBufferMB << 20
@@ -147,6 +149,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			for {
 				select {
 				case <-pingTicker.C:
+					if c.GetBool(ContextKeySuppressStreamPing) {
+						continue
+					}
 					// 使用超时机制防止写操作阻塞
 					done := make(chan error, 1)
 					gopool.Go(func() {

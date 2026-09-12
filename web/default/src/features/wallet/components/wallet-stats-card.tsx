@@ -42,18 +42,15 @@ const FEATURED_MODEL_ID = 'gpt-5.6-sol'
 const FEATURED_MODEL_LABEL = 'GPT 5.6 Sol'
 
 export function WalletStatsCard({ user, loading }: WalletStatsCardProps) {
-  const { t, i18n } = useTranslation()
-  const isChinese = (i18n.resolvedLanguage || i18n.language || '')
-    .toLowerCase()
-    .startsWith('zh')
+  const { t } = useTranslation()
   const copy = {
     title: t('Wallet Balance'),
     models: t('Models'),
     modelsValue: t('All models'),
     billing: t('Billing'),
     billingValue: t('APIMaster discounted pricing'),
-    featuredPriceLabel: isChinese ? '实时折扣价：' : 'live price:',
-    viewAllDiscounts: isChinese ? '查看完整折扣' : 'View all discounts',
+    featuredPriceLabel: t('Live price:'),
+    viewAllDiscounts: t('View all discounts'),
   }
 
   const { data: featuredMarketplaceItems = [] } = useQuery({

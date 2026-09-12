@@ -69,6 +69,8 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 	finishReason := "stop"
 	if len(toolCalls) > 0 {
 		finishReason = "tool_calls"
+	} else if resp.IncompleteDetails != nil && strings.EqualFold(strings.TrimSpace(resp.IncompleteDetails.Reason), "content_filter") {
+		finishReason = "content_filter"
 	}
 
 	msg := dto.Message{
@@ -116,6 +118,8 @@ func ExtractOutputTextFromResponses(resp *dto.OpenAIResponsesResponse) string {
 		for _, c := range out.Content {
 			if c.Type == "output_text" && c.Text != "" {
 				sb.WriteString(c.Text)
+			} else if c.Type == "refusal" && c.Refusal != "" {
+				sb.WriteString(c.Refusal)
 			}
 		}
 	}
@@ -126,6 +130,8 @@ func ExtractOutputTextFromResponses(resp *dto.OpenAIResponsesResponse) string {
 		for _, c := range out.Content {
 			if c.Text != "" {
 				sb.WriteString(c.Text)
+			} else if c.Refusal != "" {
+				sb.WriteString(c.Refusal)
 			}
 		}
 	}

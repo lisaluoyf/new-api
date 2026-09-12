@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -137,21 +138,21 @@ func GetCodingPlanQuote(c *gin.Context) {
 		PlanId int `json:"plan_id"`
 	}
 	if c.ShouldBindJSON(&req) != nil || req.PlanId <= 0 {
-		common.ApiErrorMsg(c, "Invalid parameters")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	plan, err := model.GetSubscriptionPlanById(req.PlanId)
 	if err != nil || !model.IsCodingPlanPlanPurchasable(plan) {
-		common.ApiErrorMsg(c, "Plan is not available")
+		common.ApiErrorI18n(c, i18n.MsgSubscriptionNotEnabled)
 		return
 	}
 	orderType, previousId, credit, payable, err := model.CalculateCodingPlanQuote(c.GetInt("id"), plan)
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiErrorI18n(c, i18n.MsgOperationFailed)
 		return
 	}
 	if payable < 0.01 || math.IsNaN(payable) || math.IsInf(payable, 0) {
-		common.ApiErrorMsg(c, "The remaining value already covers this plan; no payment order is required")
+		common.ApiErrorI18n(c, i18n.MsgOperationFailed)
 		return
 	}
 	common.ApiSuccess(c, gin.H{

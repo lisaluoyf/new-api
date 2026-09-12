@@ -147,12 +147,12 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     try {
       const result = await addTrialBlockedEmailDomain(user.id)
       if (result.success) {
-        toast.success(
-          `已将 ${result.data?.domain || emailDomain} 加入 GPT Trial 黑域名`
-        )
+        toast.success(t('Added {{domain}} to the GPT Trial blocked domains', {
+          domain: result.data?.domain || emailDomain,
+        }))
         triggerRefresh()
       } else {
-        toast.error(result.message || '增加 GPT Trial 黑域名失败')
+        toast.error(result.message || t('Failed to add GPT Trial blocked domain'))
       }
     } catch (_error) {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
@@ -165,12 +165,12 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     try {
       const result = await removeTrialBlockedEmailDomain(user.id)
       if (result.success) {
-        toast.success(
-          `已将 ${result.data?.domain || emailDomain} 移出 GPT Trial 黑域名`
-        )
+        toast.success(t('Removed {{domain}} from the GPT Trial blocked domains', {
+          domain: result.data?.domain || emailDomain,
+        }))
         triggerRefresh()
       } else {
-        toast.error(result.message || '移出 GPT Trial 黑域名失败')
+        toast.error(result.message || t('Failed to remove GPT Trial blocked domain'))
       }
     } catch (_error) {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
@@ -328,7 +328,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
                   setAddTrialBlockedDomainOpen(true)
                 }}
               >
-                增加GPTTrial黑域名
+                {t('Add GPT Trial blocked domain')}
                 <DropdownMenuShortcut>
                   <ShieldAlert size={16} />
                 </DropdownMenuShortcut>
@@ -340,7 +340,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
                   setRemoveTrialBlockedDomainOpen(true)
                 }}
               >
-                移出GPTTrial黑域名
+                {t('Remove GPT Trial blocked domain')}
                 <DropdownMenuShortcut>
                   <Trash2 size={16} />
                 </DropdownMenuShortcut>
@@ -412,18 +412,22 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
       <ConfirmDialog
         open={addTrialBlockedDomainOpen}
         onOpenChange={setAddTrialBlockedDomainOpen}
-        title='增加 GPT Trial 黑域名'
-        desc={`将 ${emailDomain || '该域名'} 加入 GPT Trial 黑域名后，这个域名下的账号将无法领取 GPT Trial。`}
-        confirmText='确认增加'
+        title={t('Add GPT Trial blocked domain')}
+        desc={t('Accounts under {{domain}} will no longer be eligible for the GPT Trial.', {
+          domain: emailDomain || t('this domain'),
+        })}
+        confirmText={t('Confirm add')}
         handleConfirm={handleAddTrialBlockedDomain}
       />
 
       <ConfirmDialog
         open={removeTrialBlockedDomainOpen}
         onOpenChange={setRemoveTrialBlockedDomainOpen}
-        title='移出 GPT Trial 黑域名'
-        desc={`将 ${emailDomain || '该域名'} 移出 GPT Trial 黑域名后，这个域名下的账号可重新按现有规则参与领取判定。`}
-        confirmText='确认移出'
+        title={t('Remove GPT Trial blocked domain')}
+        desc={t('Accounts under {{domain}} will be evaluated for the GPT Trial under the current rules.', {
+          domain: emailDomain || t('this domain'),
+        })}
+        confirmText={t('Confirm remove')}
         handleConfirm={handleRemoveTrialBlockedDomain}
       />
 

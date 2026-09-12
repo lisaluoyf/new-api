@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { API, showError } from '../helpers';
+import i18n from '../i18n/i18n';
 import {
   prepareCredentialRequestOptions,
   buildAssertionResult,
@@ -94,7 +95,7 @@ export class SecureVerificationService {
    */
   static async verify2FA(code) {
     if (!code?.trim()) {
-      throw new Error('请输入验证码或备用码');
+      throw new Error(i18n.t('请输入验证码或备用码'));
     }
 
     // 调用通用验证 API，验证成功后后端会设置 session
@@ -104,7 +105,9 @@ export class SecureVerificationService {
     });
 
     if (!verifyResponse.data?.success) {
-      throw new Error(verifyResponse.data?.message || '验证失败');
+      throw new Error(
+        verifyResponse.data?.message || i18n.t('验证失败，请重试'),
+      );
     }
 
     // 验证成功，session 已在后端设置
@@ -119,7 +122,9 @@ export class SecureVerificationService {
       // 开始Passkey验证
       const beginResponse = await API.post('/api/user/passkey/verify/begin');
       if (!beginResponse.data?.success) {
-        throw new Error(beginResponse.data?.message || '开始验证失败');
+        throw new Error(
+          beginResponse.data?.message || i18n.t('验证失败，请重试'),
+        );
       }
 
       // 准备WebAuthn选项
@@ -130,7 +135,7 @@ export class SecureVerificationService {
       // 执行WebAuthn验证
       const credential = await navigator.credentials.get({ publicKey });
       if (!credential) {
-        throw new Error('Passkey 验证被取消');
+        throw new Error('Passkey verification was cancelled');
       }
 
       // 构建验证结果
@@ -142,7 +147,9 @@ export class SecureVerificationService {
         assertionResult,
       );
       if (!finishResponse.data?.success) {
-        throw new Error(finishResponse.data?.message || '验证失败');
+        throw new Error(
+          finishResponse.data?.message || i18n.t('验证失败，请重试'),
+        );
       }
 
       // 调用通用验证 API 设置 session（Passkey 验证已完成）
@@ -151,15 +158,17 @@ export class SecureVerificationService {
       });
 
       if (!verifyResponse.data?.success) {
-        throw new Error(verifyResponse.data?.message || '验证失败');
+        throw new Error(
+          verifyResponse.data?.message || i18n.t('验证失败，请重试'),
+        );
       }
 
       // 验证成功，session 已在后端设置
     } catch (error) {
       if (error.name === 'NotAllowedError') {
-        throw new Error('Passkey 验证被取消或超时');
+        throw new Error('Passkey verification was cancelled or timed out');
       } else if (error.name === 'InvalidStateError') {
-        throw new Error('Passkey 验证状态无效');
+        throw new Error('Passkey verification state is invalid');
       } else {
         throw error;
       }
@@ -179,7 +188,7 @@ export class SecureVerificationService {
       case 'passkey':
         return await this.verifyPasskey();
       default:
-        throw new Error(`不支持的验证方式: ${method}`);
+        throw new Error(`Unsupported verification method: ${method}`);
     }
   }
 }
@@ -225,7 +234,7 @@ export const createApiCalls = {
           response = await API.delete(url, { data });
           break;
         default:
-          throw new Error(`不支持的HTTP方法: ${method}`);
+          throw new Error(`Unsupported HTTP method: ${method}`);
       }
       return response.data;
     },

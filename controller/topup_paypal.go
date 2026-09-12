@@ -113,7 +113,7 @@ func RequestPayPalPay(c *gin.Context) {
 		return
 	}
 	if !isPayPalTopUpEnabled() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "PayPal payment is not enabled"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentNotConfigured)})
 		return
 	}
 	var req PayPalPayRequest

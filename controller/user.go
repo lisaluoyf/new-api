@@ -31,6 +31,8 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+var errOriginalPasswordInvalid = errors.New("original password invalid")
+
 func Login(c *gin.Context) {
 	if !common.PasswordLoginEnabled {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
@@ -865,7 +867,7 @@ type resellerProfileRequest struct {
 
 func UpdateUserResellerProfile(c *gin.Context) {
 	if c.GetInt("role") != common.RoleRootUser {
-		common.ApiErrorMsg(c, "只有 root 管理员可以编辑分销商关系")
+		common.ApiErrorI18n(c, i18n.MsgAdminRootRequired)
 		return
 	}
 	id, err := strconv.Atoi(c.Param("id"))
@@ -888,7 +890,7 @@ func UpdateUserResellerProfile(c *gin.Context) {
 
 func SearchResellerUsers(c *gin.Context) {
 	if c.GetInt("role") != common.RoleRootUser {
-		common.ApiErrorMsg(c, "只有 root 管理员可以查看分销商账号")
+		common.ApiErrorI18n(c, i18n.MsgAdminRootRequired)
 		return
 	}
 	users, err := model.FindResellerUserByKeyword(c.Query("keyword"), 20)
@@ -901,7 +903,7 @@ func SearchResellerUsers(c *gin.Context) {
 
 func GetResellerDownlines(c *gin.Context) {
 	if c.GetInt("role") != common.RoleRootUser {
-		common.ApiErrorMsg(c, "只有 root 管理员可以查看分销商下线")
+		common.ApiErrorI18n(c, i18n.MsgAdminRootRequired)
 		return
 	}
 	resellerId, err := strconv.Atoi(c.Param("id"))
@@ -919,7 +921,7 @@ func GetResellerDownlines(c *gin.Context) {
 
 func GetResellerRules(c *gin.Context) {
 	if c.GetInt("role") != common.RoleRootUser {
-		common.ApiErrorMsg(c, "只有 root 管理员可以查看分销商规则")
+		common.ApiErrorI18n(c, i18n.MsgAdminRootRequired)
 		return
 	}
 	resellerId, err := strconv.Atoi(c.Param("id"))
@@ -949,7 +951,7 @@ type saveResellerRulesRequest struct {
 
 func SaveResellerRules(c *gin.Context) {
 	if c.GetInt("role") != common.RoleRootUser {
-		common.ApiErrorMsg(c, "只有 root 管理员可以编辑分销商规则")
+		common.ApiErrorI18n(c, i18n.MsgAdminRootRequired)
 		return
 	}
 	resellerId, err := strconv.Atoi(c.Param("id"))
@@ -970,15 +972,15 @@ func SaveResellerRules(c *gin.Context) {
 	for _, item := range req.Rules {
 		modelName := strings.TrimSpace(item.ModelName)
 		if modelName == "" {
-			common.ApiErrorMsg(c, "模型名称不能为空")
+			common.ApiErrorI18n(c, i18n.MsgModelNameEmpty)
 			return
 		}
 		if item.DiscountRatio <= 0 || item.DiscountRatio > 1 {
-			common.ApiErrorMsg(c, "折扣比例必须大于 0 且小于等于 1")
+			common.ApiErrorI18n(c, i18n.MsgDistributorDiscountInvalid)
 			return
 		}
 		if _, _, _, _, ok := service.GlobalModelPricingUSD(modelName); !ok {
-			common.ApiErrorMsg(c, fmt.Sprintf("模型 %s 没有官方原价，无法保存分销商折扣比例", modelName))
+			common.ApiErrorI18n(c, i18n.MsgModelPricingOfficialPriceMissing, map[string]any{"Model": modelName})
 			return
 		}
 		enabled := true
@@ -1177,6 +1179,10 @@ func UpdateSelf(c *gin.Context) {
 	}
 	updatePassword, err := checkUpdatePassword(user.OriginalPassword, user.Password, cleanUser.Id)
 	if err != nil {
+		if errors.Is(err, errOriginalPasswordInvalid) {
+			common.ApiErrorI18n(c, i18n.MsgUserOriginalPasswordError)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
@@ -1211,7 +1217,7 @@ func checkUpdatePassword(originalPassword string, newPassword string, userId int
 	// 密码不为空,需要验证原密码
 	// 支持第一次账号绑定时原密码为空的情况
 	if !common.ValidatePasswordAndHash(originalPassword, currentUser.Password) && currentUser.Password != "" {
-		err = fmt.Errorf("原密码错误")
+		err = errOriginalPasswordInvalid
 		return
 	}
 	if newPassword == "" {
@@ -1791,6 +1797,14 @@ func SetUserLanguage(c *gin.Context) {
 	if req.Timezone != "" && !isValidUserTimezone(req.Timezone) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
+	}
+	if req.Language != "" {
+		normalizedLanguage, ok := i18n.NormalizeLanguage(req.Language)
+		if !ok {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		req.Language = normalizedLanguage
 	}
 	var user model.User
 	if err := model.DB.Select("id", "setting", "language", "country").Where("username = ?", req.Username).First(&user).Error; err != nil {

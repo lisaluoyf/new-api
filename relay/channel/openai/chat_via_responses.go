@@ -58,6 +58,12 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	if oaiError := responsesResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
+	if responsesResponseStatus(&responsesResp) == "failed" {
+		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 with failed response status"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+	}
+	if !responsesResponseHasUsableOutput(&responsesResp) && !responsesResponseHasValidEmptyTerminal(&responsesResp) {
+		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
+	}
 
 	chatId := helper.GetResponseID(c)
 	chatResp, usage, err := service.ResponsesResponseToChatCompletionsResponse(&responsesResp, chatId)
@@ -96,19 +102,26 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	}
 
 	defer service.CloseResponseBodyGracefully(resp)
+	// Keep lifecycle-only HTTP 200 streams eligible for fallback. Ping resumes
+	// as soon as the first usable output is committed downstream.
+	c.Set(helper.ContextKeySuppressStreamPing, true)
+	defer c.Set(helper.ContextKeySuppressStreamPing, false)
 
 	responseId := helper.GetResponseID(c)
 	createAt := time.Now().Unix()
 	model := info.UpstreamModelName
 
 	var (
-		usage       = &dto.Usage{}
-		outputText  strings.Builder
-		usageText   strings.Builder
-		sentStart   bool
-		sentStop    bool
-		sawToolCall bool
-		streamErr   *types.NewAPIError
+		usage           = &dto.Usage{}
+		outputText      strings.Builder
+		usageText       strings.Builder
+		sentStart       bool
+		sentStop        bool
+		sawToolCall     bool
+		terminalFrame   bool
+		validOutput     bool
+		contentFiltered bool
+		streamErr       *types.NewAPIError
 	)
 
 	toolCallIndexByID := make(map[string]int)
@@ -152,6 +165,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		if sentStart {
 			return true
 		}
+		c.Set(helper.ContextKeySuppressStreamPing, false)
 		if !sendChatChunk(helper.GenerateStartEmptyResponse(responseId, createAt, model, nil)) {
 			return false
 		}
@@ -227,6 +241,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			return false
 		}
 		hasSentReasoningSummary = true
+		validOutput = true
 		return true
 	}
 
@@ -285,6 +300,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			return false
 		}
 		sawToolCall = true
+		validOutput = true
 
 		// Include tool call data in the local builder for fallback token estimation.
 		if tool.Function.Name != "" {
@@ -296,7 +312,27 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		return true
 	}
 
-	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+	sendTextDelta := func(delta string) bool {
+		if delta == "" {
+			return true
+		}
+		validOutput = true
+		if !sendStartIfNeeded() {
+			return false
+		}
+		outputText.WriteString(delta)
+		usageText.WriteString(delta)
+		chunk := &dto.ChatCompletionsStreamResponse{
+			Id: responseId, Object: "chat.completion.chunk", Created: createAt, Model: model,
+			Choices: []dto.ChatCompletionsStreamResponseChoice{{
+				Index: 0,
+				Delta: dto.ChatCompletionsStreamResponseChoiceDelta{Content: &delta},
+			}},
+		}
+		return sendChatChunk(chunk)
+	}
+
+	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if streamErr != nil {
 			sr.Stop(streamErr)
 			return
@@ -357,34 +393,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		//		return
 		//	}
 
-		case "response.output_text.delta":
-			if !sendStartIfNeeded() {
+		case "response.output_text.delta", "response.refusal.delta":
+			if !sendTextDelta(streamResp.Delta) {
 				sr.Stop(streamErr)
 				return
-			}
-
-			if streamResp.Delta != "" {
-				outputText.WriteString(streamResp.Delta)
-				usageText.WriteString(streamResp.Delta)
-				delta := streamResp.Delta
-				chunk := &dto.ChatCompletionsStreamResponse{
-					Id:      responseId,
-					Object:  "chat.completion.chunk",
-					Created: createAt,
-					Model:   model,
-					Choices: []dto.ChatCompletionsStreamResponseChoice{
-						{
-							Index: 0,
-							Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
-								Content: &delta,
-							},
-						},
-					},
-				}
-				if !sendChatChunk(chunk) {
-					sr.Stop(streamErr)
-					return
-				}
 			}
 
 		case "response.output_item.added", "response.output_item.done":
@@ -419,6 +431,9 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 				}
 				toolCallArgsByID[callID] = newArgs
 			}
+			if streamResp.Type == "response.output_item.added" && newArgs == "" {
+				break
+			}
 
 			if !sendToolCallDelta(callID, name, argsDelta) {
 				sr.Stop(streamErr)
@@ -443,6 +458,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		case "response.function_call_arguments.done":
 
 		case "response.completed":
+			terminalFrame = true
 			if streamResp.Response != nil {
 				if streamResp.Response.Model != "" {
 					model = streamResp.Response.Model
@@ -474,7 +490,33 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 					}
 				}
 			}
+			if !validOutput && streamResp.Response != nil {
+				if text := service.ExtractOutputTextFromResponses(streamResp.Response); text != "" {
+					if !sendTextDelta(text) {
+						sr.Stop(streamErr)
+						return
+					}
+				} else {
+					for i := range streamResp.Response.Output {
+						item := &streamResp.Response.Output[i]
+						if item.Type != "function_call" {
+							continue
+						}
+						callID := strings.TrimSpace(item.CallId)
+						if callID == "" {
+							callID = strings.TrimSpace(item.ID)
+						}
+						if !sendToolCallDelta(callID, strings.TrimSpace(item.Name), item.ArgumentsString()) {
+							sr.Stop(streamErr)
+							return
+						}
+					}
+				}
+			}
 
+			if !validOutput {
+				break
+			}
 			if !sendStartIfNeeded() {
 				sr.Stop(streamErr)
 				return
@@ -484,7 +526,9 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 					info.ClaudeConvertInfo.Usage = usage
 				}
 				finishReason := "stop"
-				if sawToolCall && outputText.Len() == 0 {
+				if contentFiltered {
+					finishReason = "content_filter"
+				} else if sawToolCall && outputText.Len() == 0 {
 					finishReason = "tool_calls"
 				}
 				stop := helper.GenerateStopResponse(responseId, createAt, model, finishReason)
@@ -495,7 +539,14 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 				sentStop = true
 			}
 
-		case "response.error", "response.failed":
+		case "response.incomplete":
+			terminalFrame = true
+			if responsesResponseHasValidEmptyTerminal(streamResp.Response) {
+				validOutput = true
+				contentFiltered = true
+			}
+
+		case "error", "response.error", "response.failed":
 			if streamResp.Response != nil {
 				if oaiErr := streamResp.Response.GetOpenAIError(); oaiErr != nil && oaiErr.Type != "" {
 					streamErr = types.WithOpenAIError(*oaiErr, http.StatusInternalServerError)
@@ -514,6 +565,9 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	if streamErr != nil {
 		return nil, streamErr
 	}
+	if validationErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame, validOutput); validationErr != nil {
+		return nil, validationErr
+	}
 
 	if usage.TotalTokens == 0 {
 		usage = service.ResponseText2Usage(c, usageText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
@@ -529,7 +583,9 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			info.ClaudeConvertInfo.Usage = usage
 		}
 		finishReason := "stop"
-		if sawToolCall && outputText.Len() == 0 {
+		if contentFiltered {
+			finishReason = "content_filter"
+		} else if sawToolCall && outputText.Len() == 0 {
 			finishReason = "tool_calls"
 		}
 		stop := helper.GenerateStopResponse(responseId, createAt, model, finishReason)

@@ -17,7 +17,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ValidateRelayStreamEnd(c *gin.Context, info *relaycommon.RelayInfo, status *relaycommon.StreamStatus, terminalFrame bool) *types.NewAPIError {
+// ValidateRelayStreamEnd validates transport termination. When validOutput is
+// supplied, a terminal Responses event must also contain user-visible output;
+// lifecycle-only HTTP 200 streams are treated as upstream failures.
+func ValidateRelayStreamEnd(c *gin.Context, info *relaycommon.RelayInfo, status *relaycommon.StreamStatus, terminalFrame bool, validOutput ...bool) *types.NewAPIError {
 	if info == nil {
 		return nil
 	}
@@ -25,10 +28,22 @@ func ValidateRelayStreamEnd(c *gin.Context, info *relaycommon.RelayInfo, status 
 		return types.NewOpenAIError(fmt.Errorf("upstream stream did not start"), types.ErrorCodeBadResponse, http.StatusBadGateway)
 	}
 	if status.EndReason == relaycommon.StreamEndReasonDone && !status.HasErrors() {
-		return nil
+		if len(validOutput) == 0 || (terminalFrame && validOutput[0]) {
+			return nil
+		}
+		if terminalFrame {
+			return types.NewOpenAIError(fmt.Errorf("upstream stream completed without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
+		}
+		return types.NewOpenAIError(fmt.Errorf("upstream stream ended without a terminal event"), types.ErrorCodeBadResponse, http.StatusBadGateway)
 	}
 	if status.EndReason == relaycommon.StreamEndReasonEOF && terminalFrame && !status.HasErrors() {
-		return nil
+		if len(validOutput) == 0 || validOutput[0] {
+			return nil
+		}
+		return types.NewOpenAIError(fmt.Errorf("upstream stream completed without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
+	}
+	if terminalFrame && !status.HasErrors() && len(validOutput) > 0 && !validOutput[0] {
+		return types.NewOpenAIError(fmt.Errorf("upstream stream completed without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
 	}
 	message := "upstream stream ended abnormally: " + status.Summary()
 	return types.NewOpenAIError(fmt.Errorf("%s", message), types.ErrorCodeBadResponse, http.StatusBadGateway)

@@ -2,6 +2,9 @@ package i18n
 
 import (
 	"embed"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -20,6 +23,12 @@ const (
 	LangZhTW    = "zh-TW"
 	LangEn      = "en"
 	LangJa      = "ja"
+	LangPt      = "pt"
+	LangDe      = "de"
+	LangFr      = "fr"
+	LangTr      = "tr"
+	LangIt      = "it"
+	LangPl      = "pl"
 	LangId      = "id"
 	LangKo      = "ko"
 	LangEs      = "es"
@@ -32,21 +41,27 @@ const (
 var localeFS embed.FS
 
 var (
-	bundle     *i18n.Bundle
-	localizers = make(map[string]*i18n.Localizer)
-	mu         sync.RWMutex
-	initOnce   sync.Once
+	bundle             *i18n.Bundle
+	localizers         = make(map[string]*i18n.Localizer)
+	mu                 sync.RWMutex
+	initOnce           sync.Once
+	languageTagPattern = regexp.MustCompile(`^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*$`)
 )
 
 // Init initializes the i18n bundle and loads all translation files
 func Init() error {
 	var initErr error
 	initOnce.Do(func() {
-		bundle = i18n.NewBundle(language.Chinese)
+		bundle = i18n.NewBundle(language.English)
 		bundle.RegisterUnmarshalFunc("yaml", yaml.Unmarshal)
 
 		// Load embedded translation files
-		files := []string{"locales/zh-CN.yaml", "locales/zh-TW.yaml", "locales/en.yaml"}
+		files := []string{
+			"locales/zh-CN.yaml", "locales/zh-TW.yaml", "locales/en.yaml",
+			"locales/ja.yaml", "locales/pt.yaml", "locales/de.yaml", "locales/fr.yaml",
+			"locales/tr.yaml", "locales/it.yaml", "locales/pl.yaml", "locales/id.yaml",
+			"locales/ko.yaml", "locales/es.yaml", "locales/ru.yaml", "locales/vi.yaml",
+		}
 		for _, file := range files {
 			_, err := bundle.LoadMessageFileFS(localeFS, file)
 			if err != nil {
@@ -60,6 +75,12 @@ func Init() error {
 		localizers[LangZhTW] = i18n.NewLocalizer(bundle, LangZhTW)
 		localizers[LangEn] = i18n.NewLocalizer(bundle, LangEn)
 		localizers[LangJa] = i18n.NewLocalizer(bundle, LangJa, LangEn)
+		localizers[LangPt] = i18n.NewLocalizer(bundle, LangPt, LangEn)
+		localizers[LangDe] = i18n.NewLocalizer(bundle, LangDe, LangEn)
+		localizers[LangFr] = i18n.NewLocalizer(bundle, LangFr, LangEn)
+		localizers[LangTr] = i18n.NewLocalizer(bundle, LangTr, LangEn)
+		localizers[LangIt] = i18n.NewLocalizer(bundle, LangIt, LangEn)
+		localizers[LangPl] = i18n.NewLocalizer(bundle, LangPl, LangEn)
 		localizers[LangId] = i18n.NewLocalizer(bundle, LangId, LangEn)
 		localizers[LangKo] = i18n.NewLocalizer(bundle, LangKo, LangEn)
 		localizers[LangEs] = i18n.NewLocalizer(bundle, LangEs, LangEn)
@@ -147,8 +168,7 @@ func GetLangFromContext(c *gin.Context) string {
 	// 1. Try to get language from user settings (if already loaded by TokenAuth or other middleware)
 	if userSetting, ok := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting); ok {
 		if userSetting.Language != "" {
-			normalized := normalizeLang(userSetting.Language)
-			if IsSupported(normalized) {
+			if normalized, supported := NormalizeLanguage(userSetting.Language); supported {
 				return normalized
 			}
 		}
@@ -160,8 +180,7 @@ func GetLangFromContext(c *gin.Context) string {
 			if uid, ok := userId.(int); ok && uid > 0 {
 				lang := userLangLoaderFunc(uid)
 				if lang != "" {
-					normalized := normalizeLang(lang)
-					if IsSupported(normalized) {
+					if normalized, supported := NormalizeLanguage(lang); supported {
 						return normalized
 					}
 				}
@@ -171,8 +190,7 @@ func GetLangFromContext(c *gin.Context) string {
 
 	// 3. Try to get language from context (set by I18n middleware from Accept-Language)
 	if lang := c.GetString(string(constant.ContextKeyLanguage)); lang != "" {
-		normalized := normalizeLang(lang)
-		if IsSupported(normalized) {
+		if normalized, supported := NormalizeLanguage(lang); supported {
 			return normalized
 		}
 	}
@@ -194,66 +212,124 @@ func ParseAcceptLanguage(header string) string {
 		return DefaultLang
 	}
 
-	// Simple parsing: take the first language tag
-	parts := strings.Split(header, ",")
-	if len(parts) == 0 {
-		return DefaultLang
+	type candidate struct {
+		lang string
+		q    float64
+		pos  int
 	}
-
-	// Get the first language and remove quality value
-	firstLang := strings.TrimSpace(parts[0])
-	if idx := strings.Index(firstLang, ";"); idx > 0 {
-		firstLang = firstLang[:idx]
+	candidates := make([]candidate, 0)
+	for pos, part := range strings.Split(header, ",") {
+		fields := strings.Split(part, ";")
+		raw := strings.TrimSpace(fields[0])
+		if raw == "" || raw == "*" {
+			continue
+		}
+		quality := 1.0
+		for _, field := range fields[1:] {
+			parameter := strings.TrimSpace(field)
+			name, value, found := strings.Cut(parameter, "=")
+			if found && strings.EqualFold(strings.TrimSpace(name), "q") {
+				parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+				if err != nil || parsed < 0 || parsed > 1 {
+					quality = 0
+					break
+				}
+				quality = parsed
+			}
+		}
+		if quality <= 0 {
+			continue
+		}
+		candidates = append(candidates, candidate{lang: raw, q: quality, pos: pos})
 	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].q == candidates[j].q {
+			return candidates[i].pos < candidates[j].pos
+		}
+		return candidates[i].q > candidates[j].q
+	})
+	for _, item := range candidates {
+		if normalized, ok := normalizeKnownLang(item.lang); ok {
+			return normalized
+		}
+	}
+	return DefaultLang
+}
 
-	return normalizeLang(firstLang)
+func normalizeKnownLang(lang string) (string, bool) {
+	if !languageTagPattern.MatchString(strings.TrimSpace(lang)) {
+		return "", false
+	}
+	parts := strings.FieldsFunc(strings.ToLower(strings.TrimSpace(lang)), func(r rune) bool {
+		return r == '-' || r == '_'
+	})
+	if len(parts) == 0 || len(parts[0]) != 2 {
+		return "", false
+	}
+	primary := parts[0]
+	switch primary {
+	case "zh":
+		for _, part := range parts[1:] {
+			if part == "tw" || part == "hk" || part == "mo" || part == "hant" {
+				return LangZhTW, true
+			}
+		}
+		return LangZhCN, true
+	case "en":
+		return LangEn, true
+	case "ja":
+		return LangJa, true
+	case "pt":
+		return LangPt, true
+	case "de":
+		return LangDe, true
+	case "fr":
+		return LangFr, true
+	case "tr":
+		return LangTr, true
+	case "it":
+		return LangIt, true
+	case "pl":
+		return LangPl, true
+	case "id", "in":
+		return LangId, true
+	case "ko":
+		return LangKo, true
+	case "es":
+		return LangEs, true
+	case "ru":
+		return LangRu, true
+	case "vi":
+		return LangVi, true
+	default:
+		return "", false
+	}
 }
 
 // normalizeLang normalizes language code to supported format
 func normalizeLang(lang string) string {
-	lang = strings.ToLower(strings.TrimSpace(lang))
-
-	// Handle common variations
-	switch {
-	case strings.HasPrefix(lang, "zh-tw"):
-		return LangZhTW
-	case strings.HasPrefix(lang, "zh-hk"):
-		return LangZhTW
-	case strings.HasPrefix(lang, "zh-mo"):
-		return LangZhTW
-	case strings.HasPrefix(lang, "zh-hant"):
-		return LangZhTW
-	case strings.HasPrefix(lang, "zh"):
-		return LangZhCN
-	case strings.HasPrefix(lang, "en"):
-		return LangEn
-	case strings.HasPrefix(lang, "ja"):
-		return LangJa
-	case strings.HasPrefix(lang, "id"):
-		return LangId
-	case strings.HasPrefix(lang, "in"):
-		return LangId
-	case strings.HasPrefix(lang, "ko"):
-		return LangKo
-	case strings.HasPrefix(lang, "es"):
-		return LangEs
-	case strings.HasPrefix(lang, "ru"):
-		return LangRu
-	case strings.HasPrefix(lang, "vi"):
-		return LangVi
-	default:
-		return DefaultLang
+	if normalized, ok := normalizeKnownLang(lang); ok {
+		return normalized
 	}
+	return DefaultLang
+}
+
+// NormalizeLanguage returns the canonical supported language code.
+func NormalizeLanguage(lang string) (string, bool) {
+	return normalizeKnownLang(lang)
 }
 
 // SupportedLanguages returns a list of supported language codes
 func SupportedLanguages() []string {
-	return []string{LangZhCN, LangZhTW, LangEn, LangJa, LangId, LangKo, LangEs, LangRu, LangVi}
+	return []string{LangZhCN, LangZhTW, LangEn, LangJa, LangPt, LangDe, LangFr, LangTr, LangIt, LangPl, LangId, LangKo, LangEs, LangRu, LangVi}
 }
 
 // IsSupported checks if a language code is supported
 func IsSupported(lang string) bool {
-	lang = normalizeLang(lang)
+	lang, ok := normalizeKnownLang(lang)
+	if !ok {
+		return false
+	}
 	for _, supported := range SupportedLanguages() {
 		if lang == supported {
 			return true

@@ -56,7 +56,9 @@ export function Subscriptions() {
               <TabsTrigger value='standard'>
                 {t('Subscription Plans')}
               </TabsTrigger>
-              <TabsTrigger value='gpt_subscription'>GPT 订阅套餐</TabsTrigger>
+              <TabsTrigger value='gpt_subscription'>
+                {t('GPT Subscription Plans')}
+              </TabsTrigger>
               <TabsTrigger value='coding_plan'>Coding Plan</TabsTrigger>
             </TabsList>
             <TabsContent value='standard'>

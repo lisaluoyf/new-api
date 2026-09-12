@@ -23,8 +23,8 @@ func I18n() gin.HandlerFunc {
 func detectLanguage(c *gin.Context) string {
 	// 1. Try to get language from user setting (set by auth middleware)
 	if userSetting, ok := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting); ok {
-		if userSetting.Language != "" && i18n.IsSupported(userSetting.Language) {
-			return userSetting.Language
+		if normalized, supported := i18n.NormalizeLanguage(userSetting.Language); supported {
+			return normalized
 		}
 	}
 

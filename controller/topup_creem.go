@@ -66,12 +66,12 @@ type CreemAdaptor struct {
 
 func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	if req.PaymentMethod != model.PaymentMethodCreem {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Unsupported payment channel"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentMethodNotExists)})
 		return
 	}
 
 	if req.ProductId == "" {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Please select a product"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgInvalidParams)})
 		return
 	}
 
@@ -80,7 +80,7 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	err := json.Unmarshal([]byte(setting.CreemProducts), &products)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 产品配置解析失败 user_id=%d error=%q", c.GetInt("id"), err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Product configuration is invalid"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentNotConfigured)})
 		return
 	}
 
@@ -94,7 +94,7 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	}
 
 	if selectedProduct == nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Product does not exist"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgNotFound)})
 		return
 	}
 
@@ -155,7 +155,7 @@ func RequestCreemPay(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 支付请求读取失败 error=%q", err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "read query error"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgDatabaseError)})
 		return
 	}
 

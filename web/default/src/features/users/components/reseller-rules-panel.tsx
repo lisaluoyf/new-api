@@ -46,6 +46,7 @@ import {
   saveResellerRules,
 } from '../api'
 import { type User } from '../types'
+import { useTranslation } from 'react-i18next'
 
 type ResellerRulesPanelProps = {
   resellerId: number
@@ -61,6 +62,7 @@ export function ResellerRulesPanel({
   resellerId,
   enabled,
 }: ResellerRulesPanelProps) {
+  const { t } = useTranslation()
   const [selectedDownlineId, setSelectedDownlineId] = useState<number>(0)
   const [ratios, setRatios] = useState<Record<string, string>>({})
   const [isSaving, setIsSaving] = useState(false)
@@ -126,7 +128,7 @@ export function ResellerRulesPanel({
         rule.discount_ratio > 1
     )
     if (invalid) {
-      toast.error('折扣比例必须大于 0 且小于等于 1')
+      toast.error(t('Discount ratio must be greater than 0 and at most 1'))
       return
     }
     setIsSaving(true)
@@ -136,13 +138,13 @@ export function ResellerRulesPanel({
         rules,
       })
       if (result.success) {
-        toast.success('分销商折扣比例已保存')
+        toast.success(t('Reseller discount ratios saved'))
         await rulesQuery.refetch()
       } else {
-        toast.error(result.message || '保存失败')
+        toast.error(result.message || t('Save failed'))
       }
     } catch (_error) {
-      toast.error('保存失败')
+      toast.error(t('Save failed'))
     } finally {
       setIsSaving(false)
     }
@@ -154,14 +156,14 @@ export function ResellerRulesPanel({
     <div className='space-y-4'>
       <div className='flex items-end gap-2'>
         <div className='min-w-0 flex-1 space-y-2'>
-          <Label>下线邮箱</Label>
+          <Label>{t('Downline email')}</Label>
           <Select
             value={selectedDownlineId ? String(selectedDownlineId) : ''}
             onValueChange={(value) => setSelectedDownlineId(Number(value))}
             disabled={downlines.length === 0}
           >
             <SelectTrigger>
-              <SelectValue placeholder='选择下线邮箱' />
+              <SelectValue placeholder={t('Select downline email')} />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
               <SelectGroup>
@@ -180,7 +182,7 @@ export function ResellerRulesPanel({
           disabled={!selectedDownlineId || models.length === 0 || isSaving}
         >
           <Save className='mr-1 h-4 w-4' />
-          {isSaving ? '保存中...' : '保存折扣比例'}
+          {isSaving ? t('Saving...') : t('Save discount ratios')}
         </Button>
       </div>
 
@@ -189,8 +191,8 @@ export function ResellerRulesPanel({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>模型</TableHead>
-                <TableHead className='w-[150px]'>折扣比例</TableHead>
+                <TableHead>{t('Model')}</TableHead>
+                <TableHead className='w-[150px]'>{t('Discount ratio')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

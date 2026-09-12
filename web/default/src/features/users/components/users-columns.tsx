@@ -220,7 +220,10 @@ export function useUsersColumns(): ColumnDef<User>[] {
         />
       ),
       cell: ({ row }) => {
-        const c = parseCountry(row.getValue('country') as string | undefined)
+        const c = parseCountry(
+          row.getValue('country') as string | undefined,
+          i18n.resolvedLanguage || i18n.language
+        )
         return c ? (
           <div className='flex flex-col gap-0.5'>
             <span className='text-xs font-medium'>{c.code}</span>
@@ -364,7 +367,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
       id: 'gpt_subscription',
       accessorFn: (row) => row.gpt_subscription_status,
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title='GPT 订阅' />
+        <DataTableColumnHeader column={column} title={t('GPT Subscription')} />
       ),
       cell: ({ row }) => {
         const user = row.original
@@ -400,7 +403,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
       size: 148,
       minSize: 148,
       maxSize: 148,
-      meta: { label: 'GPT 订阅', mobileHidden: true },
+      meta: { label: t('GPT Subscription'), mobileHidden: true },
     },
     {
       id: 'quota',

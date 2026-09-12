@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/url"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
@@ -25,10 +25,7 @@ func TurnstileCheck() gin.HandlerFunc {
 			}
 			response := c.Query("turnstile")
 			if response == "" {
-				c.JSON(http.StatusOK, gin.H{
-					"success": false,
-					"message": "Turnstile token 为空",
-				})
+				common.ApiErrorI18n(c, i18n.MsgTurnstileTokenEmpty)
 				c.Abort()
 				return
 			}
@@ -39,40 +36,29 @@ func TurnstileCheck() gin.HandlerFunc {
 			})
 			if err != nil {
 				common.SysLog(err.Error())
-				c.JSON(http.StatusOK, gin.H{
-					"success": false,
-					"message": err.Error(),
-				})
+				common.ApiErrorI18n(c, i18n.MsgTurnstileUnavailable)
 				c.Abort()
 				return
 			}
 			defer rawRes.Body.Close()
 			var res turnstileCheckResponse
-			err = json.NewDecoder(rawRes.Body).Decode(&res)
+			err = common.DecodeJson(rawRes.Body, &res)
 			if err != nil {
 				common.SysLog(err.Error())
-				c.JSON(http.StatusOK, gin.H{
-					"success": false,
-					"message": err.Error(),
-				})
+				common.ApiErrorI18n(c, i18n.MsgTurnstileUnavailable)
 				c.Abort()
 				return
 			}
 			if !res.Success {
-				c.JSON(http.StatusOK, gin.H{
-					"success": false,
-					"message": "Turnstile 校验失败，请刷新重试！",
-				})
+				common.ApiErrorI18n(c, i18n.MsgTurnstileVerificationFailed)
 				c.Abort()
 				return
 			}
 			session.Set("turnstile", true)
 			err = session.Save()
 			if err != nil {
-				c.JSON(http.StatusOK, gin.H{
-					"message": "无法保存会话信息，请重试",
-					"success": false,
-				})
+				common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
+				c.Abort()
 				return
 			}
 		}

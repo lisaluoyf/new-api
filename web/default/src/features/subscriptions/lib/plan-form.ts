@@ -59,14 +59,14 @@ export function getPlanFormSchema(t: TFunction) {
       coding_official_amount_usd: z.coerce.number().min(0),
       coding_models: z.array(
         z.object({
-          model: z.string().trim().min(1, '请选择模型'),
+          model: z.string().trim().min(1, t('Please select a model')),
           multiplier: z
             .string()
-            .regex(/^\d+(?:\.\d{1,3})?$/, '倍率最多保留三位小数')
+            .regex(/^\d+(?:\.\d{1,3})?$/, t('Multiplier supports at most three decimal places'))
             .refine((value) => {
               const number = Number(value)
               return number >= 0.001 && number <= 1
-            }, '倍率必须在 0.001 到 1.000 之间'),
+            }, t('Multiplier must be between 0.001 and 1.000')),
         })
       ),
     })
@@ -76,14 +76,14 @@ export function getPlanFormSchema(t: TFunction) {
         ctx.addIssue({
           code: 'custom',
           path: ['coding_official_amount_usd'],
-          message: '官方计价额度必须大于 0',
+          message: t('Official pricing quota must be greater than 0'),
         })
       }
       if (values.coding_models.length === 0) {
         ctx.addIssue({
           code: 'custom',
           path: ['coding_models'],
-          message: '至少配置一个模型',
+          message: t('Configure at least one model'),
         })
       }
       const names = values.coding_models.map((item) =>
@@ -93,7 +93,7 @@ export function getPlanFormSchema(t: TFunction) {
         ctx.addIssue({
           code: 'custom',
           path: ['coding_models'],
-          message: '模型不能重复',
+          message: t('Models cannot be duplicated'),
         })
       }
     })

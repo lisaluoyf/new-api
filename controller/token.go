@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -213,10 +212,7 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	if int(count) >= maxTokens {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": fmt.Sprintf("已达到最大令牌数量限制 (%d)", maxTokens),
-		})
+		common.ApiErrorI18n(c, i18n.MsgTokenCountLimit, map[string]any{"Max": maxTokens})
 		return
 	}
 	key, err := common.GenerateKey()

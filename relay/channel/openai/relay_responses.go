@@ -33,6 +33,12 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || oaiError.Message != "" || oaiError.Code != nil) {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
+	if responsesResponseStatus(&responsesResponse) == "failed" {
+		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 with failed response status"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+	}
+	if !responsesResponseHasUsableOutput(&responsesResponse) && !responsesResponseCanBeReturnedWithoutOutput(&responsesResponse) {
+		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
+	}
 	if validationErr := service.ValidateFreeModelResponsesResponse(c, &responsesResponse); validationErr != nil {
 		return nil, validationErr
 	}
@@ -85,11 +91,22 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	}
 
 	defer service.CloseResponseBodyGracefully(resp)
+	// Do not let a downstream keep-alive comment commit the HTTP response before
+	// usable output arrives. Ping resumes as soon as output is committed.
+	c.Set(helper.ContextKeySuppressStreamPing, true)
+	defer c.Set(helper.ContextKeySuppressStreamPing, false)
 
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
 
 	terminalFrame := false
+	validOutput := false
+	// Responses emits lifecycle frames before it knows whether the request will
+	// produce anything. Keep those frames private until real output arrives;
+	// otherwise an empty HTTP 200 stream is marked as already started and cannot
+	// transparently fall back to another channel.
+	var pendingFrames []string
+	outputCommitted := false
 	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
 		// 检查当前数据是否包含 completed 状态和 usage 信息
@@ -99,7 +116,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
-		if streamResponse.Type == "error" || streamResponse.Type == "response.failed" || (streamResponse.Response != nil && streamResponse.Response.Error != nil) {
+		if streamResponse.Type == "error" || streamResponse.Type == "response.error" || streamResponse.Type == "response.failed" || (streamResponse.Response != nil && streamResponse.Response.Error != nil) {
 			sr.Stop(fmt.Errorf("upstream returned an error event"))
 			return
 		}
@@ -112,7 +129,31 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				return
 			}
 		}
-		sendResponsesStreamData(c, streamResponse, data)
+		if responsesStreamEventHasUsableOutput(streamResponse) {
+			validOutput = true
+		}
+		if streamResponse.Response != nil && responsesResponseHasUsableOutput(streamResponse.Response) {
+			validOutput = true
+		}
+		if streamResponse.Type == "response.incomplete" && responsesResponseHasValidEmptyTerminal(streamResponse.Response) {
+			validOutput = true
+		}
+		if validOutput && !outputCommitted {
+			c.Set(helper.ContextKeySuppressStreamPing, false)
+			for _, pending := range pendingFrames {
+				var pendingResponse dto.ResponsesStreamResponse
+				if common.UnmarshalJsonStr(pending, &pendingResponse) == nil {
+					sendResponsesStreamData(c, pendingResponse, pending)
+				}
+			}
+			pendingFrames = nil
+			outputCommitted = true
+		}
+		if !outputCommitted {
+			pendingFrames = append(pendingFrames, data)
+		} else {
+			sendResponsesStreamData(c, streamResponse, data)
+		}
 		switch streamResponse.Type {
 		case "response.completed":
 			terminalFrame = true
@@ -137,6 +178,11 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 					c.Set("image_generation_call_size", streamResponse.Response.GetSize())
 				}
 			}
+		case "response.incomplete":
+			// A partial response is usable if it already emitted output. An empty
+			// one is accepted only for an explicit policy terminal such as
+			// content_filter.
+			terminalFrame = true
 		case "response.output_text.delta":
 			// 处理输出文本
 			responseTextBuilder.WriteString(streamResponse.Delta)
@@ -154,7 +200,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
-	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame); streamErr != nil {
+	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame, validOutput); streamErr != nil {
 		return nil, streamErr
 	}
 
@@ -175,4 +221,98 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 
 	return usage, nil
+}
+
+func responsesStreamEventHasUsableOutput(event dto.ResponsesStreamResponse) bool {
+	switch event.Type {
+	case "response.output_text.delta", "response.reasoning_text.delta", "response.reasoning_summary_text.delta", "response.refusal.delta", "response.audio.delta", "response.function_call_arguments.delta":
+		return strings.TrimSpace(event.Delta) != ""
+	case "response.output_text.done", "response.reasoning_text.done", "response.reasoning_summary_text.done", "response.refusal.done", "response.audio.done":
+		return strings.TrimSpace(event.Text) != "" || strings.TrimSpace(event.Refusal) != ""
+	case "response.function_call_arguments.done":
+		return event.Item != nil || len(event.Arguments) > 0
+	case dto.ResponsesOutputTypeItemDone:
+		return responsesOutputItemHasUsableOutput(event.Item)
+	default:
+		return false
+	}
+}
+
+func responsesResponseHasValidEmptyTerminal(response *dto.OpenAIResponsesResponse) bool {
+	if response == nil || response.IncompleteDetails == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(response.IncompleteDetails.Reason)) {
+	case "content_filter":
+		return true
+	default:
+		return false
+	}
+}
+
+func responsesResponseStatus(response *dto.OpenAIResponsesResponse) string {
+	if response == nil {
+		return ""
+	}
+	return strings.ToLower(strings.Trim(strings.TrimSpace(string(response.Status)), `"`))
+}
+
+func responsesResponseCanBeReturnedWithoutOutput(response *dto.OpenAIResponsesResponse) bool {
+	if responsesResponseHasValidEmptyTerminal(response) {
+		return true
+	}
+	if response == nil || !response.Background {
+		return false
+	}
+	switch responsesResponseStatus(response) {
+	case "queued", "in_progress":
+		return true
+	default:
+		return false
+	}
+}
+
+func responsesOutputItemHasUsableOutput(item *dto.ResponsesOutput) bool {
+	if item == nil {
+		return false
+	}
+	for _, content := range item.Content {
+		if strings.TrimSpace(content.Text) != "" || strings.TrimSpace(content.Refusal) != "" {
+			return true
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(item.Status), "failed") {
+		return false
+	}
+	switch item.Type {
+	case "", "message":
+		return false
+	case "reasoning":
+		if strings.TrimSpace(item.EncryptedContent) != "" {
+			return true
+		}
+		for _, summary := range item.Summary {
+			if strings.TrimSpace(summary.Text) != "" {
+				return true
+			}
+		}
+		return false
+	case "function_call", "custom_tool_call":
+		return strings.TrimSpace(item.Name) != "" &&
+			(strings.TrimSpace(item.CallId) != "" || strings.TrimSpace(item.ID) != "" || len(item.Arguments) > 0)
+	default:
+		return strings.TrimSpace(item.ID) != "" || strings.EqualFold(strings.TrimSpace(item.Status), "completed")
+	}
+}
+
+func responsesResponseHasUsableOutput(response *dto.OpenAIResponsesResponse) bool {
+	if response == nil {
+		return false
+	}
+	for i := range response.Output {
+		if responsesOutputItemHasUsableOutput(&response.Output[i]) {
+			return true
+		}
+	}
+	return false
 }

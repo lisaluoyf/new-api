@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/pkg/errors"
@@ -179,17 +180,37 @@ func GetContextKeyType[T any](c *gin.Context, key constant.ContextKey) (T, bool)
 }
 
 func ApiError(c *gin.Context, err error) {
+	message := localizeLegacyClientMessage(c, err.Error())
 	c.JSON(http.StatusOK, gin.H{
 		"success": false,
-		"message": err.Error(),
+		"code":    "INTERNAL_ERROR",
+		"message": message,
 	})
 }
 
 func ApiErrorMsg(c *gin.Context, msg string) {
+	message := localizeLegacyClientMessage(c, msg)
 	c.JSON(http.StatusOK, gin.H{
 		"success": false,
-		"message": msg,
+		"code":    "LEGACY_ERROR",
+		"message": message,
 	})
+}
+
+func localizeLegacyClientMessage(c *gin.Context, message string) string {
+	for _, value := range message {
+		if unicode.Is(unicode.Han, value) {
+			translated := TranslateMessage(c, "common.operation_failed")
+			if translated == "操作失败" || translated == "操作失敗" {
+				return message
+			}
+			if translated != "" && translated != "common.operation_failed" {
+				return translated
+			}
+			return "Operation failed"
+		}
+	}
+	return message
 }
 
 func ApiSuccess(c *gin.Context, data any) {
@@ -203,10 +224,23 @@ func ApiSuccess(c *gin.Context, data any) {
 // ApiErrorI18n returns a translated error message based on the user's language preference
 // key is the i18n message key, args is optional template data
 func ApiErrorI18n(c *gin.Context, key string, args ...map[string]any) {
+	ApiErrorI18nStatus(c, http.StatusOK, key, args...)
+}
+
+// ApiErrorI18nStatus preserves endpoints whose existing contract uses a non-200 status.
+func ApiErrorI18nStatus(c *gin.Context, status int, key string, args ...map[string]any) {
 	msg := TranslateMessage(c, key, args...)
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(status, gin.H{
 		"success": false,
+		"code":    key,
 		"message": msg,
+	})
+}
+
+func ApiSuccessMessageI18n(c *gin.Context, key string, args ...map[string]any) {
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": TranslateMessage(c, key, args...),
 	})
 }
 

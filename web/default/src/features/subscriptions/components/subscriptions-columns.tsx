@@ -128,9 +128,9 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
       },
       {
         id: 'gpt_limits',
-        meta: { label: '滚动额度', mobileHidden: true },
+        meta: { label: t('Rolling quota'), mobileHidden: true },
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title='滚动额度' />
+          <DataTableColumnHeader column={column} title={t('Rolling quota')} />
         ),
         cell: ({ row }) => {
           const plan = row.original.plan
@@ -138,14 +138,14 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           return (
             <div className='text-muted-foreground text-xs'>
               <div>
-                {`5 小时 $${(
-                  Number(plan.five_hour_amount || 0) / QUOTA_PER_USD
-                ).toFixed(0)}`}
+                {t('5 hours ${{amount}}', {
+                  amount: (Number(plan.five_hour_amount || 0) / QUOTA_PER_USD).toFixed(0),
+                })}
               </div>
               <div>
-                {`7 天 $${(
-                  Number(plan.seven_day_amount || 0) / QUOTA_PER_USD
-                ).toFixed(0)}`}
+                {t('7 days ${{amount}}', {
+                  amount: (Number(plan.seven_day_amount || 0) / QUOTA_PER_USD).toFixed(0),
+                })}
               </div>
             </div>
           )
@@ -154,9 +154,9 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
       },
       {
         id: 'coding_allowance',
-        meta: { label: 'Coding Plan 额度', mobileHidden: true },
+        meta: { label: t('Coding Plan allowance'), mobileHidden: true },
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title='Coding Plan 额度' />
+          <DataTableColumnHeader column={column} title={t('Coding Plan allowance')} />
         ),
         cell: ({ row }) => {
           const plan = row.original.plan
@@ -175,7 +175,7 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
               <div>
                 ${Number(plan.coding_official_amount_usd || 0).toFixed(2)}
               </div>
-              <div>{modelCount} 个模型</div>
+              <div>{t('{{count}} models', { count: modelCount })}</div>
             </div>
           )
         },
@@ -183,9 +183,9 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
       },
       {
         id: 'gpt_margin',
-        meta: { label: '2.5% 成本预览', mobileHidden: true },
+        meta: { label: t('2.5% cost preview'), mobileHidden: true },
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title='2.5% 成本预览' />
+          <DataTableColumnHeader column={column} title={t('2.5% cost preview')} />
         ),
         cell: ({ row }) => {
           const plan = row.original.plan
@@ -210,11 +210,16 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
                     : 'font-medium text-emerald-600'
                 }
               >
-                {previewDaysLabel} 天满用理论毛利率{' '}
-                {grossMargin == null ? '—' : `${grossMargin.toFixed(1)}%`}
+                {t('{{days}}-day full-use theoretical gross margin {{margin}}', {
+                  days: previewDaysLabel,
+                  margin: grossMargin == null ? '—' : `${grossMargin.toFixed(1)}%`,
+                })}
               </div>
               <div className='text-muted-foreground'>
-                {previewDaysLabel} 天满用理论成本 ${fullUseCostUSD.toFixed(2)}
+                {t('{{days}}-day full-use theoretical cost ${{cost}}', {
+                  days: previewDaysLabel,
+                  cost: fullUseCostUSD.toFixed(2),
+                })}
               </div>
             </div>
           )

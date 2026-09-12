@@ -77,6 +77,7 @@ const APIMASTER_LOCALE_MAP: Record<string, string> = {
 const PANEL_TO_APIMASTER_LOCALE: Record<string, string> = Object.fromEntries(
   Object.entries(APIMASTER_LOCALE_MAP).map(([apimaster, panel]) => [panel, apimaster])
 )
+const SUPPORTED_PANEL_LANGUAGES = new Set(Object.values(APIMASTER_LOCALE_MAP))
 
 function resolveInitialLng(): string | undefined {
   try {
@@ -90,10 +91,16 @@ function resolveInitialLng(): string | undefined {
 
 const apimasterLng = resolveInitialLng()
 
-function normalizeLanguage(code: string): string {
-  if (code === 'zh-TW' || code.startsWith('zh-Hant')) return 'zh-TW'
-  if (code.startsWith('zh')) return 'zh'
-  return code.split('-')[0]
+export function normalizeLanguage(code: string): string {
+  const normalized = code.trim().replace(/_/g, '-').toLowerCase()
+  if (!/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(normalized)) return 'en'
+  const [primary, ...subtags] = normalized.split('-')
+  if (primary === 'zh') {
+    return subtags.some((part) => ['hant', 'tw', 'hk', 'mo'].includes(part))
+      ? 'zh-TW'
+      : 'zh'
+  }
+  return SUPPORTED_PANEL_LANGUAGES.has(primary) ? primary : 'en'
 }
 
 async function ensureLanguageLoaded(code: string): Promise<string> {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -21,53 +22,61 @@ import (
 
 func TelegramBind(c *gin.Context) {
 	if !common.TelegramOAuthEnabled {
-		returnTelegramBindResult(c, "error", "管理员未开启通过 Telegram 登录以及注册")
+		returnTelegramBindError(c, i18n.MsgOAuthNotEnabled, map[string]any{"Provider": "Telegram"})
 		return
 	}
 	params := c.Request.URL.Query()
 	if !checkTelegramAuthorization(params, common.TelegramBotToken) {
-		returnTelegramBindResult(c, "error", "无效的请求")
+		returnTelegramBindError(c, i18n.MsgInvalidParams)
 		return
 	}
 	telegramIDs := params["id"]
 	if len(telegramIDs) == 0 || strings.TrimSpace(telegramIDs[0]) == "" {
-		returnTelegramBindResult(c, "error", "Telegram 账户信息缺失")
+		returnTelegramBindError(c, i18n.MsgUserTelegramIdEmpty)
 		return
 	}
 	telegramId := telegramIDs[0]
 	if model.IsTelegramIdAlreadyTaken(telegramId) {
-		returnTelegramBindResult(c, "error", "该 Telegram 账户已被绑定")
+		returnTelegramBindError(c, i18n.MsgOAuthAlreadyBound, map[string]any{"Provider": "Telegram"})
 		return
 	}
 
 	user := model.User{Id: c.GetInt("id")}
 	if err := user.FillUserById(); err != nil {
-		returnTelegramBindResult(c, "error", err.Error())
+		returnTelegramBindError(c, i18n.MsgOperationFailed)
 		return
 	}
 	if user.Id == 0 {
-		returnTelegramBindResult(c, "error", "用户已注销")
+		returnTelegramBindError(c, i18n.MsgOAuthUserDeleted)
 		return
 	}
 	user.TelegramId = telegramId
 	user.TelegramBoundAt = time.Now().Unix()
 	if err := user.Update(false); err != nil {
-		returnTelegramBindResult(c, "error", err.Error())
+		returnTelegramBindError(c, i18n.MsgUpdateFailed)
 		return
 	}
 
-	returnTelegramBindResult(c, "success", "")
+	returnTelegramBindResult(c, "success", "", "")
+}
+
+func returnTelegramBindError(c *gin.Context, key string, args ...map[string]any) {
+	returnTelegramBindResult(c, "error", key, common.TranslateMessage(c, key, args...))
 }
 
 // returnTelegramBindResult completes the widget callback without exposing an
 // extra profile page. The parent profile tab receives the storage event and
 // refreshes its binding state; direct navigations fall back to the profile.
-func returnTelegramBindResult(c *gin.Context, status, message string) {
+func returnTelegramBindResult(c *gin.Context, status, code, message string) {
 	if c.Query("format") == "json" {
-		c.JSON(http.StatusOK, gin.H{
+		response := gin.H{
 			"success": status == "success",
 			"message": message,
-		})
+		}
+		if code != "" {
+			response["code"] = code
+		}
+		c.JSON(http.StatusOK, response)
 		return
 	}
 
@@ -75,11 +84,12 @@ func returnTelegramBindResult(c *gin.Context, status, message string) {
 	payload, err := common.Marshal(gin.H{
 		"provider":  "telegram",
 		"status":    status,
+		"code":      code,
 		"message":   message,
 		"timestamp": time.Now().UnixMilli(),
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "无法完成绑定"})
+		common.ApiErrorI18nStatus(c, http.StatusInternalServerError, i18n.MsgOperationFailed)
 		return
 	}
 
@@ -160,18 +170,12 @@ func isTelegramGroupMember(status string, isMember bool) bool {
 
 func TelegramLogin(c *gin.Context) {
 	if !common.TelegramOAuthEnabled {
-		c.JSON(200, gin.H{
-			"message": "管理员未开启通过 Telegram 登录以及注册",
-			"success": false,
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, map[string]any{"Provider": "Telegram"})
 		return
 	}
 	params := c.Request.URL.Query()
 	if !checkTelegramAuthorization(params, common.TelegramBotToken) {
-		c.JSON(200, gin.H{
-			"message": "无效的请求",
-			"success": false,
-		})
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 

@@ -29,6 +29,8 @@ import koTranslation from './locales/ko.json';
 import esTranslation from './locales/es.json';
 import ruTranslation from './locales/ru.json';
 import viTranslation from './locales/vi.json';
+import jaTranslation from './locales/ja.json';
+import frTranslation from './locales/fr.json';
 import { apimasterLocaleMap, normalizeLanguage, supportedLanguages } from './language';
 
 const APIMASTER_STORAGE_KEY = 'apimaster-locale';
@@ -72,8 +74,15 @@ i18n
       es: esTranslation,
       ru: ruTranslation,
       vi: viTranslation,
+      ja: jaTranslation,
+      fr: frTranslation,
+      pt: enTranslation,
+      de: enTranslation,
+      tr: enTranslation,
+      it: enTranslation,
+      pl: enTranslation,
     },
-    fallbackLng: 'zh-CN',
+    fallbackLng: 'en',
     nsSeparator: false,
     interpolation: {
       escapeValue: false,

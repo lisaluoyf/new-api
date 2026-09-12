@@ -154,11 +154,11 @@ export function SubscriptionsMutateDrawer({
       .sort((a, b) => a.localeCompare(b))
       .map((model) => ({
         value: model,
-        label: `${model}（当前已选，渠道数据中暂无）`,
+        label: `${model} (${t('selected; not available in channel data')})`,
       }))
 
     return [...channelDataOptions, ...selectedModelsMissingFromChannelData]
-  }, [modelAllowlist])
+  }, [modelAllowlist, t])
 
   const onSubmit = async (values: PlanFormValues) => {
     setIsSubmitting(true)
@@ -192,9 +192,9 @@ export function SubscriptionsMutateDrawer({
     'tier_level' | 'five_hour_amount' | 'seven_day_amount',
     string
   > = {
-    tier_level: '档位等级',
-    five_hour_amount: '5 小时官方价额度（USD）',
-    seven_day_amount: '7 天官方价额度（USD）',
+    tier_level: t('Tier level'),
+    five_hour_amount: t('5-hour official-price quota (USD)'),
+    seven_day_amount: t('7-day official-price quota (USD)'),
   }
 
   return (
@@ -291,7 +291,7 @@ export function SubscriptionsMutateDrawer({
                         { value: 'gpt_trial', label: t('GPT Trial') },
                         {
                           value: 'gpt_subscription',
-                          label: 'GPT 订阅',
+                          label: t('GPT Subscription'),
                         },
                         { value: 'coding_plan', label: 'Coding Plan' },
                       ]}
@@ -312,7 +312,7 @@ export function SubscriptionsMutateDrawer({
                             {t('GPT Trial')}
                           </SelectItem>
                           <SelectItem value='gpt_subscription'>
-                            GPT 订阅
+                            {t('GPT Subscription')}
                           </SelectItem>
                           <SelectItem value='coding_plan'>
                             Coding Plan
@@ -372,7 +372,7 @@ export function SubscriptionsMutateDrawer({
                       </FormControl>
                       <FormDescription>
                         {planType === 'coding_plan'
-                          ? '由官方计价额度自动换算'
+                          ? t('Calculated automatically from official-price quota')
                           : t('0 means unlimited')}
                       </FormDescription>
                       <FormMessage />
@@ -383,7 +383,7 @@ export function SubscriptionsMutateDrawer({
 
               {form.watch('plan_type') === 'gpt_subscription' ? (
                 <div className='space-y-4 rounded-md border border-fuchsia-500/20 bg-fuchsia-500/5 p-3'>
-                  <h4 className='text-sm font-medium'>GPT 订阅设置</h4>
+                  <h4 className='text-sm font-medium'>{t('GPT Subscription Settings')}</h4>
                   <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
                     {(
                       [
@@ -420,7 +420,7 @@ export function SubscriptionsMutateDrawer({
                     name='model_allowlist'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>模型白名单</FormLabel>
+                        <FormLabel>{t('Model allowlist')}</FormLabel>
                         <FormControl>
                           <MultiSelect
                             options={modelOptions}
@@ -428,11 +428,11 @@ export function SubscriptionsMutateDrawer({
                             onChange={(models) =>
                               field.onChange(models.join(','))
                             }
-                            placeholder='搜索并选择模型'
+                            placeholder={t('Search and select models')}
                           />
                         </FormControl>
                         <FormDescription>
-                          模型列表与“渠道数据”页面保持一致；修改后立即生效。
+                          {t('The model list matches Channel Data and changes take effect immediately.')}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -443,17 +443,16 @@ export function SubscriptionsMutateDrawer({
                     name='card_description'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>卡片文案</FormLabel>
+                        <FormLabel>{t('Card copy')}</FormLabel>
                         <FormControl>
                           <Textarea
                             {...field}
                             rows={3}
-                            placeholder='权益之间使用 | 分隔'
+                            placeholder={t('Separate benefits with |')}
                           />
                         </FormControl>
                         <FormDescription>
-                          用于补充该档位已经实际开通的特殊服务或权限，权益之间使用
-                          | 分隔；不要填写尚未落地的承诺。
+                          {t('Describe only enabled services or permissions and separate benefits with |.')}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -470,7 +469,7 @@ export function SubscriptionsMutateDrawer({
                             onCheckedChange={field.onChange}
                           />
                         </FormControl>
-                        <FormLabel className='!mt-0'>推荐套餐</FormLabel>
+                        <FormLabel className='!mt-0'>{t('Recommended plan')}</FormLabel>
                       </FormItem>
                     )}
                   />
@@ -479,14 +478,14 @@ export function SubscriptionsMutateDrawer({
 
               {form.watch('plan_type') === 'coding_plan' ? (
                 <div className='space-y-4 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-3'>
-                  <h4 className='text-sm font-medium'>Coding Plan 设置</h4>
+                  <h4 className='text-sm font-medium'>{t('Coding Plan Settings')}</h4>
                   <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                     <FormField
                       control={form.control}
                       name='coding_official_amount_usd'
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>官方计价额度（USD）</FormLabel>
+                          <FormLabel>{t('Official pricing quota (USD)')}</FormLabel>
                           <FormControl>
                             <Input
                               {...field}
@@ -507,7 +506,7 @@ export function SubscriptionsMutateDrawer({
                       name='tier_level'
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>套餐等级</FormLabel>
+                          <FormLabel>{t('Plan tier')}</FormLabel>
                           <FormControl>
                             <Input
                               {...field}
@@ -528,9 +527,9 @@ export function SubscriptionsMutateDrawer({
                   <div className='space-y-2'>
                     <div className='flex items-center justify-between gap-3'>
                       <div>
-                        <FormLabel>模型和扣费倍率</FormLabel>
+                        <FormLabel>{t('Models and billing multipliers')}</FormLabel>
                         <p className='text-muted-foreground text-xs'>
-                          模型列表和倍率修改后会立即影响已有活动用户。
+                          {t('Changes to models and multipliers immediately affect active users.')}
                         </p>
                       </div>
                       <Button
@@ -545,7 +544,7 @@ export function SubscriptionsMutateDrawer({
                         }
                       >
                         <Plus className='mr-1 h-4 w-4' />
-                        添加模型
+                        {t('Add model')}
                       </Button>
                     </div>
                     <datalist id='coding-plan-models'>
@@ -555,13 +554,13 @@ export function SubscriptionsMutateDrawer({
                     </datalist>
                     <div className='overflow-hidden rounded-md border'>
                       <div className='bg-muted grid grid-cols-[minmax(0,1fr)_120px_44px] gap-2 px-3 py-2 text-xs font-medium'>
-                        <span>模型</span>
-                        <span>倍率</span>
-                        <span className='sr-only'>操作</span>
+                        <span>{t('Model')}</span>
+                        <span>{t('Multiplier')}</span>
+                        <span className='sr-only'>{t('Actions')}</span>
                       </div>
                       {codingModels.fields.length === 0 ? (
                         <div className='text-muted-foreground px-3 py-5 text-center text-xs'>
-                          尚未配置模型
+                          {t('No models configured')}
                         </div>
                       ) : (
                         codingModels.fields.map((item, index) => (
@@ -578,7 +577,7 @@ export function SubscriptionsMutateDrawer({
                                     <Input
                                       {...field}
                                       list='coding-plan-models'
-                                      placeholder='选择或输入模型 ID'
+                                      placeholder={t('Select or enter model ID')}
                                     />
                                   </FormControl>
                                   <FormMessage />
@@ -608,11 +607,11 @@ export function SubscriptionsMutateDrawer({
                               type='button'
                               variant='ghost'
                               size='icon'
-                              title='删除模型'
+                              title={t('Delete model')}
                               onClick={() => codingModels.remove(index)}
                             >
                               <Trash2 className='h-4 w-4' />
-                              <span className='sr-only'>删除模型</span>
+                              <span className='sr-only'>{t('Delete model')}</span>
                             </Button>
                           </div>
                         ))
@@ -630,12 +629,12 @@ export function SubscriptionsMutateDrawer({
                     name='card_description'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>卡片权益文案</FormLabel>
+                        <FormLabel>{t('Card benefits copy')}</FormLabel>
                         <FormControl>
                           <Textarea
                             {...field}
                             rows={3}
-                            placeholder='权益之间使用 | 分隔'
+                            placeholder={t('Separate benefits with |')}
                           />
                         </FormControl>
                         <FormMessage />
@@ -653,7 +652,7 @@ export function SubscriptionsMutateDrawer({
                             onCheckedChange={field.onChange}
                           />
                         </FormControl>
-                        <FormLabel className='!mt-0'>推荐套餐</FormLabel>
+                        <FormLabel className='!mt-0'>{t('Recommended plan')}</FormLabel>
                       </FormItem>
                     )}
                   />

@@ -333,7 +333,7 @@ function KeyGroupField({
       name='key_group'
       render={({ field }) => (
         <FormItem>
-          <FormLabel>{t('KEY所在分组')}</FormLabel>
+          <FormLabel>{t('API key pricing group')}</FormLabel>
           <div className='flex gap-2'>
             {groupEntries.length > 0 ? (
               <Select
@@ -408,9 +408,9 @@ function KeyGroupField({
 }
 
 const CLIENT_EXCLUSIVE_OPTIONS = [
-  { value: 'none', label: '通用（任何客户端）' },
-  { value: 'codex', label: 'Codex 专属' },
-  { value: 'claude_code', label: 'Claude Code 专属' },
+  { value: 'none', label: 'Available to all clients' },
+  { value: 'codex', label: 'Codex only' },
+  { value: 'claude_code', label: 'Claude Code only' },
 ] as const
 
 const GPT_IMAGE_2_CAPABILITIES_TEMPLATE = {
@@ -467,7 +467,7 @@ function ClientExclusiveField({
           >
             <FormControl>
               <SelectTrigger>
-                <SelectValue placeholder={t('通用（任何客户端）')} />
+                <SelectValue placeholder={t('Available to all clients')} />
               </SelectTrigger>
             </FormControl>
             <SelectContent alignItemWithTrigger={false}>

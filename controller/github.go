@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -96,10 +97,7 @@ func GitHubOAuth(c *gin.Context) {
 	}
 
 	if !common.GitHubOAuthEnabled {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "管理员未开启通过 GitHub 登录以及注册",
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, map[string]any{"Provider": "GitHub"})
 		return
 	}
 	code := c.Query("code")
@@ -124,10 +122,7 @@ func GitHubOAuth(c *gin.Context) {
 		}
 		// if user.Id == 0 , user has been deleted
 		if user.Id == 0 {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "用户已注销",
-			})
+			common.ApiErrorI18n(c, i18n.MsgOAuthUserDeleted)
 			return
 		}
 	} else {
@@ -155,19 +150,13 @@ func GitHubOAuth(c *gin.Context) {
 				return
 			}
 		} else {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "管理员关闭了新用户注册",
-			})
+			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
 			return
 		}
 	}
 
 	if user.Status != common.UserStatusEnabled {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "用户已被封禁",
-			"success": false,
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthUserBanned)
 		return
 	}
 	setupLogin(&user, c)
@@ -175,10 +164,7 @@ func GitHubOAuth(c *gin.Context) {
 
 func GitHubBind(c *gin.Context) {
 	if !common.GitHubOAuthEnabled {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "管理员未开启通过 GitHub 登录以及注册",
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, map[string]any{"Provider": "GitHub"})
 		return
 	}
 	code := c.Query("code")
@@ -191,10 +177,7 @@ func GitHubBind(c *gin.Context) {
 		GitHubId: githubUser.Login,
 	}
 	if model.IsGitHubIdAlreadyTaken(user.GitHubId) {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "该 GitHub 账户已被绑定",
-		})
+		common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, map[string]any{"Provider": "GitHub"})
 		return
 	}
 	session := sessions.Default(c)

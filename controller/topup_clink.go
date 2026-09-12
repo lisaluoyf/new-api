@@ -62,7 +62,7 @@ func RequestClinkPay(c *gin.Context) {
 		return
 	}
 	if !isClinkTopUpEnabled() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Clink top-up is not enabled"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentNotConfigured)})
 		return
 	}
 
@@ -219,7 +219,7 @@ func RequestClinkPay(c *gin.Context) {
 
 func ConfirmClinkPay(c *gin.Context) {
 	if !isClinkTopUpEnabled() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Clink top-up is not enabled"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentNotConfigured)})
 		return
 	}
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -1683,7 +1684,7 @@ func FixGroupRatio(c *gin.Context) {
 	}
 	officialIn, _, _, _, ok := service.GlobalModelPricingUSD(req.Model)
 	if !ok || officialIn <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该模型未配置官方原价（系统设置 → 模型定价）"})
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgModelPricingOfficialPriceMissing, map[string]any{"Model": req.Model})
 		return
 	}
 
@@ -1702,7 +1703,7 @@ func FixGroupRatio(c *gin.Context) {
 	}
 	displayed, ok := findDisplayedPricingRow(req.ChannelID, req.Model, ch.ModelMapping)
 	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "该渠道没有可修正的价格行"})
+		common.ApiErrorI18nStatus(c, http.StatusNotFound, i18n.MsgModelPricingChannelRowNotFound)
 		return
 	}
 

@@ -240,9 +240,13 @@ function OAuthCallback() {
           return
         }
         const message = res?.data?.message || 'OAuth failed'
+        const code = res?.data?.code
         if (!res?.data?.success && !isBindingFlow) {
           // When logging in with an already bound GitHub account, backend may return this message
-          if (message === '该 GitHub 账户已被绑定') {
+          if (
+            code === 'oauth.already_bound' ||
+            message === '该 GitHub 账户已被绑定'
+          ) {
             if (await finalizeLogin()) {
               redirectAfterLogin()
               return

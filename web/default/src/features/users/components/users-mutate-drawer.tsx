@@ -166,7 +166,7 @@ export function UsersMutateDrawer({
               : Number(data.reseller_user_id || 0),
           })
           if (!resellerResult.success) {
-            toast.error(resellerResult.message || '分销商关系保存失败')
+            toast.error(resellerResult.message || t('Failed to save reseller relationship'))
             return
           }
         }
@@ -484,14 +484,14 @@ export function UsersMutateDrawer({
 
               {isUpdate && isRoot && currentRow && (
                 <div className='space-y-4'>
-                  <h3 className='text-sm font-medium'>分销商</h3>
+                  <h3 className='text-sm font-medium'>{t('Reseller')}</h3>
 
                   <FormField
                     control={form.control}
                     name='is_reseller'
                     render={({ field }) => (
                       <FormItem className='flex items-center justify-between rounded-md border px-3 py-2'>
-                        <FormLabel>标记为分销商</FormLabel>
+                        <FormLabel>{t('Mark as reseller')}</FormLabel>
                         <FormControl>
                           <Switch
                             checked={Boolean(field.value)}
@@ -512,7 +512,7 @@ export function UsersMutateDrawer({
                     name='reseller_user_id'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>上级分销商邮箱</FormLabel>
+                        <FormLabel>{t('Parent reseller email')}</FormLabel>
                         <Select
                           value={String(field.value || 0)}
                           onValueChange={(value) =>
@@ -522,12 +522,12 @@ export function UsersMutateDrawer({
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder='选择上级分销商邮箱' />
+                              <SelectValue placeholder={t('Select parent reseller email')} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent alignItemWithTrigger={false}>
                             <SelectGroup>
-                              <SelectItem value='0'>无</SelectItem>
+                              <SelectItem value='0'>{t('None')}</SelectItem>
                               {resellerUsers
                                 .filter((user) => user.id !== currentRow.id)
                                 .map((user) => (

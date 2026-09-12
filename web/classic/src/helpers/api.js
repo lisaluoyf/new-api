@@ -25,6 +25,7 @@ import {
 } from './utils';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
+import { normalizeLanguage } from '../i18n/language';
 
 export let API = axios.create({
   baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
@@ -51,6 +52,11 @@ function redirectToOAuthUrl(url, options = {}) {
 
 
 function patchAPIInstance(instance) {
+  instance.interceptors.request.use((config) => {
+    const language = normalizeLanguage(localStorage.getItem('i18nextLng') || 'en');
+    config.headers['Accept-Language'] = language || 'en';
+    return config;
+  });
   const originalGet = instance.get.bind(instance);
   const inFlightGetRequests = new Map();
 

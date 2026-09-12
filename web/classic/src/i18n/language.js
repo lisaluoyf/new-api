@@ -22,6 +22,12 @@ export const supportedLanguages = [
   'zh-TW',
   'en',
   'ja',
+  'pt',
+  'de',
+  'fr',
+  'tr',
+  'it',
+  'pl',
   'id',
   'ko',
   'es',
@@ -34,6 +40,12 @@ export const languageOptions = [
   { value: 'zh-TW', label: '繁體中文' },
   { value: 'en', label: 'English' },
   { value: 'ja', label: '日本語' },
+  { value: 'pt', label: 'Português' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'fr', label: 'Français' },
+  { value: 'tr', label: 'Türkçe' },
+  { value: 'it', label: 'Italiano' },
+  { value: 'pl', label: 'Polski' },
   { value: 'id', label: 'Bahasa' },
   { value: 'ko', label: '한국어' },
   { value: 'es', label: 'Español' },
@@ -46,6 +58,12 @@ export const apimasterLocaleMap = {
   'zh-tw': 'zh-TW',
   en: 'en',
   ja: 'ja',
+  pt: 'pt',
+  de: 'de',
+  fr: 'fr',
+  tr: 'tr',
+  it: 'it',
+  pl: 'pl',
   id: 'id',
   ko: 'ko',
   es: 'es',
@@ -60,6 +78,9 @@ export const normalizeLanguage = (language) => {
 
   const normalized = language.trim().replace(/_/g, '-');
   const lower = normalized.toLowerCase();
+  if (!/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(lower)) {
+    return 'en';
+  }
 
   if (apimasterLocaleMap[lower]) {
     return apimasterLocaleMap[lower];
@@ -83,31 +104,37 @@ export const normalizeLanguage = (language) => {
     return 'zh-TW';
   }
 
-  if (lower.startsWith('en')) {
+  if (lower === 'en' || lower.startsWith('en-')) {
     return 'en';
   }
 
-  if (lower.startsWith('ja')) {
+  if (lower === 'ja' || lower.startsWith('ja-')) {
     return 'ja';
+  }
+
+  for (const language of ['pt', 'de', 'fr', 'tr', 'it', 'pl']) {
+    if (lower === language || lower.startsWith(`${language}-`)) {
+      return language;
+    }
   }
 
   if (lower === 'id' || lower.startsWith('id-') || lower === 'in' || lower.startsWith('in-')) {
     return 'id';
   }
 
-  if (lower.startsWith('ko')) {
+  if (lower === 'ko' || lower.startsWith('ko-')) {
     return 'ko';
   }
 
-  if (lower.startsWith('es')) {
+  if (lower === 'es' || lower.startsWith('es-')) {
     return 'es';
   }
 
-  if (lower.startsWith('ru')) {
+  if (lower === 'ru' || lower.startsWith('ru-')) {
     return 'ru';
   }
 
-  if (lower.startsWith('vi')) {
+  if (lower === 'vi' || lower.startsWith('vi-')) {
     return 'vi';
   }
 
@@ -115,5 +142,5 @@ export const normalizeLanguage = (language) => {
     (supportedLanguage) => supportedLanguage.toLowerCase() === lower,
   );
 
-  return matchedLanguage || normalized;
+  return matchedLanguage || 'en';
 };

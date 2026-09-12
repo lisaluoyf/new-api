@@ -151,7 +151,7 @@ function TransactionTypeChip(props: {
 }
 
 export function TransactionHistory() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const {
     records,
     total,
@@ -426,7 +426,10 @@ export function TransactionHistory() {
                       {isAdmin && (
                         <td className='px-4 py-3'>
                           {(() => {
-                            const c = parseCountry(record.country)
+                            const c = parseCountry(
+                              record.country,
+                              i18n.resolvedLanguage || i18n.language
+                            )
                             return c ? (
                               <div className='flex flex-col gap-0.5'>
                                 <span className='text-xs font-medium'>

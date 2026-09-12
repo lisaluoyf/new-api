@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -149,30 +149,21 @@ func ClearDiskCache(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "不活跃的磁盘缓存已清理",
-	})
+	common.ApiSuccessMessageI18n(c, i18n.MsgOperationSuccess)
 }
 
 // ResetPerformanceStats 重置性能统计
 func ResetPerformanceStats(c *gin.Context) {
 	common.ResetDiskCacheStats()
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "统计信息已重置",
-	})
+	common.ApiSuccessMessageI18n(c, i18n.MsgOperationSuccess)
 }
 
 // ForceGC 强制执行 GC
 func ForceGC(c *gin.Context) {
 	runtime.GC()
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "GC 已执行",
-	})
+	common.ApiSuccessMessageI18n(c, i18n.MsgOperationSuccess)
 }
 
 // LogFileInfo 日志文件信息
@@ -339,7 +330,8 @@ func CleanupLogFiles(c *gin.Context) {
 	if len(failedFiles) > 0 {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": fmt.Sprintf("部分文件删除失败（%d/%d）", len(failedFiles), len(toDelete)),
+			"code":    i18n.MsgOperationFailed,
+			"message": common.TranslateMessage(c, i18n.MsgOperationFailed),
 			"data":    result,
 		})
 		return

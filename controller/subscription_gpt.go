@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -238,12 +239,12 @@ func AdminGetGPTSubscriptionAccess(c *gin.Context) {
 func AdminUpdateGPTSubscriptionAccess(c *gin.Context) {
 	var req updateGPTSubscriptionAccessRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	for _, email := range req.Whitelist {
 		if trimmed := strings.TrimSpace(email); trimmed != "" && !strings.Contains(trimmed, "@") {
-			common.ApiErrorMsg(c, "白名单邮箱格式错误")
+			common.ApiErrorI18n(c, i18n.MsgSubscriptionEmailAllowlist)
 			return
 		}
 	}
@@ -261,7 +262,7 @@ func GetGPTSubscriptionPlans(c *gin.Context) {
 		return
 	}
 	if !access.Allowed {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "GPT Pass is not available for this account"})
+		common.ApiErrorI18nStatus(c, http.StatusForbidden, i18n.MsgSubscriptionNotEnabled)
 		return
 	}
 	plans, err := model.GetEnabledGPTSubscriptionPlans()
@@ -282,17 +283,17 @@ func GetGPTSubscriptionQuote(c *gin.Context) {
 		PlanId int `json:"plan_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
-		common.ApiErrorMsg(c, "Invalid parameters")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	plan, err := model.GetSubscriptionPlanById(req.PlanId)
 	if err != nil || plan == nil || !plan.Enabled || !model.IsGPTPaidSubscriptionPlan(plan) {
-		common.ApiErrorMsg(c, "Plan is not available")
+		common.ApiErrorI18n(c, i18n.MsgSubscriptionNotEnabled)
 		return
 	}
 	orderType, previousId, credit, payable, err := model.CalculateGPTSubscriptionQuote(c.GetInt("id"), plan)
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiErrorI18n(c, i18n.MsgOperationFailed)
 		return
 	}
 	common.ApiSuccess(c, gin.H{
@@ -305,7 +306,7 @@ func GetGPTSubscriptionQuote(c *gin.Context) {
 func AdminGetUserGPTSubscriptionDetails(c *gin.Context) {
 	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil || userID <= 0 {
-		common.ApiErrorMsg(c, "无效的用户ID")
+		common.ApiErrorI18n(c, i18n.MsgSubscriptionInvalidUserId)
 		return
 	}
 	state, err := model.GetGPTSubscriptionState(userID)
@@ -339,7 +340,7 @@ func AdminGetUserGPTSubscriptionDetails(c *gin.Context) {
 func AdminInvalidateUserGPTSubscription(c *gin.Context) {
 	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil || userID <= 0 {
-		common.ApiErrorMsg(c, "无效的用户ID")
+		common.ApiErrorI18n(c, i18n.MsgSubscriptionInvalidUserId)
 		return
 	}
 	msg, err := model.AdminInvalidateCurrentGPTSubscription(userID)
@@ -358,7 +359,7 @@ func AdminReverseGPTSubscriptionOrder(c *gin.Context) {
 		Note   string  `json:"note"`
 	}
 	if tradeNo == "" || c.ShouldBindJSON(&req) != nil || req.Amount <= 0 {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	order := model.GetSubscriptionOrderByTradeNo(tradeNo)
@@ -372,7 +373,7 @@ func AdminReverseGPTSubscriptionOrder(c *gin.Context) {
 		return
 	}
 	if !model.IsGPTPaidSubscriptionPlan(plan) {
-		common.ApiErrorMsg(c, "订单不是 GPT 付费订阅订单")
+		common.ApiErrorI18n(c, i18n.MsgSubscriptionOrderType)
 		return
 	}
 	if err := model.ReverseSubscriptionOrder(tradeNo, req.Amount, strings.ToLower(strings.TrimSpace(req.Type)), req.Note); err != nil {

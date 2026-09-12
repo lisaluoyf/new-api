@@ -542,7 +542,7 @@ func RequestEpay(c *gin.Context) {
 	id := c.GetInt("id")
 	minTopup := getMinTopupForUser(id)
 	if req.Amount < minTopup {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", minTopup)})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMin, map[string]any{"Min": minTopup})})
 		return
 	}
 
@@ -554,7 +554,7 @@ func RequestEpay(c *gin.Context) {
 	}
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgOperationFailed)})
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group, id)
@@ -762,12 +762,12 @@ func RequestAmount(c *gin.Context) {
 	id := c.GetInt("id")
 	minTopup := getMinTopupForUser(id)
 	if req.Amount < minTopup {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("Top-up amount cannot be less than %d", minTopup)})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountMin, map[string]any{"Min": minTopup})})
 		return
 	}
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to get user group"})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgOperationFailed)})
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group, id)
@@ -899,7 +899,7 @@ type AdminCompleteTopupRequest struct {
 func AdminCompleteTopUp(c *gin.Context) {
 	var req AdminCompleteTopupRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.TradeNo == "" {
-		common.ApiErrorMsg(c, "Invalid parameters")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 

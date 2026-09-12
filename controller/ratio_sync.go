@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 
 	"github.com/QuantumNous/new-api/dto"
@@ -143,7 +144,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 	var req dto.UpstreamRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.SysError("failed to bind upstream request: " + err.Error())
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请求参数格式错误"})
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgInvalidParams)
 		return
 	}
 
@@ -171,7 +172,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 		dbChannels, err := model.GetChannelsByIds(intIds)
 		if err != nil {
 			logger.LogError(c.Request.Context(), "failed to query channels: "+err.Error())
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询渠道失败"})
+			common.ApiErrorI18nStatus(c, http.StatusInternalServerError, i18n.MsgChannelQueryFailed)
 			return
 		}
 		for _, ch := range dbChannels {
@@ -187,7 +188,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 	}
 
 	if len(upstreams) == 0 {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "无有效上游渠道"})
+		common.ApiErrorI18n(c, i18n.MsgChannelNoValidUpstream)
 		return
 	}
 
