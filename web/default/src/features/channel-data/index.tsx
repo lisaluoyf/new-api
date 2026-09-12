@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Settings2, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
@@ -859,6 +859,10 @@ function AnalysisModal({
 export function ChannelDataPage() {
   const { t } = useTranslation()
   const [activeModel, setActiveModel] = useState(MODEL_TABS[0].modelId)
+  const activeModelRef = useRef(activeModel)
+  useEffect(() => {
+    activeModelRef.current = activeModel
+  }, [activeModel])
   const [activeModelCategory, setActiveModelCategory] =
     useState<ModelCategoryKey>('all')
   const [data, setData] = useState<ModelDataItem[]>([])
@@ -1257,6 +1261,25 @@ export function ChannelDataPage() {
     [activeModel, fixingRatio]
   )
 
+  // Refresh only the probed row so the server's raw order cannot reshuffle
+  // the table. Ignore delayed results after switching to another model.
+  const refreshProbedChannel = useCallback(
+    async (channelId: number, model: string) => {
+      if (activeModelRef.current !== model) return
+      const res = await api.get('/api/admin/channel-data', {
+        params: { model },
+      })
+      if (!res.data?.success || activeModelRef.current !== model) return
+      const rows: ModelDataItem[] = res.data.data ?? []
+      const updated = rows.find((item) => item.channel_id === channelId)
+      if (!updated) return
+      setData((current) =>
+        current.map((item) => (item.channel_id === channelId ? updated : item))
+      )
+    },
+    []
+  )
+
   const detectNow = useCallback(
     (channelId: number) => {
       const key = `${channelId}-${activeModel}`
@@ -1273,12 +1296,9 @@ export function ChannelDataPage() {
         .finally(() => {
           // Detection takes ~5-15s on Flask side; reload after 18s to catch result
           setTimeout(() => {
-            api
-              .get('/api/admin/channel-data', {
-                params: { model: activeModel },
-              })
-              .then((res) => {
-                if (res.data?.success) setData(res.data.data ?? [])
+            refreshProbedChannel(channelId, activeModel)
+              .catch(() => {
+                /* API error handling reports refresh failures. */
               })
               .finally(() =>
                 setDetectingChannels((prev) => ({ ...prev, [key]: false }))
@@ -1286,7 +1306,7 @@ export function ChannelDataPage() {
           }, 18000)
         })
     },
-    [activeModel, detectingChannels]
+    [activeModel, detectingChannels, refreshProbedChannel]
   )
 
   const pingNow = useCallback(
@@ -1305,12 +1325,9 @@ export function ChannelDataPage() {
         .finally(() => {
           // Uptime probe takes a few seconds; reload after 8s to catch result
           setTimeout(() => {
-            api
-              .get('/api/admin/channel-data', {
-                params: { model: activeModel },
-              })
-              .then((res) => {
-                if (res.data?.success) setData(res.data.data ?? [])
+            refreshProbedChannel(channelId, activeModel)
+              .catch(() => {
+                /* API error handling reports refresh failures. */
               })
               .finally(() =>
                 setPingingChannels((prev) => ({ ...prev, [key]: false }))
@@ -1318,7 +1335,7 @@ export function ChannelDataPage() {
           }, 8000)
         })
     },
-    [activeModel, pingingChannels]
+    [activeModel, pingingChannels, refreshProbedChannel]
   )
 
   const saveConfig = useCallback(
