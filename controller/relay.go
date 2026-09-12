@@ -485,7 +485,7 @@ func notifyOfficialFallbackResult(c *gin.Context, relayInfo *relaycommon.RelayIn
 	}
 	lines = append(lines, fmt.Sprintf("- 结果：`%s`", result))
 	gopool.Go(func() {
-		if err := common.SendFeishuCard(chatID, title, lines); err != nil {
+		if err := common.SendFeishuCard(chatID, common.FeishuNotificationTitle(title), lines); err != nil {
 			logger.LogError(context.Background(), fmt.Sprintf("failed to send official fallback feishu notification: %s", err.Error()))
 		}
 	})
@@ -547,7 +547,7 @@ func notifyFinalRelayFailure(c *gin.Context, relayInfo *relaycommon.RelayInfo, f
 		lines = append(lines, fmt.Sprintf("- 官方兜底渠道：`%s`", officialChannel))
 	}
 	gopool.Go(func() {
-		if err := common.SendFeishuCard(chatID, "NewAPI 请求最终失败", lines); err != nil {
+		if err := common.SendFeishuCard(chatID, common.FeishuNotificationTitle("NewAPI 请求最终失败"), lines); err != nil {
 			logger.LogError(context.Background(), fmt.Sprintf("failed to send final failure feishu notification: %s", err.Error()))
 		}
 	})
@@ -566,7 +566,7 @@ func notifyUpstreamFalseSuccess(c *gin.Context, relayErr *types.NewAPIError) {
 		lines = append(lines, fmt.Sprintf("- retry_decision：%s", feishuDiagnosticValue(common.GetJsonString(decision), 800)))
 	}
 	gopool.Go(func() {
-		if err := common.SendFeishuCard(chatID, "NewAPI HTTP 200 假成功拦截", lines); err != nil {
+		if err := common.SendFeishuCard(chatID, common.FeishuNotificationTitle("HTTP 200 假成功拦截"), lines); err != nil {
 			logger.LogError(context.Background(), fmt.Sprintf("failed to send upstream false-success notification: %s", err.Error()))
 		}
 	})

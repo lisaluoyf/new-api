@@ -37,6 +37,20 @@ func FeishuNewAPILogChatID() string {
 	return os.Getenv("FEISHU_NEWAPI_LOG_CHAT_ID")
 }
 
+// FeishuNotificationTitle prefixes shared log-group messages with the
+// originating node, so alerts from APIMaster/Roma/other nodes are distinguishable.
+func FeishuNotificationTitle(title string) string {
+	node := strings.TrimSpace(NodeName)
+	if node == "" {
+		node = strings.TrimSpace(os.Getenv("NODE_NAME"))
+	}
+	if node == "" {
+		node = "unknown-node"
+	}
+	node = strings.TrimSuffix(strings.TrimSuffix(node, "-new-api"), "-newapi")
+	return fmt.Sprintf("[%s] %s", node, strings.TrimSpace(title))
+}
+
 func getFeishuToken() (string, error) {
 	feishuTokenMu.Lock()
 	defer feishuTokenMu.Unlock()
