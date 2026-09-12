@@ -56,6 +56,10 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	}
 
 	if oaiError := responsesResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
+		if !falseSuccessFallbackEnabled() {
+			// 开关关闭：不把 HTTP 200 的错误响应改写成可重试的 502，按上游状态码返回
+			return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		}
 		relayErr := types.WithOpenAIError(*oaiError, http.StatusBadGateway)
 		return nil, markResponsesFalseSuccess(relayErr, falseSuccessTriggerResponseError, resp.StatusCode, false, "", &responsesResp, oaiError, nil, true, false, string(body))
 	}
@@ -356,6 +360,19 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			observedFrames = append(observedFrames, data)
 		}
 		if streamResp.Type == "error" || streamResp.Type == "response.error" || streamResp.Type == "response.failed" || (streamResp.Response != nil && streamResp.Response.Error != nil) {
+			if !falseSuccessFallbackEnabled() {
+				// 关闭假成功判定：恢复上线前的错误构造，不再返回带诊断的 502。
+				if streamResp.Response != nil {
+					if oaiErr := streamResp.Response.GetOpenAIError(); oaiErr != nil && oaiErr.Type != "" {
+						streamErr = types.WithOpenAIError(*oaiErr, http.StatusInternalServerError)
+						sr.Stop(streamErr)
+						return
+					}
+				}
+				streamErr = types.NewOpenAIError(fmt.Errorf("responses stream error: %s", streamResp.Type), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+				sr.Stop(streamErr)
+				return
+			}
 			upstreamErr := streamResp.GetOpenAIError()
 			if upstreamErr != nil && (upstreamErr.Type != "" || upstreamErr.Message != "" || upstreamErr.Code != nil) {
 				streamErr = types.WithOpenAIError(*upstreamErr, http.StatusBadGateway)
@@ -578,7 +595,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 		return nil, streamErr
 	}
-	if validationErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame, validOutput); validationErr != nil {
+	if validationErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame, falseSuccessStreamValidationArgs(validOutput)...); validationErr != nil {
 		if !validOutput {
 			validationErr = markResponsesFalseSuccess(
 				validationErr,

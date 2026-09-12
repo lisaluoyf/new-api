@@ -165,6 +165,26 @@ func extractOpenAIStreamError(data string) (*types.OpenAIError, string) {
 	return &types.OpenAIError{Message: fmt.Sprint(candidate)}, eventType
 }
 
+// openAIStreamErrorEvent reports whether an SSE frame is an upstream error event.
+// With the false-success judgement enabled it also recognises wrapped errors
+// (nested response.error, top-level type=error/response.failed). Once the switch
+// is off it only accepts the top-level error field, matching the pre-feature
+// behaviour, and the caller falls back to the generic error message.
+func openAIStreamErrorEvent(data string) (*types.OpenAIError, string, bool) {
+	if !falseSuccessFallbackEnabled() {
+		var envelope map[string]any
+		if common.UnmarshalJsonStr(data, &envelope) != nil || envelope["error"] == nil {
+			return nil, "", false
+		}
+		return nil, "", true
+	}
+	upstreamErr, eventType := extractOpenAIStreamError(data)
+	if upstreamErr == nil {
+		return nil, "", false
+	}
+	return upstreamErr, eventType, true
+}
+
 func chatStreamDataHasUsableOutput(data string) bool {
 	var response dto.ChatCompletionsStreamResponse
 	if common.UnmarshalJsonStr(data, &response) != nil {
@@ -221,12 +241,23 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
-	bufferUntilUsableOutput := !isAudioModel
+	// 首包前不发 ping：keepalive 先把响应写出去会让请求再也无法换渠道重试。
+	// 这条缓解与假成功判定无关，始终保留。
+	suppressPingBeforeOutput := !isAudioModel
+	// 只有在假成功判定开启时才需要在「首个有效输出」前扣住上游帧；关闭判定后
+	// 帧直接透传，与上线前的行为一致。
+	bufferUntilUsableOutput := suppressPingBeforeOutput && falseSuccessFallbackEnabled()
 	outputCommitted := !bufferUntilUsableOutput
 	validOutput := isAudioModel
-	if bufferUntilUsableOutput {
+	if suppressPingBeforeOutput {
 		c.Set(helper.ContextKeySuppressStreamPing, true)
 		defer c.Set(helper.ContextKeySuppressStreamPing, false)
+	}
+	releasePing := func() {
+		if suppressPingBeforeOutput {
+			suppressPingBeforeOutput = false
+			c.Set(helper.ContextKeySuppressStreamPing, false)
+		}
 	}
 
 	processFrame := func(data string, sr *helper.StreamResult) {
@@ -248,7 +279,12 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	}
 
 	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
-		if upstreamErr, eventType := extractOpenAIStreamError(data); upstreamErr != nil {
+		if upstreamErr, eventType, isErrorEvent := openAIStreamErrorEvent(data); isErrorEvent {
+			if !falseSuccessFallbackEnabled() {
+				// 关闭假成功判定：恢复上线前的窄口径与通用错误，不带诊断信息。
+				sr.Stop(fmt.Errorf("upstream returned an error event"))
+				return
+			}
 			// The handler keeps one frame in hand for normal terminal processing. If
 			// usable output already exists, flush it before surfacing the later error
 			// so the controller cannot transparently replay a partially delivered turn.
@@ -276,14 +312,15 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 			validOutput = true
 			outputCommitted = true
-			c.Set(helper.ContextKeySuppressStreamPing, false)
 			for _, pending := range pendingFrames {
 				processFrame(pending, sr)
 			}
 			pendingFrames = nil
+			releasePing()
 			return
 		}
 		processFrame(data, sr)
+		releasePing()
 	})
 	if streamEventErr != nil {
 		if streamEventErr.UpstreamFalseSuccess != nil && streamStatus != nil {
@@ -313,7 +350,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		}
 		return nil, streamErr
 	}
-	if !validOutput {
+	if !validOutput && falseSuccessFallbackEnabled() {
 		streamErr := types.NewOpenAIError(fmt.Errorf("upstream stream completed without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
 		return nil, markResponsesFalseSuccess(streamErr, falseSuccessTriggerEmptyStream, resp.StatusCode, true, "", nil, nil, streamStatus, terminalFrame, false, falseSuccessRawFrames(pendingFrames))
 	}
