@@ -561,11 +561,7 @@ func notifyUpstreamFalseSuccess(c *gin.Context, relayErr *types.NewAPIError) {
 	if chatID == "" {
 		return
 	}
-	lines := upstreamFalseSuccessNotificationLines(relayErr.UpstreamFalseSuccess)
-	requestID := strings.TrimSpace(c.GetString(common.RequestIdKey))
-	if requestID != "" {
-		lines = append([]string{fmt.Sprintf("- 请求 ID：%s", feishuDiagnosticValue(requestID, 200))}, lines...)
-	}
+	lines := append(falseSuccessRequestContextLines(c), upstreamFalseSuccessNotificationLines(relayErr.UpstreamFalseSuccess)...)
 	if decision, ok := getRetryDecision(c); ok {
 		appendFalseSuccessRetryDecision(&lines, decision)
 	}
@@ -574,6 +570,34 @@ func notifyUpstreamFalseSuccess(c *gin.Context, relayErr *types.NewAPIError) {
 			logger.LogError(context.Background(), fmt.Sprintf("failed to send upstream false-success notification: %s", err.Error()))
 		}
 	})
+}
+
+func falseSuccessRequestContextLines(c *gin.Context) []string {
+	if c == nil {
+		return nil
+	}
+	lines := make([]string, 0, 3)
+	if requestID := strings.TrimSpace(c.GetString(common.RequestIdKey)); requestID != "" {
+		lines = append(lines, fmt.Sprintf("- 请求 ID：%s", feishuDiagnosticValue(requestID, 200)))
+	}
+
+	channelID := c.GetInt("channel_id")
+	channelName := strings.TrimSpace(c.GetString("channel_name"))
+	channel := "-"
+	if channelID > 0 {
+		channel = fmt.Sprintf("#%d", channelID)
+		if channelName != "" {
+			channel += "/" + channelName
+		}
+	} else if channelName != "" {
+		channel = channelName
+	}
+	lines = append(lines, fmt.Sprintf("- 渠道：%s", feishuDiagnosticValue(channel, 300)))
+
+	if modelName := strings.TrimSpace(c.GetString("original_model")); modelName != "" {
+		lines = append(lines, fmt.Sprintf("- 模型：%s", feishuDiagnosticValue(modelName, 300)))
+	}
+	return lines
 }
 
 func upstreamFalseSuccessNotificationLines(diagnostic *types.UpstreamFalseSuccessDiagnostic) []string {

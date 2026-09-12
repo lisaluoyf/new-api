@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -92,4 +93,20 @@ func TestUpstreamFalseSuccessLogAndNotificationFields(t *testing.T) {
 	require.Contains(t, joined, "上游原始响应")
 	require.NotContains(t, joined, "user_id")
 	require.NotContains(t, joined, "email")
+}
+
+func TestFalseSuccessRequestContextNotificationFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set(common.RequestIdKey, "req-123")
+	ctx.Set("channel_id", 219)
+	ctx.Set("channel_name", "lingsu-gpt-pro")
+	ctx.Set("original_model", "gpt-5.6-terra")
+
+	lines := falseSuccessRequestContextLines(ctx)
+	joined := strings.Join(lines, "\n")
+	require.Contains(t, joined, "请求 ID")
+	require.Contains(t, joined, "#219/lingsu-gpt-pro")
+	require.Contains(t, joined, "模型")
+	require.Contains(t, joined, "gpt-5.6-terra")
 }
