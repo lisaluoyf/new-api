@@ -87,6 +87,9 @@ func TestUpstreamFalseSuccessLogAndNotificationFields(t *testing.T) {
 	require.Contains(t, joined, "server_is_overloaded")
 	require.Contains(t, joined, "Selected model is at capacity")
 	require.Contains(t, joined, "discard_channel_and_fallback")
+	require.Contains(t, joined, "触发原因")
+	require.Contains(t, joined, "错误代码")
+	require.Contains(t, joined, "上游原始响应")
 	require.NotContains(t, joined, "user_id")
 	require.NotContains(t, joined, "email")
 }

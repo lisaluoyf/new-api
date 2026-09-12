@@ -4,7 +4,7 @@ import "testing"
 
 func TestFeishuNotificationTitlePrefixesNodeName(t *testing.T) {
 	original := NodeName
-	NodeName = "apimaster-new-api"
+	NodeName = "apimaster-new-api-green"
 	t.Cleanup(func() { NodeName = original })
 
 	if got := FeishuNotificationTitle("HTTP 200 假成功拦截"); got != "[apimaster] HTTP 200 假成功拦截" {

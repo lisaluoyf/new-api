@@ -56,7 +56,12 @@ func FeishuNotificationTitle(title string) string {
 	if node == "" {
 		node = "unknown-node"
 	}
-	node = strings.TrimSuffix(strings.TrimSuffix(node, "-new-api"), "-newapi")
+	for _, suffix := range []string{"-new-api-blue", "-new-api-green", "-newapi-blue", "-newapi-green", "-new-api", "-newapi"} {
+		if strings.HasSuffix(node, suffix) {
+			node = strings.TrimSuffix(node, suffix)
+			break
+		}
+	}
 	return fmt.Sprintf("[%s] %s", node, strings.TrimSpace(title))
 }
 

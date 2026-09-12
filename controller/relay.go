@@ -562,8 +562,12 @@ func notifyUpstreamFalseSuccess(c *gin.Context, relayErr *types.NewAPIError) {
 		return
 	}
 	lines := upstreamFalseSuccessNotificationLines(relayErr.UpstreamFalseSuccess)
+	requestID := strings.TrimSpace(c.GetString(common.RequestIdKey))
+	if requestID != "" {
+		lines = append([]string{fmt.Sprintf("- 请求 ID：%s", feishuDiagnosticValue(requestID, 200))}, lines...)
+	}
 	if decision, ok := getRetryDecision(c); ok {
-		lines = append(lines, fmt.Sprintf("- retry_decision：%s", feishuDiagnosticValue(common.GetJsonString(decision), 800)))
+		appendFalseSuccessRetryDecision(&lines, decision)
 	}
 	gopool.Go(func() {
 		if err := common.SendFeishuCard(chatID, common.FeishuNotificationTitle("HTTP 200 假成功拦截"), lines); err != nil {
@@ -577,28 +581,46 @@ func upstreamFalseSuccessNotificationLines(diagnostic *types.UpstreamFalseSucces
 		return nil
 	}
 	lines := []string{
-		fmt.Sprintf("- trigger：%s", feishuDiagnosticValue(diagnostic.Trigger, 200)),
-		fmt.Sprintf("- upstream_http_status：%d", diagnostic.UpstreamHTTPStatus),
-		fmt.Sprintf("- stream：%t", diagnostic.Stream),
+		fmt.Sprintf("- 触发原因：%s", feishuDiagnosticValue(diagnostic.Trigger, 200)),
+		fmt.Sprintf("- 上游 HTTP 状态：%d", diagnostic.UpstreamHTTPStatus),
+		fmt.Sprintf("- 是否流式：%t", diagnostic.Stream),
 	}
 	appendValue := func(label, value string) {
 		if strings.TrimSpace(value) != "" {
 			lines = append(lines, fmt.Sprintf("- %s：%s", label, feishuDiagnosticValue(value, 1000)))
 		}
 	}
-	appendValue("event_type", diagnostic.EventType)
-	appendValue("response_status", diagnostic.ResponseStatus)
-	appendValue("error.type", diagnostic.ErrorType)
-	appendValue("error.code", diagnostic.ErrorCode)
-	appendValue("error.message", diagnostic.ErrorMessage)
-	appendValue("stream_end_reason", diagnostic.StreamEndReason)
+	appendValue("事件类型", diagnostic.EventType)
+	appendValue("响应状态", diagnostic.ResponseStatus)
+	appendValue("错误类型", diagnostic.ErrorType)
+	appendValue("错误代码", diagnostic.ErrorCode)
+	appendValue("错误信息", diagnostic.ErrorMessage)
+	appendValue("流结束原因", diagnostic.StreamEndReason)
 	lines = append(lines,
-		fmt.Sprintf("- terminal_event：%t", diagnostic.TerminalEvent),
-		fmt.Sprintf("- usable_output：%t", diagnostic.UsableOutput),
+		fmt.Sprintf("- 是否有终止事件：%t", diagnostic.TerminalEvent),
+		fmt.Sprintf("- 是否有有效输出：%t", diagnostic.UsableOutput),
 	)
-	appendValue("action", diagnostic.Action)
-	appendValue("raw_response", diagnostic.RawResponse)
+	appendValue("处理动作", diagnostic.Action)
+	appendValue("上游原始响应", diagnostic.RawResponse)
 	return lines
+}
+
+func appendFalseSuccessRetryDecision(lines *[]string, decision map[string]interface{}) {
+	if lines == nil || decision == nil {
+		return
+	}
+	if shouldRetry, ok := decision["should_retry"].(bool); ok {
+		*lines = append(*lines, fmt.Sprintf("- 是否重试：%t", shouldRetry))
+	}
+	if reason, ok := decision["reason"].(string); ok && strings.TrimSpace(reason) != "" {
+		*lines = append(*lines, fmt.Sprintf("- 重试原因：%s", feishuDiagnosticValue(reason, 300)))
+	}
+	if retryIndex, ok := decision["retry_index"]; ok {
+		*lines = append(*lines, fmt.Sprintf("- 当前重试序号：%s", feishuDiagnosticValue(fmt.Sprint(retryIndex), 100)))
+	}
+	if remaining, ok := decision["remaining_retry_times"]; ok {
+		*lines = append(*lines, fmt.Sprintf("- 剩余重试次数：%s", feishuDiagnosticValue(fmt.Sprint(remaining), 100)))
+	}
 }
 
 func feishuDiagnosticValue(value string, maxRunes int) string {
