@@ -130,6 +130,21 @@ func TestOpenAIStreamErrorAfterUsableOutputIsNotTransparentFallback(t *testing.T
 	require.Contains(t, recorder.Body.String(), "started")
 }
 
+func TestOpenAIStreamTopLevelConcurrencyErrorIsRetriableFalseSuccess(t *testing.T) {
+	ensureStreamTimeout(t)
+	ctx, _, info := newFreeModelStreamContext()
+	data := "data: {\"type\":\"error\",\"code\":\"concurrency_limit_exceeded\",\"message\":\"Concurrency limit exceeded for account, please retry later\"}\n\n"
+	resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(data))}
+	_, apiErr := OaiStreamHandler(ctx, info, resp)
+	require.NotNil(t, apiErr)
+	require.Equal(t, types.ErrorCode("concurrency_limit_exceeded"), apiErr.GetErrorCode())
+	require.Equal(t, "Concurrency limit exceeded for account, please retry later", apiErr.Error())
+	require.NotNil(t, apiErr.UpstreamFalseSuccess)
+	require.Equal(t, "error", apiErr.UpstreamFalseSuccess.EventType)
+	require.Equal(t, "concurrency_limit_exceeded", apiErr.UpstreamFalseSuccess.ErrorCode)
+	require.False(t, ctx.Writer.Written())
+}
+
 func TestFreeModelStreamChunkUsesVirtualModelID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

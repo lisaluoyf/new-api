@@ -141,6 +141,16 @@ func extractOpenAIStreamError(data string) (*types.OpenAIError, string) {
 		}
 	}
 	if candidate == nil {
+		switch strings.ToLower(strings.TrimSpace(eventType)) {
+		case "error", "response.error", "response.failed":
+			return &types.OpenAIError{
+				Type:    strings.TrimSpace(common.Interface2String(envelope["error_type"])),
+				Code:    envelope["code"],
+				Message: strings.TrimSpace(common.Interface2String(envelope["message"])),
+			}, eventType
+		}
+	}
+	if candidate == nil {
 		return nil, eventType
 	}
 	openAIError := &types.OpenAIError{}
@@ -161,8 +171,8 @@ func chatStreamDataHasUsableOutput(data string) bool {
 		return false
 	}
 	for _, choice := range response.Choices {
-		if strings.TrimSpace(choice.Delta.GetContentString()) != "" ||
-			strings.TrimSpace(choice.Delta.GetReasoningContent()) != "" ||
+		if choice.Delta.GetContentString() != "" ||
+			choice.Delta.GetReasoningContent() != "" ||
 			len(choice.Delta.ToolCalls) > 0 {
 			return true
 		}
