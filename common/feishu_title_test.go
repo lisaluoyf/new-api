@@ -22,3 +22,15 @@ func TestFeishuNotificationTitleUsesUnknownNodeFallback(t *testing.T) {
 		t.Fatalf("unexpected title: %q", got)
 	}
 }
+
+func TestFeishuFalseSuccessChatIDIsDedicatedWithLegacyFallback(t *testing.T) {
+	t.Setenv("FEISHU_NEWAPI_LOG_CHAT_ID", "oc_legacy")
+	t.Setenv("FEISHU_FALSE_SUCCESS_CHAT_ID", "oc_false_success")
+	if got := FeishuFalseSuccessChatID(); got != "oc_false_success" {
+		t.Fatalf("unexpected dedicated chat id: %q", got)
+	}
+	t.Setenv("FEISHU_FALSE_SUCCESS_CHAT_ID", "")
+	if got := FeishuFalseSuccessChatID(); got != "oc_legacy" {
+		t.Fatalf("unexpected legacy fallback chat id: %q", got)
+	}
+}

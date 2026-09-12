@@ -557,7 +557,7 @@ func notifyUpstreamFalseSuccess(c *gin.Context, relayErr *types.NewAPIError) {
 	if c == nil || relayErr == nil || relayErr.UpstreamFalseSuccess == nil {
 		return
 	}
-	chatID := common.FeishuNewAPILogChatID()
+	chatID := common.FeishuFalseSuccessChatID()
 	if chatID == "" {
 		return
 	}
