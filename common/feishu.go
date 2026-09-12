@@ -37,6 +37,34 @@ func FeishuNewAPILogChatID() string {
 	return os.Getenv("FEISHU_NEWAPI_LOG_CHAT_ID")
 }
 
+// FeishuFalseSuccessChatID is dedicated to HTTP 200 false-success feedback.
+// Keep the legacy NewAPI log group as the fallback for older deployments.
+func FeishuFalseSuccessChatID() string {
+	if chatID := strings.TrimSpace(os.Getenv("FEISHU_FALSE_SUCCESS_CHAT_ID")); chatID != "" {
+		return chatID
+	}
+	return FeishuNewAPILogChatID()
+}
+
+// FeishuNotificationTitle prefixes shared log-group messages with the
+// originating node, so alerts from APIMaster/Roma/other nodes are distinguishable.
+func FeishuNotificationTitle(title string) string {
+	node := strings.TrimSpace(NodeName)
+	if node == "" {
+		node = strings.TrimSpace(os.Getenv("NODE_NAME"))
+	}
+	if node == "" {
+		node = "unknown-node"
+	}
+	for _, suffix := range []string{"-new-api-blue", "-new-api-green", "-newapi-blue", "-newapi-green", "-new-api", "-newapi"} {
+		if strings.HasSuffix(node, suffix) {
+			node = strings.TrimSuffix(node, suffix)
+			break
+		}
+	}
+	return fmt.Sprintf("[%s] %s", node, strings.TrimSpace(title))
+}
+
 func getFeishuToken() (string, error) {
 	feishuTokenMu.Lock()
 	defer feishuTokenMu.Unlock()

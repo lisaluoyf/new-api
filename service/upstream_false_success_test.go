@@ -23,4 +23,11 @@ func TestAppendUpstreamFalseSuccessSummary(t *testing.T) {
 	require.Equal(t, 3, summary["count"])
 	require.Equal(t, []string{"response_error", "empty_stream"}, summary["triggers"])
 	require.Equal(t, []string{"server_is_overloaded"}, summary["error_codes"])
+
+	count, triggers, errorCodes, latest, ok := GetUpstreamFalseSuccessSummary(c)
+	require.True(t, ok)
+	require.Equal(t, 3, count)
+	require.Equal(t, []string{"response_error", "empty_stream"}, triggers)
+	require.Equal(t, []string{"server_is_overloaded"}, errorCodes)
+	require.Equal(t, "empty_stream", latest.Trigger)
 }

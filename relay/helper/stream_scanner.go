@@ -361,7 +361,7 @@ func notifyClientGoneStream(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 
 	gopool.Go(func() {
-		if err := common.SendFeishuCard(chatID, "NewAPI 客户端断开（client_gone）", lines); err != nil {
+		if err := common.SendFeishuCard(chatID, common.FeishuNotificationTitle("NewAPI 客户端断开（client_gone）"), lines); err != nil {
 			logger.LogError(context.Background(), fmt.Sprintf("failed to send client_gone feishu notification: %s", err.Error()))
 		}
 	})

@@ -193,6 +193,7 @@ export function ModelMutateDrawer({
       'channel_affinity_setting.max_entries': 100000,
       'channel_affinity_setting.default_ttl_seconds': 3600,
       'channel_affinity_setting.rules': '[]',
+      'upstream_false_success_setting.enabled': true,
       model_fallback_setting: '{"policies":[]}',
       clientgone_fallback_setting: '{"policies":[]}',
       'model_deployment.ionet.api_key': '',

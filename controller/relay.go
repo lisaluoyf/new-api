@@ -359,6 +359,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				service.MarkFreeModelAttemptSuccessForLog(c)
 			}
 			notifyOfficialFallbackResult(c, relayInfo, nil)
+			notifyUpstreamFalseSuccessResult(c, relayInfo, nil)
 			service.MaybeEnqueueShadowBenchmark(c, relayInfo, relayFormat, nil)
 			return
 		}
@@ -412,6 +413,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			service.SetFreeModelFinalResult(c, "failed")
 		}
 		service.MaybeEnqueueShadowBenchmark(c, relayInfo, relayFormat, newAPIError)
+		notifyUpstreamFalseSuccessResult(c, relayInfo, newAPIError)
 		notifyFinalRelayFailure(c, relayInfo, newAPIError)
 		gopool.Go(func() {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
@@ -485,7 +487,7 @@ func notifyOfficialFallbackResult(c *gin.Context, relayInfo *relaycommon.RelayIn
 	}
 	lines = append(lines, fmt.Sprintf("- 结果：`%s`", result))
 	gopool.Go(func() {
-		if err := common.SendFeishuCard(chatID, title, lines); err != nil {
+		if err := common.SendFeishuCard(chatID, common.FeishuNotificationTitle(title), lines); err != nil {
 			logger.LogError(context.Background(), fmt.Sprintf("failed to send official fallback feishu notification: %s", err.Error()))
 		}
 	})
@@ -547,29 +549,111 @@ func notifyFinalRelayFailure(c *gin.Context, relayInfo *relaycommon.RelayInfo, f
 		lines = append(lines, fmt.Sprintf("- 官方兜底渠道：`%s`", officialChannel))
 	}
 	gopool.Go(func() {
-		if err := common.SendFeishuCard(chatID, "NewAPI 请求最终失败", lines); err != nil {
+		if err := common.SendFeishuCard(chatID, common.FeishuNotificationTitle("NewAPI 请求最终失败"), lines); err != nil {
 			logger.LogError(context.Background(), fmt.Sprintf("failed to send final failure feishu notification: %s", err.Error()))
 		}
 	})
 }
 
-func notifyUpstreamFalseSuccess(c *gin.Context, relayErr *types.NewAPIError) {
-	if c == nil || relayErr == nil || relayErr.UpstreamFalseSuccess == nil {
+func notifyUpstreamFalseSuccessResult(c *gin.Context, relayInfo *relaycommon.RelayInfo, finalErr *types.NewAPIError) {
+	title, lines, ok := buildUpstreamFalseSuccessResultNotification(c, relayInfo, finalErr)
+	if !ok || common.FeishuFalseSuccessChatID() == "" {
 		return
 	}
-	chatID := common.FeishuNewAPILogChatID()
-	if chatID == "" {
-		return
-	}
-	lines := upstreamFalseSuccessNotificationLines(relayErr.UpstreamFalseSuccess)
-	if decision, ok := getRetryDecision(c); ok {
-		lines = append(lines, fmt.Sprintf("- retry_decision：%s", feishuDiagnosticValue(common.GetJsonString(decision), 800)))
-	}
+
 	gopool.Go(func() {
-		if err := common.SendFeishuCard(chatID, "NewAPI HTTP 200 假成功拦截", lines); err != nil {
-			logger.LogError(context.Background(), fmt.Sprintf("failed to send upstream false-success notification: %s", err.Error()))
+		if err := common.SendFeishuCard(common.FeishuFalseSuccessChatID(), common.FeishuNotificationTitle(title), lines); err != nil {
+			logger.LogError(context.Background(), fmt.Sprintf("failed to send upstream false-success result notification: %s", err.Error()))
 		}
 	})
+}
+
+func buildUpstreamFalseSuccessResultNotification(c *gin.Context, relayInfo *relaycommon.RelayInfo, finalErr *types.NewAPIError) (title string, lines []string, ok bool) {
+	if c == nil || relayInfo == nil {
+		return "", nil, false
+	}
+	count, triggers, errorCodes, latest, ok := service.GetUpstreamFalseSuccessSummary(c)
+	if !ok {
+		return "", nil, false
+	}
+
+	useChannels := strings.Join(c.GetStringSlice("use_channel"), " -> ")
+	if strings.TrimSpace(useChannels) == "" {
+		useChannels = "-"
+	}
+	finalChannel := "-"
+	if channelID := c.GetInt("channel_id"); channelID > 0 {
+		finalChannel = fmt.Sprintf("#%d", channelID)
+		if channelName := strings.TrimSpace(c.GetString("channel_name")); channelName != "" {
+			finalChannel += "/" + channelName
+		}
+	}
+
+	result := "成功"
+	status := "请求成功"
+	if finalErr != nil {
+		result = "失败"
+		status = "请求失败"
+	}
+	lines = []string{
+		fmt.Sprintf("- 请求 ID：%s", feishuDiagnosticValue(c.GetString(common.RequestIdKey), 200)),
+		fmt.Sprintf("- 模型：%s", feishuDiagnosticValue(relayInfo.OriginModelName, 300)),
+		fmt.Sprintf("- fallback 是否成功：%s", result),
+		fmt.Sprintf("- 最终状态：%s", status),
+		fmt.Sprintf("- 假成功触发次数：%d", count),
+		fmt.Sprintf("- fallback 渠道链路：%s", feishuDiagnosticValue(useChannels, 500)),
+		fmt.Sprintf("- 最终渠道：%s", feishuDiagnosticValue(finalChannel, 300)),
+	}
+	if len(triggers) > 0 {
+		lines = append(lines, fmt.Sprintf("- 触发类型：%s", feishuDiagnosticValue(strings.Join(triggers, ", "), 500)))
+	}
+	if len(errorCodes) > 0 {
+		lines = append(lines, fmt.Sprintf("- 上游错误代码：%s", feishuDiagnosticValue(strings.Join(errorCodes, ", "), 500)))
+	}
+	if latest != nil {
+		lines = append(lines, upstreamFalseSuccessNotificationLines(latest)...)
+	}
+	if finalErr != nil {
+		lines = append(lines,
+			fmt.Sprintf("- 最终失败原因：%s / HTTP %d", finalErr.GetErrorCode(), finalErr.StatusCode),
+			fmt.Sprintf("- 最终错误信息：%s", feishuDiagnosticValue(finalErr.MaskSensitiveErrorWithStatusCode(), 1000)),
+		)
+		if decision, decisionOK := getRetryDecision(c); decisionOK {
+			if reason, reasonOK := decision["reason"].(string); reasonOK && strings.TrimSpace(reason) != "" {
+				lines = append(lines, fmt.Sprintf("- 最终重试结论：%s", feishuDiagnosticValue(reason, 300)))
+			}
+		}
+	}
+
+	return "HTTP 200 假成功 fallback 最终结果（" + result + "）", lines, true
+}
+
+func falseSuccessRequestContextLines(c *gin.Context) []string {
+	if c == nil {
+		return nil
+	}
+	lines := make([]string, 0, 3)
+	if requestID := strings.TrimSpace(c.GetString(common.RequestIdKey)); requestID != "" {
+		lines = append(lines, fmt.Sprintf("- 请求 ID：%s", feishuDiagnosticValue(requestID, 200)))
+	}
+
+	channelID := c.GetInt("channel_id")
+	channelName := strings.TrimSpace(c.GetString("channel_name"))
+	channel := "-"
+	if channelID > 0 {
+		channel = fmt.Sprintf("#%d", channelID)
+		if channelName != "" {
+			channel += "/" + channelName
+		}
+	} else if channelName != "" {
+		channel = channelName
+	}
+	lines = append(lines, fmt.Sprintf("- 渠道：%s", feishuDiagnosticValue(channel, 300)))
+
+	if modelName := strings.TrimSpace(c.GetString("original_model")); modelName != "" {
+		lines = append(lines, fmt.Sprintf("- 模型：%s", feishuDiagnosticValue(modelName, 300)))
+	}
+	return lines
 }
 
 func upstreamFalseSuccessNotificationLines(diagnostic *types.UpstreamFalseSuccessDiagnostic) []string {
@@ -577,28 +661,46 @@ func upstreamFalseSuccessNotificationLines(diagnostic *types.UpstreamFalseSucces
 		return nil
 	}
 	lines := []string{
-		fmt.Sprintf("- trigger：%s", feishuDiagnosticValue(diagnostic.Trigger, 200)),
-		fmt.Sprintf("- upstream_http_status：%d", diagnostic.UpstreamHTTPStatus),
-		fmt.Sprintf("- stream：%t", diagnostic.Stream),
+		fmt.Sprintf("- 触发原因：%s", feishuDiagnosticValue(diagnostic.Trigger, 200)),
+		fmt.Sprintf("- 上游 HTTP 状态：%d", diagnostic.UpstreamHTTPStatus),
+		fmt.Sprintf("- 是否流式：%t", diagnostic.Stream),
 	}
 	appendValue := func(label, value string) {
 		if strings.TrimSpace(value) != "" {
 			lines = append(lines, fmt.Sprintf("- %s：%s", label, feishuDiagnosticValue(value, 1000)))
 		}
 	}
-	appendValue("event_type", diagnostic.EventType)
-	appendValue("response_status", diagnostic.ResponseStatus)
-	appendValue("error.type", diagnostic.ErrorType)
-	appendValue("error.code", diagnostic.ErrorCode)
-	appendValue("error.message", diagnostic.ErrorMessage)
-	appendValue("stream_end_reason", diagnostic.StreamEndReason)
+	appendValue("事件类型", diagnostic.EventType)
+	appendValue("响应状态", diagnostic.ResponseStatus)
+	appendValue("错误类型", diagnostic.ErrorType)
+	appendValue("错误代码", diagnostic.ErrorCode)
+	appendValue("错误信息", diagnostic.ErrorMessage)
+	appendValue("流结束原因", diagnostic.StreamEndReason)
 	lines = append(lines,
-		fmt.Sprintf("- terminal_event：%t", diagnostic.TerminalEvent),
-		fmt.Sprintf("- usable_output：%t", diagnostic.UsableOutput),
+		fmt.Sprintf("- 是否有终止事件：%t", diagnostic.TerminalEvent),
+		fmt.Sprintf("- 是否有有效输出：%t", diagnostic.UsableOutput),
 	)
-	appendValue("action", diagnostic.Action)
-	appendValue("raw_response", diagnostic.RawResponse)
+	appendValue("处理动作", diagnostic.Action)
+	appendValue("上游原始响应", diagnostic.RawResponse)
 	return lines
+}
+
+func appendFalseSuccessRetryDecision(lines *[]string, decision map[string]interface{}) {
+	if lines == nil || decision == nil {
+		return
+	}
+	if shouldRetry, ok := decision["should_retry"].(bool); ok {
+		*lines = append(*lines, fmt.Sprintf("- 是否重试：%t", shouldRetry))
+	}
+	if reason, ok := decision["reason"].(string); ok && strings.TrimSpace(reason) != "" {
+		*lines = append(*lines, fmt.Sprintf("- 重试原因：%s", feishuDiagnosticValue(reason, 300)))
+	}
+	if retryIndex, ok := decision["retry_index"]; ok {
+		*lines = append(*lines, fmt.Sprintf("- 当前重试序号：%s", feishuDiagnosticValue(fmt.Sprint(retryIndex), 100)))
+	}
+	if remaining, ok := decision["remaining_retry_times"]; ok {
+		*lines = append(*lines, fmt.Sprintf("- 剩余重试次数：%s", feishuDiagnosticValue(fmt.Sprint(remaining), 100)))
+	}
 }
 
 func feishuDiagnosticValue(value string, maxRunes int) string {
@@ -611,7 +713,7 @@ func feishuDiagnosticValue(value string, maxRunes int) string {
 			value = string(runes[:maxRunes]) + "..."
 		}
 	}
-	return "`" + value + "`"
+	return value
 }
 
 func appendUpstreamFalseSuccessLogInfo(other map[string]interface{}, relayErr *types.NewAPIError) {
@@ -1255,10 +1357,6 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 		}
 		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, errorContent, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
-	if err.UpstreamFalseSuccess != nil {
-		notifyUpstreamFalseSuccess(c, err)
-	}
-
 }
 
 func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *types.NewAPIError, originalReason string, modelName string) {

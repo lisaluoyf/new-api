@@ -26,6 +26,7 @@ import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
 import { GrokSettingsCard } from './grok-settings-card'
 import { OfficialFallbackSettingsSection } from './official-fallback-settings-section'
+import { UpstreamFalseSuccessSettingsSection } from './upstream-false-success-settings-section'
 
 function formatJsonForEditor(value: string, fallback: string) {
   const raw = (value ?? '').toString().trim()
@@ -154,6 +155,11 @@ const MODELS_SECTIONS = [
       'Configure official fallback and race fallback rules.',
     build: (settings: ModelSettings) => (
       <div className="space-y-6">
+        <UpstreamFalseSuccessSettingsSection
+          defaultValue={
+            settings['upstream_false_success_setting.enabled'] ?? true
+          }
+        />
         <OfficialFallbackSettingsSection
           defaultValue={settings['model_fallback_setting']}
           defaultRetryTimes={settings.RetryTimes}

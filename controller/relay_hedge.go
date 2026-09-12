@@ -906,7 +906,7 @@ func notifyClientGoneHedgeResultWithUsage(c *gin.Context, relayInfo *relaycommon
 	}
 
 	gopool.Go(func() {
-		if err := common.SendFeishuCard(chatID, title, lines); err != nil {
+		if err := common.SendFeishuCard(chatID, common.FeishuNotificationTitle(title), lines); err != nil {
 			logger.LogError(context.Background(), fmt.Sprintf("failed to send clientgone hedge feishu notification: %s", err.Error()))
 		}
 	})

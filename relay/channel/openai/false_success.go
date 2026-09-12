@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 )
 
@@ -18,6 +19,21 @@ const (
 	falseSuccessTriggerMissingTerminal = "missing_terminal_event"
 	falseSuccessTriggerAbnormalStream  = "abnormal_stream_end"
 )
+
+// falseSuccessFallbackEnabled 报告 HTTP 200 假成功识别与 fallback 是否开启。
+// 管理后台「fallback配置」页可关闭该开关，关闭后回到不做假成功判定的行为。
+func falseSuccessFallbackEnabled() bool {
+	return operation_setting.IsUpstreamFalseSuccessEnabled()
+}
+
+// falseSuccessStreamValidationArgs 只在假成功识别开启时把「是否有有效输出」
+// 交给流结束校验；关闭后只校验传输结束原因。
+func falseSuccessStreamValidationArgs(validOutput bool) []bool {
+	if !falseSuccessFallbackEnabled() {
+		return nil
+	}
+	return []bool{validOutput}
+}
 
 func markResponsesFalseSuccess(
 	relayErr *types.NewAPIError,
@@ -33,6 +49,9 @@ func markResponsesFalseSuccess(
 	rawResponse string,
 ) *types.NewAPIError {
 	if relayErr == nil || upstreamHTTPStatus < http.StatusOK || upstreamHTTPStatus >= http.StatusMultipleChoices {
+		return relayErr
+	}
+	if !falseSuccessFallbackEnabled() {
 		return relayErr
 	}
 	diagnostic := types.UpstreamFalseSuccessDiagnostic{

@@ -31,6 +31,10 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || oaiError.Message != "" || oaiError.Code != nil) {
+		if !falseSuccessFallbackEnabled() {
+			// 开关关闭：不把 HTTP 200 的错误响应改写成可重试的 502，按上游状态码返回
+			return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		}
 		relayErr := types.WithOpenAIError(*oaiError, http.StatusBadGateway)
 		return nil, markResponsesFalseSuccess(relayErr, falseSuccessTriggerResponseError, resp.StatusCode, false, "", &responsesResponse, oaiError, nil, true, false, string(responseBody))
 	}
@@ -125,6 +129,11 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		lastEventType = streamResponse.Type
 		lastResponse = streamResponse.Response
 		if streamResponse.Type == "error" || streamResponse.Type == "response.error" || streamResponse.Type == "response.failed" || (streamResponse.Response != nil && streamResponse.Response.Error != nil) {
+			if !falseSuccessFallbackEnabled() {
+				// 关闭假成功判定：恢复上线前的通用错误，不再返回带诊断的 502。
+				sr.Stop(fmt.Errorf("upstream returned an error event"))
+				return
+			}
 			upstreamErr := streamResponse.GetOpenAIError()
 			if upstreamErr != nil && (upstreamErr.Type != "" || upstreamErr.Message != "" || upstreamErr.Code != nil) {
 				streamEventErr = types.WithOpenAIError(*upstreamErr, http.StatusBadGateway)
@@ -221,7 +230,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 		return nil, streamEventErr
 	}
-	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame, validOutput); streamErr != nil {
+	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame, falseSuccessStreamValidationArgs(validOutput)...); streamErr != nil {
 		if !validOutput {
 			streamErr = markResponsesFalseSuccess(
 				streamErr,
