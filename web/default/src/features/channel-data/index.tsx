@@ -46,6 +46,7 @@ import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
 import { parseGroupsList } from '@/features/channels/lib'
 import { MODEL_TABS } from './constants'
+import { sortChannelData } from './sort-channel-data'
 import { StatusHistory } from './status-history'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1018,44 +1019,25 @@ export function ChannelDataPage() {
 
   // Fetch table data
   useEffect(() => {
+    let cancelled = false
     setLoading(true)
     setData([])
     setOfficial(null)
     api
       .get('/api/admin/channel-data', { params: { model: activeModel } })
       .then((res) => {
-        if (res.data?.success) {
+        if (!cancelled && res.data?.success) {
           const raw: ModelDataItem[] = res.data.data ?? []
-          // Sort: enabled (model_enabled+status=1) by user_price asc,
-          // then disabled by user_price asc, then no-price last.
-          // 与公开市场页一致，按用户最终价格排序。
-          const sorted = [...raw].sort((a, b) => {
-            if (activeModel === 'apimaster-freemodel') {
-              const aEnabled = a.free_model_config?.enabled !== false
-              const bEnabled = b.free_model_config?.enabled !== false
-              if (aEnabled !== bEnabled) return aEnabled ? -1 : 1
-              const priorityDiff =
-                (b.free_model_config?.priority ?? 100) -
-                (a.free_model_config?.priority ?? 100)
-              if (priorityDiff !== 0) return priorityDiff
-              return (
-                (b.free_model_config?.weight ?? 100) -
-                (a.free_model_config?.weight ?? 100)
-              )
-            }
-            const aOn = a.model_enabled !== false && a.status === 1
-            const bOn = b.model_enabled !== false && b.status === 1
-            if (aOn !== bOn) return aOn ? -1 : 1
-            const aP = a.user_price != null && a.user_price > 0
-            const bP = b.user_price != null && b.user_price > 0
-            if (aP !== bP) return aP ? -1 : 1
-            return (a.user_price ?? Infinity) - (b.user_price ?? Infinity)
-          })
-          setData(sorted)
+          setData(sortChannelData(raw, activeModel))
           if (res.data.official) setOfficial(res.data.official)
         }
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [activeModel])
 
   useEffect(() => {
@@ -1480,11 +1462,14 @@ export function ChannelDataPage() {
           action,
         })
         .then(() => {
-          // Refresh table
-          api
+          if (activeModelRef.current !== activeModel) return
+          return api
             .get('/api/admin/channel-data', { params: { model: activeModel } })
             .then((res) => {
-              if (res.data?.success) setData(res.data.data ?? [])
+              if (res.data?.success && activeModelRef.current === activeModel) {
+                const rows: ModelDataItem[] = res.data.data ?? []
+                setData(sortChannelData(rows, activeModel))
+              }
             })
         })
     },
