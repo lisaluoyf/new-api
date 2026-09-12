@@ -24,8 +24,6 @@ import {
 } from '@tanstack/react-table'
 import {
   Eraser,
-  Eye,
-  EyeOff,
   Languages,
   Loader2,
   Pencil,
@@ -152,6 +150,60 @@ function levelVariant(level: Level) {
   return LEVELS.find((item) => item.value === level)?.variant ?? 'info'
 }
 
+/**
+ * Where an announcement currently stands, in the order the checks matter:
+ * never published, scheduled for later, taken down, or live on the site.
+ *
+ * "Taken down" is an expiry in the past, not `active = false` — taking a
+ * notice down sets its expiry to now so the record survives as history.
+ */
+type AnnouncementStatus = 'draft' | 'scheduled' | 'unlisted' | 'published'
+
+const STATUS_STYLES: Record<
+  AnnouncementStatus,
+  {
+    labelKey: string
+    variant: 'success' | 'warning' | 'neutral'
+    hintKey: string
+  }
+> = {
+  draft: {
+    labelKey: 'Unpublished',
+    variant: 'warning',
+    hintKey: 'Drafts are not published yet, so there is nothing to take down.',
+  },
+  scheduled: {
+    labelKey: 'Scheduled',
+    variant: 'warning',
+    hintKey: 'Not published yet — the publish time is still in the future.',
+  },
+  unlisted: {
+    labelKey: 'Unlisted',
+    variant: 'neutral',
+    hintKey: 'Already taken down. Edit the expiry time to bring it back.',
+  },
+  published: {
+    labelKey: 'Published',
+    variant: 'success',
+    hintKey: 'Live on the website — take it down to stop the popup.',
+  },
+}
+
+function announcementStatus(
+  item: AdminAnnouncement,
+  now = Date.now()
+): AnnouncementStatus {
+  if (!item.active) return 'draft'
+  const published = Date.parse(item.publishedAt)
+  if (!Number.isNaN(published) && published > now) return 'scheduled'
+  if (item.expiresAt) {
+    const expires = Date.parse(item.expiresAt)
+    // An unparseable expiry cannot be trusted; treat it as still live.
+    if (!Number.isNaN(expires) && expires <= now) return 'unlisted'
+  }
+  return 'published'
+}
+
 /** `<input type="datetime-local">` wants `YYYY-MM-DDTHH:mm` in local time. */
 function toLocalInput(iso: string | null): string {
   if (!iso) return ''
@@ -274,6 +326,8 @@ function AnnouncementManager() {
   const [deleteTarget, setDeleteTarget] = useState<AdminAnnouncement | null>(
     null
   )
+  const [unpublishTarget, setUnpublishTarget] =
+    useState<AdminAnnouncement | null>(null)
   const [translating, setTranslating] = useState(false)
   const [translateProgress, setTranslateProgress] = useState<{
     done: number
@@ -568,21 +622,26 @@ function AnnouncementManager() {
     }
   }
 
-  /** One-click publish/unpublish — the fastest way to pull a bad notice. */
-  async function toggleActive(item: AdminAnnouncement) {
-    const res = await fetch(`${ADMIN_API}/${item.id}`, {
+  /**
+   * Taking a notice down sets its expiry to now. The row stays published, so
+   * it keeps its place in the website's announcement history — visitors just
+   * stop getting the popup.
+   */
+  async function confirmUnpublish() {
+    const target = unpublishTarget
+    setUnpublishTarget(null)
+    if (!target) return
+    const res = await fetch(`${ADMIN_API}/${target.id}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !item.active }),
+      body: JSON.stringify({ expiresAt: new Date().toISOString() }),
     })
     if (!res.ok) {
       toast.error(t('Failed to save announcement'))
       return
     }
-    toast.success(
-      item.active ? t('Announcement unpublished') : t('Announcement published')
-    )
+    toast.success(t('Announcement unpublished'))
     await load()
   }
 
@@ -649,74 +708,75 @@ function AnnouncementManager() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className='max-w-[240px] truncate font-medium'>
-                      {item.title.zh || item.title.en || item.slug}
-                    </TableCell>
-                    <TableCell className='text-muted-foreground font-mono text-xs'>
-                      {item.slug}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge
-                        variant={levelVariant(item.level)}
-                        label={t(
-                          LEVELS.find((level) => level.value === item.level)
-                            ?.labelKey ?? 'Info'
-                        )}
-                      />
-                    </TableCell>
-                    <TableCell className='text-xs whitespace-nowrap'>
-                      {formatMoment(item.publishedAt)}
-                    </TableCell>
-                    <TableCell className='text-xs whitespace-nowrap'>
-                      {item.expiresAt
-                        ? formatMoment(item.expiresAt)
-                        : t('Never')}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge
-                        variant={item.active ? 'success' : 'neutral'}
-                        label={item.active ? t('Published') : t('Unpublished')}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className='flex items-center justify-end gap-1'>
-                        <Button
-                          type='button'
-                          size='sm'
-                          variant='ghost'
-                          onClick={() => void toggleActive(item)}
-                          title={item.active ? t('Unpublish') : t('Publish')}
-                        >
-                          {item.active ? (
-                            <EyeOff className='size-4' />
-                          ) : (
-                            <Eye className='size-4' />
+                {items.map((item) => {
+                  const status = announcementStatus(item)
+                  const statusStyle = STATUS_STYLES[status]
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell className='max-w-[240px] truncate font-medium'>
+                        {item.title.zh || item.title.en || item.slug}
+                      </TableCell>
+                      <TableCell className='text-muted-foreground font-mono text-xs'>
+                        {item.slug}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge
+                          variant={levelVariant(item.level)}
+                          label={t(
+                            LEVELS.find((level) => level.value === item.level)
+                              ?.labelKey ?? 'Info'
                           )}
-                        </Button>
-                        <Button
-                          type='button'
-                          size='sm'
-                          variant='ghost'
-                          onClick={() => openEdit(item)}
-                          title={t('Edit')}
-                        >
-                          <Pencil className='size-4' />
-                        </Button>
-                        <Button
-                          type='button'
-                          size='sm'
-                          variant='ghost'
-                          onClick={() => setDeleteTarget(item)}
-                          title={t('Delete')}
-                        >
-                          <Trash2 className='text-destructive size-4' />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                        />
+                      </TableCell>
+                      <TableCell className='text-xs whitespace-nowrap'>
+                        {formatMoment(item.publishedAt)}
+                      </TableCell>
+                      <TableCell className='text-xs whitespace-nowrap'>
+                        {item.expiresAt
+                          ? formatMoment(item.expiresAt)
+                          : t('Never')}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge
+                          variant={statusStyle.variant}
+                          label={t(statusStyle.labelKey)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className='flex items-center justify-end gap-1'>
+                          <Button
+                            type='button'
+                            size='sm'
+                            variant='outline'
+                            disabled={status !== 'published'}
+                            title={t(statusStyle.hintKey)}
+                            onClick={() => setUnpublishTarget(item)}
+                          >
+                            {t('Unpublish')}
+                          </Button>
+                          <Button
+                            type='button'
+                            size='sm'
+                            variant='ghost'
+                            onClick={() => openEdit(item)}
+                            title={t('Edit')}
+                          >
+                            <Pencil className='size-4' />
+                          </Button>
+                          <Button
+                            type='button'
+                            size='sm'
+                            variant='ghost'
+                            onClick={() => setDeleteTarget(item)}
+                            title={t('Delete')}
+                          >
+                            <Trash2 className='text-destructive size-4' />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>
@@ -949,6 +1009,17 @@ function AnnouncementManager() {
           </DialogContent>
         </Dialog>
       ) : null}
+
+      <ConfirmDialog
+        open={unpublishTarget !== null}
+        onOpenChange={(open) => (!open ? setUnpublishTarget(null) : null)}
+        title={t('Take this announcement down?')}
+        desc={t(
+          'It stops popping up on the website right away and shows as ended. The record stays in the announcement center history; to bring it back, edit its expiry time.'
+        )}
+        confirmText={t('Unpublish')}
+        handleConfirm={confirmUnpublish}
+      />
 
       <ConfirmDialog
         open={clearTarget !== null}
