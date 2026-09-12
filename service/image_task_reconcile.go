@@ -43,13 +43,15 @@ func ScheduleImageTaskReconcile(c *gin.Context, relayInfo *relaycommon.RelayInfo
 	logContent := imageLogContentFromRequest(relayInfo.Request)
 
 	job := imageReconcileJob{
-		relayInfo: relayInfo,
-		taskID:    taskID,
-		baseURL:   baseURL,
-		apiKey:    apiKey,
-		tokenName: tokenName,
-		logExtra:  logContent,
-		startedAt: time.Now(),
+		relayInfo:   relayInfo,
+		taskID:      taskID,
+		baseURL:     baseURL,
+		apiKey:      apiKey,
+		tokenName:   tokenName,
+		logExtra:    logContent,
+		startedAt:   time.Now(),
+		requestID:   c.GetString(common.RequestIdKey),
+		requestData: ImageRequestDataFromContext(c),
 	}
 
 	gopool.Go(func() {
@@ -58,13 +60,15 @@ func ScheduleImageTaskReconcile(c *gin.Context, relayInfo *relaycommon.RelayInfo
 }
 
 type imageReconcileJob struct {
-	relayInfo *relaycommon.RelayInfo
-	taskID    string
-	baseURL   string
-	apiKey    string
-	tokenName string
-	logExtra  []string
-	startedAt time.Time
+	relayInfo   *relaycommon.RelayInfo
+	taskID      string
+	baseURL     string
+	apiKey      string
+	tokenName   string
+	logExtra    []string
+	startedAt   time.Time
+	requestID   string
+	requestData map[string]interface{}
 }
 
 func holdImageBillingRefund(relayInfo *relaycommon.RelayInfo) {
@@ -89,11 +93,11 @@ func runImageTaskReconcile(job imageReconcileJob) {
 	defer imageReconcileClaim.Delete(job.taskID)
 
 	deadline := job.startedAt.Add(time.Duration(imageReconcileExtraSec) * time.Second)
-	status, _, failReason := pollUpstreamImageTaskStatus(job.baseURL, job.apiKey, job.taskID, deadline)
+	status, imageURL, failReason := pollUpstreamImageTaskStatus(job.baseURL, job.apiKey, job.taskID, deadline)
 
 	switch status {
 	case "succeeded", "success", "completed":
-		finalizeImageReconcileSuccess(job)
+		finalizeImageReconcileSuccess(job, imageURL)
 	case "failed", "error", "cancelled":
 		if failReason == "" {
 			failReason = fmt.Sprintf("upstream task %s failed", job.taskID)
@@ -239,10 +243,27 @@ func extractImageTaskURLs(flatURL string, images []imageTaskPollImage) []string 
 	return urls
 }
 
-func finalizeImageReconcileSuccess(job imageReconcileJob) {
+func finalizeImageReconcileSuccess(job imageReconcileJob, imageURL string) {
 	releaseImageBillingRefund(job.relayInfo)
 
 	bg := reconcileBackgroundContext(job.relayInfo.UserId, job.tokenName)
+	bg.Set(common.RequestIdKey, job.requestID)
+	bg.Set("image_poll_task_id", job.taskID)
+	if len(job.requestData) > 0 {
+		bg.Set(imageRequestDataContextKey, job.requestData)
+	} else if req, ok := job.relayInfo.Request.(*dto.ImageRequest); ok {
+		SetImageRequestDataOnContext(bg, req)
+	}
+	// The request context is gone after a synchronous timeout. Preserve the exact
+	// task's preview here so logs never have to guess from nearby cached files.
+	if strings.HasPrefix(imageURL, "data:image/") {
+		imageURL = CacheImageBase64Locally(imageURL)
+	} else if imageURL != "" {
+		imageURL = CacheImageLocallyWithHeaders(imageURL, map[string]string{"Authorization": "Bearer " + job.apiKey})
+	}
+	if imageURL != "" {
+		bg.Set("image_result_url", imageURL)
+	}
 	usage := &dto.Usage{TotalTokens: 1, PromptTokens: 1}
 
 	logExtra := append([]string(nil), job.logExtra...)
