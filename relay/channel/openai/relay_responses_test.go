@@ -92,6 +92,34 @@ func TestOaiResponsesStreamHandlerRejectsLifecycleOnlyHTTP200(t *testing.T) {
 	_, err := OaiResponsesStreamHandler(c, responsesStreamTestInfo(), responsesHTTPStream(body))
 	require.NotNil(t, err)
 	require.Equal(t, types.ErrorCodeEmptyResponse, err.GetErrorCode())
+	require.NotNil(t, err.UpstreamFalseSuccess)
+	require.Equal(t, falseSuccessTriggerEmptyStream, err.UpstreamFalseSuccess.Trigger)
+	require.Equal(t, http.StatusOK, err.UpstreamFalseSuccess.UpstreamHTTPStatus)
+	require.Equal(t, "response.completed", err.UpstreamFalseSuccess.EventType)
+	require.Equal(t, "completed", err.UpstreamFalseSuccess.ResponseStatus)
+	require.Equal(t, "eof", err.UpstreamFalseSuccess.StreamEndReason)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, recorder.Body.String())
+}
+
+func TestOaiResponsesStreamHandlerRecordsCapacityFailure(t *testing.T) {
+	c, recorder := responsesStreamTestContext(t)
+	body := "data: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\"}}\n\n" +
+		"data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"type\":\"server_error\",\"code\":\"server_is_overloaded\",\"message\":\"Selected model is at capacity\"}}}\n\n"
+
+	_, err := OaiResponsesStreamHandler(c, responsesStreamTestInfo(), responsesHTTPStream(body))
+	require.NotNil(t, err)
+	require.Equal(t, types.ErrorCode("server_is_overloaded"), err.GetErrorCode())
+	require.Equal(t, http.StatusBadGateway, err.StatusCode)
+	require.NotNil(t, err.UpstreamFalseSuccess)
+	require.Equal(t, falseSuccessTriggerResponseError, err.UpstreamFalseSuccess.Trigger)
+	require.Equal(t, "response.failed", err.UpstreamFalseSuccess.EventType)
+	require.Equal(t, "failed", err.UpstreamFalseSuccess.ResponseStatus)
+	require.Equal(t, "server_error", err.UpstreamFalseSuccess.ErrorType)
+	require.Equal(t, "server_is_overloaded", err.UpstreamFalseSuccess.ErrorCode)
+	require.Equal(t, "Selected model is at capacity", err.UpstreamFalseSuccess.ErrorMessage)
+	require.Contains(t, []string{"eof", "handler_stop"}, err.UpstreamFalseSuccess.StreamEndReason)
+	require.Contains(t, err.UpstreamFalseSuccess.RawResponse, "Selected model is at capacity")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, recorder.Body.String())
 }
@@ -129,6 +157,10 @@ func TestOaiResponsesHandlerRejectsEmptyHTTP200(t *testing.T) {
 	_, err := OaiResponsesHandler(c, responsesStreamTestInfo(), resp)
 	require.NotNil(t, err)
 	require.Equal(t, types.ErrorCodeEmptyResponse, err.GetErrorCode())
+	require.NotNil(t, err.UpstreamFalseSuccess)
+	require.Equal(t, falseSuccessTriggerEmptyResponse, err.UpstreamFalseSuccess.Trigger)
+	require.False(t, err.UpstreamFalseSuccess.Stream)
+	require.Contains(t, err.UpstreamFalseSuccess.RawResponse, `"status":"completed"`)
 	require.False(t, c.Writer.Written())
 	require.Empty(t, recorder.Body.String())
 }
@@ -156,6 +188,23 @@ func TestOaiResponsesToChatStreamHandlerRejectsLifecycleOnlyHTTP200(t *testing.T
 	_, err := OaiResponsesToChatStreamHandler(c, info, responsesHTTPStream(body))
 	require.NotNil(t, err)
 	require.Equal(t, types.ErrorCodeEmptyResponse, err.GetErrorCode())
+	require.False(t, c.Writer.Written())
+	require.Empty(t, recorder.Body.String())
+}
+
+func TestOaiResponsesToChatStreamHandlerRecordsTopLevelError(t *testing.T) {
+	c, recorder := responsesStreamTestContext(t)
+	info := responsesStreamTestInfo()
+	info.RelayFormat = types.RelayFormatOpenAI
+	body := "data: {\"type\":\"error\",\"code\":\"server_is_overloaded\",\"message\":\"Selected model is at capacity\"}\n\n"
+
+	_, err := OaiResponsesToChatStreamHandler(c, info, responsesHTTPStream(body))
+	require.NotNil(t, err)
+	require.Equal(t, types.ErrorCode("server_is_overloaded"), err.GetErrorCode())
+	require.NotNil(t, err.UpstreamFalseSuccess)
+	require.Equal(t, "error", err.UpstreamFalseSuccess.EventType)
+	require.Equal(t, "server_is_overloaded", err.UpstreamFalseSuccess.ErrorCode)
+	require.Equal(t, "Selected model is at capacity", err.UpstreamFalseSuccess.ErrorMessage)
 	require.False(t, c.Writer.Written())
 	require.Empty(t, recorder.Body.String())
 }

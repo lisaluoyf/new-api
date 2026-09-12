@@ -553,6 +553,74 @@ func notifyFinalRelayFailure(c *gin.Context, relayInfo *relaycommon.RelayInfo, f
 	})
 }
 
+func notifyUpstreamFalseSuccess(c *gin.Context, relayErr *types.NewAPIError) {
+	if c == nil || relayErr == nil || relayErr.UpstreamFalseSuccess == nil {
+		return
+	}
+	chatID := common.FeishuNewAPILogChatID()
+	if chatID == "" {
+		return
+	}
+	lines := upstreamFalseSuccessNotificationLines(relayErr.UpstreamFalseSuccess)
+	if decision, ok := getRetryDecision(c); ok {
+		lines = append(lines, fmt.Sprintf("- retry_decision：%s", feishuDiagnosticValue(common.GetJsonString(decision), 800)))
+	}
+	gopool.Go(func() {
+		if err := common.SendFeishuCard(chatID, "NewAPI HTTP 200 假成功拦截", lines); err != nil {
+			logger.LogError(context.Background(), fmt.Sprintf("failed to send upstream false-success notification: %s", err.Error()))
+		}
+	})
+}
+
+func upstreamFalseSuccessNotificationLines(diagnostic *types.UpstreamFalseSuccessDiagnostic) []string {
+	if diagnostic == nil {
+		return nil
+	}
+	lines := []string{
+		fmt.Sprintf("- trigger：%s", feishuDiagnosticValue(diagnostic.Trigger, 200)),
+		fmt.Sprintf("- upstream_http_status：%d", diagnostic.UpstreamHTTPStatus),
+		fmt.Sprintf("- stream：%t", diagnostic.Stream),
+	}
+	appendValue := func(label, value string) {
+		if strings.TrimSpace(value) != "" {
+			lines = append(lines, fmt.Sprintf("- %s：%s", label, feishuDiagnosticValue(value, 1000)))
+		}
+	}
+	appendValue("event_type", diagnostic.EventType)
+	appendValue("response_status", diagnostic.ResponseStatus)
+	appendValue("error.type", diagnostic.ErrorType)
+	appendValue("error.code", diagnostic.ErrorCode)
+	appendValue("error.message", diagnostic.ErrorMessage)
+	appendValue("stream_end_reason", diagnostic.StreamEndReason)
+	lines = append(lines,
+		fmt.Sprintf("- terminal_event：%t", diagnostic.TerminalEvent),
+		fmt.Sprintf("- usable_output：%t", diagnostic.UsableOutput),
+	)
+	appendValue("action", diagnostic.Action)
+	appendValue("raw_response", diagnostic.RawResponse)
+	return lines
+}
+
+func feishuDiagnosticValue(value string, maxRunes int) string {
+	value = strings.ReplaceAll(strings.TrimSpace(value), "`", "'")
+	value = strings.ReplaceAll(value, "\r", "")
+	value = strings.ReplaceAll(value, "\n", " ")
+	if maxRunes > 0 {
+		runes := []rune(value)
+		if len(runes) > maxRunes {
+			value = string(runes[:maxRunes]) + "..."
+		}
+	}
+	return "`" + value + "`"
+}
+
+func appendUpstreamFalseSuccessLogInfo(other map[string]interface{}, relayErr *types.NewAPIError) {
+	if other == nil || relayErr == nil || relayErr.UpstreamFalseSuccess == nil {
+		return
+	}
+	other["upstream_false_success"] = relayErr.UpstreamFalseSuccess
+}
+
 func shouldSuppressFinalFailureNotification(c *gin.Context, modelName string, finalErr *types.NewAPIError) bool {
 	if strings.EqualFold(strings.TrimSpace(modelName), "gpt-5.4-mini") {
 		return true
@@ -1103,6 +1171,9 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 		logger.LogError(c, fmt.Sprintf("skip channel error accounting, client gone (channel #%d): %s", channelError.ChannelId, err.Error()))
 		return
 	}
+	if err.UpstreamFalseSuccess != nil {
+		service.RecordUpstreamFalseSuccessAttempt(c, err.UpstreamFalseSuccess)
+	}
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, err.Error()))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
@@ -1144,6 +1215,7 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 		other["channel_id"] = channelId
 		other["channel_name"] = c.GetString("channel_name")
 		other["channel_type"] = c.GetInt("channel_type")
+		appendUpstreamFalseSuccessLogInfo(other, err)
 		service.AppendBillingSourceInfo(relayInfo, other)
 		if value, exists := c.Get("stream_status"); exists {
 			if status, ok := value.(*relaycommon.StreamStatus); ok && status != nil {
@@ -1170,6 +1242,7 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
 		service.AppendFreeModelRouteAdminInfo(c, adminInfo)
+		service.AppendUpstreamFalseSuccessSummary(c, adminInfo)
 		other["admin_info"] = adminInfo
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {
@@ -1181,6 +1254,9 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 			errorContent += " | upstream_response_body: " + body
 		}
 		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, errorContent, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+	}
+	if err.UpstreamFalseSuccess != nil {
+		notifyUpstreamFalseSuccess(c, err)
 	}
 
 }

@@ -103,6 +103,49 @@ type NewAPIError struct {
 	// UpstreamResponseBody is retained for administrator diagnostics only.
 	// It must never be used as the client-facing error message.
 	UpstreamResponseBody string
+	// UpstreamFalseSuccess records an HTTP 2xx response that looked successful at
+	// the transport layer but was rejected before any usable output reached the
+	// client. It is persisted in the error log for fallback analysis.
+	UpstreamFalseSuccess *UpstreamFalseSuccessDiagnostic
+}
+
+const maxUpstreamFalseSuccessRawRunes = 4096
+
+type UpstreamFalseSuccessDiagnostic struct {
+	Trigger            string `json:"trigger"`
+	UpstreamHTTPStatus int    `json:"upstream_http_status"`
+	Stream             bool   `json:"stream"`
+	EventType          string `json:"event_type,omitempty"`
+	ResponseStatus     string `json:"response_status,omitempty"`
+	ErrorType          string `json:"error_type,omitempty"`
+	ErrorCode          string `json:"error_code,omitempty"`
+	ErrorMessage       string `json:"error_message,omitempty"`
+	StreamEndReason    string `json:"stream_end_reason,omitempty"`
+	TerminalEvent      bool   `json:"terminal_event"`
+	UsableOutput       bool   `json:"usable_output"`
+	RawResponse        string `json:"raw_response,omitempty"`
+	Action             string `json:"action"`
+}
+
+func (e *NewAPIError) SetUpstreamFalseSuccess(diagnostic UpstreamFalseSuccessDiagnostic) {
+	if e == nil {
+		return
+	}
+	diagnostic.Trigger = strings.TrimSpace(diagnostic.Trigger)
+	diagnostic.EventType = strings.TrimSpace(diagnostic.EventType)
+	diagnostic.ResponseStatus = strings.TrimSpace(diagnostic.ResponseStatus)
+	diagnostic.ErrorType = strings.TrimSpace(diagnostic.ErrorType)
+	diagnostic.ErrorCode = strings.TrimSpace(diagnostic.ErrorCode)
+	diagnostic.ErrorMessage = common.MaskSensitiveInfo(strings.TrimSpace(diagnostic.ErrorMessage))
+	diagnostic.StreamEndReason = strings.TrimSpace(diagnostic.StreamEndReason)
+	diagnostic.RawResponse = common.MaskSensitiveInfo(strings.TrimSpace(diagnostic.RawResponse))
+	if runes := []rune(diagnostic.RawResponse); len(runes) > maxUpstreamFalseSuccessRawRunes {
+		diagnostic.RawResponse = string(runes[:maxUpstreamFalseSuccessRawRunes]) + "..."
+	}
+	if diagnostic.Action == "" {
+		diagnostic.Action = "discard_channel_and_fallback"
+	}
+	e.UpstreamFalseSuccess = &diagnostic
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.

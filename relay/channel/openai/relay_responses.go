@@ -31,13 +31,16 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || oaiError.Message != "" || oaiError.Code != nil) {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		relayErr := types.WithOpenAIError(*oaiError, http.StatusBadGateway)
+		return nil, markResponsesFalseSuccess(relayErr, falseSuccessTriggerResponseError, resp.StatusCode, false, "", &responsesResponse, oaiError, nil, true, false, string(responseBody))
 	}
 	if responsesResponseStatus(&responsesResponse) == "failed" {
-		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 with failed response status"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+		relayErr := types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 with failed response status"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+		return nil, markResponsesFalseSuccess(relayErr, falseSuccessTriggerFailedStatus, resp.StatusCode, false, "", &responsesResponse, nil, nil, true, false, string(responseBody))
 	}
 	if !responsesResponseHasUsableOutput(&responsesResponse) && !responsesResponseCanBeReturnedWithoutOutput(&responsesResponse) {
-		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
+		relayErr := types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
+		return nil, markResponsesFalseSuccess(relayErr, falseSuccessTriggerEmptyResponse, resp.StatusCode, false, "", &responsesResponse, nil, nil, true, false, string(responseBody))
 	}
 	if validationErr := service.ValidateFreeModelResponsesResponse(c, &responsesResponse); validationErr != nil {
 		return nil, validationErr
@@ -101,6 +104,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	terminalFrame := false
 	validOutput := false
+	var streamEventErr *types.NewAPIError
+	var lastEventType string
+	var lastResponse *dto.OpenAIResponsesResponse
 	// Responses emits lifecycle frames before it knows whether the request will
 	// produce anything. Keep those frames private until real output arrives;
 	// otherwise an empty HTTP 200 stream is marked as already started and cannot
@@ -116,8 +122,17 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
+		lastEventType = streamResponse.Type
+		lastResponse = streamResponse.Response
 		if streamResponse.Type == "error" || streamResponse.Type == "response.error" || streamResponse.Type == "response.failed" || (streamResponse.Response != nil && streamResponse.Response.Error != nil) {
-			sr.Stop(fmt.Errorf("upstream returned an error event"))
+			upstreamErr := streamResponse.GetOpenAIError()
+			if upstreamErr != nil && (upstreamErr.Type != "" || upstreamErr.Message != "" || upstreamErr.Code != nil) {
+				streamEventErr = types.WithOpenAIError(*upstreamErr, http.StatusBadGateway)
+			} else {
+				streamEventErr = types.NewOpenAIError(fmt.Errorf("upstream returned an error event"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+			}
+			streamEventErr = markResponsesFalseSuccess(streamEventErr, falseSuccessTriggerResponseError, resp.StatusCode, true, streamResponse.Type, streamResponse.Response, upstreamErr, nil, true, false, data)
+			sr.Stop(streamEventErr)
 			return
 		}
 		if service.IsFreeModel(info.OriginModelName) && streamResponse.Response != nil {
@@ -200,7 +215,28 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
+	if streamEventErr != nil {
+		if streamEventErr.UpstreamFalseSuccess != nil && streamStatus != nil {
+			streamEventErr.UpstreamFalseSuccess.StreamEndReason = string(streamStatus.EndReason)
+		}
+		return nil, streamEventErr
+	}
 	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame, validOutput); streamErr != nil {
+		if !validOutput {
+			streamErr = markResponsesFalseSuccess(
+				streamErr,
+				falseSuccessStreamTrigger(streamStatus, terminalFrame, validOutput),
+				resp.StatusCode,
+				true,
+				lastEventType,
+				lastResponse,
+				nil,
+				streamStatus,
+				terminalFrame,
+				validOutput,
+				falseSuccessRawFrames(pendingFrames),
+			)
+		}
 		return nil, streamErr
 	}
 

@@ -422,6 +422,10 @@ const (
 type ResponsesStreamResponse struct {
 	Type      string                   `json:"type"`
 	Response  *OpenAIResponsesResponse `json:"response,omitempty"`
+	Error     any                      `json:"error,omitempty"`
+	Code      any                      `json:"code,omitempty"`
+	Message   string                   `json:"message,omitempty"`
+	Param     string                   `json:"param,omitempty"`
 	Delta     string                   `json:"delta,omitempty"`
 	Text      string                   `json:"text,omitempty"`
 	Refusal   string                   `json:"refusal,omitempty"`
@@ -434,6 +438,29 @@ type ResponsesStreamResponse struct {
 	SummaryIndex *int                           `json:"summary_index,omitempty"`
 	ItemID       string                         `json:"item_id,omitempty"`
 	Part         *ResponsesReasoningSummaryPart `json:"part,omitempty"`
+}
+
+func (r *ResponsesStreamResponse) GetOpenAIError() *types.OpenAIError {
+	if r == nil {
+		return nil
+	}
+	if r.Response != nil {
+		if responseError := r.Response.GetOpenAIError(); responseError != nil {
+			return responseError
+		}
+	}
+	if eventError := GetOpenAIError(r.Error); eventError != nil {
+		return eventError
+	}
+	if r.Message == "" && r.Code == nil {
+		return nil
+	}
+	return &types.OpenAIError{
+		Message: r.Message,
+		Type:    r.Type,
+		Param:   r.Param,
+		Code:    r.Code,
+	}
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构

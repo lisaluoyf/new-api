@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/types"
@@ -57,4 +58,35 @@ func TestShouldSuppressFinalFailureNotificationKeepsRealFailures(t *testing.T) {
 
 	err := types.NewErrorWithStatusCode(context.DeadlineExceeded, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	require.False(t, shouldSuppressFinalFailureNotification(ctx, "claude-sonnet-5", err))
+}
+
+func TestUpstreamFalseSuccessLogAndNotificationFields(t *testing.T) {
+	diagnostic := types.UpstreamFalseSuccessDiagnostic{
+		Trigger:            "response_error",
+		UpstreamHTTPStatus: http.StatusOK,
+		Stream:             true,
+		EventType:          "response.failed",
+		ResponseStatus:     "failed",
+		ErrorType:          "server_error",
+		ErrorCode:          "server_is_overloaded",
+		ErrorMessage:       "Selected model is at capacity",
+		StreamEndReason:    "handler_stop",
+		RawResponse:        "{\"type\":\"response.failed\"}",
+		Action:             "discard_channel_and_fallback",
+	}
+	err := types.NewOpenAIError(context.DeadlineExceeded, types.ErrorCodeBadResponse, http.StatusBadGateway)
+	err.SetUpstreamFalseSuccess(diagnostic)
+
+	other := map[string]interface{}{}
+	appendUpstreamFalseSuccessLogInfo(other, err)
+	require.Same(t, err.UpstreamFalseSuccess, other["upstream_false_success"])
+
+	lines := upstreamFalseSuccessNotificationLines(err.UpstreamFalseSuccess)
+	joined := strings.Join(lines, "\n")
+	require.Contains(t, joined, "response.failed")
+	require.Contains(t, joined, "server_is_overloaded")
+	require.Contains(t, joined, "Selected model is at capacity")
+	require.Contains(t, joined, "discard_channel_and_fallback")
+	require.NotContains(t, joined, "user_id")
+	require.NotContains(t, joined, "email")
 }

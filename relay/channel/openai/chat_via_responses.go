@@ -56,13 +56,16 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	}
 
 	if oaiError := responsesResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		relayErr := types.WithOpenAIError(*oaiError, http.StatusBadGateway)
+		return nil, markResponsesFalseSuccess(relayErr, falseSuccessTriggerResponseError, resp.StatusCode, false, "", &responsesResp, oaiError, nil, true, false, string(body))
 	}
 	if responsesResponseStatus(&responsesResp) == "failed" {
-		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 with failed response status"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+		relayErr := types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 with failed response status"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+		return nil, markResponsesFalseSuccess(relayErr, falseSuccessTriggerFailedStatus, resp.StatusCode, false, "", &responsesResp, nil, nil, true, false, string(body))
 	}
 	if !responsesResponseHasUsableOutput(&responsesResp) && !responsesResponseHasValidEmptyTerminal(&responsesResp) {
-		return nil, types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
+		relayErr := types.NewOpenAIError(fmt.Errorf("upstream returned HTTP 200 without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
+		return nil, markResponsesFalseSuccess(relayErr, falseSuccessTriggerEmptyResponse, resp.StatusCode, false, "", &responsesResp, nil, nil, true, false, string(body))
 	}
 
 	chatId := helper.GetResponseID(c)
@@ -122,6 +125,9 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		validOutput     bool
 		contentFiltered bool
 		streamErr       *types.NewAPIError
+		lastEventType   string
+		lastResponse    *dto.OpenAIResponsesResponse
+		observedFrames  []string
 	)
 
 	toolCallIndexByID := make(map[string]int)
@@ -344,6 +350,22 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			sr.Error(err)
 			return
 		}
+		lastEventType = streamResp.Type
+		lastResponse = streamResp.Response
+		if !validOutput && len(observedFrames) < 64 {
+			observedFrames = append(observedFrames, data)
+		}
+		if streamResp.Type == "error" || streamResp.Type == "response.error" || streamResp.Type == "response.failed" || (streamResp.Response != nil && streamResp.Response.Error != nil) {
+			upstreamErr := streamResp.GetOpenAIError()
+			if upstreamErr != nil && (upstreamErr.Type != "" || upstreamErr.Message != "" || upstreamErr.Code != nil) {
+				streamErr = types.WithOpenAIError(*upstreamErr, http.StatusBadGateway)
+			} else {
+				streamErr = types.NewOpenAIError(fmt.Errorf("responses stream error: %s", streamResp.Type), types.ErrorCodeBadResponse, http.StatusBadGateway)
+			}
+			streamErr = markResponsesFalseSuccess(streamErr, falseSuccessTriggerResponseError, resp.StatusCode, true, streamResp.Type, streamResp.Response, upstreamErr, nil, true, false, data)
+			sr.Stop(streamErr)
+			return
+		}
 
 		switch streamResp.Type {
 		case "response.created":
@@ -546,26 +568,32 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 				contentFiltered = true
 			}
 
-		case "error", "response.error", "response.failed":
-			if streamResp.Response != nil {
-				if oaiErr := streamResp.Response.GetOpenAIError(); oaiErr != nil && oaiErr.Type != "" {
-					streamErr = types.WithOpenAIError(*oaiErr, http.StatusInternalServerError)
-					sr.Stop(streamErr)
-					return
-				}
-			}
-			streamErr = types.NewOpenAIError(fmt.Errorf("responses stream error: %s", streamResp.Type), types.ErrorCodeBadResponse, http.StatusInternalServerError)
-			sr.Stop(streamErr)
-			return
-
 		default:
 		}
 	})
 
 	if streamErr != nil {
+		if streamErr.UpstreamFalseSuccess != nil && streamStatus != nil {
+			streamErr.UpstreamFalseSuccess.StreamEndReason = string(streamStatus.EndReason)
+		}
 		return nil, streamErr
 	}
 	if validationErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame, validOutput); validationErr != nil {
+		if !validOutput {
+			validationErr = markResponsesFalseSuccess(
+				validationErr,
+				falseSuccessStreamTrigger(streamStatus, terminalFrame, validOutput),
+				resp.StatusCode,
+				true,
+				lastEventType,
+				lastResponse,
+				nil,
+				streamStatus,
+				terminalFrame,
+				validOutput,
+				falseSuccessRawFrames(observedFrames),
+			)
+		}
 		return nil, validationErr
 	}
 
