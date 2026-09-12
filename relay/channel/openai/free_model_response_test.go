@@ -97,6 +97,39 @@ func TestFreeModelStreamFailureAfterFirstFrameDoesNotPermitTransparentFallback(t
 	require.Contains(t, recorder.Body.String(), service.FreeModelID)
 }
 
+func TestOpenAIStreamHTTP200ErrorEventIsRetriableFalseSuccess(t *testing.T) {
+	ensureStreamTimeout(t)
+	ctx, recorder, info := newFreeModelStreamContext()
+	data := "data: {\"id\":\"x\",\"object\":\"chat.completion.chunk\",\"choices\":[],\"system_fingerprint\":null}\n\n" +
+		"data: {\"error\":{\"type\":\"server_error\",\"code\":\"server_is_overloaded\",\"message\":\"Selected model is at capacity\"}}\n\n"
+	resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(data))}
+	_, apiErr := OaiStreamHandler(ctx, info, resp)
+	require.NotNil(t, apiErr)
+	require.Equal(t, types.ErrorCode("server_is_overloaded"), apiErr.GetErrorCode())
+	require.Equal(t, "Selected model is at capacity", apiErr.Error())
+	require.NotNil(t, apiErr.UpstreamFalseSuccess)
+	require.Equal(t, falseSuccessTriggerResponseError, apiErr.UpstreamFalseSuccess.Trigger)
+	require.Equal(t, "server_error", apiErr.UpstreamFalseSuccess.ErrorType)
+	require.Equal(t, "server_is_overloaded", apiErr.UpstreamFalseSuccess.ErrorCode)
+	require.Equal(t, "Selected model is at capacity", apiErr.UpstreamFalseSuccess.ErrorMessage)
+	require.Contains(t, apiErr.UpstreamFalseSuccess.RawResponse, "Selected model is at capacity")
+	require.False(t, ctx.Writer.Written())
+	require.Empty(t, recorder.Body.String())
+}
+
+func TestOpenAIStreamErrorAfterUsableOutputIsNotTransparentFallback(t *testing.T) {
+	ensureStreamTimeout(t)
+	ctx, recorder, info := newFreeModelStreamContext()
+	data := "data: {\"id\":\"x\",\"model\":\"provider/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"started\"},\"finish_reason\":null}]}\n\n" +
+		"data: {\"error\":{\"type\":\"server_error\",\"code\":\"server_is_overloaded\",\"message\":\"Selected model is at capacity\"}}\n\n"
+	resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(data))}
+	_, apiErr := OaiStreamHandler(ctx, info, resp)
+	require.NotNil(t, apiErr)
+	require.Nil(t, apiErr.UpstreamFalseSuccess)
+	require.True(t, ctx.Writer.Written())
+	require.Contains(t, recorder.Body.String(), "started")
+}
+
 func TestFreeModelStreamChunkUsesVirtualModelID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

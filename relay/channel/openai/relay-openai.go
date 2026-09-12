@@ -122,6 +122,71 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	return helper.ObjectData(c, lastStreamResponse)
 }
 
+// extractOpenAIStreamError accepts both the usual Chat Completions error event
+// and providers that wrap the error under a response object. The raw event is
+// retained by the caller for false-success diagnostics.
+func extractOpenAIStreamError(data string) (*types.OpenAIError, string) {
+	var envelope map[string]any
+	if common.UnmarshalJsonStr(data, &envelope) != nil {
+		return nil, ""
+	}
+	eventType, _ := envelope["type"].(string)
+	candidate := envelope["error"]
+	if candidate == nil {
+		if response, ok := envelope["response"].(map[string]any); ok {
+			candidate = response["error"]
+			if eventType == "" {
+				eventType, _ = response["type"].(string)
+			}
+		}
+	}
+	if candidate == nil {
+		return nil, eventType
+	}
+	openAIError := &types.OpenAIError{}
+	if encoded, err := common.Marshal(candidate); err == nil && common.Unmarshal(encoded, openAIError) == nil {
+		if openAIError.Message == "" {
+			if message, ok := candidate.(string); ok {
+				openAIError.Message = message
+			}
+		}
+		return openAIError, eventType
+	}
+	return &types.OpenAIError{Message: fmt.Sprint(candidate)}, eventType
+}
+
+func chatStreamDataHasUsableOutput(data string) bool {
+	var response dto.ChatCompletionsStreamResponse
+	if common.UnmarshalJsonStr(data, &response) != nil {
+		return false
+	}
+	for _, choice := range response.Choices {
+		if strings.TrimSpace(choice.Delta.GetContentString()) != "" ||
+			strings.TrimSpace(choice.Delta.GetReasoningContent()) != "" ||
+			len(choice.Delta.ToolCalls) > 0 {
+			return true
+		}
+		if choice.FinishReason != nil && *choice.FinishReason == constant.FinishReasonContentFilter {
+			return true
+		}
+	}
+	// Older providers encode tool calls as delta.function_call, which is not
+	// represented by the normalized DTO but is still usable output.
+	var envelope struct {
+		Choices []struct {
+			Delta map[string]any `json:"delta"`
+		} `json:"choices"`
+	}
+	if common.UnmarshalJsonStr(data, &envelope) == nil {
+		for _, choice := range envelope.Choices {
+			if choice.Delta["function_call"] != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {
 		logger.LogError(c, "invalid response or response body")
@@ -141,16 +206,20 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var streamItems []string // store stream items
 	var lastStreamData string
 	var secondLastStreamData string // 存储倒数第二个stream data，用于音频模型
+	var streamEventErr *types.NewAPIError
+	var pendingFrames []string
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
+	bufferUntilUsableOutput := !isAudioModel
+	outputCommitted := !bufferUntilUsableOutput
+	validOutput := isAudioModel
+	if bufferUntilUsableOutput {
+		c.Set(helper.ContextKeySuppressStreamPing, true)
+		defer c.Set(helper.ContextKeySuppressStreamPing, false)
+	}
 
-	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
-		var envelope map[string]any
-		if common.UnmarshalJsonStr(data, &envelope) == nil && envelope["error"] != nil {
-			sr.Stop(fmt.Errorf("upstream returned an error event"))
-			return
-		}
+	processFrame := func(data string, sr *helper.StreamResult) {
 		if lastStreamData != "" {
 			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
 				common.SysLog("error handling stream format: " + err.Error())
@@ -166,11 +235,60 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			lastStreamData = data
 			streamItems = append(streamItems, data)
 		}
+	}
+
+	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if upstreamErr, eventType := extractOpenAIStreamError(data); upstreamErr != nil {
+			// The handler keeps one frame in hand for normal terminal processing. If
+			// usable output already exists, flush it before surfacing the later error
+			// so the controller cannot transparently replay a partially delivered turn.
+			if validOutput && lastStreamData != "" {
+				if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
+					sr.Error(err)
+				}
+				lastStreamData = ""
+			}
+			if upstreamErr.Type != "" || upstreamErr.Message != "" || upstreamErr.Code != nil {
+				streamEventErr = types.WithOpenAIError(*upstreamErr, http.StatusBadGateway)
+			} else {
+				streamEventErr = types.NewOpenAIError(fmt.Errorf("upstream returned an error event"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+			}
+			if !validOutput {
+				streamEventErr = markResponsesFalseSuccess(streamEventErr, falseSuccessTriggerResponseError, resp.StatusCode, true, eventType, nil, upstreamErr, nil, true, false, data)
+			}
+			sr.Stop(streamEventErr)
+			return
+		}
+		if !outputCommitted {
+			pendingFrames = append(pendingFrames, data)
+			if !chatStreamDataHasUsableOutput(data) {
+				return
+			}
+			validOutput = true
+			outputCommitted = true
+			c.Set(helper.ContextKeySuppressStreamPing, false)
+			for _, pending := range pendingFrames {
+				processFrame(pending, sr)
+			}
+			pendingFrames = nil
+			return
+		}
+		processFrame(data, sr)
 	})
+	if streamEventErr != nil {
+		if streamEventErr.UpstreamFalseSuccess != nil && streamStatus != nil {
+			streamEventErr.UpstreamFalseSuccess.StreamEndReason = string(streamStatus.EndReason)
+		}
+		return nil, streamEventErr
+	}
 	terminalFrame := false
-	if lastStreamData != "" {
+	terminalData := lastStreamData
+	if terminalData == "" && len(pendingFrames) > 0 {
+		terminalData = pendingFrames[len(pendingFrames)-1]
+	}
+	if terminalData != "" {
 		var terminal dto.ChatCompletionsStreamResponse
-		if common.UnmarshalJsonStr(lastStreamData, &terminal) == nil {
+		if common.UnmarshalJsonStr(terminalData, &terminal) == nil {
 			for _, choice := range terminal.Choices {
 				if choice.FinishReason != nil && strings.TrimSpace(*choice.FinishReason) != "" {
 					terminalFrame = true
@@ -180,7 +298,14 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		}
 	}
 	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame); streamErr != nil {
+		if !validOutput {
+			streamErr = markResponsesFalseSuccess(streamErr, falseSuccessStreamTrigger(streamStatus, terminalFrame, false), resp.StatusCode, true, "", nil, nil, streamStatus, terminalFrame, false, falseSuccessRawFrames(pendingFrames))
+		}
 		return nil, streamErr
+	}
+	if !validOutput {
+		streamErr := types.NewOpenAIError(fmt.Errorf("upstream stream completed without usable output"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
+		return nil, markResponsesFalseSuccess(streamErr, falseSuccessTriggerEmptyStream, resp.StatusCode, true, "", nil, nil, streamStatus, terminalFrame, false, falseSuccessRawFrames(pendingFrames))
 	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
