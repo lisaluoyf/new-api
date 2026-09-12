@@ -34,7 +34,7 @@ func TestPayPalProtectionPersistenceAndSubscriptionMirror(t *testing.T) {
 	require.NoError(t, db.First(&restored, wallet.Id).Error)
 	require.Equal(t, capture.SellerProtection, restored.PayPalSellerProtection)
 	require.Equal(t, "CAPTURE-1", restored.PayPalCaptureID)
-	require.Contains(t, restored.PayPalProtectionNotificationLine(), "部分符合资格（未收到商品）")
+	require.Contains(t, restored.PayPalProtectionNotificationLine(), "⚠️ 部分符合资格（未收到商品）")
 
 	order := SubscriptionOrder{TradeNo: "subscription", PaymentProvider: PaymentProviderPayPal, PaymentMethod: PaymentMethodPayPal, Status: common.TopUpStatusPending}
 	require.NoError(t, upsertSubscriptionTopUpTx(db, &order))
@@ -64,9 +64,15 @@ func TestPayPalProtectionUnknownAndProviderIsolation(t *testing.T) {
 				require.Empty(t, topup.PayPalSellerProtection.Status)
 				require.Contains(t, line, "未知")
 			case "NOT_ELIGIBLE":
-				require.Contains(t, line, "不符合资格")
+				require.Contains(t, line, "❌ 不符合资格")
+			case "ELIGIBLE":
+				require.Contains(t, line, "✅ 符合资格")
+				require.NotContains(t, line, "未收到商品")
+				require.NotContains(t, line, "未经授权交易")
+			case "PARTIALLY_ELIGIBLE":
+				require.Contains(t, line, "⚠️ 部分符合资格")
 			default:
-				require.Contains(t, line, "符合资格")
+				require.Contains(t, line, "未知")
 			}
 			other := TopUp{PaymentProvider: PaymentProviderStripe}
 			other.ApplyPayPalCapture(capture)
@@ -90,7 +96,7 @@ func TestPayPalRechargePersistsProtectionBeforeSuccessHook(t *testing.T) {
 	require.NotNil(t, restored)
 	require.Equal(t, common.TopUpStatusSuccess, restored.Status)
 	require.Equal(t, capture.SellerProtection, restored.PayPalSellerProtection)
-	require.Contains(t, restored.PayPalProtectionNotificationLine(), "未经授权交易")
+	require.Contains(t, restored.PayPalProtectionNotificationLine(), "✅ 符合资格")
 	require.Error(t, RechargePayPal(topup.TradeNo, "", capture))
 	require.NoError(t, DB.First(&user, user.Id).Error)
 	require.Equal(t, int(10*common.QuotaPerUnit), user.Quota, "duplicate webhook must not credit twice")

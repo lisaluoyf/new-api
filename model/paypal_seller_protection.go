@@ -45,17 +45,17 @@ func (topUp *TopUp) PayPalProtectionNotificationLine() string {
 	if topUp.PaymentProvider != PaymentProviderPayPal {
 		return ""
 	}
-	label := "未知（PayPal 未返回保障信息）"
+	label := "<font color='grey'>⚪ 未知（PayPal 未返回保障信息）</font>"
 	switch topUp.PayPalSellerProtection.Status {
 	case "ELIGIBLE":
-		label = "符合资格"
+		label = "<font color='green'>✅ 符合资格"
 	case "PARTIALLY_ELIGIBLE":
-		label = "部分符合资格"
+		label = "<font color='orange'>⚠️ 部分符合资格"
 	case "NOT_ELIGIBLE":
-		label = "不符合资格"
+		label = "<font color='red'>❌ 不符合资格</font>"
 	}
 	var categories []string
-	if topUp.PayPalSellerProtection.Status == "ELIGIBLE" || topUp.PayPalSellerProtection.Status == "PARTIALLY_ELIGIBLE" {
+	if topUp.PayPalSellerProtection.Status == "PARTIALLY_ELIGIBLE" {
 		for _, category := range topUp.PayPalSellerProtection.DisputeCategories {
 			switch category {
 			case "ITEM_NOT_RECEIVED":
@@ -66,7 +66,9 @@ func (topUp *TopUp) PayPalProtectionNotificationLine() string {
 		}
 	}
 	if len(categories) > 0 {
-		label += "（" + strings.Join(categories, "、") + "）"
+		label += "（" + strings.Join(categories, "、") + "）</font>"
+	} else if topUp.PayPalSellerProtection.Status == "PARTIALLY_ELIGIBLE" {
+		label += "</font>"
 	}
 	return "PayPal 卖家保障：" + label
 }
