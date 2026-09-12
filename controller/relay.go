@@ -657,7 +657,7 @@ func feishuDiagnosticValue(value string, maxRunes int) string {
 			value = string(runes[:maxRunes]) + "..."
 		}
 	}
-	return "`" + value + "`"
+	return value
 }
 
 func appendUpstreamFalseSuccessLogInfo(other map[string]interface{}, relayErr *types.NewAPIError) {

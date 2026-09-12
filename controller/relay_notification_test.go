@@ -91,6 +91,7 @@ func TestUpstreamFalseSuccessLogAndNotificationFields(t *testing.T) {
 	require.Contains(t, joined, "触发原因")
 	require.Contains(t, joined, "错误代码")
 	require.Contains(t, joined, "上游原始响应")
+	require.NotContains(t, joined, "`")
 	require.NotContains(t, joined, "user_id")
 	require.NotContains(t, joined, "email")
 }
@@ -109,4 +110,5 @@ func TestFalseSuccessRequestContextNotificationFields(t *testing.T) {
 	require.Contains(t, joined, "#219/lingsu-gpt-pro")
 	require.Contains(t, joined, "模型")
 	require.Contains(t, joined, "gpt-5.6-terra")
+	require.NotContains(t, joined, "`")
 }
