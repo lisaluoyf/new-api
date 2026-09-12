@@ -13,6 +13,7 @@ type upstreamFalseSuccessSummary struct {
 	Count      int
 	Triggers   []string
 	ErrorCodes []string
+	Latest     *types.UpstreamFalseSuccessDiagnostic
 }
 
 func RecordUpstreamFalseSuccessAttempt(c *gin.Context, diagnostic *types.UpstreamFalseSuccessDiagnostic) {
@@ -24,6 +25,8 @@ func RecordUpstreamFalseSuccessAttempt(c *gin.Context, diagnostic *types.Upstrea
 	state.Count++
 	state.Triggers = appendUniqueDiagnosticValue(state.Triggers, diagnostic.Trigger)
 	state.ErrorCodes = appendUniqueDiagnosticValue(state.ErrorCodes, diagnostic.ErrorCode)
+	diagnosticCopy := *diagnostic
+	state.Latest = &diagnosticCopy
 	c.Set(upstreamFalseSuccessSummaryContextKey, state)
 }
 
@@ -45,6 +48,28 @@ func AppendUpstreamFalseSuccessSummary(c *gin.Context, adminInfo map[string]inte
 		"triggers":    append([]string(nil), state.Triggers...),
 		"error_codes": append([]string(nil), state.ErrorCodes...),
 	}
+}
+
+// GetUpstreamFalseSuccessSummary returns the accumulated false-success
+// attempts for the current request. It is used for the final outcome
+// notification after fallback either succeeds or is exhausted.
+func GetUpstreamFalseSuccessSummary(c *gin.Context) (count int, triggers, errorCodes []string, latest *types.UpstreamFalseSuccessDiagnostic, ok bool) {
+	if c == nil {
+		return 0, nil, nil, nil, false
+	}
+	value, exists := c.Get(upstreamFalseSuccessSummaryContextKey)
+	if !exists {
+		return 0, nil, nil, nil, false
+	}
+	state, valid := value.(upstreamFalseSuccessSummary)
+	if !valid || state.Count <= 0 {
+		return 0, nil, nil, nil, false
+	}
+	if state.Latest != nil {
+		latestCopy := *state.Latest
+		latest = &latestCopy
+	}
+	return state.Count, append([]string(nil), state.Triggers...), append([]string(nil), state.ErrorCodes...), latest, true
 }
 
 func appendUniqueDiagnosticValue(values []string, value string) []string {

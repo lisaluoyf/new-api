@@ -359,6 +359,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				service.MarkFreeModelAttemptSuccessForLog(c)
 			}
 			notifyOfficialFallbackResult(c, relayInfo, nil)
+			notifyUpstreamFalseSuccessResult(c, relayInfo, nil)
 			service.MaybeEnqueueShadowBenchmark(c, relayInfo, relayFormat, nil)
 			return
 		}
@@ -412,6 +413,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			service.SetFreeModelFinalResult(c, "failed")
 		}
 		service.MaybeEnqueueShadowBenchmark(c, relayInfo, relayFormat, newAPIError)
+		notifyUpstreamFalseSuccessResult(c, relayInfo, newAPIError)
 		notifyFinalRelayFailure(c, relayInfo, newAPIError)
 		gopool.Go(func() {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
@@ -553,23 +555,77 @@ func notifyFinalRelayFailure(c *gin.Context, relayInfo *relaycommon.RelayInfo, f
 	})
 }
 
-func notifyUpstreamFalseSuccess(c *gin.Context, relayErr *types.NewAPIError) {
-	if c == nil || relayErr == nil || relayErr.UpstreamFalseSuccess == nil {
+func notifyUpstreamFalseSuccessResult(c *gin.Context, relayInfo *relaycommon.RelayInfo, finalErr *types.NewAPIError) {
+	title, lines, ok := buildUpstreamFalseSuccessResultNotification(c, relayInfo, finalErr)
+	if !ok || common.FeishuFalseSuccessChatID() == "" {
 		return
 	}
-	chatID := common.FeishuFalseSuccessChatID()
-	if chatID == "" {
-		return
-	}
-	lines := append(falseSuccessRequestContextLines(c), upstreamFalseSuccessNotificationLines(relayErr.UpstreamFalseSuccess)...)
-	if decision, ok := getRetryDecision(c); ok {
-		appendFalseSuccessRetryDecision(&lines, decision)
-	}
+
 	gopool.Go(func() {
-		if err := common.SendFeishuCard(chatID, common.FeishuNotificationTitle("HTTP 200 假成功拦截"), lines); err != nil {
-			logger.LogError(context.Background(), fmt.Sprintf("failed to send upstream false-success notification: %s", err.Error()))
+		if err := common.SendFeishuCard(common.FeishuFalseSuccessChatID(), common.FeishuNotificationTitle(title), lines); err != nil {
+			logger.LogError(context.Background(), fmt.Sprintf("failed to send upstream false-success result notification: %s", err.Error()))
 		}
 	})
+}
+
+func buildUpstreamFalseSuccessResultNotification(c *gin.Context, relayInfo *relaycommon.RelayInfo, finalErr *types.NewAPIError) (title string, lines []string, ok bool) {
+	if c == nil || relayInfo == nil {
+		return "", nil, false
+	}
+	count, triggers, errorCodes, latest, ok := service.GetUpstreamFalseSuccessSummary(c)
+	if !ok {
+		return "", nil, false
+	}
+
+	useChannels := strings.Join(c.GetStringSlice("use_channel"), " -> ")
+	if strings.TrimSpace(useChannels) == "" {
+		useChannels = "-"
+	}
+	finalChannel := "-"
+	if channelID := c.GetInt("channel_id"); channelID > 0 {
+		finalChannel = fmt.Sprintf("#%d", channelID)
+		if channelName := strings.TrimSpace(c.GetString("channel_name")); channelName != "" {
+			finalChannel += "/" + channelName
+		}
+	}
+
+	result := "成功"
+	status := "请求成功"
+	if finalErr != nil {
+		result = "失败"
+		status = "请求失败"
+	}
+	lines = []string{
+		fmt.Sprintf("- 请求 ID：%s", feishuDiagnosticValue(c.GetString(common.RequestIdKey), 200)),
+		fmt.Sprintf("- 模型：%s", feishuDiagnosticValue(relayInfo.OriginModelName, 300)),
+		fmt.Sprintf("- fallback 是否成功：%s", result),
+		fmt.Sprintf("- 最终状态：%s", status),
+		fmt.Sprintf("- 假成功触发次数：%d", count),
+		fmt.Sprintf("- fallback 渠道链路：%s", feishuDiagnosticValue(useChannels, 500)),
+		fmt.Sprintf("- 最终渠道：%s", feishuDiagnosticValue(finalChannel, 300)),
+	}
+	if len(triggers) > 0 {
+		lines = append(lines, fmt.Sprintf("- 触发类型：%s", feishuDiagnosticValue(strings.Join(triggers, ", "), 500)))
+	}
+	if len(errorCodes) > 0 {
+		lines = append(lines, fmt.Sprintf("- 上游错误代码：%s", feishuDiagnosticValue(strings.Join(errorCodes, ", "), 500)))
+	}
+	if latest != nil {
+		lines = append(lines, upstreamFalseSuccessNotificationLines(latest)...)
+	}
+	if finalErr != nil {
+		lines = append(lines,
+			fmt.Sprintf("- 最终失败原因：%s / HTTP %d", finalErr.GetErrorCode(), finalErr.StatusCode),
+			fmt.Sprintf("- 最终错误信息：%s", feishuDiagnosticValue(finalErr.MaskSensitiveErrorWithStatusCode(), 1000)),
+		)
+		if decision, decisionOK := getRetryDecision(c); decisionOK {
+			if reason, reasonOK := decision["reason"].(string); reasonOK && strings.TrimSpace(reason) != "" {
+				lines = append(lines, fmt.Sprintf("- 最终重试结论：%s", feishuDiagnosticValue(reason, 300)))
+			}
+		}
+	}
+
+	return "HTTP 200 假成功 fallback 最终结果（" + result + "）", lines, true
 }
 
 func falseSuccessRequestContextLines(c *gin.Context) []string {
@@ -1301,10 +1357,6 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 		}
 		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, errorContent, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
-	if err.UpstreamFalseSuccess != nil {
-		notifyUpstreamFalseSuccess(c, err)
-	}
-
 }
 
 func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *types.NewAPIError, originalReason string, modelName string) {

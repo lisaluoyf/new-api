@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -111,4 +113,40 @@ func TestFalseSuccessRequestContextNotificationFields(t *testing.T) {
 	require.Contains(t, joined, "模型")
 	require.Contains(t, joined, "gpt-5.6-terra")
 	require.NotContains(t, joined, "`")
+}
+
+func TestFalseSuccessFinalResultNotificationFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set(common.RequestIdKey, "req-456")
+	ctx.Set("channel_id", 216)
+	ctx.Set("channel_name", "lingsu-gpt-luna")
+	ctx.Set("use_channel", []string{"170", "216"})
+
+	service.RecordUpstreamFalseSuccessAttempt(ctx, &types.UpstreamFalseSuccessDiagnostic{
+		Trigger:   "response_error",
+		ErrorCode: "server_error",
+	})
+	info := &relaycommon.RelayInfo{OriginModelName: "gpt-5.6-luna"}
+	err := types.NewErrorWithStatusCode(context.DeadlineExceeded, types.ErrorCodeBadResponse, http.StatusBadGateway)
+
+	title, lines, ok := buildUpstreamFalseSuccessResultNotification(ctx, info, err)
+	require.True(t, ok)
+	require.Contains(t, title, "HTTP 200 假成功 fallback 最终结果（失败）")
+	joined := strings.Join(lines, "\n")
+	require.Contains(t, joined, "fallback 是否成功：失败")
+	require.Contains(t, joined, "最终状态：请求失败")
+	require.Contains(t, joined, "fallback 渠道链路：170 -> 216")
+	require.Contains(t, joined, "最终渠道：#216/lingsu-gpt-luna")
+	require.Contains(t, joined, "上游错误代码：server_error")
+	require.Contains(t, joined, "最终失败原因")
+	require.NotContains(t, joined, "`")
+
+	title, lines, ok = buildUpstreamFalseSuccessResultNotification(ctx, info, nil)
+	require.True(t, ok)
+	require.Contains(t, title, "HTTP 200 假成功 fallback 最终结果（成功）")
+	joined = strings.Join(lines, "\n")
+	require.Contains(t, joined, "fallback 是否成功：成功")
+	require.Contains(t, joined, "最终状态：请求成功")
+	require.NotContains(t, joined, "最终失败原因")
 }
