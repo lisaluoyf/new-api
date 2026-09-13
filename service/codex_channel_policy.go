@@ -9,25 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	codexPolicyModelGPT54 = "gpt-5.4"
-	codexPolicyModelGPT55 = "gpt-5.5"
-)
-
 var (
 	ErrCodexClientNoChannel = errors.New("no codex-compatible channel available for this model")
-	ErrNonCodexCodexChannel = errors.New("gpt-5.4/gpt-5.5 via non-Codex clients cannot use Codex-only channels")
+	ErrNonCodexCodexChannel = errors.New("non-Codex clients cannot use Codex-only channels")
 )
-
-// RequiresCodexChannelPolicy reports whether gpt-5.4/5.5 need Codex client ↔ channel routing.
-func RequiresCodexChannelPolicy(modelName string) bool {
-	switch strings.TrimSpace(modelName) {
-	case codexPolicyModelGPT54, codexPolicyModelGPT55:
-		return true
-	default:
-		return false
-	}
-}
 
 // IsCodexKeyGroup is deprecated: client routing uses client_exclusive only.
 // Kept for callers that still inspect pricing group names outside routing policy.
@@ -41,7 +26,7 @@ func ChannelMatchesCodexPolicy(setting *string, isCodexClient bool) bool {
 	if isCodexClient {
 		clientType = ClientTypeCodex
 	}
-	modelName := codexPolicyModelGPT54
+	modelName := ""
 	return ChannelMatchesClientPolicy(setting, clientType, modelName)
 }
 
@@ -72,7 +57,7 @@ func responsesBodyHasPromptCacheKey(c *gin.Context) bool {
 	return strings.TrimSpace(key) != ""
 }
 
-// InitCodexChannelPolicyContext detects Codex client once per request for gpt-5.4/5.5.
+// InitCodexChannelPolicyContext detects Codex client once per request for all models.
 func InitCodexChannelPolicyContext(c *gin.Context, modelName string) {
 	InitClientPolicyContext(c, modelName)
 }
@@ -91,7 +76,7 @@ func CodexPolicyChannelError(c *gin.Context, modelName string) error {
 	return ClientPolicyChannelError(c, modelName)
 }
 
-// AppendCodexClientLogInfo adds client_type for gpt-5.4/5.5 consume logs.
+// AppendCodexClientLogInfo adds client_type for all models consume logs.
 func AppendCodexClientLogInfo(c *gin.Context, modelName string, other map[string]interface{}) {
 	AppendClientExclusiveLogInfo(c, modelName, other)
 }

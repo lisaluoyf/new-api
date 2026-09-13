@@ -382,3 +382,27 @@ func TestFreeModelSuccessTraceIsReadyBeforeConsumeLog(t *testing.T) {
 	AppendFreeModelRouteAdminInfo(c, admin)
 	require.Contains(t, admin, "free_model_route")
 }
+
+func TestFreeModelClientExclusiveFiltering(t *testing.T) {
+	db := setupFreeModelRouterDB(t)
+	for id, exclusive := range []string{"", "codex", "claude_code"} {
+		addFreeMember(t, db, id+1, fullMember())
+		require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", id+1).Update("setting", `{"client_exclusive":"`+exclusive+`"}`).Error)
+	}
+	for _, tc := range []struct {
+		req FreeModelRequirements
+		ids []int
+	}{
+		{FreeModelRequirements{Text: true}, []int{1}},
+		{FreeModelRequirements{Text: true, CodexClient: true}, []int{1, 2}},
+		{FreeModelRequirements{Text: true, ClaudeCodeClient: true}, []int{1, 3}},
+	} {
+		plan, err := BuildFreeModelCandidatePlan(tc.req, rand.New(rand.NewSource(1)))
+		require.NoError(t, err)
+		var ids []int
+		for _, candidate := range plan.Candidates {
+			ids = append(ids, candidate.ChannelID)
+		}
+		require.ElementsMatch(t, tc.ids, ids)
+	}
+}

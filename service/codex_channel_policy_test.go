@@ -57,12 +57,6 @@ func TestDetectCodexClient_chatCompletionsNotCodex(t *testing.T) {
 	require.False(t, DetectCodexClient(c))
 }
 
-func TestRequiresCodexChannelPolicy(t *testing.T) {
-	require.True(t, RequiresCodexChannelPolicy("gpt-5.4"))
-	require.True(t, RequiresCodexChannelPolicy("gpt-5.5"))
-	require.False(t, RequiresCodexChannelPolicy("claude-sonnet-4-6"))
-}
-
 func strPtr(s string) *string {
 	return &s
 }

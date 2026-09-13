@@ -100,11 +100,21 @@ func BuildFreeModelCandidatePlan(requirements FreeModelRequirements, rng FreeMod
 		plan.Trace.AffinityKeyFingerprint = affinityFingerprint(requirements.AffinityKey)
 	}
 
+	clientType := ClientTypeGeneric
+	if requirements.CodexClient {
+		clientType = ClientTypeCodex
+	} else if requirements.ClaudeCodeClient {
+		clientType = ClientTypeClaudeCode
+	}
 	memberChannels := make([]model.Channel, 0)
 	channelIDs := make([]int, 0)
 	for i := range channels {
 		channel := &channels[i]
 		if !common.StringsContains(channel.GetModels(), FreeModelID) {
+			continue
+		}
+		if !ChannelMatchesClientPolicy(channel.Setting, clientType, FreeModelID) {
+			plan.Filtered = append(plan.Filtered, FreeModelFilteredCandidate{ChannelID: channel.Id, Reasons: []string{"client_exclusive_mismatch"}})
 			continue
 		}
 		upstream := ModelMappingTarget(channel.ModelMapping, FreeModelID)

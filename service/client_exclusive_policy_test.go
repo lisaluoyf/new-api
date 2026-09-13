@@ -51,7 +51,7 @@ func TestChannelMatchesClientPolicy_matrix(t *testing.T) {
 
 	want := map[ClientType]map[string]bool{
 		ClientTypeGeneric:    {"generic": true, "codex": false, "cc": false},
-		ClientTypeCodex:      {"generic": true, "codex": false, "cc": false},
+		ClientTypeCodex:      {"generic": true, "codex": true, "cc": false},
 		ClientTypeClaudeCode: {"generic": true, "codex": false, "cc": true},
 	}
 
@@ -97,12 +97,7 @@ func TestDetectClientType(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"claude-fable-5"}`))
 	c.Request.Header.Set("User-Agent", "claude-cli/2.0.0")
 	require.Equal(t, ClientTypeClaudeCode, DetectClientType(c, "claude-fable-5"))
-	require.Equal(t, ClientTypeGeneric, DetectClientType(c, "gpt-5.4"))
-}
-
-func TestRequiresClaudeCodeChannelPolicy(t *testing.T) {
-	require.True(t, RequiresClaudeCodeChannelPolicy("claude-fable-5"))
-	require.False(t, RequiresClaudeCodeChannelPolicy("gpt-5.4"))
+	require.Equal(t, ClientTypeClaudeCode, DetectClientType(c, "gpt-5.4"))
 }
 
 func TestValidateChannelClientPolicy_ccExclusive(t *testing.T) {
@@ -115,4 +110,40 @@ func TestValidateChannelClientPolicy_ccExclusive(t *testing.T) {
 	ch := &model.Channel{Setting: strPtr(`{"client_exclusive":"claude_code"}`)}
 	err := ValidateChannelClientPolicy(c, ch, "claude-fable-5")
 	require.ErrorIs(t, err, ErrNonClaudeCodeClaudeChannel)
+}
+
+// Exercise the same filter used on initial selection and fallback, plus the
+// validator used for explicit channels and affinity reuse, across model aliases.
+func TestClientExclusiveAllModelsRouting(t *testing.T) {
+	for _, name := range []string{"gpt-5.4", "gpt-5.6-luna", "gpt-6-astra", "claude-fable-5", "anthropic/claude-fable-5", "custom-alias"} {
+		for _, client := range []ClientType{ClientTypeGeneric, ClientTypeCodex, ClientTypeClaudeCode} {
+			t.Run(name+"/"+string(client), func(t *testing.T) {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"`+name+`"}`))
+				if client == ClientTypeCodex {
+					c.Request.Header.Set("Originator", "codex_cli_rs")
+				}
+				if client == ClientTypeClaudeCode {
+					c.Request.Header.Set("User-Agent", "claude-cli/2.0.0")
+				}
+				require.Equal(t, client, DetectClientType(c, name))
+				require.True(t, RequiresClientExclusivePolicy(name))
+				for _, exclusive := range []string{"", "codex", "claude_code"} {
+					ch := &model.Channel{Setting: strPtr(`{"client_exclusive":"` + exclusive + `"}`)}
+					want := exclusive == "" || exclusive == string(client)
+					for attempt := 0; attempt < 2; attempt++ {
+						require.Equal(t, want, ChannelPickFilter(c, name)(ch), "exclusive=%s attempt=%d", exclusive, attempt)
+					}
+					require.Equal(t, want, ValidateChannelClientPolicy(c, ch, name) == nil, "exclusive=%s", exclusive)
+				}
+				other := map[string]interface{}{}
+				AppendClientExclusiveLogInfo(c, name, other)
+				wantLog := string(client)
+				if client == ClientTypeGeneric {
+					wantLog = "openai_compatible"
+				}
+				require.Equal(t, wantLog, other["client_type"])
+			})
+		}
+	}
 }

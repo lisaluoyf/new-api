@@ -17,6 +17,7 @@ const (
 )
 
 type FreeModelRequirements struct {
+	ClaudeCodeClient bool              `json:"claude_code_client"`
 	Endpoint         FreeModelEndpoint `json:"endpoint"`
 	Text             bool              `json:"text"`
 	Vision           bool              `json:"vision"`
