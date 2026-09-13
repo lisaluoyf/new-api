@@ -65,6 +65,7 @@ type waffoPancakeCreateSessionResponse struct {
 }
 
 type waffoPancakeWebhookData struct {
+	PaymentID     string            `json:"paymentId"`
 	ID            string            `json:"id"`
 	OrderID       string            `json:"orderId"`
 	BuyerEmail    string            `json:"buyerEmail"`

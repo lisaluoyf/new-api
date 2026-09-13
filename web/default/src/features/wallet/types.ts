@@ -311,6 +311,10 @@ export interface TopupRecord {
   amount: number
   /** Precise USD amount credited; falls back to amount when omitted */
   credited_amount?: number
+  refund_frozen_amount?: number
+  refund_frozen_quota?: number
+  refunded_amount?: number
+  refunded_quota?: number
   /** Payment amount (actual money paid) */
   money: number
   /** Trade/order number */

@@ -3370,6 +3370,8 @@
     "Refreshing...": "刷新中...",
     "Refund": "退款",
     "Refund Details": "退款详情",
+    "Refund pending": "退款处理中",
+    "Frozen balance": "冻结余额",
     "Regenerate": "重新生成",
     "Regenerate Backup Codes": "重新生成备用代码",
     "Regex": "正则",

@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Refund pending": "Возврат обрабатывается",
+    "Frozen balance": "Замороженный баланс",
     "Seller protection": "Защита продавца",
     "Partial seller protection": "Частичная защита продавца",
     "Item not received": "Товар не получен",

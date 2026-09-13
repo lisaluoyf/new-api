@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Refund pending": "Đang xử lý hoàn tiền",
+    "Frozen balance": "Số dư bị đóng băng",
     "Seller protection": "Bảo vệ người bán",
     "Partial seller protection": "Bảo vệ người bán một phần",
     "Item not received": "Chưa nhận được hàng",

@@ -42,6 +42,7 @@ import {
 } from '../lib/billing'
 import type { TopupStatus } from '../types'
 import { PayPalProtectionBadge } from './paypal-protection-badge'
+import { RefundSummary } from './refund-summary'
 
 const STATUS_TABS = [
   { value: '', labelKey: 'All' },
@@ -478,6 +479,7 @@ export function TransactionHistory() {
                       </td>
                       <td className='px-4 py-3 text-center'>
                         <StatusChip status={record.status} />
+                        <RefundSummary record={record} />
                       </td>
                       <td className='text-muted-foreground px-4 py-3 text-right text-xs whitespace-nowrap'>
                         {formatTimestamp(record.create_time)}

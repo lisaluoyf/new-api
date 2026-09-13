@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Refund pending": "환불 처리 중",
+    "Frozen balance": "동결 잔액",
     "Seller protection": "판매자 보호",
     "Partial seller protection": "부분 판매자 보호",
     "Item not received": "상품 미수령",

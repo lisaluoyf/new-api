@@ -35,6 +35,12 @@ type TopUp struct {
 	CreateTime          int64   `json:"create_time"`
 	CompleteTime        int64   `json:"complete_time"`
 	Status              string  `json:"status"`
+	WaffoPaymentID      string  `json:"-" gorm:"type:varchar(64);index"`
+	WaffoOrderID        string  `json:"-" gorm:"type:varchar(64);index"`
+	RefundFrozenAmount  float64 `json:"refund_frozen_amount" gorm:"type:decimal(18,6);not null;default:0"`
+	RefundedAmount      float64 `json:"refunded_amount" gorm:"type:decimal(18,6);not null;default:0"`
+	RefundFrozenQuota   int     `json:"refund_frozen_quota" gorm:"not null;default:0"`
+	RefundedQuota       int     `json:"refunded_quota" gorm:"not null;default:0"`
 	// Country at order creation (from client IP); not updated when user.country changes.
 	Country string `json:"country,omitempty" gorm:"type:varchar(10);default:''"`
 	// Admin-only computed fields — not stored in DB

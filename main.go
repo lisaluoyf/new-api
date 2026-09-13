@@ -134,6 +134,7 @@ func main() {
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
+	service.StartWaffoRefundSyncTask()
 	service.StartReferralGPTRewardReconcileTask()
 
 	// Apimaster detection integration tasks

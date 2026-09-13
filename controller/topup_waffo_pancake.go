@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math"
@@ -295,6 +296,21 @@ func WaffoPancakeWebhook(c *gin.Context) {
 	}
 
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 验签成功 event_type=%s event_id=%s order_id=%s client_ip=%s", event.NormalizedEventType(), event.ID, event.Data.OrderID, c.ClientIP()))
+	if event.NormalizedEventType() == "refund.succeeded" || event.NormalizedEventType() == "refund.failed" {
+		if event.StoreID != setting.WaffoPancakeStoreID || event.Mode != "prod" || setting.WaffoPancakeSandbox {
+			c.String(http.StatusBadRequest, "refund store or environment mismatch")
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+		defer cancel()
+		if err := service.SyncWaffoRefunds(ctx); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("Waffo refund reconciliation failed event_id=%s error=%q", event.ID, err.Error()))
+			c.String(http.StatusServiceUnavailable, "retry")
+			return
+		}
+		c.String(http.StatusOK, "OK")
+		return
+	}
 	if event.NormalizedEventType() != "order.completed" {
 		c.String(http.StatusOK, "OK")
 		return
@@ -332,6 +348,17 @@ func WaffoPancakeWebhook(c *gin.Context) {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 充值处理失败 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, c.ClientIP(), err.Error()))
 		c.String(http.StatusInternalServerError, "retry")
 		return
+	}
+	paymentID := event.Data.PaymentID
+	if paymentID == "" {
+		paymentID = event.ID
+	}
+	if strings.HasPrefix(paymentID, "PAY_") && strings.HasPrefix(event.Data.OrderID, "ORD_") {
+		if err := model.BindWaffoPayment(tradeNo, paymentID, event.Data.OrderID); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo payment binding failed trade_no=%s error=%q", tradeNo, err.Error()))
+			c.String(http.StatusServiceUnavailable, "retry")
+			return
+		}
 	}
 
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo Pancake 充值成功 trade_no=%s event_id=%s order_id=%s client_ip=%s", tradeNo, event.ID, event.Data.OrderID, c.ClientIP()))

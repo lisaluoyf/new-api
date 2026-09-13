@@ -59,6 +59,7 @@ import {
   formatTimestamp,
   formatPaidAmount,
 } from '../../lib/billing'
+import { RefundSummary } from '../refund-summary'
 
 interface BillingHistoryDialogProps {
   open: boolean
@@ -233,6 +234,7 @@ export function BillingHistoryDialog({
                           />
                         </div>
 
+                        <RefundSummary record={record} />
                         {/* Details Grid */}
                         <div className='mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:grid-cols-3 sm:gap-4'>
                           <div className='space-y-1'>
