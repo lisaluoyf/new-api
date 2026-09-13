@@ -16,6 +16,7 @@ const (
 	CategoryDisableImmediate
 	CategoryDisableWindow
 	CategoryRateLimitWindow // 429 codex cooldown — higher threshold before disable
+	CategoryProbeBeforeDisable
 )
 
 var (
@@ -102,13 +103,10 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 			return CategoryDisableImmediate
 		}
 	}
-	// The retry path already treats an upstream model_not_found response as a
-	// channel-side capability failure. Keep the health path consistent so a
-	// broken advertised model is removed from this channel's routing abilities
-	// instead of being selected indefinitely. The distributor "no available
-	// channel" case is handled above and still requires a confirmation probe.
+	// Confirm advertised model failures with an independent probe before
+	// removing the model from this channel's routing abilities.
 	if code == types.ErrorCodeModelNotFound || isUpstreamModelUnavailableError(err) {
-		return CategoryDisableImmediate
+		return CategoryProbeBeforeDisable
 	}
 
 	if err.StatusCode == 401 {

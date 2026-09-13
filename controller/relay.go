@@ -1377,6 +1377,17 @@ func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *t
 	}
 
 	modelName = strings.TrimSpace(modelName)
+	configured := false
+	for _, name := range channel.GetModels() {
+		if modelName != "" && strings.TrimSpace(name) == modelName {
+			configured = true
+			break
+		}
+	}
+	if !configured {
+		common.SysLog(fmt.Sprintf("channel #%d disable probe skipped: model %q is not configured", channel.Id, modelName))
+		return
+	}
 	result, latencyMs := probeChannelForAutomation(channel, modelName)
 	channel.UpdateResponseTime(latencyMs)
 
@@ -1414,7 +1425,7 @@ func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *t
 	case service.CategoryUpstreamRecharge:
 		service.NotifyUpstreamRecharge(channelError, classificationErr)
 		service.DisableChannel(channelError, reason)
-	case service.CategoryDisableImmediate, service.CategoryDisableWindow, service.CategoryRateLimitWindow:
+	case service.CategoryDisableImmediate, service.CategoryDisableWindow, service.CategoryRateLimitWindow, service.CategoryProbeBeforeDisable:
 		service.DisableChannelModel(channelError, modelName, reason)
 	}
 

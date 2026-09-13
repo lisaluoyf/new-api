@@ -1,7 +1,10 @@
 package service
 
 import (
+	"context"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -72,7 +75,7 @@ func TestClassifyChannelError_moonshotMissingModelIsNotRecharge(t *testing.T) {
 	require.False(t, IsHighConfidenceRecharge(err))
 }
 
-func TestClassifyChannelError_upstreamModelNotFoundDisablesImmediately(t *testing.T) {
+func TestClassifyChannelError_upstreamModelNotFoundRequiresProbe(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -102,8 +105,36 @@ func TestClassifyChannelError_upstreamModelNotFoundDisablesImmediately(t *testin
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, CategoryDisableImmediate, ClassifyChannelError(tt.err))
+			require.Equal(t, CategoryProbeBeforeDisable, ClassifyChannelError(tt.err))
 		})
+	}
+}
+
+func TestEvaluateChannelHealthModelNotFoundResponseRequiresProbe(t *testing.T) {
+	previous := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = previous
+		ClearChannelHealth(219)
+	})
+	for _, body := range []string{
+		`{"error":{"message":"Model \"gpt-6-astra\" is not supported by any configured account in this group","type":"model_not_found"}}`,
+		`{"error":{"message":"missing model","code":"model_not_found"}}`,
+	} {
+		err := RelayErrorHandler(context.Background(), &http.Response{
+			StatusCode: http.StatusNotFound,
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, false)
+		require.Equal(t, types.ErrorCodeModelNotFound, err.GetErrorCode())
+		require.Equal(t, CategoryProbeBeforeDisable, ClassifyChannelError(err))
+		action, _ := EvaluateChannelHealth(types.ChannelError{ChannelId: 219, AutoBan: true}, err)
+		require.Equal(t, HealthProbeBeforeDisable, action)
+		action, _ = EvaluateChannelHealth(types.ChannelError{ChannelId: 219, AutoBan: false}, err)
+		require.Equal(t, HealthSkip, action)
+		common.AutomaticDisableChannelEnabled = false
+		action, _ = EvaluateChannelHealth(types.ChannelError{ChannelId: 219, AutoBan: true}, err)
+		require.Equal(t, HealthSkip, action)
+		common.AutomaticDisableChannelEnabled = true
 	}
 }
 

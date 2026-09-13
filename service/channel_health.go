@@ -133,6 +133,8 @@ func EvaluateChannelHealth(channelError types.ChannelError, err *types.NewAPIErr
 		return HealthSkip, ""
 	case CategoryDisableImmediate:
 		return HealthDisableImmediate, err.ErrorWithStatusCode()
+	case CategoryProbeBeforeDisable:
+		return HealthProbeBeforeDisable, err.ErrorWithStatusCode()
 	case CategoryRateLimitWindow:
 		if shouldDisableRateLimitWindow(channelError.ChannelId) {
 			return HealthProbeBeforeDisable, summarizeWindowReason(channelError.ChannelId, "429 rate-limit/cooldown")

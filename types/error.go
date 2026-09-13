@@ -376,6 +376,10 @@ func WithOpenAIError(openAIError OpenAIError, statusCode int, ops ...NewAPIError
 			code = "unknown_error"
 		}
 	}
+	// Some upstreams identify a missing model only in error.type.
+	if (openAIError.Code == nil || code == "") && openAIError.Type == string(ErrorCodeModelNotFound) {
+		code = string(ErrorCodeModelNotFound)
+	}
 	if openAIError.Type == "" {
 		openAIError.Type = "upstream_error"
 	}
