@@ -14,7 +14,22 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestManualGroupRatioWithUnavailableUpstream(t *testing.T) {
+func TestManualPricingFallbackWithUnavailableUpstream(t *testing.T) {
+	for _, config := range []struct {
+		previous map[string]float64
+		update   func(string) error
+		value    string
+	}{
+		{ratio_setting.GetModelRatioCopy(), ratio_setting.UpdateModelRatioByJSONString, `{"kimi-k3":1.5}`},
+		{ratio_setting.GetCompletionRatioCopy(), ratio_setting.UpdateCompletionRatioByJSONString, `{"kimi-k3":5}`},
+		{ratio_setting.GetCacheRatioCopy(), ratio_setting.UpdateCacheRatioByJSONString, `{"kimi-k3":0.1}`},
+		{ratio_setting.GetCreateCacheRatioCopy(), ratio_setting.UpdateCreateCacheRatioByJSONString, `{"kimi-k3":0.2}`},
+	} {
+		previous, err := common.Marshal(config.previous)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, config.update(string(previous))) })
+		require.NoError(t, config.update(config.value))
+	}
 	oldDB := model.DB
 	t.Cleanup(func() { model.DB = oldDB })
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -31,26 +46,32 @@ func TestManualGroupRatioWithUnavailableUpstream(t *testing.T) {
 	channel := model.Channel{Id: 91, BaseURL: &baseURL, Key: "test-key", Setting: &setting,
 		RechargeRate: &recharge, ApimasterPriceRatio: &markup}
 	require.NoError(t, db.Create(&channel).Error)
-	require.NoError(t, db.Create(&model.ChannelModelPricing{
-		ChannelId: 91, ModelName: "kimi-k3", GroupRatio: 0.8, PricingSource: "api",
-		InputPrice: 16, OutputPrice: 80, CachePrice: 1.6, CacheCreationPrice: 3.2,
+	require.NoError(t, db.Create(&[]model.ChannelModelPricing{
+		{ChannelId: 91, ModelName: FreeModelID, InputPrice: 0.001, PricingSource: "free_model"},
+		{ChannelId: 92, ModelName: "kimi-k3", InputPrice: 16, PricingSource: "api"},
 	}).Error)
 
 	for _, test := range []struct {
 		name, setting string
 		wantRatio     float64
+		wantBase      float64
 	}{
-		{"channel default", setting, 0.65},
-		{"edited default", `{"manual_group_ratio":0.6}`, 0.6},
-		{"model wins", `{"manual_group_ratio":0.65,"model_group_ratios":{"kimi-k3":0.4}}`, 0.4},
-		{"remove model override", setting, 0.65},
-		{"remove default", `{"manual_group_ratio":0}`, 0.8},
+		{"channel default", setting, 0.65, 3},
+		{"edited default", `{"manual_group_ratio":0.6}`, 0.6, 3},
+		{"model wins", `{"manual_group_ratio":0.65,"model_group_ratios":{"kimi-k3":0.4}}`, 0.4, 3},
+		{"remove model override", setting, 0.65, 3},
+		{"model price ratio", `{"manual_group_ratio":0.65,"model_price_ratio":0.5}`, 0.65, 1.5},
+		{"no manual fallback preserves upstream snapshot", `{"manual_group_ratio":0}`, 0.8, 20},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			require.NoError(t, model.UpsertChannelModelPricings([]model.ChannelModelPricing{{
+				ChannelId: 91, ModelName: "kimi-k3", GroupRatio: 0.8, PricingSource: "api",
+				InputPrice: 16, OutputPrice: 80, CachePrice: 1.6, CacheCreationPrice: 3.2,
+			}}))
 			require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 91).Update("setting", test.setting).Error)
 			channel.Setting = &test.setting
 			FetchChannelPricing(&channel)
-			want := 20 * test.wantRatio * recharge
+			want := test.wantBase * test.wantRatio * recharge
 			prices, ok, err := ChannelUserPricesResolvedForModel(91, "kimi-k3")
 			require.NoError(t, err)
 			require.True(t, ok)
@@ -64,16 +85,36 @@ func TestManualGroupRatioWithUnavailableUpstream(t *testing.T) {
 			logged, err := ChannelActualPricesResolved(91, "kimi-k3")
 			require.NoError(t, err)
 			require.InDelta(t, want, logged.InputPrice, 1e-9)
-			routing, ok := routeCandidateUserInputPrice(pricedRouteCandidate{
-				Setting: &test.setting, HasInputPrice: true, InputPrice: 16, GroupRatio: 0.8,
+			stored, hasStored := LookupPreferredChannelPricingRow(91, "kimi-k3", nil)
+			candidate := pricedRouteCandidate{
+				Setting: &test.setting, HasInputPrice: hasStored,
 				RechargeRate: recharge, ApimasterPriceRatio: markup,
-			}, "kimi-k3", 0)
+			}
+			if hasStored {
+				candidate.InputPrice, candidate.GroupRatio = stored.InputPrice, stored.GroupRatio
+			}
+			routing, ok := routeCandidateUserInputPrice(candidate, "kimi-k3", 3)
 			require.True(t, ok)
 			require.InDelta(t, want, routing, 1e-9)
-			stored, err := model.GetChannelModelPricing(91, "kimi-k3")
+			if ExtractManualGroupRatio(channel.Setting) > 0 {
+				require.False(t, hasStored, "stale API snapshot must not shadow live manual pricing")
+				// Official price edits must be reflected without another upstream fetch.
+				require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"kimi-k3":3}`))
+				live, ok, err := ChannelUserPricesResolvedForModel(91, "kimi-k3")
+				require.NoError(t, err)
+				require.True(t, ok)
+				require.InDelta(t, want*2, live.InputPrice, 1e-9)
+				require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"kimi-k3":1.5}`))
+			} else {
+				require.True(t, hasStored)
+				require.Equal(t, 16.0, stored.InputPrice)
+			}
+			free, err := model.GetChannelModelPricing(91, FreeModelID)
 			require.NoError(t, err)
-			require.Equal(t, 0.8, stored.GroupRatio)
-			require.Equal(t, 16.0, stored.InputPrice)
+			require.Equal(t, "free_model", free.PricingSource)
+			other, err := model.GetChannelModelPricing(92, "kimi-k3")
+			require.NoError(t, err)
+			require.Equal(t, 16.0, other.InputPrice)
 		})
 	}
 }

@@ -238,8 +238,10 @@ func fillMissingCachePricesFromOfficial(
 // an admin edits 系统设置 → 模型定价 (silently under- or over-charging manual
 // channels until someone remembers to click "刷新价格" again).
 //
-// Instead, any existing pricing_source='manual' row for this channel is
-// deleted. Both display (controller.applyPublicManualPricingToRow) and
+// Instead, old API and manual snapshots are removed when switching to this
+// fallback. Keeping an API snapshot would make every reader prefer the stale
+// upstream base price over the configured live manual price. FreeModel routing
+// weights remain protected. Both display (controller.applyPublicManualPricingToRow) and
 // billing (service.ChannelModelPriceData) treat a missing row as "resolve
 // live" via LookupPublicManualPricing, which reads the current 官方原价 ×
 // model_price_ratio × manual_group_ratio on every request — so manual
@@ -248,12 +250,11 @@ func fetchModelPriceRatioFallback(ctx context.Context, channel *model.Channel) {
 	if ExtractManualGroupRatio(channel.Setting) <= 0 {
 		return
 	}
-	if err := model.DB.Where("channel_id = ? AND pricing_source = ?", channel.Id, "manual").
-		Delete(&model.ChannelModelPricing{}).Error; err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("channel-pricing [%d]: clearing stale manual rows: %v", channel.Id, err))
+	if err := deleteRefreshableChannelPricings(channel.Id); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("channel-pricing [%d]: clearing stale API/manual rows: %v", channel.Id, err))
 		return
 	}
-	logger.LogInfo(ctx, fmt.Sprintf("channel-pricing [%d]: manual pricing now resolved live from 官方原价, cleared any stale snapshot rows", channel.Id))
+	logger.LogInfo(ctx, fmt.Sprintf("channel-pricing [%d]: manual pricing now resolved live from 官方原价, cleared stale API/manual snapshot rows", channel.Id))
 }
 
 func deleteRefreshableChannelPricings(channelID int) error {

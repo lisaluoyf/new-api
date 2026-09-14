@@ -1,10 +1,64 @@
 package controller
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/require"
 )
+
+func TestManualPricingFallbackReplacesAPIPriceInDisplay(t *testing.T) {
+	for _, config := range []struct {
+		previous map[string]float64
+		update   func(string) error
+		value    string
+	}{
+		{ratio_setting.GetModelRatioCopy(), ratio_setting.UpdateModelRatioByJSONString, `{"kimi-k3":1.5}`},
+		{ratio_setting.GetCompletionRatioCopy(), ratio_setting.UpdateCompletionRatioByJSONString, `{"kimi-k3":5}`},
+	} {
+		previous, err := common.Marshal(config.previous)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, config.update(string(previous))) })
+		require.NoError(t, config.update(config.value))
+	}
+	db := setupModelDataToggleTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.ChannelModelPricing{}))
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(upstream.Close)
+	setting, baseURL := `{"key_group":"Kimi","manual_group_ratio":0.65}`, upstream.URL
+	channel := model.Channel{Id: 91, Setting: &setting, BaseURL: &baseURL}
+	require.NoError(t, db.Create(&channel).Error)
+	require.NoError(t, db.Create(&model.ChannelModelPricing{
+		ChannelId: 91, ModelName: "kimi-k3", GroupRatio: 0.8,
+		InputPrice: 16, OutputPrice: 80, PricingSource: "api",
+	}).Error)
+	service.FetchChannelPricing(&channel)
+	_, hasStored := service.LookupPreferredChannelPricingRow(91, "kimi-k3", nil)
+	require.False(t, hasStored)
+	var in, out, cache, write, group *float64
+	var source *string
+	applyPublicManualPricingToRow(&setting, "kimi-k3", &in, &out, &cache, &write, &group, &source)
+	applyModelGroupRatioToRow(&setting, "kimi-k3", &in, &out, &cache, &write, &group)
+	require.Equal(t, "manual", *source)
+	require.InDelta(t, 1.95, *in, 1e-9)
+	require.InDelta(t, 9.75, *out, 1e-9)
+	require.Equal(t, 0.65, *group)
+	require.InDelta(t, 3, *in / *group, 1e-9, "channel base price must use official pricing")
+	recharge := 0.148907
+	item := publicMarketplacePriceItem("kimi-k3", publicMarketplacePricingRow{
+		Setting: &setting, InputPrice: in, OutputPrice: out, GroupRatio: group,
+		RechargeRate: &recharge, ApimasterPriceRatio: 1.5,
+	})
+	require.InDelta(t, 1.95*recharge*1.5, *item.UserPrice, 1e-9)
+	require.InDelta(t, 9.75*recharge*1.5, *item.ActualOutputUserPrice, 1e-9)
+}
 
 func TestModelGroupRatioDisplayMatchesBilling(t *testing.T) {
 	setting := `{"manual_group_ratio":0.5,"model_group_ratios":{"priced-model":0.2}}`
