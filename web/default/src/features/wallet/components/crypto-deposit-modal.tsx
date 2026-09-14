@@ -36,6 +36,7 @@ import {
   type ChainConfig,
   type TokenConfig,
 } from '../hooks/use-crypto-payment'
+import { discoverEvmWallets, type EvmWalletOption } from '../lib/evm-provider'
 
 interface CryptoDepositModalProps {
   open: boolean
@@ -67,6 +68,9 @@ export function CryptoDepositModal({
   const { t } = useTranslation()
   const [selectedChain, setSelectedChain] = useState<ChainConfig>(CHAINS[1]) // BSC default
   const [selectedToken, setSelectedToken] = useState<TokenConfig>(CHAINS[1].tokens[0])
+  const [walletOptions, setWalletOptions] = useState<EvmWalletOption[]>([])
+  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null)
+  const [walletDiscoveryReady, setWalletDiscoveryReady] = useState(false)
 
   const { step, error, txHash, usdAdded, walletAddress, startPayment, reset } =
     useCryptoPayment()
@@ -74,9 +78,28 @@ export function CryptoDepositModal({
 
   useEffect(() => {
     if (!open) return
+    let cancelled = false
+    discoverEvmWallets().then((wallets) => {
+      if (cancelled) return
+      setWalletOptions(wallets)
+      if (wallets.length === 1) setSelectedWalletId(wallets[0].id)
+      setWalletDiscoveryReady(true)
+    }).catch(() => {
+      if (!cancelled) setWalletDiscoveryReady(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
     const cgId = NATIVE_COINGECKO[selectedChain.id] ?? 'ethereum'
     fetchNativePrice(cgId).then(setDisplayPrice).catch(() => {})
   }, [open, selectedChain.id])
+
+  const selectedWallet = walletOptions.find((wallet) => wallet.id === selectedWalletId)
+  const walletRequired = !walletDiscoveryReady || !selectedWallet
 
   function handleChainChange(chain: ChainConfig) {
     setSelectedChain(chain)
@@ -87,6 +110,9 @@ export function CryptoDepositModal({
     if (step === 'done') onSuccess()
     if (step === 'done' || step === 'failed') onSettled?.()
     reset()
+    setWalletOptions([])
+    setSelectedWalletId(null)
+    setWalletDiscoveryReady(false)
     onOpenChange(false)
   }
 
@@ -112,6 +138,37 @@ export function CryptoDepositModal({
           <div className='flex flex-col gap-5 py-1'>
 
             {/* 钱包地址 */}
+            {walletOptions.length > 1 && (
+              <div>
+                <div className='text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wider'>
+                  {t('Wallet')}
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  {walletOptions.map((wallet) => (
+                    <button
+                      key={wallet.id}
+                      type='button'
+                      onClick={() => setSelectedWalletId(wallet.id)}
+                      className={cn(
+                        'rounded-xl border px-4 py-2 text-sm font-semibold transition-all',
+                        selectedWalletId === wallet.id
+                          ? 'border-cyan-400 bg-cyan-50 text-cyan-700'
+                          : 'border-border hover:border-cyan-300 hover:bg-cyan-50/40'
+                      )}
+                    >
+                      {wallet.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {walletDiscoveryReady && walletOptions.length === 0 && (
+              <p className='text-destructive text-sm'>
+                {t('No wallet detected. Please install MetaMask or Binance Wallet.')}
+              </p>
+            )}
+
             {walletAddress && (
               <div className='flex items-center justify-between text-sm'>
                 <span className='text-muted-foreground'>{t('Wallet')}</span>
@@ -209,8 +266,12 @@ export function CryptoDepositModal({
             <Button
               className='w-full'
               style={{ background: 'linear-gradient(135deg, #22d3ee, #0891b2)' }}
-              disabled={isProcessing}
-              onClick={() => startPayment(amount, selectedChain, selectedToken)}
+              disabled={isProcessing || walletRequired}
+              onClick={() => {
+                if (selectedWallet) {
+                  void startPayment(amount, selectedChain, selectedToken, selectedWallet.provider)
+                }
+              }}
             >
               {walletAddress ? t('Confirm & Pay') : t('Connect Wallet & Pay')}
             </Button>

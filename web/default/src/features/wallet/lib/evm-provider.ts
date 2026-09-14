@@ -38,6 +38,12 @@ export interface EIP6963ProviderDetail {
   provider: EthereumProvider
 }
 
+export interface EvmWalletOption {
+  id: string
+  name: string
+  provider: EthereumProvider
+}
+
 declare global {
   interface Window {
     ethereum?: EthereumProvider
@@ -95,6 +101,55 @@ function getLegacyInjectedEvmProvider(): EthereumProvider | null {
   }
 
   return window.ethereum ?? window.trustwallet ?? null
+}
+
+function getLegacyInjectedEvmProviders(): EIP6963ProviderDetail[] {
+  if (typeof window === 'undefined') return []
+
+  const candidates: Array<{ name: string; rdns: string; provider: EthereumProvider | undefined }> = []
+  if (window.phantom?.ethereum) {
+    candidates.push({ name: 'Phantom', rdns: 'app.phantom', provider: window.phantom.ethereum })
+  }
+  if (window.ethereum?.providers?.length) {
+    window.ethereum.providers.forEach((provider, index) => {
+      candidates.push({
+        name: provider.isMetaMask ? 'MetaMask' : provider.isBinance ? 'Binance Wallet' : provider.isPhantom ? 'Phantom' : provider.isTrust || provider.isTrustWallet ? 'Trust Wallet' : `Wallet ${index + 1}`,
+        rdns: provider.isMetaMask ? 'io.metamask' : provider.isBinance ? 'com.binance.wallet' : provider.isPhantom ? 'app.phantom' : provider.isTrust || provider.isTrustWallet ? 'com.trustwallet.app' : `legacy.wallet.${index + 1}`,
+        provider,
+      })
+    })
+  } else if (window.ethereum) {
+    candidates.push({ name: window.ethereum.isMetaMask ? 'MetaMask' : 'EVM Wallet', rdns: window.ethereum.isMetaMask ? 'io.metamask' : 'legacy.ethereum', provider: window.ethereum })
+  }
+  if (window.trustwallet) {
+    candidates.push({ name: 'Trust Wallet', rdns: 'com.trustwallet.app', provider: window.trustwallet })
+  }
+
+  const seen = new Set<EthereumProvider>()
+  return candidates.flatMap(({ name, rdns, provider }) => {
+    if (!provider || seen.has(provider)) return []
+    seen.add(provider)
+    return [{ info: { uuid: `legacy-${rdns}`, name, rdns }, provider }]
+  })
+}
+
+export async function discoverEvmWallets(): Promise<EvmWalletOption[]> {
+  initializeEIP6963Discovery()
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  const details = [...Array.from(announcedProviders.values()), ...getLegacyInjectedEvmProviders()]
+  return buildEvmWalletOptions(details)
+}
+
+export function buildEvmWalletOptions(
+  details: EIP6963ProviderDetail[]
+): EvmWalletOption[] {
+  const seen = new Set<EthereumProvider>()
+  return details.flatMap(({ info, provider }) => {
+    if (seen.has(provider)) return []
+    seen.add(provider)
+    return [{ id: info.uuid, name: info.name, provider }]
+  })
 }
 
 export function selectEvmProvider(

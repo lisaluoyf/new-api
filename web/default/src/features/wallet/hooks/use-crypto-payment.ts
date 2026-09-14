@@ -25,7 +25,6 @@ import {
   getCryptoDepositStatus,
 } from '../api'
 import {
-  getInjectedEvmProvider,
   type EthereumProvider,
 } from '../lib/evm-provider'
 
@@ -184,7 +183,12 @@ export interface UseCryptoPaymentReturn {
   usdAdded: number
   walletAddress: string | null
   nativePrice: number
-  startPayment: (amount: number, chain: ChainConfig, token: TokenConfig) => Promise<void>
+  startPayment: (
+    amount: number,
+    chain: ChainConfig,
+    token: TokenConfig,
+    selectedProvider: EthereumProvider
+  ) => Promise<void>
   reset: () => void
 }
 
@@ -282,17 +286,12 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
   }, [])
 
   const startPayment = useCallback(
-    async (amount: number, chain: ChainConfig, token: TokenConfig) => {
+    async (amount: number, chain: ChainConfig, token: TokenConfig, selectedProvider: EthereumProvider) => {
       if (paymentLockRef.current) {
         return
       }
 
-      const provider = getInjectedEvmProvider()
-      if (!provider) {
-        setError(i18next.t('No wallet detected. Please install MetaMask or Binance Wallet.'))
-        setStep('failed')
-        return
-      }
+      const provider = selectedProvider
 
       paymentLockRef.current = true
 

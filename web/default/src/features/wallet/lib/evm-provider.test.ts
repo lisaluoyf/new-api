@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import {
+  buildEvmWalletOptions,
   selectEvmProvider,
   type EIP6963ProviderDetail,
   type EthereumProvider,
@@ -72,5 +73,24 @@ describe('selectEvmProvider', () => {
   test('continues to support a legacy-only provider', () => {
     const legacy = provider({ isMetaMask: true })
     assert.equal(selectEvmProvider([], legacy), legacy)
+  })
+})
+
+describe('buildEvmWalletOptions', () => {
+  test('lists distinct wallets and removes duplicate provider objects', () => {
+    const metamask = provider({ isMetaMask: true })
+    const phantom = provider({ isPhantom: true })
+
+    assert.deepEqual(
+      buildEvmWalletOptions([
+        announced(metamask, 'metamask', 'io.metamask'),
+        announced(phantom, 'phantom', 'app.phantom'),
+        announced(metamask, 'legacy-metamask', 'io.metamask'),
+      ]).map(({ id, name }) => ({ id, name })),
+      [
+        { id: 'metamask', name: 'metamask' },
+        { id: 'phantom', name: 'phantom' },
+      ]
+    )
   })
 })
