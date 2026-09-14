@@ -31,7 +31,10 @@ import {
   Info,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import {
+  formatBillingCurrencyFromUSD,
+  formatQuotaWithCurrency,
+} from '@/lib/currency'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
@@ -63,6 +66,7 @@ import {
   getResponseTimeColor,
   getSubscriptionSourceLabel,
 } from '../../lib/format'
+import { getImageBillingBreakdown } from '../../lib/image-billing'
 import {
   getLogTypeConfig,
   isPerCallBilling,
@@ -154,9 +158,14 @@ function BillingBreakdown(props: {
   const isSubscription = isSubscriptionUsageLog(other)
   const codingPlanPrices = getCodingPlanEffectivePrices(other)
   const tieredSummary = getTieredBillingSummary(other)
+  const imageBilling = getImageBillingBreakdown(other)
 
   const rows: Array<{ label: string; value: string }> = []
-  const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
+  const priceOpts = {
+    digitsLarge: imageBilling ? 6 : 4,
+    digitsSmall: 6,
+    abbreviate: false,
+  }
   const fmtPrice = (usd: number) => formatBillingCurrencyFromUSD(usd, priceOpts)
   const baseInputUSD =
     codingPlanPrices?.input ??
@@ -165,7 +174,49 @@ function BillingBreakdown(props: {
   const fmtPricePair = (input: number, output: number) =>
     `${fmtPrice(input)} / ${fmtPrice(output)}/M`
 
-  if (isTieredExpr && !codingPlanPrices) {
+  if (imageBilling) {
+    rows.push(
+      { label: t('Billing Mode'), value: t('Per-image') },
+      {
+        label: t('Image Operation'),
+        value: imageBilling.isLayers
+          ? t('Layer Decomposition')
+          : t('Image Generation'),
+      },
+      {
+        label: t('Output Images'),
+        value: imageBilling.isLayers
+          ? t('{{count}} images, including the base image', {
+              count: imageBilling.outputImages,
+            })
+          : String(imageBilling.outputImages),
+      },
+      {
+        label: t('Input Images'),
+        value: t('{{total}} total; {{free}} free; {{paid}} paid', {
+          total: imageBilling.inputImages,
+          free: imageBilling.freeInputImages,
+          paid: imageBilling.paidInputImages,
+        }),
+      }
+    )
+    for (const item of imageBilling.items) {
+      rows.push({
+        label: t(item.label),
+        value: `${item.quantity} x ${fmtPrice(item.unitPrice)} = ${fmtPrice(item.subtotal)}`,
+      })
+    }
+    rows.push({
+      label: t('Base Cost'),
+      value: fmtPrice(imageBilling.baseAmount),
+    })
+    if (imageBilling.channelRatio != null) {
+      rows.push({
+        label: t('Channel Price Multiplier'),
+        value: `${formatRatio(imageBilling.channelRatio)}x`,
+      })
+    }
+  } else if (isTieredExpr && !codingPlanPrices) {
     rows.push({
       label: t('Billing Mode'),
       value:
@@ -251,6 +302,19 @@ function BillingBreakdown(props: {
     rows.push({
       label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
       value: `${formatRatio(effectiveGR)}x`,
+    })
+  }
+
+  if (imageBilling) {
+    if (imageBilling.calculatedCharge != null) {
+      rows.push({
+        label: t('Calculated Charge'),
+        value: `${fmtPrice(imageBilling.baseAmount)} x ${formatRatio(imageBilling.channelRatio ?? undefined)} x ${formatRatio(imageBilling.groupRatio)} = ${fmtPrice(imageBilling.calculatedCharge)}`,
+      })
+    }
+    rows.push({
+      label: t('Quota Rounding'),
+      value: t('Rounded to {{count}} quota units', { count: log.quota }),
     })
   }
 
@@ -355,7 +419,9 @@ function BillingBreakdown(props: {
 
   rows.push({
     label: t('Total Cost'),
-    value: formatLogQuota(log.quota),
+    value: imageBilling
+      ? formatQuotaWithCurrency(log.quota, priceOpts)
+      : formatLogQuota(log.quota),
   })
 
   if (rows.length === 0) return null

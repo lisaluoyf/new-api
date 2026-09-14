@@ -52,6 +52,7 @@ import {
   parseLogOther,
   isViolationFeeLog,
 } from '../../lib/format'
+import { getImageBillingBreakdown } from '../../lib/image-billing'
 import { getLogMediaPreview } from '../../lib/media-preview'
 import {
   isDisplayableLogType,
@@ -143,7 +144,16 @@ function buildDetailSegments(
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const codingPlanPrices = getCodingPlanEffectivePrices(other)
   const tieredSummary = getTieredBillingSummary(other)
-  if (isTieredExpr && !codingPlanPrices) {
+  const imageBilling = getImageBillingBreakdown(other)
+  if (imageBilling) {
+    segments.push({
+      text: `${t('Per-image')} · ${t('Output images: {{count}}', { count: imageBilling.outputImages })}`,
+    })
+    segments.push({
+      text: `${t('Total Cost')} ${formatLogQuota(log.quota)}`,
+      muted: true,
+    })
+  } else if (isTieredExpr && !codingPlanPrices) {
     if (tieredSummary) {
       const baseEntries = tieredSummary.priceEntries
         .filter((entry) => ['inputPrice', 'outputPrice'].includes(entry.field))
@@ -1019,8 +1029,10 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const segments = buildDetailSegments(log, other, t)
         const primary = segments[0]
         const hasMore = segments.length > 1
-        const showTimedPricing =
-          other != null && getDeepSeekV4TimedPricingDisplay(log, other) != null
+        const showPricingBreakdown =
+          other != null &&
+          (getDeepSeekV4TimedPricingDisplay(log, other) != null ||
+            getImageBillingBreakdown(other) != null)
 
         return (
           <>
@@ -1032,7 +1044,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 onClick={() => setDialogOpen(true)}
                 title={t('Click to view full details')}
               >
-                {showTimedPricing ? (
+                {showPricingBreakdown ? (
                   <span className='flex min-w-0 flex-col gap-0.5 leading-snug'>
                     {segments.map((segment) => (
                       <span

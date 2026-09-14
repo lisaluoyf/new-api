@@ -520,4 +520,9 @@ export const STATIC_I18N_KEYS = [
   'Failed to load',
   'Expired at',
   'Cancelled at',
+  'Image output (<= 2,610,000 pixels)',
+  'Image output (> 2,610,000 pixels)',
+  'Layer output (<= 2,610,000 pixels)',
+  'Layer output (> 2,610,000 pixels)',
+  'Paid input images',
 ] as const
