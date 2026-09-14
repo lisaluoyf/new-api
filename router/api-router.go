@@ -136,6 +136,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/referral_gpt_reward_logs", controller.GetReferralGPTRewardLogs)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
+				selfRoute.GET("/topup/self/:id/invoice", controller.DownloadTopupInvoice)
 				// first_topup_promo is below in the public userRoute section
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)
@@ -182,6 +183,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.GET("/topup/export", controller.ExportAllTopUps)
+				adminRoute.GET("/topup/:id/invoice", controller.AdminDownloadTopupInvoice)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/platega/orders", controller.AdminListPlategaOrders)
 				adminRoute.POST("/platega/query-status", controller.AdminQueryPlategaStatus)

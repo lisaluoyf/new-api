@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Invoice": "Invoice",
+    "Download invoice": "下载 Invoice",
+    "Failed to download invoice. Please try again.": "Invoice 下载失败，请重试。",
+    "Download invoice for order {{order}}": "下载订单 {{order}} 的 Invoice",
     "Seller protection": "卖家保障",
     "Partial seller protection": "部分卖家保障",
     "Item not received": "未收到商品",

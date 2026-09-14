@@ -407,8 +407,29 @@ export async function downloadAllBillingHistory(
 }
 
 /**
- * Complete a pending order (admin only)
+ * Download the server-generated invoice for a paid order.
  */
+export async function downloadTopupInvoice(
+  id: number,
+  isAdmin: boolean
+): Promise<void> {
+  const path = isAdmin
+    ? `/api/user/topup/${id}/invoice`
+    : `/api/user/topup/self/${id}/invoice`
+  const response = await api.get<Blob>(path, { responseType: 'blob' })
+  if (!response.data.type.includes('application/pdf')) {
+    throw new Error('Invalid invoice response')
+  }
+  const url = URL.createObjectURL(response.data)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `invoice-APIM-${id}.pdf`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export async function completeOrder(
   request: CompleteOrderRequest
 ): Promise<ApiResponse> {
@@ -496,9 +517,17 @@ export interface SignupGiftInfo {
   enabled: boolean
   benefit_type: 'wallet_credit' | 'trial_subscription' | 'none'
   trial_credit_usd?: number
-  offer_variant?: 'standard_20' | 'standard_30' | 'standard_50' | 'legacy_inviter_100'
+  offer_variant?:
+    | 'standard_20'
+    | 'standard_30'
+    | 'standard_50'
+    | 'legacy_inviter_100'
   share_trial_credit_usd?: number
-  share_offer_variant?: 'standard_20' | 'standard_30' | 'standard_50' | 'legacy_inviter_100'
+  share_offer_variant?:
+    | 'standard_20'
+    | 'standard_30'
+    | 'standard_50'
+    | 'legacy_inviter_100'
   referral_gpt_reward_enabled?: boolean
   referral_gpt_reward_usd?: number
   referral_gpt_min_topup_usd?: number

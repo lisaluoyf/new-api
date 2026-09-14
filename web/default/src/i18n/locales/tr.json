@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Invoice": "Fatura",
+    "Download invoice": "Faturayı indir",
+    "Failed to download invoice. Please try again.": "Fatura indirilemedi. Lütfen tekrar deneyin.",
+    "Download invoice for order {{order}}": "{{order}} siparişi için faturayı indir",
     "Refund pending": "İade bekleniyor",
     "Frozen balance": "Dondurulan bakiye",
     "Seller protection": "Satıcı koruması",

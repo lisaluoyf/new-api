@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Invoice": "Invoice",
+    "Download invoice": "下載 Invoice",
+    "Failed to download invoice. Please try again.": "Invoice 下載失敗，請重試。",
+    "Download invoice for order {{order}}": "下載訂單 {{order}} 的 Invoice",
     "Refund pending": "退款處理中",
     "Frozen balance": "凍結餘額",
     "Seller protection": "賣家保障",

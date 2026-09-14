@@ -41,6 +41,7 @@ import {
   formatPaidAmount,
 } from '../lib/billing'
 import type { TopupStatus } from '../types'
+import { InvoiceDownloadButton } from './invoice-download-button'
 import { PayPalProtectionBadge } from './paypal-protection-badge'
 import { RefundSummary } from './refund-summary'
 
@@ -172,7 +173,7 @@ export function TransactionHistory() {
     handleTransactionTypeChange,
     handleExport,
   } = useBillingHistory({ initialPageSize: 10 })
-  const colCount = isAdmin ? 9 : 6
+  const colCount = isAdmin ? 10 : 7
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -317,6 +318,9 @@ export function TransactionHistory() {
                 <th className='px-4 py-2.5 text-right font-medium'>
                   {t('Time')}
                 </th>
+                <th className='px-4 py-2.5 text-right font-medium'>
+                  {t('Invoice')}
+                </th>
               </tr>
             </thead>
             <tbody className='divide-y'>
@@ -355,6 +359,9 @@ export function TransactionHistory() {
                     </td>
                     <td className='px-4 py-3'>
                       <Skeleton className='ml-auto h-4 w-28' />
+                    </td>
+                    <td className='px-4 py-3'>
+                      <Skeleton className='ml-auto h-8 w-28' />
                     </td>
                   </tr>
                 ))
@@ -483,6 +490,12 @@ export function TransactionHistory() {
                       </td>
                       <td className='text-muted-foreground px-4 py-3 text-right text-xs whitespace-nowrap'>
                         {formatTimestamp(record.create_time)}
+                      </td>
+                      <td className='px-4 py-3 text-right'>
+                        <InvoiceDownloadButton
+                          record={record}
+                          isAdmin={isAdmin}
+                        />
                       </td>
                     </tr>
                   )

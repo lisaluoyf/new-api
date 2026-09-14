@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Invoice": "Invoice",
+    "Download invoice": "Unduh invoice",
+    "Failed to download invoice. Please try again.": "Gagal mengunduh invoice. Silakan coba lagi.",
+    "Download invoice for order {{order}}": "Unduh invoice untuk pesanan {{order}}",
     "Refund pending": "Pengembalian dana tertunda",
     "Frozen balance": "Saldo dibekukan",
     "Seller protection": "Perlindungan penjual",

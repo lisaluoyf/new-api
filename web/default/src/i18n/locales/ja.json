@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Invoice": "請求書",
+    "Download invoice": "請求書をダウンロード",
+    "Failed to download invoice. Please try again.": "請求書をダウンロードできませんでした。もう一度お試しください。",
+    "Download invoice for order {{order}}": "注文 {{order}} の請求書をダウンロード",
     "Refund pending": "返金処理中",
     "Frozen balance": "凍結残高",
     "Seller protection": "売り手保護",

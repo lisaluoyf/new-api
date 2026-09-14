@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Invoice": "Hóa đơn",
+    "Download invoice": "Tải hóa đơn",
+    "Failed to download invoice. Please try again.": "Không thể tải hóa đơn. Vui lòng thử lại.",
+    "Download invoice for order {{order}}": "Tải hóa đơn cho đơn hàng {{order}}",
     "Refund pending": "Đang xử lý hoàn tiền",
     "Frozen balance": "Số dư bị đóng băng",
     "Seller protection": "Bảo vệ người bán",

@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Invoice": "Invoice",
+    "Download invoice": "Download invoice",
+    "Failed to download invoice. Please try again.": "Failed to download invoice. Please try again.",
+    "Download invoice for order {{order}}": "Download invoice for order {{order}}",
     "Seller protection": "Seller protection",
     "Partial seller protection": "Partial seller protection",
     "Item not received": "Item not received",

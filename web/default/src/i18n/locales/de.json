@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Invoice": "Rechnung",
+    "Download invoice": "Rechnung herunterladen",
+    "Failed to download invoice. Please try again.": "Rechnung konnte nicht heruntergeladen werden. Bitte erneut versuchen.",
+    "Download invoice for order {{order}}": "Rechnung für Bestellung {{order}} herunterladen",
     "Refund pending": "Erstattung ausstehend",
     "Frozen balance": "Gesperrtes Guthaben",
     "Seller protection": "Verkäuferschutz",

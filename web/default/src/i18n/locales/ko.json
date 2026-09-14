@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Invoice": "인보이스",
+    "Download invoice": "인보이스 다운로드",
+    "Failed to download invoice. Please try again.": "인보이스를 다운로드하지 못했습니다. 다시 시도해 주세요.",
+    "Download invoice for order {{order}}": "주문 {{order}}의 인보이스 다운로드",
     "Refund pending": "환불 처리 중",
     "Frozen balance": "동결 잔액",
     "Seller protection": "판매자 보호",

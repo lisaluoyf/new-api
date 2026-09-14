@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Invoice": "Инвойс",
+    "Download invoice": "Скачать инвойс",
+    "Failed to download invoice. Please try again.": "Не удалось скачать инвойс. Попробуйте ещё раз.",
+    "Download invoice for order {{order}}": "Скачать инвойс для заказа {{order}}",
     "Refund pending": "Возврат обрабатывается",
     "Frozen balance": "Замороженный баланс",
     "Seller protection": "Защита продавца",
