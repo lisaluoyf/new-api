@@ -44,14 +44,28 @@ type channelHealthState struct {
 	rechargeN int // recharge-class errors in window (for fuzzy notify threshold)
 }
 
-var channelHealth sync.Map // int channelId -> *channelHealthState
+type channelHealthKey struct {
+	ChannelID int
+	Target    types.ChannelProbeTarget
+}
 
-func getChannelHealth(channelID int) *channelHealthState {
-	if v, ok := channelHealth.Load(channelID); ok {
+var channelHealth sync.Map // channelHealthKey -> *channelHealthState
+
+func healthKey(channelID int, targets []types.ChannelProbeTarget) channelHealthKey {
+	key := channelHealthKey{ChannelID: channelID}
+	if len(targets) > 0 {
+		key.Target = targets[0]
+	}
+	return key
+}
+
+func getChannelHealth(channelID int, targets ...types.ChannelProbeTarget) *channelHealthState {
+	key := healthKey(channelID, targets)
+	if v, ok := channelHealth.Load(key); ok {
 		return v.(*channelHealthState)
 	}
 	st := &channelHealthState{}
-	actual, _ := channelHealth.LoadOrStore(channelID, st)
+	actual, _ := channelHealth.LoadOrStore(key, st)
 	return actual.(*channelHealthState)
 }
 
@@ -80,11 +94,11 @@ func (s *channelHealthState) prune(now time.Time) {
 }
 
 // RecordChannelSuccess tracks a successful relay through a channel (for error-rate window).
-func RecordChannelSuccess(channelID int) {
+func RecordChannelSuccess(channelID int, targets ...types.ChannelProbeTarget) {
 	if channelID <= 0 {
 		return
 	}
-	st := getChannelHealth(channelID)
+	st := getChannelHealth(channelID, targets...)
 	now := time.Now()
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -92,8 +106,8 @@ func RecordChannelSuccess(channelID int) {
 	st.successes = append(st.successes, now)
 }
 
-func recordChannelErrorEvent(channelID int, category ChannelErrorCategory, statusCode int) {
-	st := getChannelHealth(channelID)
+func recordChannelErrorEvent(channelID int, category ChannelErrorCategory, statusCode int, targets ...types.ChannelProbeTarget) {
+	st := getChannelHealth(channelID, targets...)
 	now := time.Now()
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -105,7 +119,7 @@ func recordChannelErrorEvent(channelID int, category ChannelErrorCategory, statu
 }
 
 // EvaluateChannelHealth decides whether to disable or notify based on error class + sliding window.
-func EvaluateChannelHealth(channelError types.ChannelError, err *types.NewAPIError) (HealthAction, string) {
+func EvaluateChannelHealth(channelError types.ChannelError, err *types.NewAPIError, targets ...types.ChannelProbeTarget) (HealthAction, string) {
 	if !common.AutomaticDisableChannelEnabled || err == nil {
 		return HealthSkip, ""
 	}
@@ -114,7 +128,11 @@ func EvaluateChannelHealth(channelError types.ChannelError, err *types.NewAPIErr
 	}
 
 	category := ClassifyChannelError(err)
-	recordChannelErrorEvent(channelError.ChannelId, category, err.StatusCode)
+	// Balance exhaustion belongs to the upstream account, regardless of endpoint.
+	if category == CategoryUpstreamRecharge {
+		targets = nil
+	}
+	recordChannelErrorEvent(channelError.ChannelId, category, err.StatusCode, targets...)
 	if category == CategoryDisableWindow && isDistributorNoAvailableError(err) {
 		return HealthProbeBeforeDisable, "上游 distributor 无可用渠道"
 	}
@@ -123,7 +141,7 @@ func EvaluateChannelHealth(channelError types.ChannelError, err *types.NewAPIErr
 	case CategorySkip:
 		return HealthSkip, ""
 	case CategoryUpstreamRecharge:
-		st := getChannelHealth(channelError.ChannelId)
+		st := getChannelHealth(channelError.ChannelId, targets...)
 		st.mu.Lock()
 		rechargeCount := st.rechargeN
 		st.mu.Unlock()
@@ -136,13 +154,13 @@ func EvaluateChannelHealth(channelError types.ChannelError, err *types.NewAPIErr
 	case CategoryProbeBeforeDisable:
 		return HealthProbeBeforeDisable, err.ErrorWithStatusCode()
 	case CategoryRateLimitWindow:
-		if shouldDisableRateLimitWindow(channelError.ChannelId) {
-			return HealthProbeBeforeDisable, summarizeWindowReason(channelError.ChannelId, "429 rate-limit/cooldown")
+		if shouldDisableRateLimitWindow(channelError.ChannelId, targets...) {
+			return HealthProbeBeforeDisable, summarizeWindowReason(channelError.ChannelId, "429 rate-limit/cooldown", targets...)
 		}
 		return HealthSkip, ""
 	case CategoryDisableWindow:
-		if shouldDisableFaultWindow(channelError.ChannelId, err.StatusCode) {
-			return HealthProbeBeforeDisable, summarizeWindowReason(channelError.ChannelId, fmt.Sprintf("HTTP %d", err.StatusCode))
+		if shouldDisableFaultWindow(channelError.ChannelId, err.StatusCode, targets...) {
+			return HealthProbeBeforeDisable, summarizeWindowReason(channelError.ChannelId, fmt.Sprintf("HTTP %d", err.StatusCode), targets...)
 		}
 		return HealthSkip, ""
 	default:
@@ -158,8 +176,8 @@ func isDistributorNoAvailableError(err *types.NewAPIError) bool {
 	return strings.Contains(msg, "no available channel for model") || strings.Contains(msg, "无可用渠道")
 }
 
-func shouldDisableFaultWindow(channelID int, statusCode int) bool {
-	st := getChannelHealth(channelID)
+func shouldDisableFaultWindow(channelID int, statusCode int, targets ...types.ChannelProbeTarget) bool {
+	st := getChannelHealth(channelID, targets...)
 	now := time.Now()
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -202,8 +220,8 @@ func shouldDisableFaultWindow(channelID int, statusCode int) bool {
 	return false
 }
 
-func shouldDisableRateLimitWindow(channelID int) bool {
-	st := getChannelHealth(channelID)
+func shouldDisableRateLimitWindow(channelID int, targets ...types.ChannelProbeTarget) bool {
+	st := getChannelHealth(channelID, targets...)
 	now := time.Now()
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -217,8 +235,8 @@ func shouldDisableRateLimitWindow(channelID int) bool {
 	return n >= channelRateLimitThreshold
 }
 
-func summarizeWindowReason(channelID int, trigger string) string {
-	st := getChannelHealth(channelID)
+func summarizeWindowReason(channelID int, trigger string, targets ...types.ChannelProbeTarget) string {
+	st := getChannelHealth(channelID, targets...)
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	faultCount := 0
@@ -261,11 +279,20 @@ func RechargeErrorCountInWindow(channelID int) int {
 	return st.rechargeN
 }
 
-func ClearChannelHealth(channelID int) {
+func ClearChannelHealth(channelID int, targets ...types.ChannelProbeTarget) {
 	if channelID <= 0 {
 		return
 	}
-	channelHealth.Delete(channelID)
+	if len(targets) > 0 {
+		channelHealth.Delete(healthKey(channelID, targets))
+		return
+	}
+	channelHealth.Range(func(key, value any) bool {
+		if key.(channelHealthKey).ChannelID == channelID {
+			channelHealth.Delete(key)
+		}
+		return true
+	})
 }
 
 // resetChannelHealthForTest clears in-memory health state (tests only).

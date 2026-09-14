@@ -673,8 +673,13 @@ func automaticChannelTestModel(channel *model.Channel, requestedModel string) st
 // probeChannelForAutomation chooses the health-check implementation from the
 // structured client_exclusive setting. Claude Code/Codex-only channels use
 // their real CLI; all other channels retain the existing internal relay test.
-func probeChannelForAutomation(channel *model.Channel, requestedModel string) (testResult, int64) {
+func probeChannelForAutomation(channel *model.Channel, requestedModel string, targets ...types.ChannelProbeTarget) (testResult, int64) {
 	modelName := automaticChannelTestModel(channel, requestedModel)
+	for _, target := range targets {
+		if !target.Valid() || target.ModelName != modelName {
+			return testResult{localErr: errors.New("invalid saved channel probe target")}, 0
+		}
+	}
 	if service.ChannelRequiresClientExclusiveProbe(channel) {
 		ok, latencyMs, err := service.ProbeClientExclusiveChannel(context.Background(), channel, modelName)
 		if ok {
@@ -687,6 +692,16 @@ func probeChannelForAutomation(channel *model.Channel, requestedModel string) (t
 	}
 
 	tik := time.Now()
+	if len(targets) > 0 {
+		var result testResult
+		for _, target := range targets {
+			result = testChannel(channel, modelName, string(target.EndpointType), target.IsStream)
+			if result.localErr != nil || result.newAPIError != nil {
+				break
+			}
+		}
+		return result, time.Since(tik).Milliseconds()
+	}
 	result := testChannel(channel, modelName, "", shouldUseStreamForAutomaticChannelTest(channel))
 	return result, time.Since(tik).Milliseconds()
 }
@@ -1354,7 +1369,7 @@ func testCommonAutoDisabledChannels() error {
 				if !commonAutoReenableShouldProbeModel(disabledModel) {
 					continue
 				}
-				result, milliseconds := probeChannelForAutomation(channel, disabledModel.Model)
+				result, milliseconds := probeAutoDisabledModel(channel, disabledModel.Model)
 				recordCommonAutoReenableModelProbe(channel, disabledModel.Model, result, milliseconds)
 				if result.newAPIError == nil && result.localErr == nil {
 					service.EnableChannelModel(channel.Id, disabledModel.Model, channel.Name, channel.AutoDisabledModelVersion(disabledModel.Model))

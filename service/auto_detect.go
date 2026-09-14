@@ -361,6 +361,11 @@ func recoverModelForFingerprint(ch *model.Channel, targetModel string, updates m
 		if !ok {
 			return nil
 		}
+		// Fingerprint success does not validate the endpoint/mode that failed.
+		// The recovery worker must pass every persisted health probe target.
+		if _, requiresProbe := entry["probe_targets"]; requiresProbe {
+			return nil
+		}
 		passCount := autoDisabledModelPassCount(entry) + 1
 		if passCount < fingerprintRecoveryThreshold {
 			entry["pass_count"] = passCount

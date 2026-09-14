@@ -35,7 +35,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var channelDisableProbeRunning sync.Map // channelId -> struct{}
+var channelDisableProbeRunning sync.Map // channel ID + probe target -> struct{}
 
 func markOfficialFallbackChannel(c *gin.Context, channel *model.Channel) {
 	if c == nil || channel == nil {
@@ -356,7 +356,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if winnerId := c.GetInt(clientGoneHedgeWinnerChannelKey); winnerId > 0 {
 				successChannelId = winnerId
 			}
-			service.RecordChannelSuccess(successChannelId)
+			service.RecordChannelSuccess(successChannelId, relayProbeTarget(relayInfo))
 			if service.IsFreeModel(relayInfo.OriginModelName) {
 				service.RecordFreeModelSuccess(channel.Id, time.Since(attemptStartedAt))
 				service.MarkFreeModelAttemptSuccessForLog(c)
@@ -1296,7 +1296,11 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, err.Error()))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
-	action, reason := service.EvaluateChannelHealth(channelError, err)
+	target := relayProbeTarget(relayInfo)
+	action, reason := service.EvaluateChannelHealth(channelError, err, target)
+	if target.Valid() && reason != "" {
+		reason = target.String() + "; " + reason
+	}
 	if action != service.HealthSkip {
 		originalModel := strings.TrimSpace(c.GetString("original_model"))
 		gopool.Go(func() {
@@ -1306,12 +1310,12 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 				service.DisableChannel(channelError, reason)
 			case service.HealthDisableImmediate, service.HealthDisableWindow:
 				if originalModel != "" {
-					service.DisableChannelModel(channelError, originalModel, reason)
+					service.DisableChannelModel(channelError, originalModel, reason, target)
 				} else {
 					service.DisableChannel(channelError, reason)
 				}
 			case service.HealthProbeBeforeDisable:
-				probeBeforeDisablingChannel(channelError, err, reason, originalModel)
+				probeBeforeDisablingChannel(channelError, err, reason, originalModel, target)
 			}
 		})
 	}
@@ -1376,12 +1380,20 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 	}
 }
 
-func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *types.NewAPIError, originalReason string, modelName string) {
-	if _, loaded := channelDisableProbeRunning.LoadOrStore(channelError.ChannelId, struct{}{}); loaded {
+func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *types.NewAPIError, originalReason string, modelName string, targets ...types.ChannelProbeTarget) {
+	target := types.ChannelProbeTarget{ModelName: strings.TrimSpace(modelName)}
+	if len(targets) > 0 {
+		target = targets[0]
+	}
+	probeKey := struct {
+		ChannelID int
+		Target    types.ChannelProbeTarget
+	}{channelError.ChannelId, target}
+	if _, loaded := channelDisableProbeRunning.LoadOrStore(probeKey, struct{}{}); loaded {
 		common.SysLog(fmt.Sprintf("channel #%d disable probe already running, skip duplicate trigger", channelError.ChannelId))
 		return
 	}
-	defer channelDisableProbeRunning.Delete(channelError.ChannelId)
+	defer channelDisableProbeRunning.Delete(probeKey)
 
 	channel, getErr := model.GetChannelById(channelError.ChannelId, true)
 	if getErr != nil {
@@ -1394,6 +1406,9 @@ func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *t
 	}
 
 	modelName = strings.TrimSpace(modelName)
+	if _, manual := channel.GetManuallyDisabledModels()[modelName]; manual {
+		return
+	}
 	configured := false
 	for _, name := range channel.GetModels() {
 		if modelName != "" && strings.TrimSpace(name) == modelName {
@@ -1405,12 +1420,16 @@ func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *t
 		common.SysLog(fmt.Sprintf("channel #%d disable probe skipped: model %q is not configured", channel.Id, modelName))
 		return
 	}
-	result, latencyMs := probeChannelForAutomation(channel, modelName)
+	probeTargets := []types.ChannelProbeTarget(nil)
+	if target.Valid() {
+		probeTargets = append(probeTargets, target)
+	}
+	result, latencyMs := probeChannelForAutomation(channel, modelName, probeTargets...)
 	channel.UpdateResponseTime(latencyMs)
 
 	if result.newAPIError == nil && result.localErr == nil {
-		service.ClearChannelHealth(channelError.ChannelId)
-		service.RecordChannelSuccess(channelError.ChannelId)
+		service.ClearChannelHealth(channelError.ChannelId, target)
+		service.RecordChannelSuccess(channelError.ChannelId, target)
 		service.NotifyChannelDisableProbePassed(channelError, modelName, originalReason, latencyMs)
 		common.SysLog(fmt.Sprintf("channel #%d disable probe passed in %.2fs; skip auto disable", channelError.ChannelId, float64(latencyMs)/1000.0))
 		return
@@ -1443,7 +1462,7 @@ func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *t
 		service.NotifyUpstreamRecharge(channelError, classificationErr)
 		service.DisableChannel(channelError, reason)
 	case service.CategoryDisableImmediate, service.CategoryDisableWindow, service.CategoryRateLimitWindow, service.CategoryProbeBeforeDisable:
-		service.DisableChannelModel(channelError, modelName, reason)
+		service.DisableChannelModel(channelError, modelName, reason, probeTargets...)
 	}
 
 	if originalErr != nil {

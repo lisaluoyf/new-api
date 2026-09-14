@@ -3,10 +3,15 @@ package service
 import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/types"
 	"gorm.io/gorm"
 )
 
 func setAutomaticModelStatus(channelID int, modelName, reason string, enabled bool, source string, expectedVersions ...string) (bool, error) {
+	return setAutomaticModelStatusWithTargets(channelID, modelName, reason, enabled, source, nil, expectedVersions...)
+}
+
+func setAutomaticModelStatusWithTargets(channelID int, modelName, reason string, enabled bool, source string, targets []types.ChannelProbeTarget, expectedVersions ...string) (bool, error) {
 	reason = model.ChannelModelReasonSummary(reason)
 	changed := false
 	err := model.WithChannelOtherInfo(channelID, func(tx *gorm.DB, channel *model.Channel) error {
@@ -24,10 +29,32 @@ func setAutomaticModelStatus(channelID int, modelName, reason string, enabled bo
 		if enabled && len(expectedVersions) > 0 && channel.AutoDisabledModelVersion(modelName) != expectedVersions[0] {
 			return nil
 		}
+		var mergedTargets []types.ChannelProbeTarget
+		newTarget := false
+		if !enabled {
+			var err error
+			mergedTargets, err = channel.AutoDisabledModelProbeTargets(modelName)
+			if err != nil {
+				return err
+			}
+			for _, target := range targets {
+				if !target.Valid() || target.ModelName != modelName {
+					continue
+				}
+				found := false
+				for _, saved := range mergedTargets {
+					found = found || saved == target
+				}
+				if !found {
+					mergedTargets = append(mergedTargets, target)
+					newTarget = true
+				}
+			}
+		}
 		result := tx.Model(&model.Ability{}).
 			Where("channel_id = ? AND model = ? AND enabled = ?", channelID, modelName, !enabled).
 			Update("enabled", enabled)
-		if result.Error != nil || result.RowsAffected == 0 {
+		if result.Error != nil || (result.RowsAffected == 0 && !newTarget) {
 			return result.Error
 		}
 		action := "disable"
@@ -43,6 +70,9 @@ func setAutomaticModelStatus(channelID int, modelName, reason string, enabled bo
 		} else {
 			entry := newAutoDisabledModelEntry(common.GetTimestamp(), reason)
 			entry["event_id"] = event.ID
+			if len(mergedTargets) > 0 {
+				entry["probe_targets"] = mergedTargets
+			}
 			entries[modelName] = entry
 		}
 		if len(entries) == 0 {
