@@ -72,6 +72,7 @@ func TestRouteCandidateInputPriceStoredRowWinsOverManualPublicPricing(t *testing
 	got, ok := routeCandidateInputPrice(pricedRouteCandidate{
 		Setting:       &setting,
 		InputPrice:    0.75,
+		GroupRatio:    0.1, // Snapshot already includes the current manual multiplier.
 		HasInputPrice: true,
 	}, "gpt-5.4", 2.5)
 	if !ok {

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -11,6 +13,70 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestManualGroupRatioWithUnavailableUpstream(t *testing.T) {
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.ChannelModelPricing{}))
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(upstream.Close)
+	setting := `{"key_group":"Kimi","manual_group_ratio":0.65}`
+	baseURL := upstream.URL
+	recharge, markup := 0.148907, 1.0
+	channel := model.Channel{Id: 91, BaseURL: &baseURL, Key: "test-key", Setting: &setting,
+		RechargeRate: &recharge, ApimasterPriceRatio: &markup}
+	require.NoError(t, db.Create(&channel).Error)
+	require.NoError(t, db.Create(&model.ChannelModelPricing{
+		ChannelId: 91, ModelName: "kimi-k3", GroupRatio: 0.8, PricingSource: "api",
+		InputPrice: 16, OutputPrice: 80, CachePrice: 1.6, CacheCreationPrice: 3.2,
+	}).Error)
+
+	for _, test := range []struct {
+		name, setting string
+		wantRatio     float64
+	}{
+		{"channel default", setting, 0.65},
+		{"edited default", `{"manual_group_ratio":0.6}`, 0.6},
+		{"model wins", `{"manual_group_ratio":0.65,"model_group_ratios":{"kimi-k3":0.4}}`, 0.4},
+		{"remove model override", setting, 0.65},
+		{"remove default", `{"manual_group_ratio":0}`, 0.8},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 91).Update("setting", test.setting).Error)
+			channel.Setting = &test.setting
+			FetchChannelPricing(&channel)
+			want := 20 * test.wantRatio * recharge
+			prices, ok, err := ChannelUserPricesResolvedForModel(91, "kimi-k3")
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.InDelta(t, want, prices.InputPrice, 1e-9)
+			require.InDelta(t, want*5, prices.OutputPrice, 1e-9)
+			require.InDelta(t, want/10, prices.CachePrice, 1e-9)
+			require.InDelta(t, want/5, prices.CacheCreationPrice, 1e-9)
+			billing, ok := ChannelModelPriceData(91, "kimi-k3")
+			require.True(t, ok)
+			require.InDelta(t, want/2, billing.ModelRatio, 1e-9)
+			logged, err := ChannelActualPricesResolved(91, "kimi-k3")
+			require.NoError(t, err)
+			require.InDelta(t, want, logged.InputPrice, 1e-9)
+			routing, ok := routeCandidateUserInputPrice(pricedRouteCandidate{
+				Setting: &test.setting, HasInputPrice: true, InputPrice: 16, GroupRatio: 0.8,
+				RechargeRate: recharge, ApimasterPriceRatio: markup,
+			}, "kimi-k3", 0)
+			require.True(t, ok)
+			require.InDelta(t, want, routing, 1e-9)
+			stored, err := model.GetChannelModelPricing(91, "kimi-k3")
+			require.NoError(t, err)
+			require.Equal(t, 0.8, stored.GroupRatio)
+			require.Equal(t, 16.0, stored.InputPrice)
+		})
+	}
+}
 
 func TestEffectiveManualGroupRatio(t *testing.T) {
 	for _, test := range []struct {
