@@ -2,9 +2,23 @@ package service
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestExtractImageURLsFromResponseLayers(t *testing.T) {
+	body := []byte(`{"data":[{"url":"https://apimaster.ai/imgs/base.png","z_index":0},{"url":" https://apimaster.ai/imgs/layer.png ","z_index":1},{"url":"https://apimaster.ai/imgs/base.png"},{"url":"failed"},{"b64_json":"ignored"}]}`)
+	want := []string{"https://apimaster.ai/imgs/base.png", "https://apimaster.ai/imgs/layer.png"}
+	if got := ExtractImageURLsFromResponse(body); !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for _, body := range []string{`invalid`, `{"error":{"message":"failed"}}`, `{"data":[]}`} {
+		if got := ExtractImageURLsFromResponse([]byte(body)); len(got) != 0 {
+			t.Fatalf("unexpected results for %s: %v", body, got)
+		}
+	}
+}
 
 func TestExtractFirstImageURLFromResponse_syncData(t *testing.T) {
 	body := []byte(`{"created":1,"data":[{"url":"https://apimaster.ai/imgs/abc.png"}]}`)

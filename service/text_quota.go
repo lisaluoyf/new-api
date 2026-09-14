@@ -596,6 +596,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if resultURL := strings.TrimSpace(ctx.GetString("image_result_url")); resultURL != "" {
 		other["result_url"] = resultURL
 	}
+	if resultURLs := ctx.GetStringSlice("image_result_urls"); len(resultURLs) > 0 {
+		other["result_urls"] = resultURLs
+	}
 	if imageBilling, ok := ctx.Get("seedream_image_billing"); ok {
 		other["image_billing"] = imageBilling
 	}

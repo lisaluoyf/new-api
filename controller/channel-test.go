@@ -542,6 +542,9 @@ func buildTestLogOther(c *gin.Context, info *relaycommon.RelayInfo, priceData ty
 		if resultURL := strings.TrimSpace(c.GetString("image_result_url")); resultURL != "" {
 			other["result_url"] = resultURL
 		}
+		if resultURLs := c.GetStringSlice("image_result_urls"); len(resultURLs) > 0 {
+			other["result_urls"] = resultURLs
+		}
 	}
 	return other
 }

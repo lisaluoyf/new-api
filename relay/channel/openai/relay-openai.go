@@ -1392,6 +1392,10 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		}
 	}
 
+	if dto.IsSeedream5Pro(info.OriginModelName) {
+		c.Set("image_result_urls", service.ExtractImageURLsFromResponse(responseBody))
+	}
+
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 

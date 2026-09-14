@@ -7,6 +7,31 @@ import {
 } from './media-preview'
 
 describe('isLogMediaImageModel', () => {
+  test('previews Seedream generation and all decomposed layers', () => {
+    const model = 'doubao-seedream-5-0-pro-260628'
+    assert.equal(isLogMediaImageModel(` ${model.toUpperCase()} `), true)
+    const log = { type: 2, model_name: model } as never
+    const urls = [0, 1, 2, 3].map((n) => `/imgs/layer-${n}.png`)
+    assert.deepEqual(getLogMediaPreview(log, { result_url: urls[0] }), {
+      kind: 'image',
+      url: urls[0],
+      taskId: undefined,
+    })
+    assert.deepEqual(
+      getLogMediaPreview(log, {
+        result_url: urls[0],
+        result_urls: urls,
+      }),
+      { kind: 'image', url: urls[0], urls, taskId: undefined }
+    )
+    assert.equal(
+      getLogMediaPreview({ model_name: model, type: 5 } as never, {
+        result_url: urls[0],
+      }),
+      null
+    )
+  })
+
   test('recognizes both Midjourney models and preserves all unique result images', () => {
     for (const model of ['midjourney-v8.2', 'midjourney-niji-7']) {
       assert.equal(isLogMediaImageModel(model.toUpperCase()), true)

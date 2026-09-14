@@ -42,6 +42,7 @@ export function isLogMediaImageModel(modelName: string): boolean {
   const model = modelName.trim().toLowerCase()
   return (
     model.startsWith('gpt-image-2') ||
+    model === 'doubao-seedream-5-0-pro-260628' ||
     model === 'midjourney-v8.2' ||
     model === 'midjourney-niji-7' ||
     model.includes('flash-image') ||

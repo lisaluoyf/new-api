@@ -69,3 +69,14 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 	require.Equal(t, "base", other["matched_tier"])
 	require.NotEmpty(t, other["expr_b64"])
 }
+
+func TestBuildTestLogOtherPreservesImageGallery(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	urls := []string{"https://apimaster.ai/imgs/base.png", "https://apimaster.ai/imgs/layer.png"}
+	ctx.Set("image_result_url", urls[0])
+	ctx.Set("image_result_urls", urls)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
+	other := buildTestLogOther(ctx, info, types.PriceData{}, &dto.Usage{}, nil)
+	require.Equal(t, urls[0], other["result_url"])
+	require.Equal(t, urls, other["result_urls"])
+}

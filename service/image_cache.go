@@ -155,6 +155,28 @@ func RewriteImageResponseBodyWithHeaders(body []byte, headers map[string]string)
 	return out
 }
 
+// ExtractImageURLsFromResponse preserves the output order for synchronous image galleries.
+func ExtractImageURLsFromResponse(body []byte) []string {
+	var response struct {
+		Data []struct {
+			URL string `json:"url"`
+		} `json:"data"`
+	}
+	if err := common.Unmarshal(body, &response); err != nil {
+		return nil
+	}
+	var urls []string
+	seen := make(map[string]bool)
+	for _, item := range response.Data {
+		url := strings.TrimSpace(item.URL)
+		if IsValidMediaResultURL(url) && !seen[url] {
+			urls = append(urls, url)
+			seen[url] = true
+		}
+	}
+	return urls
+}
+
 // ExtractFirstImageURLFromResponse reads the first image URL from an OpenAI-style image response body.
 func ExtractFirstImageURLFromResponse(body []byte) string {
 	if len(body) == 0 {
