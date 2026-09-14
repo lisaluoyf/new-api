@@ -1,5 +1,15 @@
 {
   "translation": {
+    "Retry Decision": "Retry Decision",
+    "Retry allowed": "Retry allowed",
+    "Retry stopped": "Retry stopped",
+    "Upstream HTTP Status": "Upstream HTTP Status",
+    "Stream Output": "Stream Output",
+    "Heartbeat only": "Heartbeat only",
+    "Business output started": "Business output started",
+    "Response write failed": "Response write failed",
+    "Headers only": "Headers only",
+    "Not started": "Not started",
     "Invoice": "Invoice",
     "Download invoice": "Download invoice",
     "Failed to download invoice. Please try again.": "Failed to download invoice. Please try again.",

@@ -1,5 +1,15 @@
 {
   "translation": {
+    "Retry Decision": "Решение о повторе",
+    "Retry allowed": "Повтор разрешён",
+    "Retry stopped": "Повторы остановлены",
+    "Upstream HTTP Status": "HTTP-статус провайдера",
+    "Stream Output": "Вывод потока",
+    "Heartbeat only": "Только сигнал активности",
+    "Business output started": "Данные ответа уже отправлены",
+    "Response write failed": "Ошибка записи ответа",
+    "Headers only": "Только заголовки",
+    "Not started": "Не начато",
     "Invoice": "Инвойс",
     "Download invoice": "Скачать инвойс",
     "Failed to download invoice. Please try again.": "Не удалось скачать инвойс. Попробуйте ещё раз.",

@@ -124,7 +124,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			}
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
 			if relayInfo != nil && relayInfo.IsStream && c.Writer.Written() {
-				// A normal JSON error would corrupt an already-started SSE response.
+				writeStartedStreamError(c, relayFormat, newAPIError)
 				return
 			}
 			responseError := newAPIError
@@ -167,6 +167,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
+	}
+	if relayInfo.IsStream && relayFormat != types.RelayFormatOpenAIRealtime {
+		c.Writer = helper.NewStreamResponseWriter(c.Writer)
 	}
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
@@ -312,8 +315,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		addUsedChannel(c, channel.Id)
 		setFingerprintRouteTrace(c, channel.Id)
 		if service.IsFreeModel(relayInfo.OriginModelName) && relayInfo.IsStream {
-			// A keepalive frame would commit the client response before an upstream
-			// model has produced a valid first frame, making safe fallback impossible.
+			// Preserve an HTTP error status if every free candidate fails before
+			// producing output; a heartbeat would commit HTTP 200 early.
 			relayInfo.DisablePing = true
 		}
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
@@ -366,10 +369,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
-		if relayInfo.IsStream && c.Writer.Written() {
-			writeStartedStreamError(c, relayFormat, newAPIError)
-		}
-
 		remainingRetries := maxRetries - retryParam.GetRetry()
 		retryDecision := evaluateRetry(c, newAPIError, retryParam.GetRetry(), remainingRetries)
 		if service.IsFreeModel(relayInfo.OriginModelName) {
@@ -425,20 +424,34 @@ func writeStartedStreamError(c *gin.Context, relayFormat types.RelayFormat, rela
 	if c == nil || relayErr == nil || c.GetBool("stream_terminal_error_written") {
 		return
 	}
+	if c.Request != nil && c.Request.Context().Err() != nil {
+		return
+	}
 	c.Set("stream_terminal_error_written", true)
 	code := string(relayErr.GetErrorCode())
 	if service.IsFreeModel(c.GetString("original_model")) {
 		code = "free_model_stream_error"
 	}
-	message := "The stream ended unexpectedly"
+	message := common.MessageWithRequestId("The stream ended unexpectedly", c.GetString(common.RequestIdKey))
 	if relayFormat == types.RelayFormatClaude {
 		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: gin.H{"type": code, "message": message}})
 		return
 	}
+	if relayFormat == types.RelayFormatOpenAIResponses {
+		event := gin.H{"type": "error", "code": code, "message": message, "param": nil}
+		if !helper.HasStreamBusinessOutput(c) {
+			event["sequence_number"] = 0
+		}
+		payload, err := common.Marshal(event)
+		if err == nil {
+			_, _ = c.Writer.WriteString("event: error\ndata: " + string(payload) + "\n\n")
+			_ = helper.FlushWriter(c)
+		}
+		return
+	}
 	payload, err := common.Marshal(gin.H{"error": gin.H{"code": code, "message": message, "type": "stream_error"}})
 	if err == nil {
-		c.Render(-1, common.CustomEvent{Data: "event: error\ndata: " + string(payload) + "\n"})
-		_ = helper.FlushWriter(c)
+		_ = helper.StringData(c, string(payload))
 	}
 }
 
@@ -937,7 +950,11 @@ func setRetryDecision(c *gin.Context, decision retryDecision) {
 	if c == nil {
 		return
 	}
-	c.Set("retry_decision", retryDecisionToMap(decision))
+	detail := retryDecisionToMap(decision)
+	if common.GetContextKeyBool(c, constant.ContextKeyIsStream) {
+		detail["stream_output_state"] = helper.StreamOutputState(c)
+	}
+	c.Set("retry_decision", detail)
 }
 
 func setTaskRetryDecision(c *gin.Context, decision taskRetryDecision) {
@@ -987,7 +1004,7 @@ func evaluateRetry(c *gin.Context, openaiErr *types.NewAPIError, retryIndex int,
 		decision.Reason = "client_canceled"
 		return decision
 	}
-	if c != nil && c.Writer != nil && c.Writer.Written() && common.GetContextKeyBool(c, constant.ContextKeyIsStream) {
+	if c != nil && common.GetContextKeyBool(c, constant.ContextKeyIsStream) && helper.HasStreamBusinessOutput(c) {
 		decision.Reason = "stream_already_started"
 		return decision
 	}
@@ -1080,7 +1097,7 @@ func evaluateFreeModelRetry(c *gin.Context, openaiErr *types.NewAPIError, retryI
 		decision.Reason = "client_canceled"
 		return decision
 	}
-	if c != nil && c.Writer != nil && c.Writer.Written() && (common.GetContextKeyBool(c, constant.ContextKeyIsStream) || c.GetBool("stream_terminal_error_written")) {
+	if c != nil && helper.HasStreamBusinessOutput(c) && (common.GetContextKeyBool(c, constant.ContextKeyIsStream) || c.GetBool("stream_terminal_error_written")) {
 		decision.Reason = "stream_already_started"
 		return decision
 	}

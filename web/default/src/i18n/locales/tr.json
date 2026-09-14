@@ -1,5 +1,15 @@
 {
   "translation": {
+    "Retry Decision": "Yeniden deneme kararı",
+    "Retry allowed": "Yeniden denemeye izin verildi",
+    "Retry stopped": "Yeniden deneme durduruldu",
+    "Upstream HTTP Status": "Sağlayıcı HTTP durumu",
+    "Stream Output": "Akış çıktısı",
+    "Heartbeat only": "Yalnızca bağlantı sinyali",
+    "Business output started": "Yanıt verileri gönderildi",
+    "Response write failed": "Yanıt yazma başarısız",
+    "Headers only": "Yalnızca başlıklar",
+    "Not started": "Başlamadı",
     "Invoice": "Fatura",
     "Download invoice": "Faturayı indir",
     "Failed to download invoice. Please try again.": "Fatura indirilemedi. Lütfen tekrar deneyin.",

@@ -1,5 +1,15 @@
 {
   "translation": {
+    "Retry Decision": "재시도 결정",
+    "Retry allowed": "재시도 허용",
+    "Retry stopped": "재시도 중지",
+    "Upstream HTTP Status": "업스트림 HTTP 상태",
+    "Stream Output": "스트림 출력",
+    "Heartbeat only": "하트비트만 전송",
+    "Business output started": "응답 데이터 출력 시작됨",
+    "Response write failed": "응답 쓰기 실패",
+    "Headers only": "헤더만 전송",
+    "Not started": "시작 전",
     "Invoice": "인보이스",
     "Download invoice": "인보이스 다운로드",
     "Failed to download invoice. Please try again.": "인보이스를 다운로드하지 못했습니다. 다시 시도해 주세요.",

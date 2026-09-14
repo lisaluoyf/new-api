@@ -1,5 +1,15 @@
 {
   "translation": {
+    "Retry Decision": "Quyết định thử lại",
+    "Retry allowed": "Cho phép thử lại",
+    "Retry stopped": "Dừng thử lại",
+    "Upstream HTTP Status": "Trạng thái HTTP nhà cung cấp",
+    "Stream Output": "Đầu ra luồng",
+    "Heartbeat only": "Chỉ tín hiệu duy trì",
+    "Business output started": "Đã gửi dữ liệu phản hồi",
+    "Response write failed": "Ghi phản hồi thất bại",
+    "Headers only": "Chỉ tiêu đề",
+    "Not started": "Chưa bắt đầu",
     "Invoice": "Hóa đơn",
     "Download invoice": "Tải hóa đơn",
     "Failed to download invoice. Please try again.": "Không thể tải hóa đơn. Vui lòng thử lại.",

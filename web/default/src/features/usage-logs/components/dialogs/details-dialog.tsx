@@ -593,6 +593,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const useChannel = other?.admin_info?.use_channel
   const channelChain =
     useChannel && useChannel.length > 0 ? useChannel.join(' → ') : undefined
+  const retryDecision = other?.admin_info?.retry_decision
+  const streamOutputLabels: Record<string, string> = {
+    heartbeat_only: t('Heartbeat only'),
+    business_output: t('Business output started'),
+    write_failed: t('Response write failed'),
+    headers_only: t('Headers only'),
+    not_started: t('Not started'),
+  }
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -650,6 +658,42 @@ export function DetailsDialog(props: DetailsDialogProps) {
 
               {channelChain && props.isAdmin && (
                 <DetailRow label={t('Retry Chain')} value={channelChain} mono />
+              )}
+
+              {retryDecision && props.isAdmin && (
+                <>
+                  <DetailRow
+                    label={t('Retry Decision')}
+                    value={
+                      retryDecision.should_retry
+                        ? t('Retry allowed')
+                        : t('Retry stopped')
+                    }
+                  />
+                  {retryDecision.reason && (
+                    <DetailRow
+                      label={t('Reason')}
+                      value={retryDecision.reason}
+                      mono
+                    />
+                  )}
+                  {retryDecision.status_code !== undefined && (
+                    <DetailRow
+                      label={t('Upstream HTTP Status')}
+                      value={retryDecision.status_code}
+                      mono
+                    />
+                  )}
+                  {retryDecision.stream_output_state && (
+                    <DetailRow
+                      label={t('Stream Output')}
+                      value={
+                        streamOutputLabels[retryDecision.stream_output_state] ||
+                        retryDecision.stream_output_state
+                      }
+                    />
+                  )}
+                </>
               )}
 
               {props.log.token_name && (

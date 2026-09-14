@@ -1,5 +1,15 @@
 {
   "translation": {
+    "Retry Decision": "重試決定",
+    "Retry allowed": "允許重試",
+    "Retry stopped": "停止重試",
+    "Upstream HTTP Status": "上游 HTTP 狀態",
+    "Stream Output": "串流輸出",
+    "Heartbeat only": "僅傳送心跳",
+    "Business output started": "已輸出業務內容",
+    "Response write failed": "回應寫入失敗",
+    "Headers only": "僅傳送回應標頭",
+    "Not started": "尚未開始",
     "Invoice": "Invoice",
     "Download invoice": "下載 Invoice",
     "Failed to download invoice. Please try again.": "Invoice 下載失敗，請重試。",

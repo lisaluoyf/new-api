@@ -1,5 +1,15 @@
 {
   "translation": {
+    "Retry Decision": "Keputusan percobaan ulang",
+    "Retry allowed": "Percobaan ulang diizinkan",
+    "Retry stopped": "Percobaan ulang dihentikan",
+    "Upstream HTTP Status": "Status HTTP penyedia",
+    "Stream Output": "Keluaran aliran",
+    "Heartbeat only": "Hanya heartbeat",
+    "Business output started": "Data respons sudah dikirim",
+    "Response write failed": "Gagal menulis respons",
+    "Headers only": "Hanya header",
+    "Not started": "Belum dimulai",
     "Invoice": "Invoice",
     "Download invoice": "Unduh invoice",
     "Failed to download invoice. Please try again.": "Gagal mengunduh invoice. Silakan coba lagi.",

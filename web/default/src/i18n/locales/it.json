@@ -1,5 +1,15 @@
 {
   "translation": {
+    "Retry Decision": "Decisione sul tentativo",
+    "Retry allowed": "Nuovo tentativo consentito",
+    "Retry stopped": "Tentativi interrotti",
+    "Upstream HTTP Status": "Stato HTTP del provider",
+    "Stream Output": "Output del flusso",
+    "Heartbeat only": "Solo heartbeat",
+    "Business output started": "Dati della risposta già inviati",
+    "Response write failed": "Scrittura della risposta non riuscita",
+    "Headers only": "Solo intestazioni",
+    "Not started": "Non avviato",
     "Invoice": "Fattura",
     "Download invoice": "Scarica fattura",
     "Failed to download invoice. Please try again.": "Impossibile scaricare la fattura. Riprova.",

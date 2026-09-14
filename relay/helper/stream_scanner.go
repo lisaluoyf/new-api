@@ -152,31 +152,18 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 					if c.GetBool(ContextKeySuppressStreamPing) {
 						continue
 					}
-					// 使用超时机制防止写操作阻塞
-					done := make(chan error, 1)
-					gopool.Go(func() {
-						writeMutex.Lock()
-						defer writeMutex.Unlock()
-						done <- PingData(c)
-					})
-
-					select {
-					case err := <-done:
-						if err != nil {
-							logger.LogError(c, "ping data error: "+err.Error())
-							info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, err)
-							return
-						}
-						if common.DebugEnabled {
-							println("ping data sent")
-						}
-					case <-time.After(10 * time.Second):
-						logger.LogError(c, "ping data send timeout")
-						info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, fmt.Errorf("ping send timeout"))
+					// Keep the write in this tracked goroutine so it cannot outlive
+					// scanner cleanup and write into a fallback attempt.
+					writeMutex.Lock()
+					if ctx.Err() != nil || c.Request.Context().Err() != nil {
+						writeMutex.Unlock()
 						return
-					case <-ctx.Done():
-						return
-					case <-stopChan:
+					}
+					err := PingData(c)
+					writeMutex.Unlock()
+					if err != nil {
+						logger.LogError(c, "ping data error: "+err.Error())
+						info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, err)
 						return
 					}
 				case <-ctx.Done():

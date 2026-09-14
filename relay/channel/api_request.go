@@ -441,8 +441,10 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 
 func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) context.CancelFunc {
 	pingerCtx, stopPinger := context.WithCancel(context.Background())
+	done := make(chan struct{})
 
 	gopool.Go(func() {
+		defer close(done)
 		defer func() {
 			// 增加panic恢复处理
 			if r := recover(); r != nil {
@@ -468,7 +470,6 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) context.Canc
 			}
 		}()
 
-		var pingMutex sync.Mutex
 		if common2.DebugEnabled {
 			println("SSE ping goroutine started")
 		}
@@ -482,7 +483,10 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) context.Canc
 			select {
 			// 发送 ping 数据
 			case <-ticker.C:
-				if err := sendPingData(c, &pingMutex); err != nil {
+				if pingerCtx.Err() != nil || c.GetBool(helper.ContextKeySuppressStreamPing) {
+					continue
+				}
+				if err := helper.PingData(c); err != nil {
 					if common2.DebugEnabled {
 						println("SSE ping error, stopping goroutine:", err.Error())
 					}
@@ -504,37 +508,11 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) context.Canc
 		}
 	})
 
-	return stopPinger
-}
-
-func sendPingData(c *gin.Context, mutex *sync.Mutex) error {
-	// 增加超时控制，防止锁死等待
-	done := make(chan error, 1)
-	go func() {
-		mutex.Lock()
-		defer mutex.Unlock()
-
-		err := helper.PingData(c)
-		if err != nil {
-			logger.LogError(c, "SSE ping error: "+err.Error())
-			done <- err
-			return
-		}
-
-		if common2.DebugEnabled {
-			println("SSE ping data sent.")
-		}
-		done <- nil
-	}()
-
-	// 设置发送ping数据的超时时间
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(10 * time.Second):
-		return errors.New("SSE ping data send timeout")
-	case <-c.Request.Context().Done():
-		return errors.New("request context cancelled during ping")
+	return func() {
+		stopPinger()
+		// Do not let an old attempt write into the next attempt's response.
+		// StreamResponseWriter bounds heartbeat network writes with a deadline.
+		<-done
 	}
 }
 

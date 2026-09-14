@@ -97,6 +97,12 @@ export interface LogOtherData {
     is_multi_key?: boolean
     multi_key_index?: number
     use_channel?: number[]
+    retry_decision?: {
+      should_retry?: boolean
+      reason?: string
+      status_code?: number
+      stream_output_state?: string
+    }
     local_count_tokens?: boolean
     channel_affinity?: ChannelAffinityInfo
     // Top-up audit fields (type=1, admin only)

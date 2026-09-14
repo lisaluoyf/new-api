@@ -1,5 +1,15 @@
 {
   "translation": {
+    "Retry Decision": "再試行の判定",
+    "Retry allowed": "再試行を許可",
+    "Retry stopped": "再試行を停止",
+    "Upstream HTTP Status": "上流 HTTP ステータス",
+    "Stream Output": "ストリーム出力",
+    "Heartbeat only": "ハートビートのみ",
+    "Business output started": "応答データの出力開始済み",
+    "Response write failed": "応答の書き込み失敗",
+    "Headers only": "ヘッダーのみ",
+    "Not started": "未開始",
     "Invoice": "請求書",
     "Download invoice": "請求書をダウンロード",
     "Failed to download invoice. Please try again.": "請求書をダウンロードできませんでした。もう一度お試しください。",
