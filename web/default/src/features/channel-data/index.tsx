@@ -222,6 +222,11 @@ function fmtPrice(price: number | null | undefined): string {
 }
 
 const MEDIA_VARIANT_ORDER = [
+  'Image Output',
+  'High-Resolution Image Output',
+  'Layer Image Output',
+  'High-Resolution Layer Image Output',
+  'Image Input (after first)',
   'relax',
   'fast',
   'turbo',
@@ -362,6 +367,7 @@ const STATUS_LABEL_KEY: Record<string, string> = {
 }
 
 const NON_LLM_MODEL_IDS = new Set([
+  'doubao-seedream-5-0-pro-260628',
   'midjourney-v8.2',
   'midjourney-niji-7',
   'gemini-2.5-flash-image',
@@ -396,6 +402,7 @@ const VIDEO_MODEL_IDS = new Set([
 ])
 
 const IMAGE_MODEL_IDS = new Set([
+  'doubao-seedream-5-0-pro-260628',
   'gemini-2.5-flash-image',
   'gemini-3-pro-image',
   'gemini-3.1-flash-image',

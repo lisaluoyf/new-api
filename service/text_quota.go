@@ -596,6 +596,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if resultURL := strings.TrimSpace(ctx.GetString("image_result_url")); resultURL != "" {
 		other["result_url"] = resultURL
 	}
+	if imageBilling, ok := ctx.Get("seedream_image_billing"); ok {
+		other["image_billing"] = imageBilling
+	}
 	if requestData := ImageRequestDataFromContext(ctx); len(requestData) > 0 {
 		other["request_data"] = requestData
 	}
@@ -620,6 +623,14 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		if imageCount := coerceRequestInt(requestData["actual_image_count"]); imageCount > 0 {
 			accountingInput.BillingMode = accountingBillingModeImageCount
 			accountingInput.ImageCount = imageCount
+		}
+	}
+
+	if billing, ok := ctx.Get("seedream_image_billing"); ok {
+		if details, ok := billing.(map[string]interface{}); ok {
+			accountingInput.BillingMode = accountingBillingModeImageCount
+			accountingInput.ImageCount, _ = details["generated_images"].(int)
+			accountingInput.ImageBaseUnits = relayInfo.PriceData.OtherRatios["seedream_images"]
 		}
 	}
 

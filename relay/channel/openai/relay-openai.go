@@ -1366,6 +1366,12 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
+	if dto.IsSeedream5Pro(info.OriginModelName) {
+		if err := service.ApplySeedreamImageBilling(c, info, responseBody); err != nil {
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+		}
+	}
+
 	// Rewrite upstream image URLs before returning to client (sync responses).
 	if info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits {
 		// gpt-image-2 strips response_format upstream (no enabled channel accepts it),

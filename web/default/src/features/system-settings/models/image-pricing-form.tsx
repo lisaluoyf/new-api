@@ -42,6 +42,18 @@ type PricingRow = {
 }
 
 const DEFAULT_PRICING: Record<string, ImagePricingConfig> = {
+  'doubao-seedream-5-0-pro-260628': {
+    unit: 'image',
+    base_price: 0.045,
+    base_variant: 'Image Output',
+    prices: {
+      'Image Output': 0.045,
+      'High-Resolution Image Output': 0.09,
+      'Layer Image Output': 0.0225,
+      'High-Resolution Layer Image Output': 0.045,
+      'Image Input (after first)': 0.003,
+    },
+  },
   'gemini-2.5-flash-image': {
     unit: 'image',
     base_price: 0.039,

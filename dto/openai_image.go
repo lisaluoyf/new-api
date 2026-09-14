@@ -175,6 +175,10 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 // EffectiveResolutionTier returns the billing resolution tier before channel
 // adaptors rewrite resolution/size for their upstream-specific wire format.
 func (i *ImageRequest) EffectiveResolutionTier() string {
+	if i != nil && IsSeedream5Pro(i.Model) {
+		// Actual output pixels and input images are settled from the response.
+		return "Image Output"
+	}
 	if i == nil {
 		return "1K"
 	}

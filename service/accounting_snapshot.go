@@ -20,6 +20,7 @@ type ConsumeAccountingInput struct {
 	CacheWriteTokens         int
 	BillingMode              string
 	ImageCount               int
+	ImageBaseUnits           float64
 	DurationSeconds          int
 	GroupRatio               float64
 	Quota                    int
@@ -37,6 +38,7 @@ type accountingPriceTuple struct {
 
 type consumeAccountingSnapshot struct {
 	Version                  int                `json:"version"`
+	ImageBaseUnits           float64            `json:"image_base_units,omitempty"`
 	Currency                 string             `json:"currency"`
 	Status                   string             `json:"status"`
 	Error                    string             `json:"error,omitempty"`
@@ -82,6 +84,7 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 	}
 	snap := consumeAccountingSnapshot{
 		Version:                  2,
+		ImageBaseUnits:           input.ImageBaseUnits,
 		Currency:                 "USD",
 		Status:                   "ok",
 		UserId:                   input.UserId,
@@ -247,6 +250,9 @@ func tupleFromChannelPrices(p *model.ChannelActualPrices) accountingPriceTuple {
 func amountUSD(prices accountingPriceTuple, input ConsumeAccountingInput) float64 {
 	switch normalizedAccountingBillingMode(input) {
 	case accountingBillingModeImageCount:
+		if input.ImageBaseUnits > 0 {
+			return prices.InputPrice * input.ImageBaseUnits
+		}
 		if input.ImageCount > 0 {
 			return prices.InputPrice * float64(input.ImageCount)
 		}

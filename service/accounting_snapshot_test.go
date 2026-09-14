@@ -115,3 +115,11 @@ func TestUserAmountsUSDZeroUserCharge(t *testing.T) {
 	require.Zero(t, userPriceAmountUSD)
 	require.Zero(t, userFinalAmountUSD)
 }
+
+func TestSeedreamWeightedImageAccounting(t *testing.T) {
+	input := ConsumeAccountingInput{BillingMode: accountingBillingModeImageCount, ImageCount: 4, ImageBaseUnits: 2.5}
+	got := amountUSD(accountingPriceTuple{InputPrice: 0.045}, input)
+	if got < 0.1124999999 || got > 0.1125000001 {
+		t.Fatalf("got %v", got)
+	}
+}
