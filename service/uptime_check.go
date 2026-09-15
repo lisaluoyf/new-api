@@ -93,7 +93,7 @@ func ProbeModelCandidates(canonical string, modelMapping *string) []string {
 
 var uptimeOnce sync.Once
 
-// StartUptimeCheckTask periodically sends a tiny probe ("hi") to each enabled
+// StartUptimeCheckTask periodically sends a small probe to each enabled
 // (channel × model) pair where uptime_enabled=true. A non-empty response = pass;
 // any error = notcomplete. Results are stored in channel_detect_logs with
 // source='uptime' so they're separable from fingerprint runs in the UI.
@@ -174,7 +174,7 @@ func lastUptimeTime(channelId int, modelName string) int64 {
 	return row.DetectTime
 }
 
-// probeOneChannel sends a minimal chat completion ("hi", max_tokens=5) and records
+// probeOneChannel sends a small completion (with a channel-specific task where needed) and records
 // the result. Pass = HTTP 200 with non-empty content; everything else = notcomplete.
 //
 // Mirrors Flask's resolve_base_url + resolve_target_model: tries multiple URL
@@ -270,7 +270,7 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 
 		urlStillBad := false
 		for _, m := range modelCandidates {
-			result, err := sendUptimeProbe(ctx, client, endpoint, apiKey, m)
+			result, err := sendUptimeProbe(ctx, client, endpoint, apiKey, m, ch)
 			lastLatency = result.LatencyMs
 			if err != nil {
 				switch err.kind {
@@ -333,11 +333,15 @@ type probeResult struct {
 }
 
 // sendUptimeProbe performs one HTTP request. Returns nil error on success.
-func sendUptimeProbe(ctx context.Context, client *http.Client, endpoint, apiKey, modelName string) (probeResult, *probeError) {
+func sendUptimeProbe(ctx context.Context, client *http.Client, endpoint, apiKey, modelName string, channel *model.Channel) (probeResult, *probeError) {
+	prompt, maxTokens := uptimeProbePrompt, uint(uptimeProbeMaxTokens)
+	if text, limit, ok := ChannelCodeReviewProbe(channel); ok {
+		prompt, maxTokens = text, limit
+	}
 	body, err := common.Marshal(map[string]any{
 		"model":      modelName,
-		"messages":   []map[string]string{{"role": "user", "content": uptimeProbePrompt}},
-		"max_tokens": uptimeProbeMaxTokens,
+		"messages":   []map[string]string{{"role": "user", "content": prompt}},
+		"max_tokens": maxTokens,
 		"stream":     true,
 	})
 	if err != nil {

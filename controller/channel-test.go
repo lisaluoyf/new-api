@@ -736,6 +736,30 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 }
 
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+	request := buildDefaultTestRequest(model, endpointType, channel, isStream)
+	prompt, maxTokens, ok := service.ChannelCodeReviewProbe(channel)
+	if !ok {
+		return request
+	}
+	switch req := request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		req.Messages = []dto.Message{{Role: "user", Content: prompt}}
+		if req.MaxCompletionTokens != nil {
+			req.MaxCompletionTokens = lo.ToPtr(maxTokens)
+		} else {
+			req.MaxTokens = lo.ToPtr(maxTokens)
+		}
+	case *dto.OpenAIResponsesRequest:
+		input, err := common.Marshal([]dto.Message{{Role: "user", Content: prompt}})
+		if err == nil {
+			req.Input = input
+			req.MaxOutputTokens = lo.ToPtr(maxTokens)
+		}
+	}
+	return request
+}
+
+func buildDefaultTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
 	testResponsesInput := json.RawMessage(`[{"role":"user","content":"hi"}]`)
 
 	// 根据端点类型构建不同的测试请求
