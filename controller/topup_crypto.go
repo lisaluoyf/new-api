@@ -3,6 +3,9 @@ package controller
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,6 +33,7 @@ import (
 )
 
 type cryptoChainConfig struct {
+	kind           string
 	rpcEnvKey      string
 	defaultRPCs    []string
 	usdtAddress    string
@@ -38,6 +42,7 @@ type cryptoChainConfig struct {
 	usdcDecimals   int
 	nativeCGID     string
 	nativeDecimals int
+	platformEnvKey string
 }
 
 const transferEventTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
@@ -99,11 +104,22 @@ var cryptoChains = map[string]cryptoChainConfig{
 		nativeCGID:     "ethereum",
 		nativeDecimals: 18,
 	},
+	"tron": {
+		kind: "tron", rpcEnvKey: "CRYPTO_RPC_TRON", defaultRPCs: []string{"https://api.trongrid.io"},
+		usdtAddress: "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj", usdtDecimals: 6,
+		nativeCGID: "tron", nativeDecimals: 6, platformEnvKey: "PLATFORM_TRON_WALLET_ADDRESS",
+	},
+	"solana": {
+		kind: "solana", rpcEnvKey: "CRYPTO_RPC_SOLANA", defaultRPCs: []string{"https://api.mainnet-beta.solana.com"},
+		usdtAddress: "Es9vMFrzaCERmJfrF4H2FYDq9wHnbWkqHqrjL4FhMuJ", usdtDecimals: 6,
+		nativeCGID: "solana", nativeDecimals: 9, platformEnvKey: "PLATFORM_SOLANA_WALLET_ADDRESS",
+	},
 }
 
 var (
 	evmAddressPattern = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
 	txHashPattern     = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
+	base58Pattern     = regexp.MustCompile(`^[1-9A-HJ-NP-Za-km-z]+$`)
 )
 
 func cryptoShortValue(value string) string {
@@ -150,6 +166,13 @@ func getPlatformWallet() string {
 		wallet = "0x33de43dad6955655ec0543f32069ac331e633c9c"
 	}
 	return strings.ToLower(strings.TrimSpace(wallet))
+}
+
+func getPlatformWalletForChain(chain string) string {
+	if cfg, ok := cryptoChains[strings.ToLower(strings.TrimSpace(chain))]; ok && cfg.platformEnvKey != "" {
+		return strings.TrimSpace(os.Getenv(cfg.platformEnvKey))
+	}
+	return getPlatformWallet()
 }
 
 func getRPCs(cfg cryptoChainConfig) []string {
@@ -243,8 +266,107 @@ func isValidEVMAddress(value string) bool {
 	return evmAddressPattern.MatchString(strings.TrimSpace(value))
 }
 
-func isValidTxHash(value string) bool {
-	return txHashPattern.MatchString(strings.TrimSpace(value))
+func decodeBase58(value string) ([]byte, error) {
+	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	value = strings.TrimSpace(value)
+	if value == "" || !base58Pattern.MatchString(value) {
+		return nil, fmt.Errorf("invalid base58 value")
+	}
+	number := big.NewInt(0)
+	base := big.NewInt(58)
+	for _, char := range value {
+		index := strings.IndexRune(alphabet, char)
+		if index < 0 {
+			return nil, fmt.Errorf("invalid base58 character")
+		}
+		number.Mul(number, base)
+		number.Add(number, big.NewInt(int64(index)))
+	}
+	decoded := number.Bytes()
+	leading := 0
+	for leading < len(value) && value[leading] == '1' {
+		leading++
+	}
+	return append(make([]byte, leading), decoded...), nil
+}
+
+func encodeBase58(value []byte) string {
+	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	number := new(big.Int).SetBytes(value)
+	base := big.NewInt(58)
+	zero := big.NewInt(0)
+	mod := new(big.Int)
+	encoded := make([]byte, 0, len(value)*2)
+	for number.Cmp(zero) > 0 {
+		number.DivMod(number, base, mod)
+		encoded = append(encoded, alphabet[mod.Int64()])
+	}
+	for _, current := range value {
+		if current != 0 {
+			break
+		}
+		encoded = append(encoded, alphabet[0])
+	}
+	for left, right := 0, len(encoded)-1; left < right; left, right = left+1, right-1 {
+		encoded[left], encoded[right] = encoded[right], encoded[left]
+	}
+	return string(encoded)
+}
+
+func tronAddressBytes(value string) ([]byte, error) {
+	decoded, err := decodeBase58(value)
+	if err != nil || len(decoded) != 25 || decoded[0] != 0x41 {
+		return nil, fmt.Errorf("invalid TRON address")
+	}
+	first := sha256.Sum256(decoded[:21])
+	second := sha256.Sum256(first[:])
+	if !bytes.Equal(decoded[21:], second[:4]) {
+		return nil, fmt.Errorf("invalid TRON address checksum")
+	}
+	return decoded[:21], nil
+}
+
+func tronAddressFromBytes(value []byte) string {
+	first := sha256.Sum256(value)
+	second := sha256.Sum256(first[:])
+	return encodeBase58(append(append([]byte{}, value...), second[:4]...))
+}
+
+func isValidCryptoAddress(chain, value string) bool {
+	switch chain {
+	case "tron":
+		_, err := tronAddressBytes(value)
+		return err == nil
+	case "solana":
+		decoded, err := decodeBase58(value)
+		return err == nil && len(decoded) == ed25519.PublicKeySize
+	default:
+		return isValidEVMAddress(value)
+	}
+}
+
+func normalizeSubmittedTxHash(chain, value string) string {
+	value = strings.TrimSpace(value)
+	if chain == "tron" {
+		return strings.ToLower(value)
+	}
+	if chain == "solana" {
+		return value
+	}
+	return strings.ToLower(value)
+}
+
+func isValidTxHash(chain, value string) bool {
+	value = strings.TrimSpace(value)
+	switch chain {
+	case "tron":
+		return len(value) == 64 && regexp.MustCompile(`^[0-9a-fA-F]{64}$`).MatchString(value)
+	case "solana":
+		decoded, err := decodeBase58(value)
+		return err == nil && len(decoded) == 64
+	default:
+		return txHashPattern.MatchString(value)
+	}
 }
 
 func normalizeTopicAddress(topic string) string {
@@ -265,6 +387,10 @@ func getNativeSymbol(chain string) string {
 		return "POL"
 	case "arbitrum", "base":
 		return "ETH"
+	case "tron":
+		return "TRX"
+	case "solana":
+		return "SOL"
 	default:
 		return ""
 	}
@@ -275,6 +401,9 @@ func getExpectedTokenAddress(cfg cryptoChainConfig, tokenSymbol string) (string,
 	case "USDT":
 		if cfg.usdtAddress == "" {
 			return "", false
+		}
+		if cfg.kind == "tron" || cfg.kind == "solana" {
+			return cfg.usdtAddress, true
 		}
 		return strings.ToLower(cfg.usdtAddress), true
 	case "USDC":
@@ -363,7 +492,26 @@ func buildCryptoIntentChallenge(intent *model.CryptoDepositIntent) string {
 }
 
 func verifyWalletSignature(intent *model.CryptoDepositIntent, signature string) error {
-	decoded, err := hexutil.Decode(strings.TrimSpace(signature))
+	if intent.Chain == "solana" {
+		publicKey, err := decodeBase58(intent.WalletAddressFrom)
+		if err != nil || len(publicKey) != ed25519.PublicKeySize {
+			return fmt.Errorf("invalid Solana wallet address")
+		}
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(signature))
+		if err != nil || len(decoded) != ed25519.SignatureSize {
+			return fmt.Errorf("invalid Solana signature")
+		}
+		if !ed25519.Verify(ed25519.PublicKey(publicKey), []byte(intent.Challenge), decoded) {
+			return fmt.Errorf("signature does not match wallet address")
+		}
+		return nil
+	}
+
+	signature = strings.TrimSpace(signature)
+	if intent.Chain == "tron" && !strings.HasPrefix(signature, "0x") {
+		signature = "0x" + signature
+	}
+	decoded, err := hexutil.Decode(signature)
 	if err != nil {
 		return fmt.Errorf("invalid signature encoding")
 	}
@@ -378,12 +526,23 @@ func verifyWalletSignature(intent *model.CryptoDepositIntent, signature string) 
 	}
 
 	hash := ethaccounts.TextHash([]byte(intent.Challenge))
+	if intent.Chain == "tron" {
+		payload := fmt.Sprintf("\x19TRON Signed Message:\n%d%s", len([]byte(intent.Challenge)), intent.Challenge)
+		hash = ethcrypto.Keccak256([]byte(payload))
+	}
 	pubKey, err := ethcrypto.SigToPub(hash, decoded)
 	if err != nil {
 		return fmt.Errorf("failed to recover signature")
 	}
 	recovered := strings.ToLower(ethcrypto.PubkeyToAddress(*pubKey).Hex())
-	if recovered != intent.WalletAddressFrom {
+	expected := intent.WalletAddressFrom
+	if intent.Chain == "tron" {
+		tronAddress := append([]byte{0x41}, ethcrypto.PubkeyToAddress(*pubKey).Bytes()...)
+		recovered = tronAddressFromBytes(tronAddress)
+	} else {
+		expected = strings.ToLower(expected)
+	}
+	if recovered != expected {
 		return fmt.Errorf("signature does not match wallet address")
 	}
 	return nil
@@ -391,7 +550,7 @@ func verifyWalletSignature(intent *model.CryptoDepositIntent, signature string) 
 
 func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, rpcURLs []string) (float64, error) {
 	if len(rpcURLs) == 0 {
-		return 0, fmt.Errorf("no RPC configured")
+		return 0, retryableCryptoError("no RPC configured")
 	}
 
 	var (
@@ -438,7 +597,7 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 		if lastErr == nil {
 			lastErr = fmt.Errorf("transaction receipt unavailable")
 		}
-		return 0, lastErr
+		return 0, retryableCryptoError("transaction receipt unavailable: %v", lastErr)
 	}
 	if usedIndex > 0 {
 		common.SysLog(fmt.Sprintf("crypto: rpc fallback hit txHash=%s rpc=%s", *intent.TxHash, rpcURL))
@@ -469,14 +628,7 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 			return 0, fmt.Errorf("invalid transfer value")
 		}
 		nativeAmt := decimal.NewFromBigInt(weiAmount, int32(-cfg.nativeDecimals))
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		price, err := fetchCoinPrice(ctx, cfg.nativeCGID)
-		cancel()
-		if err != nil || price <= 0 {
-			return 0, fmt.Errorf("price lookup failed: %w", err)
-		}
-		nativeFloat, _ := nativeAmt.Float64()
-		return nativeFloat * price, nil
+		return cryptoAssetUSD(intent, cfg, nativeAmt)
 	}
 
 	toField, _ := txMap["to"].(string)
@@ -528,6 +680,269 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 	}
 
 	return 0, fmt.Errorf("matching token transfer not found")
+}
+
+type cryptoRetryableError struct{ err error }
+
+func (err *cryptoRetryableError) Error() string { return err.err.Error() }
+func (err *cryptoRetryableError) Unwrap() error { return err.err }
+
+func retryableCryptoError(format string, args ...interface{}) error {
+	return &cryptoRetryableError{err: fmt.Errorf(format, args...)}
+}
+
+func postCryptoJSON(ctx context.Context, url string, payload interface{}, result interface{}) error {
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return common.DecodeJson(resp.Body, result)
+}
+
+func cryptoAssetUSD(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, amount decimal.Decimal) (float64, error) {
+	if intent.TokenAddress != "" {
+		value, _ := amount.Float64()
+		return value, nil
+	}
+	price := intent.AssetUsdPrice
+	if price <= 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		var err error
+		price, err = fetchCoinPrice(ctx, cfg.nativeCGID)
+		if err != nil {
+			return 0, retryableCryptoError("price lookup failed: %v", err)
+		}
+	}
+	value, _ := amount.Float64()
+	return value * price, nil
+}
+
+func verifyTronIntent(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, rpcURLs []string) (float64, error) {
+	if len(rpcURLs) == 0 {
+		return 0, retryableCryptoError("no TRON RPC configured")
+	}
+	type tronTransaction struct {
+		Ret []struct {
+			ContractRet string `json:"contractRet"`
+		} `json:"ret"`
+		RawData struct {
+			Contract []struct {
+				Type      string `json:"type"`
+				Parameter struct {
+					Value struct {
+						Amount          int64  `json:"amount"`
+						OwnerAddress    string `json:"owner_address"`
+						ToAddress       string `json:"to_address"`
+						ContractAddress string `json:"contract_address"`
+						Data            string `json:"data"`
+					} `json:"value"`
+				} `json:"parameter"`
+			} `json:"contract"`
+		} `json:"raw_data"`
+	}
+	type tronInfo struct {
+		BlockNumber int64 `json:"blockNumber"`
+		Receipt     struct {
+			Result string `json:"result"`
+		} `json:"receipt"`
+	}
+
+	var transaction tronTransaction
+	var info tronInfo
+	var lastErr error
+	for _, rpcURL := range rpcURLs {
+		baseURL := strings.TrimRight(rpcURL, "/")
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		err := postCryptoJSON(ctx, baseURL+"/walletsolidity/gettransactionbyid", map[string]string{"value": *intent.TxHash}, &transaction)
+		if err == nil {
+			err = postCryptoJSON(ctx, baseURL+"/walletsolidity/gettransactioninfobyid", map[string]string{"value": *intent.TxHash}, &info)
+		}
+		cancel()
+		if err == nil {
+			lastErr = nil
+			break
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return 0, retryableCryptoError("TRON RPC unavailable: %v", lastErr)
+	}
+	if info.BlockNumber <= 0 || len(transaction.RawData.Contract) == 0 {
+		return 0, retryableCryptoError("TRON transaction is not confirmed")
+	}
+	if len(transaction.Ret) == 0 || transaction.Ret[0].ContractRet != "SUCCESS" ||
+		(info.Receipt.Result != "" && info.Receipt.Result != "SUCCESS") {
+		return 0, fmt.Errorf("transaction failed on-chain")
+	}
+
+	fromBytes, _ := tronAddressBytes(intent.WalletAddressFrom)
+	toBytes, _ := tronAddressBytes(intent.ExpectedToAddress)
+	contract := transaction.RawData.Contract[0]
+	ownerHex := strings.ToLower(contract.Parameter.Value.OwnerAddress)
+	if ownerHex != fmt.Sprintf("%x", fromBytes) {
+		return 0, fmt.Errorf("wallet address mismatch")
+	}
+	if intent.TokenAddress == "" {
+		if contract.Type != "TransferContract" || strings.ToLower(contract.Parameter.Value.ToAddress) != fmt.Sprintf("%x", toBytes) {
+			return 0, fmt.Errorf("recipient mismatch")
+		}
+		if contract.Parameter.Value.Amount <= 0 {
+			return 0, fmt.Errorf("invalid transfer value")
+		}
+		return cryptoAssetUSD(intent, cfg, decimal.NewFromInt(contract.Parameter.Value.Amount).Shift(-6))
+	}
+
+	tokenBytes, _ := tronAddressBytes(intent.TokenAddress)
+	data := strings.ToLower(strings.TrimPrefix(contract.Parameter.Value.Data, "0x"))
+	if contract.Type != "TriggerSmartContract" || strings.ToLower(contract.Parameter.Value.ContractAddress) != fmt.Sprintf("%x", tokenBytes) {
+		return 0, fmt.Errorf("token contract mismatch")
+	}
+	if len(data) != 136 || !strings.HasPrefix(data, "a9059cbb") {
+		return 0, fmt.Errorf("matching token transfer not found")
+	}
+	recipientHex := "41" + data[32:72]
+	if recipientHex != fmt.Sprintf("%x", toBytes) {
+		return 0, fmt.Errorf("recipient mismatch")
+	}
+	amount, ok := new(big.Int).SetString(data[72:136], 16)
+	if !ok || amount.Sign() <= 0 {
+		return 0, fmt.Errorf("invalid transfer value")
+	}
+	return cryptoAssetUSD(intent, cfg, decimal.NewFromBigInt(amount, -6))
+}
+
+func solanaAccountKey(value interface{}) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	if object, ok := value.(map[string]interface{}); ok {
+		text, _ := object["pubkey"].(string)
+		return text
+	}
+	return ""
+}
+
+func verifySolanaIntent(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, rpcURLs []string) (float64, error) {
+	if len(rpcURLs) == 0 {
+		return 0, retryableCryptoError("no Solana RPC configured")
+	}
+	var result interface{}
+	var lastErr error
+	for _, rpcURL := range rpcURLs {
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		response, err := ethCall(ctx, rpcURL, "getTransaction", []interface{}{*intent.TxHash, map[string]interface{}{"encoding": "jsonParsed", "commitment": "finalized", "maxSupportedTransactionVersion": 0}})
+		cancel()
+		if err == nil && response != nil {
+			result = response
+			lastErr = nil
+			break
+		}
+		lastErr = err
+	}
+	if result == nil {
+		return 0, retryableCryptoError("Solana transaction is not finalized: %v", lastErr)
+	}
+	transactionResult, ok := result.(map[string]interface{})
+	if !ok {
+		return 0, retryableCryptoError("unexpected Solana transaction response")
+	}
+	meta, _ := transactionResult["meta"].(map[string]interface{})
+	if meta == nil {
+		return 0, retryableCryptoError("Solana transaction metadata unavailable")
+	}
+	if meta["err"] != nil {
+		return 0, fmt.Errorf("transaction failed on-chain")
+	}
+	transaction, _ := transactionResult["transaction"].(map[string]interface{})
+	message, _ := transaction["message"].(map[string]interface{})
+	accountKeys, _ := message["accountKeys"].([]interface{})
+	if len(accountKeys) == 0 || solanaAccountKey(accountKeys[0]) != intent.WalletAddressFrom {
+		return 0, fmt.Errorf("wallet address mismatch")
+	}
+
+	if intent.TokenAddress == "" {
+		instructions, _ := message["instructions"].([]interface{})
+		for _, rawInstruction := range instructions {
+			instruction, _ := rawInstruction.(map[string]interface{})
+			parsed, _ := instruction["parsed"].(map[string]interface{})
+			if parsed["type"] != "transfer" {
+				continue
+			}
+			info, _ := parsed["info"].(map[string]interface{})
+			if info["source"] != intent.WalletAddressFrom || info["destination"] != intent.ExpectedToAddress {
+				continue
+			}
+			lamports, ok := info["lamports"].(float64)
+			if !ok || lamports <= 0 {
+				continue
+			}
+			return cryptoAssetUSD(intent, cfg, decimal.NewFromFloat(lamports).Shift(-9))
+		}
+		return 0, fmt.Errorf("matching SOL transfer not found")
+	}
+
+	type tokenBalance struct {
+		owner  string
+		mint   string
+		amount *big.Int
+	}
+	parseBalances := func(raw interface{}) map[int]tokenBalance {
+		balances := map[int]tokenBalance{}
+		items, _ := raw.([]interface{})
+		for _, item := range items {
+			balance, _ := item.(map[string]interface{})
+			indexFloat, _ := balance["accountIndex"].(float64)
+			uiAmount, _ := balance["uiTokenAmount"].(map[string]interface{})
+			amountText, _ := uiAmount["amount"].(string)
+			amount, ok := new(big.Int).SetString(amountText, 10)
+			if !ok {
+				continue
+			}
+			owner, _ := balance["owner"].(string)
+			mint, _ := balance["mint"].(string)
+			balances[int(indexFloat)] = tokenBalance{owner: owner, mint: mint, amount: amount}
+		}
+		return balances
+	}
+	pre := parseBalances(meta["preTokenBalances"])
+	post := parseBalances(meta["postTokenBalances"])
+	received := big.NewInt(0)
+	sent := big.NewInt(0)
+	for index, after := range post {
+		before := pre[index]
+		if after.mint != intent.TokenAddress {
+			continue
+		}
+		beforeAmount := big.NewInt(0)
+		if before.amount != nil {
+			beforeAmount = before.amount
+		}
+		delta := new(big.Int).Sub(after.amount, beforeAmount)
+		if after.owner == intent.ExpectedToAddress && delta.Sign() > 0 {
+			received.Add(received, delta)
+		}
+		if after.owner == intent.WalletAddressFrom && delta.Sign() < 0 {
+			sent.Sub(sent, delta)
+		}
+	}
+	if received.Sign() <= 0 || sent.Cmp(received) < 0 {
+		return 0, fmt.Errorf("matching SPL token transfer not found")
+	}
+	return cryptoAssetUSD(intent, cfg, decimal.NewFromBigInt(received, -6))
 }
 
 func markCryptoIntentFailed(intentId string, err error) {
@@ -650,9 +1065,22 @@ func verifyAndCredit(intentId string) {
 		return
 	}
 
-	usdValue, err := verifyIntentOnChain(&intent, cfg, getRPCs(cfg))
+	var usdValue float64
+	var err error
+	switch cfg.kind {
+	case "tron":
+		usdValue, err = verifyTronIntent(&intent, cfg, getRPCs(cfg))
+	case "solana":
+		usdValue, err = verifySolanaIntent(&intent, cfg, getRPCs(cfg))
+	default:
+		usdValue, err = verifyIntentOnChain(&intent, cfg, getRPCs(cfg))
+	}
 	if err != nil {
 		common.SysLog(fmt.Sprintf("crypto: verify failed intent=%s txHash=%s err=%v", intent.Id, *intent.TxHash, err))
+		var retryable *cryptoRetryableError
+		if errors.As(err, &retryable) {
+			return
+		}
 		markCryptoIntentFailed(intentId, err)
 		return
 	}
@@ -810,11 +1238,23 @@ func verifyAndCredit(intentId string) {
 	common.SysLog(fmt.Sprintf("crypto: confirmed userId=%d intent=%s txHash=%s usd=%.4f quota=%d", intent.UserId, intent.Id, *intent.TxHash, usdValue, quotaToAdd))
 }
 
+func scheduleCryptoVerification(intentId string) {
+	for attempt := 0; attempt < 60; attempt++ {
+		verifyAndCredit(intentId)
+		var intent model.CryptoDepositIntent
+		if err := model.DB.Select("status").Where("id = ?", intentId).First(&intent).Error; err != nil || intent.Status != model.CryptoDepositIntentStatusPending {
+			return
+		}
+		time.Sleep(15 * time.Second)
+	}
+}
+
 type createCryptoIntentRequest struct {
-	Chain             string `json:"chain"`
-	TokenSymbol       string `json:"token_symbol"`
-	WalletAddressFrom string `json:"wallet_address_from"`
-	PlanId            int    `json:"plan_id,omitempty"`
+	Chain             string  `json:"chain"`
+	TokenSymbol       string  `json:"token_symbol"`
+	WalletAddressFrom string  `json:"wallet_address_from"`
+	PlanId            int     `json:"plan_id,omitempty"`
+	ExpectedUsdAmount float64 `json:"expected_usd_amount,omitempty"`
 }
 
 type submitCryptoRequest struct {
@@ -853,8 +1293,11 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		return
 	}
 
-	walletAddress := strings.ToLower(strings.TrimSpace(req.WalletAddressFrom))
-	if !isValidEVMAddress(walletAddress) {
+	walletAddress := strings.TrimSpace(req.WalletAddressFrom)
+	if cfg.kind == "" {
+		walletAddress = strings.ToLower(walletAddress)
+	}
+	if !isValidCryptoAddress(chain, walletAddress) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid wallet address"})
 		return
 	}
@@ -870,6 +1313,20 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		}
 	}
 
+	expectedUsdAmount := req.ExpectedUsdAmount
+	if plan != nil {
+		expectedUsdAmount = terms.Payable
+	}
+	if expectedUsdAmount > 1_000_000 || (expectedUsdAmount <= 0 && cfg.kind != "") {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid payment amount"})
+		return
+	}
+
+	platformWallet := getPlatformWalletForChain(chain)
+	if !isValidCryptoAddress(chain, platformWallet) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "crypto recipient is not configured"})
+		return
+	}
 	tokenAddress, _ := getExpectedTokenAddress(cfg, tokenSymbol)
 	intent := &model.CryptoDepositIntent{
 		Id:                common.GetUUID(),
@@ -878,7 +1335,8 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		TokenSymbol:       tokenSymbol,
 		TokenAddress:      tokenAddress,
 		WalletAddressFrom: walletAddress,
-		ExpectedToAddress: getPlatformWallet(),
+		ExpectedToAddress: platformWallet,
+		ExpectedUsdAmount: expectedUsdAmount,
 		Purpose:           cryptoIntentPurposeWalletTopup,
 		ExpiresAt:         common.GetTimestamp() + 30*60,
 	}
@@ -887,8 +1345,17 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		if model.IsCodingPlan(plan) {
 			intent.Purpose = cryptoIntentPurposeCodingPlan
 		}
-		intent.ExpectedUsdAmount = terms.Payable
 		intent.SubscriptionOrderTradeNo = fmt.Sprintf("CRYPTO-SUB:%s", intent.Id)
+	}
+	if tokenAddress == "" {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		price, err := fetchCoinPrice(ctx, cfg.nativeCGID)
+		cancel()
+		if err != nil || price <= 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "failed to quote native asset"})
+			return
+		}
+		intent.AssetUsdPrice = price
 	}
 	intent.Challenge = buildCryptoIntentChallenge(intent)
 
@@ -923,6 +1390,13 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		map[string]interface{}{"stage": "intent_created"},
 	)
 
+	nativeAssetAmount := ""
+	if intent.TokenAddress == "" && intent.AssetUsdPrice > 0 {
+		nativeAssetAmount = decimal.NewFromFloat(intent.ExpectedUsdAmount).
+			Div(decimal.NewFromFloat(intent.AssetUsdPrice)).
+			Shift(int32(cfg.nativeDecimals)).Ceil().Shift(int32(-cfg.nativeDecimals)).
+			StringFixed(int32(cfg.nativeDecimals))
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success":           true,
 		"depositId":         intent.Id,
@@ -933,6 +1407,8 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		"token":             intent.TokenSymbol,
 		"purpose":           intent.Purpose,
 		"expectedUsdAmount": intent.ExpectedUsdAmount,
+		"assetUsdPrice":     intent.AssetUsdPrice,
+		"nativeAssetAmount": nativeAssetAmount,
 	})
 }
 
@@ -953,12 +1429,6 @@ func SubmitCryptoDeposit(c *gin.Context) {
 		return
 	}
 
-	txHash := strings.ToLower(strings.TrimSpace(req.TxHash))
-	if !isValidTxHash(txHash) {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid transaction hash"})
-		return
-	}
-
 	var intent model.CryptoDepositIntent
 	if err := model.DB.Where("id = ? AND user_id = ?", strings.TrimSpace(req.IntentId), userId).First(&intent).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -966,6 +1436,11 @@ func SubmitCryptoDeposit(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to load deposit intent"})
+		return
+	}
+	txHash := normalizeSubmittedTxHash(intent.Chain, req.TxHash)
+	if !isValidTxHash(intent.Chain, txHash) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid transaction hash"})
 		return
 	}
 
@@ -1043,7 +1518,7 @@ func SubmitCryptoDeposit(c *gin.Context) {
 		)
 	}
 
-	go verifyAndCredit(intent.Id)
+	go scheduleCryptoVerification(intent.Id)
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "depositId": intent.Id})
 }

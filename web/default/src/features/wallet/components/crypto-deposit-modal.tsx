@@ -36,7 +36,10 @@ import {
   type ChainConfig,
   type TokenConfig,
 } from '../hooks/use-crypto-payment'
-import { discoverEvmWallets, type EvmWalletOption } from '../lib/evm-provider'
+import {
+  discoverCryptoWallets,
+  type CryptoWalletOption,
+} from '../lib/crypto-wallet-provider'
 
 interface CryptoDepositModalProps {
   open: boolean
@@ -47,11 +50,13 @@ interface CryptoDepositModalProps {
 }
 
 const CHAIN_EXPLORERS: Record<string, string> = {
-  bsc:      'https://bscscan.com/tx/',
-  base:     'https://basescan.org/tx/',
+  bsc: 'https://bscscan.com/tx/',
+  base: 'https://basescan.org/tx/',
   arbitrum: 'https://arbiscan.io/tx/',
-  polygon:  'https://polygonscan.com/tx/',
-  eth:      'https://etherscan.io/tx/',
+  polygon: 'https://polygonscan.com/tx/',
+  eth: 'https://etherscan.io/tx/',
+  tron: 'https://tronscan.org/#/transaction/',
+  solana: 'https://solscan.io/tx/',
 }
 
 function shortAddr(addr: string) {
@@ -67,8 +72,10 @@ export function CryptoDepositModal({
 }: CryptoDepositModalProps) {
   const { t } = useTranslation()
   const [selectedChain, setSelectedChain] = useState<ChainConfig>(CHAINS[1]) // BSC default
-  const [selectedToken, setSelectedToken] = useState<TokenConfig>(CHAINS[1].tokens[0])
-  const [walletOptions, setWalletOptions] = useState<EvmWalletOption[]>([])
+  const [selectedToken, setSelectedToken] = useState<TokenConfig>(
+    CHAINS[1].tokens[0]
+  )
+  const [walletOptions, setWalletOptions] = useState<CryptoWalletOption[]>([])
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null)
   const [walletDiscoveryReady, setWalletDiscoveryReady] = useState(false)
 
@@ -79,29 +86,38 @@ export function CryptoDepositModal({
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    discoverEvmWallets().then((wallets) => {
-      if (cancelled) return
-      setWalletOptions(wallets)
-      if (wallets.length === 1) setSelectedWalletId(wallets[0].id)
-      setWalletDiscoveryReady(true)
-    }).catch(() => {
-      if (!cancelled) setWalletDiscoveryReady(true)
-    })
+    discoverCryptoWallets(selectedChain.family)
+      .then((wallets) => {
+        if (cancelled) return
+        setWalletOptions(wallets)
+        if (wallets.length === 1) setSelectedWalletId(wallets[0].id)
+        setWalletDiscoveryReady(true)
+      })
+      .catch(() => {
+        if (!cancelled) setWalletDiscoveryReady(true)
+      })
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [open, selectedChain.family])
 
   useEffect(() => {
     if (!open) return
     const cgId = NATIVE_COINGECKO[selectedChain.id] ?? 'ethereum'
-    fetchNativePrice(cgId).then(setDisplayPrice).catch(() => {})
+    fetchNativePrice(cgId)
+      .then(setDisplayPrice)
+      .catch(() => {})
   }, [open, selectedChain.id])
 
-  const selectedWallet = walletOptions.find((wallet) => wallet.id === selectedWalletId)
+  const selectedWallet = walletOptions.find(
+    (wallet) => wallet.id === selectedWalletId
+  )
   const walletRequired = !walletDiscoveryReady || !selectedWallet
 
   function handleChainChange(chain: ChainConfig) {
+    setWalletDiscoveryReady(false)
+    setWalletOptions([])
+    setSelectedWalletId(null)
     setSelectedChain(chain)
     setSelectedToken(chain.tokens[0])
   }
@@ -117,30 +133,43 @@ export function CryptoDepositModal({
   }
 
   const isNativeToken = selectedToken.isNative
-  const nativeAmount = isNativeToken && displayPrice > 0
-    ? (amount / displayPrice).toFixed(6)
-    : null
+  const nativeAmount =
+    isNativeToken && displayPrice > 0
+      ? (amount / displayPrice).toFixed(6)
+      : null
 
-  const isProcessing = ['connecting', 'switching', 'signing', 'confirming', 'processing'].includes(step)
+  const isProcessing = [
+    'connecting',
+    'switching',
+    'signing',
+    'confirming',
+    'processing',
+  ].includes(step)
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) handleClose()
+      }}
+    >
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
           <DialogTitle>{t('Crypto Deposit')}</DialogTitle>
           <DialogDescription>
-            {t('Pay {{amount}} USD using crypto on-chain', { amount: amount.toFixed(2) })}
+            {t('Pay {{amount}} USD using crypto on-chain', {
+              amount: amount.toFixed(2),
+            })}
           </DialogDescription>
         </DialogHeader>
 
         {/* ── 表单 ── */}
         {step === 'form' && (
           <div className='flex flex-col gap-5 py-1'>
-
             {/* 钱包地址 */}
             {walletOptions.length > 1 && (
               <div>
-                <div className='text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wider'>
+                <div className='text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase'>
                   {t('Wallet')}
                 </div>
                 <div className='flex flex-wrap gap-2'>
@@ -165,14 +194,24 @@ export function CryptoDepositModal({
 
             {walletDiscoveryReady && walletOptions.length === 0 && (
               <p className='text-destructive text-sm'>
-                {t('No wallet detected. Please install MetaMask or Binance Wallet.')}
+                {selectedChain.family === 'tron'
+                  ? t(
+                      'No TRON wallet detected. Please install TronLink or OKX Wallet.'
+                    )
+                  : selectedChain.family === 'solana'
+                    ? t(
+                        'No Solana wallet detected. Please install Phantom or OKX Wallet.'
+                      )
+                    : t(
+                        'No wallet detected. Please install MetaMask or Binance Wallet.'
+                      )}
               </p>
             )}
 
             {walletAddress && (
               <div className='flex items-center justify-between text-sm'>
                 <span className='text-muted-foreground'>{t('Wallet')}</span>
-                <span className='flex items-center gap-1.5 rounded-full border border-green-300 bg-green-50 px-3 py-0.5 text-xs font-mono text-green-700'>
+                <span className='flex items-center gap-1.5 rounded-full border border-green-300 bg-green-50 px-3 py-0.5 font-mono text-xs text-green-700'>
                   <span className='size-1.5 rounded-full bg-green-500' />
                   {shortAddr(walletAddress)}
                 </span>
@@ -181,7 +220,7 @@ export function CryptoDepositModal({
 
             {/* 网络选择 chip */}
             <div>
-              <div className='text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wider'>
+              <div className='text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase'>
                 {t('Network')}
               </div>
               <div className='flex flex-wrap gap-2'>
@@ -201,12 +240,14 @@ export function CryptoDepositModal({
                   </button>
                 ))}
               </div>
-              <p className='text-muted-foreground mt-1.5 text-xs'>{selectedChain.name}</p>
+              <p className='text-muted-foreground mt-1.5 text-xs'>
+                {selectedChain.name}
+              </p>
             </div>
 
             {/* 代币选择 chip */}
             <div>
-              <div className='text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wider'>
+              <div className='text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase'>
                 {t('Token')}
               </div>
               <div className='flex flex-wrap gap-2'>
@@ -229,8 +270,10 @@ export function CryptoDepositModal({
             </div>
 
             {/* 金额预览 */}
-            <div className='rounded-xl bg-muted/30 px-4 py-3'>
-              <div className='text-muted-foreground mb-1 text-xs'>{t('Amount to send')}</div>
+            <div className='bg-muted/30 rounded-xl px-4 py-3'>
+              <div className='text-muted-foreground mb-1 text-xs'>
+                {t('Amount to send')}
+              </div>
               {isNativeToken ? (
                 <div>
                   <div className='font-mono text-xl font-bold'>
@@ -240,7 +283,8 @@ export function CryptoDepositModal({
                     {t('≈ ${{amount}} USD', { amount: amount.toFixed(2) })}
                     {displayPrice > 0 && (
                       <span className='ml-1'>
-                        · 1 {selectedToken.symbol} = ${displayPrice.toLocaleString()}
+                        · 1 {selectedToken.symbol} = $
+                        {displayPrice.toLocaleString()}
                       </span>
                     )}
                   </div>
@@ -248,7 +292,9 @@ export function CryptoDepositModal({
                     {t('on {{chain}}', { chain: selectedChain.name })}
                   </div>
                   <p className='mt-2 text-[11px] text-amber-600'>
-                    {t('Exact amount will be determined by your wallet at time of sending.')}
+                    {t(
+                      'Exact amount will be determined by your wallet at time of sending.'
+                    )}
                   </p>
                 </div>
               ) : (
@@ -265,11 +311,18 @@ export function CryptoDepositModal({
 
             <Button
               className='w-full'
-              style={{ background: 'linear-gradient(135deg, #22d3ee, #0891b2)' }}
+              style={{
+                background: 'linear-gradient(135deg, #22d3ee, #0891b2)',
+              }}
               disabled={isProcessing || walletRequired}
               onClick={() => {
                 if (selectedWallet) {
-                  void startPayment(amount, selectedChain, selectedToken, selectedWallet.provider)
+                  void startPayment(
+                    amount,
+                    selectedChain,
+                    selectedToken,
+                    selectedWallet.provider
+                  )
                 }
               }}
             >
@@ -285,10 +338,11 @@ export function CryptoDepositModal({
             <div>
               <div className='font-semibold'>
                 {step === 'connecting' && t('Connecting wallet…')}
-                {step === 'switching'  && t('Switching network…')}
-                {step === 'signing'    && t('Authorizing wallet…')}
+                {step === 'switching' && t('Switching network…')}
+                {step === 'signing' && t('Authorizing wallet…')}
                 {step === 'confirming' && t('Waiting for wallet confirmation…')}
-                {step === 'processing' && t('Waiting for on-chain confirmation…')}
+                {step === 'processing' &&
+                  t('Waiting for on-chain confirmation…')}
               </div>
               {txHash && (
                 <a
@@ -309,9 +363,13 @@ export function CryptoDepositModal({
           <div className='flex flex-col items-center gap-4 py-8 text-center'>
             <CheckCircle2 className='size-10 text-green-500' />
             <div>
-              <div className='font-semibold text-green-600'>{t('Deposit confirmed!')}</div>
+              <div className='font-semibold text-green-600'>
+                {t('Deposit confirmed!')}
+              </div>
               <div className='text-muted-foreground mt-1 text-sm'>
-                {t('${{amount}} USD added to your balance', { amount: usdAdded.toFixed(2) })}
+                {t('${{amount}} USD added to your balance', {
+                  amount: usdAdded.toFixed(2),
+                })}
               </div>
             </div>
             <Button onClick={handleClose}>{t('Close')}</Button>
@@ -321,14 +379,24 @@ export function CryptoDepositModal({
         {/* ── 失败 ── */}
         {step === 'failed' && (
           <div className='flex flex-col items-center gap-4 py-8 text-center'>
-            <XCircle className='size-10 text-destructive' />
+            <XCircle className='text-destructive size-10' />
             <div>
-              <div className='font-semibold text-destructive'>{t('Payment failed')}</div>
-              {error && <div className='text-muted-foreground mt-1 text-sm'>{error}</div>}
+              <div className='text-destructive font-semibold'>
+                {t('Payment failed')}
+              </div>
+              {error && (
+                <div className='text-muted-foreground mt-1 text-sm'>
+                  {error}
+                </div>
+              )}
             </div>
             <div className='flex gap-2'>
-              <Button variant='outline' onClick={reset}>{t('Try again')}</Button>
-              <Button variant='ghost' onClick={handleClose}>{t('Close')}</Button>
+              <Button variant='outline' onClick={reset}>
+                {t('Try again')}
+              </Button>
+              <Button variant='ghost' onClick={handleClose}>
+                {t('Close')}
+              </Button>
             </div>
           </div>
         )}

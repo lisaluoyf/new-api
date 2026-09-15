@@ -23,10 +23,11 @@ type CryptoDepositIntent struct {
 	ExpectedToAddress        string  `json:"expected_to_address" gorm:"type:varchar(64);not null"`
 	Challenge                string  `json:"challenge" gorm:"type:text;not null"`
 	WalletSignature          string  `json:"wallet_signature" gorm:"type:text;default:''"`
-	TxHash                   *string `json:"tx_hash,omitempty" gorm:"type:varchar(80);uniqueIndex:uk_crypto_deposit_chain_tx,priority:2"`
+	TxHash                   *string `json:"tx_hash,omitempty" gorm:"type:varchar(128);uniqueIndex:uk_crypto_deposit_chain_tx,priority:2"`
 	Purpose                  string  `json:"purpose" gorm:"type:varchar(32);not null;default:'wallet_topup';index"`
 	SubscriptionOrderTradeNo string  `json:"subscription_order_trade_no" gorm:"type:varchar(255);default:'';index"`
 	ExpectedUsdAmount        float64 `json:"expected_usd_amount" gorm:"type:decimal(18,6);not null;default:0"`
+	AssetUsdPrice            float64 `json:"asset_usd_price" gorm:"type:decimal(24,10);not null;default:0"`
 	Status                   string  `json:"status" gorm:"type:varchar(32);not null;default:'pending';index"`
 	UsdAdded                 float64 `json:"usd_added" gorm:"type:decimal(18,6);default:0"`
 	ErrorMessage             string  `json:"error_message" gorm:"type:text"`
@@ -44,16 +45,16 @@ func (intent *CryptoDepositIntent) BeforeCreate(_ *gorm.DB) error {
 	}
 	intent.Chain = strings.ToLower(strings.TrimSpace(intent.Chain))
 	intent.TokenSymbol = strings.ToUpper(strings.TrimSpace(intent.TokenSymbol))
-	intent.TokenAddress = strings.ToLower(strings.TrimSpace(intent.TokenAddress))
-	intent.WalletAddressFrom = strings.ToLower(strings.TrimSpace(intent.WalletAddressFrom))
-	intent.ExpectedToAddress = strings.ToLower(strings.TrimSpace(intent.ExpectedToAddress))
+	intent.TokenAddress = normalizeCryptoAddress(intent.Chain, intent.TokenAddress)
+	intent.WalletAddressFrom = normalizeCryptoAddress(intent.Chain, intent.WalletAddressFrom)
+	intent.ExpectedToAddress = normalizeCryptoAddress(intent.Chain, intent.ExpectedToAddress)
 	intent.Purpose = strings.ToLower(strings.TrimSpace(intent.Purpose))
 	if intent.Purpose == "" {
 		intent.Purpose = "wallet_topup"
 	}
 	intent.SubscriptionOrderTradeNo = strings.TrimSpace(intent.SubscriptionOrderTradeNo)
 	if intent.TxHash != nil {
-		txHash := strings.ToLower(strings.TrimSpace(*intent.TxHash))
+		txHash := normalizeCryptoTxHash(intent.Chain, *intent.TxHash)
 		intent.TxHash = &txHash
 	}
 	if strings.TrimSpace(intent.Status) == "" {
@@ -67,15 +68,31 @@ func (intent *CryptoDepositIntent) BeforeCreate(_ *gorm.DB) error {
 func (intent *CryptoDepositIntent) BeforeUpdate(_ *gorm.DB) error {
 	intent.Chain = strings.ToLower(strings.TrimSpace(intent.Chain))
 	intent.TokenSymbol = strings.ToUpper(strings.TrimSpace(intent.TokenSymbol))
-	intent.TokenAddress = strings.ToLower(strings.TrimSpace(intent.TokenAddress))
-	intent.WalletAddressFrom = strings.ToLower(strings.TrimSpace(intent.WalletAddressFrom))
-	intent.ExpectedToAddress = strings.ToLower(strings.TrimSpace(intent.ExpectedToAddress))
+	intent.TokenAddress = normalizeCryptoAddress(intent.Chain, intent.TokenAddress)
+	intent.WalletAddressFrom = normalizeCryptoAddress(intent.Chain, intent.WalletAddressFrom)
+	intent.ExpectedToAddress = normalizeCryptoAddress(intent.Chain, intent.ExpectedToAddress)
 	intent.Purpose = strings.ToLower(strings.TrimSpace(intent.Purpose))
 	intent.SubscriptionOrderTradeNo = strings.TrimSpace(intent.SubscriptionOrderTradeNo)
 	if intent.TxHash != nil {
-		txHash := strings.ToLower(strings.TrimSpace(*intent.TxHash))
+		txHash := normalizeCryptoTxHash(intent.Chain, *intent.TxHash)
 		intent.TxHash = &txHash
 	}
 	intent.UpdatedAt = common.GetTimestamp()
 	return nil
+}
+
+func normalizeCryptoAddress(chain, value string) string {
+	value = strings.TrimSpace(value)
+	if chain == "tron" || chain == "solana" {
+		return value
+	}
+	return strings.ToLower(value)
+}
+
+func normalizeCryptoTxHash(chain, value string) string {
+	value = strings.TrimSpace(value)
+	if chain == "tron" || chain == "solana" {
+		return value
+	}
+	return strings.ToLower(value)
 }

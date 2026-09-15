@@ -445,13 +445,16 @@ export interface CryptoDepositIntentResponse {
   toAddress?: string
   chain?: string
   token?: string
+  assetUsdPrice?: number
+  nativeAssetAmount?: string
   error?: string
 }
 
 export async function createCryptoDepositIntent(
   chain: string,
   tokenSymbol: string,
-  walletAddressFrom: string
+  walletAddressFrom: string,
+  expectedUsdAmount: number
 ): Promise<CryptoDepositIntentResponse> {
   try {
     const res = await api.post(
@@ -460,6 +463,7 @@ export async function createCryptoDepositIntent(
         chain,
         token_symbol: tokenSymbol,
         wallet_address_from: walletAddressFrom,
+        expected_usd_amount: expectedUsdAmount,
       },
       { skipBusinessError: true } as Record<string, unknown>
     )

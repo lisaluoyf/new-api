@@ -1,12 +1,129 @@
 package controller
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCryptoAddressAndTransactionValidation(t *testing.T) {
+	require.True(t, isValidCryptoAddress("tron", "TMYi3oRAS9hsJPq5sysKHgNsoRxm2CuuyU"))
+	require.False(t, isValidCryptoAddress("tron", "TMYi3oRAS9hsJPq5sysKHgNsoRxm2CuuyV"))
+	require.True(t, isValidCryptoAddress("solana", "CcVcaTMUtRBhTUkvNmDTt8tnCG3TU8unBwZTz4Pyp9UN"))
+	require.True(t, isValidTxHash("tron", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"))
+	require.False(t, isValidTxHash("tron", "0x1234"))
+	require.True(t, isValidTxHash("solana", encodeBase58(make([]byte, 64))))
+}
+
+func TestVerifySolanaWalletSignature(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	intent := model.CryptoDepositIntent{
+		Chain:             "solana",
+		WalletAddressFrom: encodeBase58(publicKey),
+		Challenge:         "APIMaster deposit challenge",
+	}
+	signature := ed25519.Sign(privateKey, []byte(intent.Challenge))
+	require.NoError(t, verifyWalletSignature(&intent, base64.StdEncoding.EncodeToString(signature)))
+	require.Error(t, verifyWalletSignature(&intent, base64.StdEncoding.EncodeToString(make([]byte, 64))))
+}
+
+func TestVerifyTronIntent(t *testing.T) {
+	from := "TMYi3oRAS9hsJPq5sysKHgNsoRxm2CuuyU"
+	to := "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj"
+	fromBytes, err := tronAddressBytes(from)
+	require.NoError(t, err)
+	toBytes, err := tronAddressBytes(to)
+	require.NoError(t, err)
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/walletsolidity/gettransactioninfobyid" {
+			fmt.Fprint(writer, `{"blockNumber":123,"receipt":{"net_fee":268000}}`)
+			return
+		}
+		fmt.Fprintf(writer, `{"ret":[{"contractRet":"SUCCESS"}],"raw_data":{"contract":[{"type":"TransferContract","parameter":{"value":{"amount":2500000,"owner_address":"%x","to_address":"%x"}}}]}}`, fromBytes, toBytes)
+	}))
+	defer server.Close()
+
+	txHash := strings.Repeat("a", 64)
+	intent := model.CryptoDepositIntent{
+		Chain: "tron", TokenSymbol: "TRX", WalletAddressFrom: from,
+		ExpectedToAddress: to, TxHash: &txHash, AssetUsdPrice: 0.2,
+	}
+	usd, err := verifyTronIntent(&intent, cryptoChains["tron"], []string{server.URL})
+	require.NoError(t, err)
+	require.InDelta(t, 0.5, usd, 0.000001)
+}
+
+func TestVerifyTronUSDTIntent(t *testing.T) {
+	from := "TMYi3oRAS9hsJPq5sysKHgNsoRxm2CuuyU"
+	to := "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj"
+	fromBytes, _ := tronAddressBytes(from)
+	toBytes, _ := tronAddressBytes(to)
+	tokenBytes, _ := tronAddressBytes(cryptoChains["tron"].usdtAddress)
+	data := fmt.Sprintf("a9059cbb%064s%064x", fmt.Sprintf("%x", toBytes[1:]), 12_500_000)
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/walletsolidity/gettransactioninfobyid" {
+			fmt.Fprint(writer, `{"blockNumber":123,"receipt":{"result":"SUCCESS"}}`)
+			return
+		}
+		fmt.Fprintf(writer, `{"ret":[{"contractRet":"SUCCESS"}],"raw_data":{"contract":[{"type":"TriggerSmartContract","parameter":{"value":{"owner_address":"%x","contract_address":"%x","data":"%s"}}}]}}`, fromBytes, tokenBytes, data)
+	}))
+	defer server.Close()
+
+	txHash := strings.Repeat("b", 64)
+	intent := model.CryptoDepositIntent{
+		Chain: "tron", TokenSymbol: "USDT", TokenAddress: cryptoChains["tron"].usdtAddress,
+		WalletAddressFrom: from, ExpectedToAddress: to, TxHash: &txHash,
+	}
+	usd, err := verifyTronIntent(&intent, cryptoChains["tron"], []string{server.URL})
+	require.NoError(t, err)
+	require.InDelta(t, 12.5, usd, 0.000001)
+}
+
+func TestVerifySolanaIntents(t *testing.T) {
+	from := "11111111111111111111111111111111"
+	to := "CcVcaTMUtRBhTUkvNmDTt8tnCG3TU8unBwZTz4Pyp9UN"
+	txHash := encodeBase58(append([]byte{1}, make([]byte, 63)...))
+
+	t.Run("SOL", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(writer, `{"jsonrpc":"2.0","id":1,"result":{"meta":{"err":null},"transaction":{"message":{"accountKeys":[{"pubkey":"%s"}],"instructions":[{"parsed":{"type":"transfer","info":{"source":"%s","destination":"%s","lamports":1500000000}}}]}}}}`, from, from, to)
+		}))
+		defer server.Close()
+		intent := model.CryptoDepositIntent{Chain: "solana", TokenSymbol: "SOL", WalletAddressFrom: from, ExpectedToAddress: to, TxHash: &txHash, AssetUsdPrice: 2}
+		usd, err := verifySolanaIntent(&intent, cryptoChains["solana"], []string{server.URL})
+		require.NoError(t, err)
+		require.InDelta(t, 3, usd, 0.000001)
+	})
+
+	t.Run("USDT-SPL", func(t *testing.T) {
+		mint := cryptoChains["solana"].usdtAddress
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(writer, `{"jsonrpc":"2.0","id":1,"result":{"meta":{"err":null,"preTokenBalances":[{"accountIndex":1,"mint":"%s","owner":"%s","uiTokenAmount":{"amount":"10000000"}}],"postTokenBalances":[{"accountIndex":1,"mint":"%s","owner":"%s","uiTokenAmount":{"amount":"5000000"}},{"accountIndex":2,"mint":"%s","owner":"%s","uiTokenAmount":{"amount":"5000000"}}]},"transaction":{"message":{"accountKeys":[{"pubkey":"%s"}],"instructions":[]}}}}`, mint, from, mint, from, mint, to, from)
+		}))
+		defer server.Close()
+		intent := model.CryptoDepositIntent{Chain: "solana", TokenSymbol: "USDT", TokenAddress: mint, WalletAddressFrom: from, ExpectedToAddress: to, TxHash: &txHash}
+		usd, err := verifySolanaIntent(&intent, cryptoChains["solana"], []string{server.URL})
+		require.NoError(t, err)
+		require.InDelta(t, 5, usd, 0.000001)
+	})
+}
 
 func TestMatchCryptoAmountDiscountTier(t *testing.T) {
 	originalDiscounts := operation_setting.GetPaymentSetting().AmountDiscount
