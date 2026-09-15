@@ -251,6 +251,8 @@ func TelegramWebhook(c *gin.Context) {
 	if !ok {
 		if err := forwardTelegramUpdateToMia(c.Request.Context(), payload); err != nil {
 			common.SysError("failed to forward Telegram update to Mia: " + err.Error())
+			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false})
+			return
 		}
 		c.JSON(http.StatusOK, gin.H{"success": true})
 		return

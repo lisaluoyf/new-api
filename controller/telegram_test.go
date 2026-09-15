@@ -196,6 +196,44 @@ func TestTelegramWebhookForwardsNonVerificationUpdatesToMia(t *testing.T) {
 	require.Equal(t, 1, forwardCount)
 }
 
+func TestTelegramWebhookReturnsServiceUnavailableWhenMiaRejectsUpdate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupTelegramWebhookTest(t)
+
+	miaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer miaServer.Close()
+	common.MiaTelegramWebhookURL = miaServer.URL
+	common.MiaInternalServiceKey = "test-mia-service-secret"
+	miaTelegramHTTPClient = miaServer.Client()
+
+	recorder := postTelegramUpdate(t, `{
+		"update_id":9010,
+		"message":{"chat":{"id":10001,"type":"private"},"from":{"id":10001},"text":"hello"}
+	}`)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestTelegramWebhookReturnsServiceUnavailableWhenMiaIsUnreachable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupTelegramWebhookTest(t)
+
+	miaServer := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	miaServerURL := miaServer.URL
+	miaServerClient := miaServer.Client()
+	miaServer.Close()
+	common.MiaTelegramWebhookURL = miaServerURL
+	common.MiaInternalServiceKey = "test-mia-service-secret"
+	miaTelegramHTTPClient = miaServerClient
+
+	recorder := postTelegramUpdate(t, `{
+		"update_id":9011,
+		"message":{"chat":{"id":10001,"type":"private"},"from":{"id":10001},"text":"hello"}
+	}`)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
 func TestTelegramWebhookForwardsCallbackAndInlineUpdatesToMia(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
