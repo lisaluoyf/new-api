@@ -233,16 +233,6 @@ export function CryptoDepositModal({
         {/* ── 表单 ── */}
         {step === 'form' && paymentMode === 'wallet' && (
           <div className='flex flex-col gap-5 py-1'>
-            {nowPaymentsEnabled && (
-              <ul className='text-muted-foreground list-disc space-y-1 pl-5 text-sm'>
-                <li>{t('Prefer not to connect a wallet?')}</li>
-                <li>
-                  {t(
-                    'You can choose address transfer and pay securely on NOWPayments.'
-                  )}
-                </li>
-              </ul>
-            )}
             {/* 钱包地址 */}
             {walletOptions.length > 0 && (
               <div>
@@ -436,6 +426,14 @@ export function CryptoDepositModal({
           paymentMode === 'transfer' &&
           nowPaymentsEnabled && (
             <div className='flex flex-col gap-5 py-2'>
+              <ul className='text-muted-foreground list-disc space-y-1 pl-5 text-sm'>
+                <li>{t('Prefer not to connect a wallet?')}</li>
+                <li>
+                  {t(
+                    'You can choose address transfer and pay securely on NOWPayments.'
+                  )}
+                </li>
+              </ul>
               <div>
                 <div className='text-muted-foreground text-sm'>
                   {t('You will pay')}
@@ -447,6 +445,10 @@ export function CryptoDepositModal({
                   {t('Top-up amount')}: ${nowPaymentsRequestAmount.toFixed(2)}{' '}
                   USD
                 </div>
+                <div className='text-muted-foreground mt-1 text-sm'>
+                  {t('Minimum top-up')}: ${nowPaymentsMinTopup.toFixed(2)}{' '}
+                  USD
+                </div>
               </div>
               <p className='text-muted-foreground text-sm'>
                 {t(
@@ -455,7 +457,10 @@ export function CryptoDepositModal({
               </p>
               <Button
                 className='w-full gap-2'
-                disabled={hostedCheckoutLoading}
+                disabled={
+                  hostedCheckoutLoading ||
+                  nowPaymentsRequestAmount < nowPaymentsMinTopup
+                }
                 onClick={() => void openHostedCheckout()}
               >
                 {hostedCheckoutLoading ? (
