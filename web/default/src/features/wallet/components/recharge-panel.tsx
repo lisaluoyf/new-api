@@ -68,9 +68,12 @@ function formatUsdAmount(value: unknown) {
   return amount.toFixed(2).replace(/\.?0+$/, '')
 }
 
-function formatCampaignEndDate(timestamp: number | undefined): string | null {
+function formatCampaignEndDate(
+  timestamp: number | undefined,
+  locale: string | undefined,
+): string | null {
   if (!timestamp || !Number.isFinite(timestamp)) return null
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale || 'en', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -95,7 +98,7 @@ export function RechargePanel({
   onPaymentAttempted,
   onPaymentSettled,
 }: RechargePanelProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [selectedAmount, setSelectedAmount] = useState<number>(100)
   const [customAmount, setCustomAmount] = useState('')
   const [cryptoOpen, setCryptoOpen] = useState(false)
@@ -373,7 +376,8 @@ export function RechargePanel({
                   amountDiscountRate > 0 && amountDiscountRate < 1
                 const amountDiscountLabel = getDiscountLabel(amountDiscountRate)
                 const amountDiscountEndDate = formatCampaignEndDate(
-                  topupInfo?.discount_expires_at?.[amount]
+                  topupInfo?.discount_expires_at?.[amount],
+                  i18n.resolvedLanguage || i18n.language,
                 )
                 return (
                   <button
