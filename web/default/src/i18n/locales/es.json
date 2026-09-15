@@ -4645,7 +4645,14 @@
     "Official pricing": "Precios oficiales",
     "Paid Subscription Users": "Subscription Users",
     "Paid Subscription Cost": "Subscription Cost",
-    "Paid Subscription Revenue": "Subscription Revenue"
+    "Paid Subscription Revenue": "Subscription Revenue",
+    "Direct transfer": "Transferencia directa",
+    "Continue to NOWPayments": "Continuar a NOWPayments",
+    "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Usa cualquier exchange o billetera. Elige la criptomoneda y la red en la página segura de NOWPayments.",
+    "Minimum top-up": "Recarga mínima",
+    "Top-up amount": "Importe de recarga",
+    "Prefer not to connect a wallet?": "¿Prefieres no conectar una billetera?",
+    "You can choose direct transfer and pay securely on NOWPayments.": "Puedes elegir la transferencia directa y pagar de forma segura en NOWPayments."
   },
   "在线使用": "Playground",
   "推广有礼": "Afiliados",

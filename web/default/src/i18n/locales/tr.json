@@ -4641,7 +4641,14 @@
     "Official pricing": "Resmi fiyatlandırma",
     "Paid Subscription Users": "Subscription Users",
     "Paid Subscription Cost": "Subscription Cost",
-    "Paid Subscription Revenue": "Subscription Revenue"
+    "Paid Subscription Revenue": "Subscription Revenue",
+    "Direct transfer": "Doğrudan transfer",
+    "Continue to NOWPayments": "NOWPayments'a devam et",
+    "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Dilediğiniz borsa veya cüzdanı kullanın. Güvenli NOWPayments sayfasında kripto para ve ağı seçin.",
+    "Minimum top-up": "Minimum yükleme",
+    "Top-up amount": "Yükleme tutarı",
+    "Prefer not to connect a wallet?": "Cüzdan bağlamak istemiyor musunuz?",
+    "You can choose direct transfer and pay securely on NOWPayments.": "Doğrudan transferi seçerek NOWPayments üzerinden güvenle ödeme yapabilirsiniz."
   },
   "User Balance": "Kullanıcı Bakiyesi",
   "No active subscription": "Aktif abonelik yok",

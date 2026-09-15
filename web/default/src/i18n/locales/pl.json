@@ -4641,7 +4641,14 @@
     "Official pricing": "Ceny oficjalne",
     "Paid Subscription Users": "Subscription Users",
     "Paid Subscription Cost": "Subscription Cost",
-    "Paid Subscription Revenue": "Subscription Revenue"
+    "Paid Subscription Revenue": "Subscription Revenue",
+    "Direct transfer": "Przelew bezpośredni",
+    "Continue to NOWPayments": "Przejdź do NOWPayments",
+    "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Użyj dowolnej giełdy lub portfela. Wybierz kryptowalutę i sieć na bezpiecznej stronie NOWPayments.",
+    "Minimum top-up": "Minimalne doładowanie",
+    "Top-up amount": "Kwota doładowania",
+    "Prefer not to connect a wallet?": "Nie chcesz łączyć portfela?",
+    "You can choose direct transfer and pay securely on NOWPayments.": "Wybierz przelew bezpośredni i zapłać bezpiecznie przez NOWPayments."
   },
   "User Balance": "Saldo użytkowników",
   "No active subscription": "Brak aktywnej subskrypcji",

@@ -4654,7 +4654,14 @@
     "Official pricing": "公式価格",
     "Paid Subscription Users": "Subscription Users",
     "Paid Subscription Cost": "Subscription Cost",
-    "Paid Subscription Revenue": "Subscription Revenue"
+    "Paid Subscription Revenue": "Subscription Revenue",
+    "Direct transfer": "直接送金",
+    "Continue to NOWPayments": "NOWPayments に進む",
+    "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "任意の取引所またはウォレットを利用できます。NOWPayments の安全なページで暗号資産とネットワークを選択してください。",
+    "Minimum top-up": "最低チャージ額",
+    "Top-up amount": "チャージ額",
+    "Prefer not to connect a wallet?": "ウォレットを接続したくない場合",
+    "You can choose direct transfer and pay securely on NOWPayments.": "直接送金を選択し、NOWPayments で安全に支払えます。"
   },
   "在线使用": "プレイグラウンド",
   "推广有礼": "アフィリエイト",

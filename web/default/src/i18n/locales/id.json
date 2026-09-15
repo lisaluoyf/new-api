@@ -4645,7 +4645,14 @@
     "Official pricing": "Harga resmi",
     "Paid Subscription Users": "Subscription Users",
     "Paid Subscription Cost": "Subscription Cost",
-    "Paid Subscription Revenue": "Subscription Revenue"
+    "Paid Subscription Revenue": "Subscription Revenue",
+    "Direct transfer": "Transfer langsung",
+    "Continue to NOWPayments": "Lanjut ke NOWPayments",
+    "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Gunakan bursa atau dompet apa pun. Pilih mata uang kripto dan jaringan di halaman aman NOWPayments.",
+    "Minimum top-up": "Isi ulang minimum",
+    "Top-up amount": "Jumlah isi ulang",
+    "Prefer not to connect a wallet?": "Tidak ingin menghubungkan dompet?",
+    "You can choose direct transfer and pay securely on NOWPayments.": "Pilih transfer langsung dan bayar dengan aman melalui NOWPayments."
   },
   "在线使用": "Playground",
   "推广有礼": "Afiliasi",

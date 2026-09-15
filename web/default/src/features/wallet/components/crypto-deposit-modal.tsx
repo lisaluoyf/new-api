@@ -223,9 +223,7 @@ export function CryptoDepositModal({
           <Tabs value={paymentMode} onValueChange={setPaymentMode}>
             <TabsList className='grid w-full grid-cols-2'>
               <TabsTrigger value='wallet'>{t('Connect wallet')}</TabsTrigger>
-              <TabsTrigger value='transfer'>
-                {t('Address transfer')}
-              </TabsTrigger>
+              <TabsTrigger value='transfer'>{t('Direct transfer')}</TabsTrigger>
             </TabsList>
           </Tabs>
         )}
@@ -430,7 +428,7 @@ export function CryptoDepositModal({
                 <li>{t('Prefer not to connect a wallet?')}</li>
                 <li>
                   {t(
-                    'You can choose address transfer and pay securely on NOWPayments.'
+                    'You can choose direct transfer and pay securely on NOWPayments.'
                   )}
                 </li>
               </ul>
@@ -446,8 +444,7 @@ export function CryptoDepositModal({
                   USD
                 </div>
                 <div className='text-muted-foreground mt-1 text-sm'>
-                  {t('Minimum top-up')}: ${nowPaymentsMinTopup.toFixed(2)}{' '}
-                  USD
+                  {t('Minimum top-up')}: ${nowPaymentsMinTopup.toFixed(2)} USD
                 </div>
               </div>
               <p className='text-muted-foreground text-sm'>

@@ -4645,7 +4645,14 @@
     "Official pricing": "공식 요금",
     "Paid Subscription Users": "Subscription Users",
     "Paid Subscription Cost": "Subscription Cost",
-    "Paid Subscription Revenue": "Subscription Revenue"
+    "Paid Subscription Revenue": "Subscription Revenue",
+    "Direct transfer": "직접 송금",
+    "Continue to NOWPayments": "NOWPayments로 이동",
+    "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "원하는 거래소나 지갑을 사용하세요. 안전한 NOWPayments 페이지에서 암호화폐와 네트워크를 선택할 수 있습니다.",
+    "Minimum top-up": "최소 충전 금액",
+    "Top-up amount": "충전 금액",
+    "Prefer not to connect a wallet?": "지갑을 연결하고 싶지 않으신가요?",
+    "You can choose direct transfer and pay securely on NOWPayments.": "직접 송금을 선택하여 NOWPayments에서 안전하게 결제할 수 있습니다."
   },
   "在线使用": "플레이그라운드",
   "推广有礼": "제휴 추천",

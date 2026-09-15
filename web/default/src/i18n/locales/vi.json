@@ -4654,7 +4654,14 @@
     "Official pricing": "Giá chính thức",
     "Paid Subscription Users": "Subscription Users",
     "Paid Subscription Cost": "Subscription Cost",
-    "Paid Subscription Revenue": "Subscription Revenue"
+    "Paid Subscription Revenue": "Subscription Revenue",
+    "Direct transfer": "Chuyển khoản trực tiếp",
+    "Continue to NOWPayments": "Tiếp tục đến NOWPayments",
+    "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Dùng bất kỳ sàn giao dịch hoặc ví nào. Chọn tiền mã hóa và mạng trên trang thanh toán an toàn của NOWPayments.",
+    "Minimum top-up": "Số tiền nạp tối thiểu",
+    "Top-up amount": "Số tiền nạp",
+    "Prefer not to connect a wallet?": "Không muốn kết nối ví?",
+    "You can choose direct transfer and pay securely on NOWPayments.": "Chọn chuyển khoản trực tiếp và thanh toán an toàn qua NOWPayments."
   },
   "在线使用": "Dùng trực tuyến",
   "推广有礼": "Giới thiệu",

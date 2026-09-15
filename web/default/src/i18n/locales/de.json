@@ -4641,7 +4641,14 @@
     "Official pricing": "Offizielle Preise",
     "Paid Subscription Users": "Subscription Users",
     "Paid Subscription Cost": "Subscription Cost",
-    "Paid Subscription Revenue": "Subscription Revenue"
+    "Paid Subscription Revenue": "Subscription Revenue",
+    "Direct transfer": "Direktüberweisung",
+    "Continue to NOWPayments": "Weiter zu NOWPayments",
+    "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Nutzen Sie eine beliebige Börse oder Wallet. Wählen Sie Kryptowährung und Netzwerk auf der sicheren NOWPayments-Seite.",
+    "Minimum top-up": "Mindestaufladung",
+    "Top-up amount": "Aufladebetrag",
+    "Prefer not to connect a wallet?": "Möchten Sie keine Wallet verbinden?",
+    "You can choose direct transfer and pay securely on NOWPayments.": "Wählen Sie die Direktüberweisung und bezahlen Sie sicher über NOWPayments."
   },
   "User Balance": "Benutzerguthaben",
   "No active subscription": "Kein aktives Abonnement",
