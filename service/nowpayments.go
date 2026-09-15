@@ -19,6 +19,23 @@ import (
 
 var nowPaymentsAPIBaseURL = "https://api.nowpayments.io/v1"
 
+func nowPaymentsAPIKeyMetadata() (int, string) {
+	apiKey := strings.TrimSpace(setting.NowPaymentsAPIKey)
+	if len(apiKey) <= 4 {
+		return len(apiKey), apiKey
+	}
+	return len(apiKey), apiKey[len(apiKey)-4:]
+}
+
+func truncateNowPaymentsResponse(body []byte) string {
+	const maxLength = 1000
+	value := strings.TrimSpace(string(body))
+	if len(value) <= maxLength {
+		return value
+	}
+	return value[:maxLength] + "..."
+}
+
 type NowPaymentsCreateInvoiceRequest struct {
 	PriceAmount      float64 `json:"price_amount"`
 	PriceCurrency    string  `json:"price_currency"`
@@ -95,21 +112,23 @@ func GetNowPaymentsPayment(ctx context.Context, paymentID string) (*NowPaymentsP
 }
 
 func requestNowPayments(ctx context.Context, method, path string, body io.Reader, result any) error {
-	if strings.TrimSpace(setting.NowPaymentsAPIKey) == "" {
+	apiKey := strings.TrimSpace(setting.NowPaymentsAPIKey)
+	if apiKey == "" {
 		return fmt.Errorf("NOWPayments API key is not configured")
 	}
+	keyLength, keySuffix := nowPaymentsAPIKeyMetadata()
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(nowPaymentsAPIBaseURL, "/")+path, body)
 	if err != nil {
 		return fmt.Errorf("build NOWPayments request: %w", err)
 	}
-	req.Header.Set("x-api-key", setting.NowPaymentsAPIKey)
+	req.Header.Set("x-api-key", apiKey)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("request NOWPayments: %w", err)
+		return fmt.Errorf("request NOWPayments method=%s path=%s key_len=%d key_suffix=%s: %w", method, path, keyLength, keySuffix, err)
 	}
 	defer resp.Body.Close()
 	responseBody, err := io.ReadAll(resp.Body)
@@ -117,7 +136,10 @@ func requestNowPayments(ctx context.Context, method, path string, body io.Reader
 		return fmt.Errorf("read NOWPayments response: %w", err)
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("NOWPayments request failed with status %d", resp.StatusCode)
+		return fmt.Errorf(
+			"NOWPayments request failed method=%s path=%s status=%d key_len=%d key_suffix=%s response=%s",
+			method, path, resp.StatusCode, keyLength, keySuffix, truncateNowPaymentsResponse(responseBody),
+		)
 	}
 	if err := common.Unmarshal(responseBody, result); err != nil {
 		return fmt.Errorf("decode NOWPayments response: %w", err)

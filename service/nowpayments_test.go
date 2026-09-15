@@ -78,3 +78,30 @@ func TestCreateNowPaymentsInvoiceUsesHostedCheckoutWithoutPayCurrency(t *testing
 	require.Equal(t, "987", string(invoice.ID))
 	require.Equal(t, "https://nowpayments.io/payment/?iid=987", invoice.InvoiceURL)
 }
+
+func TestNowPaymentsErrorIncludesSafeKeyMetadataAndResponse(t *testing.T) {
+	originalBaseURL := nowPaymentsAPIBaseURL
+	originalAPIKey := setting.NowPaymentsAPIKey
+	t.Cleanup(func() {
+		nowPaymentsAPIBaseURL = originalBaseURL
+		setting.NowPaymentsAPIKey = originalAPIKey
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusForbidden)
+		_, _ = writer.Write([]byte(`{"code":"TEST_ERROR","message":"invoice creation is unavailable"}`))
+	}))
+	defer server.Close()
+	nowPaymentsAPIBaseURL = server.URL
+	setting.NowPaymentsAPIKey = "secret-api-key-HEGE"
+
+	_, err := CreateNowPaymentsInvoice(context.Background(), &NowPaymentsCreateInvoiceRequest{
+		PriceAmount: 10, PriceCurrency: "usd", OrderID: "order-1",
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "status=403")
+	require.Contains(t, err.Error(), "key_len=19")
+	require.Contains(t, err.Error(), "key_suffix=HEGE")
+	require.Contains(t, err.Error(), "TEST_ERROR")
+	require.NotContains(t, err.Error(), "secret-api-key")
+}
