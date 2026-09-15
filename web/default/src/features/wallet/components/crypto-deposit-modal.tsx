@@ -48,7 +48,8 @@ interface CryptoDepositModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   amount: number
-  nowPaymentsAmount?: number
+  nowPaymentsRequestAmount?: number
+  nowPaymentsPayAmount?: number
   nowPaymentsEnabled?: boolean
   nowPaymentsMinTopup?: number
   onSuccess: () => void
@@ -74,7 +75,8 @@ export function CryptoDepositModal({
   open,
   onOpenChange,
   amount,
-  nowPaymentsAmount = amount,
+  nowPaymentsRequestAmount = amount,
+  nowPaymentsPayAmount = amount,
   nowPaymentsEnabled = false,
   nowPaymentsMinTopup = 1,
   onSuccess,
@@ -104,7 +106,12 @@ export function CryptoDepositModal({
       .then((wallets) => {
         if (cancelled) return
         setWalletOptions(wallets)
-        if (wallets.length === 1) setSelectedWalletId(wallets[0].id)
+        setSelectedWalletId((current) => {
+          if (current && wallets.some((wallet) => wallet.id === current)) {
+            return current
+          }
+          return wallets[0]?.id ?? null
+        })
         setWalletDiscoveryReady(true)
       })
       .catch(() => {
@@ -147,7 +154,7 @@ export function CryptoDepositModal({
   }
 
   async function openHostedCheckout() {
-    if (nowPaymentsAmount < nowPaymentsMinTopup) {
+    if (nowPaymentsRequestAmount < nowPaymentsMinTopup) {
       toast.error(
         t('The minimum top-up amount is ${{amount}} USD.', {
           amount: nowPaymentsMinTopup,
@@ -164,7 +171,7 @@ export function CryptoDepositModal({
     setHostedCheckoutLoading(true)
     try {
       const result = await requestNowPaymentsInvoice({
-        amount: Math.round(nowPaymentsAmount),
+        amount: Math.round(nowPaymentsRequestAmount),
       })
       if (!result.success || !result.data?.invoice_url) {
         paymentWindow.close()
@@ -227,7 +234,7 @@ export function CryptoDepositModal({
         {step === 'form' && paymentMode === 'wallet' && (
           <div className='flex flex-col gap-5 py-1'>
             {/* 钱包地址 */}
-            {walletOptions.length > 1 && (
+            {walletOptions.length > 0 && (
               <div>
                 <div className='text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase'>
                   {t('Wallet')}
@@ -249,7 +256,25 @@ export function CryptoDepositModal({
                     </button>
                   ))}
                 </div>
+                <div
+                  className={cn(
+                    'mt-2 text-xs',
+                    selectedWallet ? 'text-emerald-600' : 'text-amber-600'
+                  )}
+                >
+                  {selectedWallet
+                    ? t('Selected wallet: {{wallet}}', {
+                        wallet: selectedWallet.name,
+                      })
+                    : t('Please select a wallet to continue.')}
+                </div>
               </div>
+            )}
+
+            {!walletDiscoveryReady && (
+              <p className='text-muted-foreground text-sm'>
+                {t('Detecting available wallets…')}
+              </p>
             )}
 
             {walletDiscoveryReady && walletOptions.length === 0 && (
@@ -386,7 +411,13 @@ export function CryptoDepositModal({
                 }
               }}
             >
-              {walletAddress ? t('Confirm & Pay') : t('Connect Wallet & Pay')}
+              {walletAddress
+                ? t('Confirm & Pay')
+                : selectedWallet
+                  ? t('Connect {{wallet}} and Pay', {
+                      wallet: selectedWallet.name,
+                    })
+                  : t('Please select a wallet')}
             </Button>
           </div>
         )}
@@ -397,10 +428,14 @@ export function CryptoDepositModal({
             <div className='flex flex-col gap-5 py-2'>
               <div>
                 <div className='text-muted-foreground text-sm'>
-                  {t('Top-up amount')}
+                  {t('You will pay')}
                 </div>
                 <div className='mt-1 text-2xl font-semibold'>
-                  ${nowPaymentsAmount.toFixed(2)} USD
+                  ${nowPaymentsPayAmount.toFixed(2)} USD
+                </div>
+                <div className='text-muted-foreground mt-1 text-sm'>
+                  {t('Top-up amount')}: ${nowPaymentsRequestAmount.toFixed(2)}{' '}
+                  USD
                 </div>
               </div>
               <p className='text-muted-foreground text-sm'>

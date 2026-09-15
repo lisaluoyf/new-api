@@ -70,7 +70,7 @@ function formatUsdAmount(value: unknown) {
 
 function formatCampaignEndDate(
   timestamp: number | undefined,
-  locale: string | undefined,
+  locale: string | undefined
 ): string | null {
   if (!timestamp || !Number.isFinite(timestamp)) return null
   return new Intl.DateTimeFormat(locale || 'en', {
@@ -377,7 +377,7 @@ export function RechargePanel({
                 const amountDiscountLabel = getDiscountLabel(amountDiscountRate)
                 const amountDiscountEndDate = formatCampaignEndDate(
                   topupInfo?.discount_expires_at?.[amount],
-                  i18n.resolvedLanguage || i18n.language,
+                  i18n.resolvedLanguage || i18n.language
                 )
                 return (
                   <button
@@ -828,7 +828,8 @@ export function RechargePanel({
         open={cryptoOpen}
         onOpenChange={setCryptoOpen}
         amount={effectiveAmount}
-        nowPaymentsAmount={requestAmount}
+        nowPaymentsRequestAmount={requestAmount}
+        nowPaymentsPayAmount={effectiveAmount}
         nowPaymentsEnabled={topupInfo?.enable_nowpayments_topup ?? false}
         nowPaymentsMinTopup={topupInfo?.nowpayments_min_topup ?? 1}
         onSuccess={() => {
