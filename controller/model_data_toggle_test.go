@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -11,8 +12,60 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestModelDataAliasToggleRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		models    string
+		abilities []model.Ability
+	}{
+		{"provider casing", "MiniMax-M3", []model.Ability{{Group: "default", Model: "MiniMax-M3", Enabled: true}}},
+		{"non-default group", "MiniMax-M3", []model.Ability{{Group: "vip", Model: "MiniMax-M3", Enabled: true}}},
+		{"mixed aliases and groups", "minimax-m3,MiniMax-M3", []model.Ability{
+			{Group: "default", Model: "minimax-m3", Enabled: false},
+			{Group: "default", Model: "MiniMax-M3", Enabled: false},
+			{Group: "vip", Model: "MiniMax-M3", Enabled: true},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupModelDataToggleTestDB(t)
+			require.NoError(t, db.AutoMigrate(&model.ChannelModelPricing{}, &model.ChannelDetectLog{}))
+			channel := model.Channel{Id: 109, Name: "test-minimax", Status: common.ChannelStatusEnabled,
+				Key: "test-key", Models: tc.models + ",unrelated-model", Group: "default,vip"}
+			require.NoError(t, db.Create(&channel).Error)
+			abilities := append(tc.abilities, model.Ability{Group: "default", Model: "unrelated-model", Enabled: true})
+			for i := range abilities {
+				abilities[i].ChannelId = channel.Id
+			}
+			require.NoError(t, db.Create(&abilities).Error)
+			// Cancel external hub pricing; this test only exercises local status.
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			check := func(enabled bool) {
+				t.Helper()
+				items, _, _, _ := getModelDataItems(ctx, "minimax-m3")
+				require.Len(t, items, 1)
+				require.Equal(t, enabled, items[0].ModelEnabled)
+				require.Equal(t, common.ChannelStatusEnabled, items[0].Status)
+				if !enabled {
+					require.Equal(t, "manual", items[0].StatusSource)
+				}
+			}
+			check(true)
+			for _, action := range []string{"disable", "enable", "disable"} {
+				recorder := toggleModelForTest(t, channel.Id, "minimax-m3", action)
+				require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+				check(action == "enable")
+			}
+			var unrelated model.Ability
+			require.NoError(t, db.First(&unrelated, "channel_id = ? AND model = ?", channel.Id, "unrelated-model").Error)
+			require.True(t, unrelated.Enabled)
+		})
+	}
+}
 
 func setupModelDataToggleTestDB(t *testing.T) *gorm.DB {
 	t.Helper()

@@ -2,6 +2,7 @@ interface SortableChannelData {
   status: number
   model_enabled: boolean
   user_price?: number | null
+  priority?: number | null
   free_model_config?: {
     enabled?: boolean
     priority?: number
@@ -33,6 +34,9 @@ export function sortChannelData<T extends SortableChannelData>(
     const aPriced = a.user_price != null && a.user_price > 0
     const bPriced = b.user_price != null && b.user_price > 0
     if (aPriced !== bPriced) return aPriced ? -1 : 1
-    return (a.user_price ?? Infinity) - (b.user_price ?? Infinity)
+    const aPrice = a.user_price ?? Infinity
+    const bPrice = b.user_price ?? Infinity
+    if (aPrice !== bPrice) return aPrice - bPrice
+    return (b.priority ?? 0) - (a.priority ?? 0)
   })
 }

@@ -53,6 +53,46 @@ test('channel status overrides model ability and missing prices stay last in eac
   )
 })
 
+test('equal prices sort by descending priority while lower prices still come first', () => {
+  const response = [
+    { id: 29, status: 1, model_enabled: true, user_price: 0.3, priority: 80 },
+    { id: 204, status: 1, model_enabled: true, user_price: 0.3, priority: 100 },
+    { id: 3, status: 1, model_enabled: true, user_price: 0.2, priority: 0 },
+    { id: 4, status: 1, model_enabled: true, user_price: 0.4, priority: 200 },
+    { id: 5, status: 2, model_enabled: true, user_price: 0.1, priority: 300 },
+  ]
+  assert.deepEqual(
+    sortChannelData(response, 'deepseek-flash').map((row) => row.id),
+    [3, 204, 29, 4, 5]
+  )
+})
+
+test('equal prices and priorities remain stable with missing priority treated as zero', () => {
+  const response = [
+    { ...channels[1], id: 1 },
+    { ...channels[1], id: 2, priority: 0 },
+    { ...channels[1], id: 3, priority: 100 },
+    { ...channels[1], id: 4, priority: 100 },
+    { ...channels[1], id: 5, priority: null },
+  ]
+  assert.deepEqual(
+    sortChannelData(response, model).map((row) => row.id),
+    [3, 4, 1, 2, 5]
+  )
+})
+
+test('missing prices also use priority to break ties', () => {
+  const response = [
+    { ...channels[1], id: 1, user_price: null, priority: 80 },
+    { ...channels[1], id: 2, user_price: undefined, priority: 100 },
+    { ...channels[1], id: 3, priority: 0 },
+  ]
+  assert.deepEqual(
+    sortChannelData(response, model).map((row) => row.id),
+    [3, 2, 1]
+  )
+})
+
 test('free model retains member enablement, priority and weight ordering', () => {
   const response = [
     { ...channels[0], free_model_config: { enabled: false, priority: 999 } },
