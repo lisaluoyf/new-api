@@ -78,6 +78,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/waffo-pancake/webhook", controller.WaffoPancakeWebhook)
 		apiRouter.POST("/payment/platega/callback", controller.PlategaCallback)
 		apiRouter.POST("/payment/clink/webhook", controller.ClinkWebhook)
+		apiRouter.POST("/nowpayments/webhook", controller.NowPaymentsWebhook)
 		apiRouter.POST("/tasks/callback", controller.MediaTaskCallback)
 		apiRouter.POST("/tasks/imagine/:token/callback", controller.ImagineCallback)
 		apiRouter.GET("/tasks/imagine/stats", middleware.AdminAuth(), controller.ImagineSpeedStats)
@@ -157,6 +158,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/crypto/intent", middleware.CriticalRateLimit(), controller.CreateCryptoDepositIntent)
 				selfRoute.POST("/crypto/submit", middleware.CriticalRateLimit(), controller.SubmitCryptoDeposit)
 				selfRoute.GET("/crypto/deposit/:id", controller.GetCryptoDeposit)
+				selfRoute.POST("/nowpayments/pay", middleware.CriticalRateLimit(), controller.RequestNowPaymentsPay)
+				selfRoute.GET("/nowpayments/payment/:id", controller.GetNowPaymentsPaymentStatus)
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 

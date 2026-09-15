@@ -59,6 +59,7 @@ func applyTopupRestriction(data gin.H) {
 	data["enable_waffo_pancake_topup"] = false
 	data["enable_platega_topup"] = false
 	data["enable_clink_topup"] = false
+	data["enable_nowpayments_topup"] = false
 	data["pay_methods"] = []map[string]string{}
 	data["waffo_pay_methods"] = []map[string]string{}
 	data["creem_products"] = []interface{}{}
@@ -118,6 +119,7 @@ func GetTopUpInfo(c *gin.Context) {
 	waffoPancakeMinTopup := walletMinTopupForDisplay(setting.WaffoPancakeMinTopUp, hasSuccessfulTopup)
 	plategaMinTopup := walletMinTopupForDisplay(setting.PlategaMinTopUp, hasSuccessfulTopup)
 	clinkMinTopup := walletMinTopupForDisplay(setting.ClinkMinTopUp, hasSuccessfulTopup)
+	nowPaymentsMinTopup := walletMinTopupForDisplay(setting.NowPaymentsMinTopUp, hasSuccessfulTopup)
 	methodMinTopups := map[string]int64{
 		"alipay":                        minTopup,
 		"wxpay":                         minTopup,
@@ -242,6 +244,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_waffo_pancake_topup": enableWaffoPancake,
 		"enable_platega_topup":       enablePlatega,
 		"enable_clink_topup":         enableClink,
+		"enable_nowpayments_topup":   isNowPaymentsTopUpEnabledForUser(userId),
+		"nowpayments_min_topup":      nowPaymentsMinTopup,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()

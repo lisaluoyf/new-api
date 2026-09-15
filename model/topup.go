@@ -70,6 +70,7 @@ const (
 	PaymentMethodPlatega      = "platega"
 	PaymentMethodClink        = "clink"
 	PaymentMethodCrypto       = "crypto"
+	PaymentMethodNowPayments  = "nowpayments"
 	PaymentMethodFree         = "free"
 )
 
@@ -83,6 +84,7 @@ const (
 	PaymentProviderPlatega      = "platega"
 	PaymentProviderClink        = "clink"
 	PaymentProviderCrypto       = "crypto"
+	PaymentProviderNowPayments  = "nowpayments"
 	PaymentProviderFree         = "free"
 )
 
@@ -113,6 +115,8 @@ func FormatPaymentMethodLabel(method string) string {
 		return "Russian SBP QR"
 	case PaymentMethodClink:
 		return "Clink"
+	case PaymentMethodNowPayments:
+		return "NOWPayments"
 	case "crypto":
 		return "加密货币"
 	case "epay":
@@ -1061,6 +1065,7 @@ func HasSuccessfulPaidTopUp(userId int) bool {
 		PaymentProviderPlatega,
 		PaymentProviderClink,
 		PaymentProviderCrypto,
+		PaymentProviderNowPayments,
 	}
 	paidMethods := []string{
 		"alipay",
@@ -1073,6 +1078,7 @@ func HasSuccessfulPaidTopUp(userId int) bool {
 		PaymentMethodPlatega,
 		PaymentMethodClink,
 		PaymentMethodCrypto,
+		PaymentMethodNowPayments,
 	}
 	var count int64
 	err := DB.Model(&TopUp{}).
@@ -1128,10 +1134,10 @@ func GetUserPaidAmountUSD(userId int) (float64, error) {
 		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
 		Select(`COALESCE(SUM(CASE
 			WHEN paid_amount_usd > 0 THEN paid_amount_usd
-			WHEN payment_provider IN (?, ?, ?, ?) AND money > 0 THEN money
+			WHEN payment_provider IN (?, ?, ?, ?, ?) AND money > 0 THEN money
 			WHEN credited_amount > 0 THEN credited_amount
 			ELSE amount
-		END), 0)`, PaymentProviderStripe, PaymentProviderPayPal, PaymentProviderClink, PaymentProviderCrypto).
+		END), 0)`, PaymentProviderStripe, PaymentProviderPayPal, PaymentProviderClink, PaymentProviderCrypto, PaymentProviderNowPayments).
 		Scan(&total).Error
 	return total, err
 }

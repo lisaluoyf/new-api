@@ -171,3 +171,9 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	operation_setting.PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
 }
+
+func TestNowPaymentsPreviewEmail(t *testing.T) {
+	require.True(t, isNowPaymentsAllowedEmail("lisa.luoyf@gmail.com"))
+	require.True(t, isNowPaymentsAllowedEmail(" LISA.LUOYF@GMAIL.COM "))
+	require.False(t, isNowPaymentsAllowedEmail("other@example.com"))
+}

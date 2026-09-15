@@ -3,10 +3,13 @@ package controller
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
+
+const nowPaymentsPreviewEmail = "lisa.luoyf@gmail.com"
 
 func isStripeTopUpEnabled() bool {
 	return strings.TrimSpace(setting.StripeApiSecret) != "" &&
@@ -121,6 +124,22 @@ func isClinkTopUpEnabled() bool {
 
 func isClinkWebhookEnabled() bool {
 	return isClinkTopUpEnabled()
+}
+
+func isNowPaymentsTopUpEnabled() bool {
+	return setting.NowPaymentsEnabled && strings.TrimSpace(setting.NowPaymentsAPIKey) != "" && strings.TrimSpace(setting.NowPaymentsIPNSecret) != ""
+}
+
+func isNowPaymentsAllowedEmail(email string) bool {
+	return strings.EqualFold(strings.TrimSpace(email), nowPaymentsPreviewEmail)
+}
+
+func isNowPaymentsTopUpEnabledForUser(userID int) bool {
+	if !isNowPaymentsTopUpEnabled() || userID <= 0 {
+		return false
+	}
+	user, err := model.GetUserById(userID, false)
+	return err == nil && user != nil && isNowPaymentsAllowedEmail(user.Email)
 }
 
 func isEpayTopUpEnabled() bool {

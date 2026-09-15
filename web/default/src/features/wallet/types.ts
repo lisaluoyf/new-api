@@ -166,6 +166,8 @@ export interface TopupInfo {
   enable_clink_topup?: boolean
   /** Minimum topup amount for Clink */
   clink_min_topup?: number
+  enable_nowpayments_topup?: boolean
+  nowpayments_min_topup?: number
 }
 
 /**
@@ -247,6 +249,30 @@ export interface ClinkConfirmRequest {
 export type ClinkConfirmResponse = ApiResponse<{
   order_id: string
   status: string
+}>
+
+export interface NowPaymentsPaymentRequest {
+  amount: number
+  pay_currency: string
+}
+
+export type NowPaymentsPaymentResponse = ApiResponse<{
+  payment_id: string
+  order_id: string
+  pay_address: string
+  payin_extra_id?: string
+  pay_amount: number
+  pay_currency: string
+  network?: string
+  payment_status: string
+  expires_at?: number
+}>
+
+export type NowPaymentsStatusResponse = ApiResponse<{
+  payment_id: string
+  payment_status: string
+  payin_hash?: string
+  topup_status: string
 }>
 
 /**

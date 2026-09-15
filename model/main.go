@@ -339,6 +339,7 @@ func migrateDB() error {
 		&ImagineLogDelivery{},
 		&GAPurchaseLog{},
 		&CryptoDepositIntent{},
+		&NowPaymentsPayment{},
 		&FailedRequestSnapshot{},
 		&ShadowBenchmarkLog{},
 		&BillingHourlySummary{},

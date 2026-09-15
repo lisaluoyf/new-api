@@ -45,6 +45,9 @@ import type {
   ClinkPaymentResponse,
   ClinkConfirmRequest,
   ClinkConfirmResponse,
+  NowPaymentsPaymentRequest,
+  NowPaymentsPaymentResponse,
+  NowPaymentsStatusResponse,
 } from './types'
 
 function normalizeMinTopup(value: unknown, fallback: number): number {
@@ -91,12 +94,32 @@ function normalizeTopupInfoResponse(
         response.data.clink_min_topup,
         minTopup
       ),
+      nowpayments_min_topup: normalizeMinTopup(
+        response.data.nowpayments_min_topup,
+        minTopup
+      ),
       pay_methods: payMethods.map((method) => ({
         ...method,
         min_topup: normalizeMinTopup(method.min_topup, minTopup),
       })),
     },
   }
+}
+
+export async function requestNowPaymentsPayment(
+  request: NowPaymentsPaymentRequest
+): Promise<NowPaymentsPaymentResponse> {
+  const res = await api.post('/api/user/nowpayments/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function getNowPaymentsPayment(
+  paymentId: string
+): Promise<NowPaymentsStatusResponse> {
+  const res = await api.get(`/api/user/nowpayments/payment/${encodeURIComponent(paymentId)}`)
+  return res.data
 }
 
 // ============================================================================
