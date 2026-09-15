@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -57,12 +58,15 @@ func RequestNowPaymentsPay(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	group, err := model.GetUserGroup(userID, true)
-	if err != nil {
-		common.ApiErrorMsg(c, "Failed to get user group")
-		return
+	// Hosted Checkout is priced in USD. Keep the requested top-up amount as
+	// the credited amount, and apply only the explicit top-up/promo discounts
+	// to determine what the customer pays.
+	dAmount := decimal.NewFromInt(req.Amount)
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		dAmount = dAmount.Div(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
-	payMoney := getPayMoney(req.Amount, group, userID)
+	discount := operation_setting.GetActiveAmountDiscount(int(req.Amount), time.Now())
+	payMoney := dAmount.Mul(decimal.NewFromFloat(discount)).Mul(decimal.NewFromFloat(firstTopupPromoFactor(userID, req.Amount))).InexactFloat64()
 	if payMoney <= 0.01 {
 		common.ApiErrorMsg(c, "Top-up amount is too low")
 		return
@@ -88,7 +92,7 @@ func RequestNowPaymentsPay(c *gin.Context) {
 		return
 	}
 	invoiceID := strings.TrimSpace(string(invoice.ID))
-	if invoice.OrderID != tradeNo || !strings.EqualFold(invoice.PriceCurrency, "usd") || decimal.NewFromFloat(invoice.PriceAmount).Sub(decimal.NewFromFloat(payMoney)).Abs().GreaterThan(decimal.NewFromFloat(0.005)) {
+	if invoice.OrderID != tradeNo || !strings.EqualFold(invoice.PriceCurrency, "usd") || decimal.NewFromFloat(float64(invoice.PriceAmount)).Sub(decimal.NewFromFloat(payMoney)).Abs().GreaterThan(decimal.NewFromFloat(0.005)) {
 		_ = model.UpdatePendingTopUpStatus(tradeNo, model.PaymentProviderNowPayments, common.TopUpStatusFailed)
 		common.ApiErrorMsg(c, "Cryptocurrency payment details mismatch")
 		return
@@ -132,7 +136,7 @@ func settleNowPaymentsPayment(local *model.NowPaymentsPayment, paymentID, caller
 	if topUp == nil || topUp.PaymentProvider != model.PaymentProviderNowPayments {
 		return fmt.Errorf("%w: topup not found", errNowPaymentsVerification)
 	}
-	if decimal.NewFromFloat(remote.PriceAmount).Sub(decimal.NewFromFloat(topUp.Money)).Abs().GreaterThan(decimal.NewFromFloat(0.005)) {
+	if decimal.NewFromFloat(float64(remote.PriceAmount)).Sub(decimal.NewFromFloat(topUp.Money)).Abs().GreaterThan(decimal.NewFromFloat(0.005)) {
 		return fmt.Errorf("%w: payment amount mismatch", errNowPaymentsVerification)
 	}
 	legacyPayAmount := local.PayAmount
@@ -140,8 +144,8 @@ func settleNowPaymentsPayment(local *model.NowPaymentsPayment, paymentID, caller
 	local.PayAddress = remote.PayAddress
 	local.PayinExtraID = remote.PayinExtraID
 	local.PayCurrency = remote.PayCurrency
-	local.PayAmount = strconv.FormatFloat(remote.PayAmount, 'f', -1, 64)
-	local.ActuallyPaid = strconv.FormatFloat(remote.ActuallyPaid, 'f', -1, 64)
+	local.PayAmount = strconv.FormatFloat(float64(remote.PayAmount), 'f', -1, 64)
+	local.ActuallyPaid = strconv.FormatFloat(float64(remote.ActuallyPaid), 'f', -1, 64)
 	local.Network = remote.Network
 	local.PaymentStatus = strings.ToLower(strings.TrimSpace(remote.PaymentStatus))
 	local.PayinHash = remote.PayinHash
@@ -160,14 +164,14 @@ func settleNowPaymentsPayment(local *model.NowPaymentsPayment, paymentID, caller
 	if remoteStatus != "finished" {
 		return nil
 	}
-	expectedCryptoAmount := decimal.NewFromFloat(remote.PayAmount)
+	expectedCryptoAmount := decimal.NewFromFloat(float64(remote.PayAmount))
 	if local.InvoiceID == "" {
 		legacyAmount, err := decimal.NewFromString(legacyPayAmount)
 		if err != nil || expectedCryptoAmount.Sub(legacyAmount).Abs().GreaterThan(decimal.NewFromFloat(0.00000001)) {
 			return fmt.Errorf("%w: legacy cryptocurrency amount mismatch", errNowPaymentsVerification)
 		}
 	}
-	if expectedCryptoAmount.LessThanOrEqual(decimal.Zero) || decimal.NewFromFloat(remote.ActuallyPaid).Add(decimal.NewFromFloat(0.00000001)).LessThan(expectedCryptoAmount) {
+	if expectedCryptoAmount.LessThanOrEqual(decimal.Zero) || decimal.NewFromFloat(float64(remote.ActuallyPaid)).Add(decimal.NewFromFloat(0.00000001)).LessThan(expectedCryptoAmount) {
 		return fmt.Errorf("%w: cryptocurrency amount underpaid", errNowPaymentsVerification)
 	}
 	var quota int

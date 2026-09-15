@@ -2,8 +2,37 @@ package dto
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 )
+
+type Float64Value float64
+
+func (f *Float64Value) UnmarshalJSON(data []byte) error {
+	var number json.Number
+	if err := json.Unmarshal(data, &number); err == nil {
+		value, err := strconv.ParseFloat(number.String(), 64)
+		if err != nil {
+			return err
+		}
+		*f = Float64Value(value)
+		return nil
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return fmt.Errorf("invalid float64 value %q: %w", value, err)
+	}
+	*f = Float64Value(parsed)
+	return nil
+}
+
+func (f Float64Value) MarshalJSON() ([]byte, error) {
+	return json.Marshal(float64(f))
+}
 
 type StringValue string
 

@@ -65,7 +65,7 @@ func TestCreateNowPaymentsInvoiceUsesHostedCheckoutWithoutPayCurrency(t *testing
 		require.NoError(t, err)
 		require.NotContains(t, string(body), "pay_currency")
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"id":987,"order_id":"order-1","price_amount":10,"price_currency":"usd","invoice_url":"https://nowpayments.io/payment/?iid=987"}`))
+		_, _ = writer.Write([]byte(`{"id":987,"order_id":"order-1","price_amount":"10.00","price_currency":"usd","invoice_url":"https://nowpayments.io/payment/?iid=987"}`))
 	}))
 	defer server.Close()
 	nowPaymentsAPIBaseURL = server.URL
@@ -76,6 +76,7 @@ func TestCreateNowPaymentsInvoiceUsesHostedCheckoutWithoutPayCurrency(t *testing
 	})
 	require.NoError(t, err)
 	require.Equal(t, "987", string(invoice.ID))
+	require.Equal(t, 10.0, float64(invoice.PriceAmount))
 	require.Equal(t, "https://nowpayments.io/payment/?iid=987", invoice.InvoiceURL)
 }
 

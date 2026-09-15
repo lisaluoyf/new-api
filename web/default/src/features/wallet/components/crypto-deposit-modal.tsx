@@ -233,6 +233,16 @@ export function CryptoDepositModal({
         {/* ── 表单 ── */}
         {step === 'form' && paymentMode === 'wallet' && (
           <div className='flex flex-col gap-5 py-1'>
+            {nowPaymentsEnabled && (
+              <ul className='text-muted-foreground list-disc space-y-1 pl-5 text-sm'>
+                <li>{t('Prefer not to connect a wallet?')}</li>
+                <li>
+                  {t(
+                    'You can choose address transfer and pay securely on NOWPayments.'
+                  )}
+                </li>
+              </ul>
+            )}
             {/* 钱包地址 */}
             {walletOptions.length > 0 && (
               <div>

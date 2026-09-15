@@ -50,33 +50,33 @@ type NowPaymentsCreateInvoiceRequest struct {
 }
 
 type NowPaymentsInvoiceResponse struct {
-	ID            dto.StringValue `json:"id"`
-	OrderID       string          `json:"order_id"`
-	PriceAmount   float64         `json:"price_amount"`
-	PriceCurrency string          `json:"price_currency"`
-	InvoiceURL    string          `json:"invoice_url"`
-	SuccessURL    string          `json:"success_url"`
-	CancelURL     string          `json:"cancel_url"`
-	CreatedAt     string          `json:"created_at"`
-	UpdatedAt     string          `json:"updated_at"`
+	ID            dto.StringValue  `json:"id"`
+	OrderID       string           `json:"order_id"`
+	PriceAmount   dto.Float64Value `json:"price_amount"`
+	PriceCurrency string           `json:"price_currency"`
+	InvoiceURL    string           `json:"invoice_url"`
+	SuccessURL    string           `json:"success_url"`
+	CancelURL     string           `json:"cancel_url"`
+	CreatedAt     string           `json:"created_at"`
+	UpdatedAt     string           `json:"updated_at"`
 }
 
 type NowPaymentsPaymentResponse struct {
-	PaymentID              dto.StringValue `json:"payment_id"`
-	ParentPaymentID        dto.StringValue `json:"parent_payment_id"`
-	InvoiceID              dto.StringValue `json:"invoice_id"`
-	PaymentStatus          string          `json:"payment_status"`
-	PayAddress             string          `json:"pay_address"`
-	PayinExtraID           string          `json:"payin_extra_id"`
-	PriceAmount            float64         `json:"price_amount"`
-	PriceCurrency          string          `json:"price_currency"`
-	PayAmount              float64         `json:"pay_amount"`
-	PayCurrency            string          `json:"pay_currency"`
-	ActuallyPaid           float64         `json:"actually_paid"`
-	PayinHash              string          `json:"payin_hash"`
-	OrderID                string          `json:"order_id"`
-	Network                string          `json:"network"`
-	ExpirationEstimateDate string          `json:"expiration_estimate_date"`
+	PaymentID              dto.StringValue  `json:"payment_id"`
+	ParentPaymentID        dto.StringValue  `json:"parent_payment_id"`
+	InvoiceID              dto.StringValue  `json:"invoice_id"`
+	PaymentStatus          string           `json:"payment_status"`
+	PayAddress             string           `json:"pay_address"`
+	PayinExtraID           string           `json:"payin_extra_id"`
+	PriceAmount            dto.Float64Value `json:"price_amount"`
+	PriceCurrency          string           `json:"price_currency"`
+	PayAmount              dto.Float64Value `json:"pay_amount"`
+	PayCurrency            string           `json:"pay_currency"`
+	ActuallyPaid           dto.Float64Value `json:"actually_paid"`
+	PayinHash              string           `json:"payin_hash"`
+	OrderID                string           `json:"order_id"`
+	Network                string           `json:"network"`
+	ExpirationEstimateDate string           `json:"expiration_estimate_date"`
 }
 
 func CreateNowPaymentsInvoice(ctx context.Context, params *NowPaymentsCreateInvoiceRequest) (*NowPaymentsInvoiceResponse, error) {
