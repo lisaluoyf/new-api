@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -50,6 +51,11 @@ type miaDebugIdentitiesRequest struct {
 
 type miaActivationEligibilityRequest struct {
 	TelegramUserIDs []string `json:"telegram_user_ids"`
+}
+
+type miaTelegramVerificationRequest struct {
+	Token          string `json:"token"`
+	TelegramUserID string `json:"telegram_user_id"`
 }
 
 type miaModelCatalogItem struct {
@@ -177,6 +183,57 @@ func ResolveMiaTelegramAPIKey(c *gin.Context) {
 			"user_id":  user.Id,
 			"token_id": token.Id,
 			"api_key":  token.GetFullKey(),
+		},
+	})
+}
+
+func ConsumeMiaTelegramVerification(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2048)
+	var input miaTelegramVerificationRequest
+	if err := common.DecodeJson(c.Request.Body, &input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "invalid_request"})
+		return
+	}
+	token := strings.TrimSpace(input.Token)
+	telegramUserID := strings.TrimSpace(input.TelegramUserID)
+	parsedTelegramID, err := strconv.ParseInt(telegramUserID, 10, 64)
+	if len(token) != 43 || parsedTelegramID <= 0 || err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "invalid_request"})
+		return
+	}
+	for _, char := range token {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' ||
+			char >= '0' && char <= '9' || char == '_' || char == '-' {
+			continue
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "invalid_request"})
+		return
+	}
+
+	_, replay, err := model.ConsumeTelegramVerification(token, telegramUserID, time.Now())
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrTelegramAccountAlreadyLinked):
+			c.JSON(http.StatusConflict, gin.H{"success": false, "code": "telegram_already_linked"})
+		case errors.Is(err, model.ErrTelegramVerificationNotFound),
+			errors.Is(err, model.ErrTelegramVerificationExpired),
+			errors.Is(err, model.ErrTelegramVerificationUsed):
+			c.JSON(http.StatusGone, gin.H{"success": false, "code": "invalid_or_expired"})
+		default:
+			common.SysError("failed to consume Mia Telegram verification: " + err.Error())
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "verification_failed"})
+		}
+		return
+	}
+	status := "confirmed"
+	if replay {
+		status = "replay"
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"status":    status,
+			"group_url": strings.TrimSpace(common.TelegramGroupURL),
 		},
 	})
 }

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -47,17 +48,21 @@ func setupMiaTelegramTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 		&model.ChannelModelPricing{},
 		&model.Model{},
 		&model.Vendor{},
+		&model.TelegramGroupVerification{},
 	))
 	model.DB = db
 	model.LOG_DB = db
 	model.InvalidatePricingCache()
 
 	previousSecret := common.MiaInternalServiceKey
+	previousGroupURL := common.TelegramGroupURL
 	previousSelfUseMode := operation_setting.SelfUseModeEnabled
 	common.MiaInternalServiceKey = "test-mia-internal-secret"
+	common.TelegramGroupURL = "https://t.me/apimaster_test"
 	operation_setting.SelfUseModeEnabled = true
 	t.Cleanup(func() {
 		common.MiaInternalServiceKey = previousSecret
+		common.TelegramGroupURL = previousGroupURL
 		operation_setting.SelfUseModeEnabled = previousSelfUseMode
 		model.InvalidatePricingCache()
 		sqlDB, dbErr := db.DB()
@@ -86,6 +91,11 @@ func setupMiaTelegramTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 		"/api/user/internal/mia-activation-eligibility",
 		middleware.RequireMiaInternalService(),
 		ResolveMiaActivationEligibility,
+	)
+	router.POST(
+		"/api/user/internal/mia-telegram-verification",
+		middleware.RequireMiaInternalService(),
+		ConsumeMiaTelegramVerification,
 	)
 	return router, db
 }
@@ -118,6 +128,54 @@ func TestResolveMiaTelegramAPIKeyRequiresDedicatedAuthentication(t *testing.T) {
 	recorder := performMiaTelegramRequest(router, "", `{"telegram_user_id":"123456"}`)
 	require.Equal(t, http.StatusUnauthorized, recorder.Code)
 	require.NotContains(t, recorder.Body.String(), "test-mia-internal-secret")
+}
+
+func TestConsumeMiaTelegramVerificationRequiresDedicatedAuthentication(t *testing.T) {
+	router, _ := setupMiaTelegramTestRouter(t)
+	response := performMiaInternalRequest(router, "/api/user/internal/mia-telegram-verification", "", `{"token":"0123456789abcdef0123456789abcdef01234567890","telegram_user_id":"123456"}`)
+	require.Equal(t, http.StatusUnauthorized, response.Code)
+}
+
+func TestConsumeMiaTelegramVerificationConfirmsAndReplays(t *testing.T) {
+	router, db := setupMiaTelegramTestRouter(t)
+	user := model.User{Username: "verification-user", Status: common.UserStatusEnabled, AffCode: "verify1"}
+	require.NoError(t, db.Create(&user).Error)
+	_, token, err := model.StartTelegramGroupVerification(user.Id, time.Now())
+	require.NoError(t, err)
+	body := `{"token":"` + token + `","telegram_user_id":"123456"}`
+
+	confirmed := performMiaInternalRequest(router, "/api/user/internal/mia-telegram-verification", "test-mia-internal-secret", body)
+	require.Equal(t, http.StatusOK, confirmed.Code)
+	require.JSONEq(t, `{"success":true,"data":{"status":"confirmed","group_url":"https://t.me/apimaster_test"}}`, confirmed.Body.String())
+
+	replay := performMiaInternalRequest(router, "/api/user/internal/mia-telegram-verification", "test-mia-internal-secret", body)
+	require.Equal(t, http.StatusOK, replay.Code)
+	require.JSONEq(t, `{"success":true,"data":{"status":"replay","group_url":"https://t.me/apimaster_test"}}`, replay.Body.String())
+}
+
+func TestConsumeMiaTelegramVerificationRejectsExpiredAndConflictingAccounts(t *testing.T) {
+	router, db := setupMiaTelegramTestRouter(t)
+	first := model.User{Username: "verification-first", Status: common.UserStatusEnabled, AffCode: "verify2"}
+	second := model.User{Username: "verification-second", Status: common.UserStatusEnabled, AffCode: "verify3"}
+	require.NoError(t, db.Create(&first).Error)
+	require.NoError(t, db.Create(&second).Error)
+
+	_, expiredToken, err := model.StartTelegramGroupVerification(first.Id, time.Now().Add(-model.TelegramVerificationTTL-time.Minute))
+	require.NoError(t, err)
+	expired := performMiaInternalRequest(router, "/api/user/internal/mia-telegram-verification", "test-mia-internal-secret", `{"token":"`+expiredToken+`","telegram_user_id":"123456"}`)
+	require.Equal(t, http.StatusGone, expired.Code)
+	require.Contains(t, expired.Body.String(), "invalid_or_expired")
+
+	_, firstToken, err := model.StartTelegramGroupVerification(first.Id, time.Now())
+	require.NoError(t, err)
+	confirmed := performMiaInternalRequest(router, "/api/user/internal/mia-telegram-verification", "test-mia-internal-secret", `{"token":"`+firstToken+`","telegram_user_id":"123456"}`)
+	require.Equal(t, http.StatusOK, confirmed.Code)
+
+	_, secondToken, err := model.StartTelegramGroupVerification(second.Id, time.Now())
+	require.NoError(t, err)
+	conflict := performMiaInternalRequest(router, "/api/user/internal/mia-telegram-verification", "test-mia-internal-secret", `{"token":"`+secondToken+`","telegram_user_id":"123456"}`)
+	require.Equal(t, http.StatusConflict, conflict.Code)
+	require.Contains(t, conflict.Body.String(), "telegram_already_linked")
 }
 
 func TestResolveMiaDebugIdentitiesReturnsOnlyEnabledBoundUsers(t *testing.T) {
