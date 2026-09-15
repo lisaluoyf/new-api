@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha512"
 	"encoding/hex"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -47,4 +48,33 @@ func TestGetNowPaymentsPaymentAcceptsNumericPaymentID(t *testing.T) {
 	payment, err := GetNowPaymentsPayment(context.Background(), "12345")
 	require.NoError(t, err)
 	require.Equal(t, "12345", string(payment.PaymentID))
+}
+
+func TestCreateNowPaymentsInvoiceUsesHostedCheckoutWithoutPayCurrency(t *testing.T) {
+	originalBaseURL := nowPaymentsAPIBaseURL
+	originalAPIKey := setting.NowPaymentsAPIKey
+	t.Cleanup(func() {
+		nowPaymentsAPIBaseURL = originalBaseURL
+		setting.NowPaymentsAPIKey = originalAPIKey
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		require.Equal(t, http.MethodPost, request.Method)
+		require.Equal(t, "/invoice", request.URL.Path)
+		require.Equal(t, "test-key", request.Header.Get("x-api-key"))
+		body, err := io.ReadAll(request.Body)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "pay_currency")
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"id":987,"order_id":"order-1","price_amount":10,"price_currency":"usd","invoice_url":"https://nowpayments.io/payment/?iid=987"}`))
+	}))
+	defer server.Close()
+	nowPaymentsAPIBaseURL = server.URL
+	setting.NowPaymentsAPIKey = "test-key"
+
+	invoice, err := CreateNowPaymentsInvoice(context.Background(), &NowPaymentsCreateInvoiceRequest{
+		PriceAmount: 10, PriceCurrency: "usd", OrderID: "order-1",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "987", string(invoice.ID))
+	require.Equal(t, "https://nowpayments.io/payment/?iid=987", invoice.InvoiceURL)
 }

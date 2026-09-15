@@ -54,7 +54,6 @@ import { paymentErrorMessage } from '../lib/payment'
 import type { TopupInfo } from '../types'
 import { ClinkPayMethodHints } from './clink-pay-method-hints'
 import { CryptoDepositModal } from './crypto-deposit-modal'
-import { NowPaymentsDepositModal } from './nowpayments-deposit-modal'
 import { WaffoPayMethodHints } from './waffo-pay-method-hints'
 
 const HINT_LS_KEY = 'payment_hint_shown'
@@ -103,7 +102,6 @@ export function RechargePanel({
   const [selectedAmount, setSelectedAmount] = useState<number>(100)
   const [customAmount, setCustomAmount] = useState('')
   const [cryptoOpen, setCryptoOpen] = useState(false)
-  const [nowPaymentsOpen, setNowPaymentsOpen] = useState(false)
   const [topupInfo, setTopupInfo] = useState<TopupInfo | null>(null)
   const [epayLoading, setEpayLoading] = useState<string | null>(null)
   const [paypalLoading, setPaypalLoading] = useState(false)
@@ -337,11 +335,7 @@ export function RechargePanel({
     const minTopup = topupInfo?.min_topup ?? 1
     if (!ensureMinimumTopup(effectiveAmount, minTopup)) return
     handleMethodSelect('crypto')
-    if (topupInfo?.enable_nowpayments_topup) {
-      setNowPaymentsOpen(true)
-    } else {
-      setCryptoOpen(true)
-    }
+    setCryptoOpen(true)
   }
 
   const epayEnabled = topupInfo?.enable_online_topup ?? false
@@ -834,21 +828,14 @@ export function RechargePanel({
         open={cryptoOpen}
         onOpenChange={setCryptoOpen}
         amount={effectiveAmount}
+        nowPaymentsAmount={requestAmount}
+        nowPaymentsEnabled={topupInfo?.enable_nowpayments_topup ?? false}
+        nowPaymentsMinTopup={topupInfo?.nowpayments_min_topup ?? 1}
         onSuccess={() => {
           setCryptoOpen(false)
           onSuccess()
         }}
-        onSettled={onPaymentSettled}
-      />
-
-      <NowPaymentsDepositModal
-        open={nowPaymentsOpen}
-        onOpenChange={setNowPaymentsOpen}
-        amount={requestAmount}
-        onSuccess={() => {
-          setNowPaymentsOpen(false)
-          onSuccess()
-        }}
+        onPaymentAttempted={onPaymentAttempted}
         onSettled={onPaymentSettled}
       />
 

@@ -253,26 +253,12 @@ export type ClinkConfirmResponse = ApiResponse<{
 
 export interface NowPaymentsPaymentRequest {
   amount: number
-  pay_currency: string
 }
 
 export type NowPaymentsPaymentResponse = ApiResponse<{
-  payment_id: string
+  invoice_id: string
   order_id: string
-  pay_address: string
-  payin_extra_id?: string
-  pay_amount: number
-  pay_currency: string
-  network?: string
-  payment_status: string
-  expires_at?: number
-}>
-
-export type NowPaymentsStatusResponse = ApiResponse<{
-  payment_id: string
-  payment_status: string
-  payin_hash?: string
-  topup_status: string
+  invoice_url: string
 }>
 
 /**

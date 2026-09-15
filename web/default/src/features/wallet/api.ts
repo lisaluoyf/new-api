@@ -47,7 +47,6 @@ import type {
   ClinkConfirmResponse,
   NowPaymentsPaymentRequest,
   NowPaymentsPaymentResponse,
-  NowPaymentsStatusResponse,
 } from './types'
 
 function normalizeMinTopup(value: unknown, fallback: number): number {
@@ -106,19 +105,12 @@ function normalizeTopupInfoResponse(
   }
 }
 
-export async function requestNowPaymentsPayment(
+export async function requestNowPaymentsInvoice(
   request: NowPaymentsPaymentRequest
 ): Promise<NowPaymentsPaymentResponse> {
   const res = await api.post('/api/user/nowpayments/pay', request, {
     skipBusinessError: true,
   } as Record<string, unknown>)
-  return res.data
-}
-
-export async function getNowPaymentsPayment(
-  paymentId: string
-): Promise<NowPaymentsStatusResponse> {
-  const res = await api.get(`/api/user/nowpayments/payment/${encodeURIComponent(paymentId)}`)
   return res.data
 }
 

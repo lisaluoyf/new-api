@@ -19,20 +19,35 @@ import (
 
 var nowPaymentsAPIBaseURL = "https://api.nowpayments.io/v1"
 
-type NowPaymentsCreatePaymentRequest struct {
+type NowPaymentsCreateInvoiceRequest struct {
 	PriceAmount      float64 `json:"price_amount"`
 	PriceCurrency    string  `json:"price_currency"`
-	PayCurrency      string  `json:"pay_currency"`
 	IPNCallbackURL   string  `json:"ipn_callback_url"`
 	OrderID          string  `json:"order_id"`
 	OrderDescription string  `json:"order_description"`
+	SuccessURL       string  `json:"success_url"`
+	CancelURL        string  `json:"cancel_url"`
+	PartiallyPaidURL string  `json:"partially_paid_url"`
 	IsFixedRate      bool    `json:"is_fixed_rate"`
 	IsFeePaidByUser  bool    `json:"is_fee_paid_by_user"`
+}
+
+type NowPaymentsInvoiceResponse struct {
+	ID            dto.StringValue `json:"id"`
+	OrderID       string          `json:"order_id"`
+	PriceAmount   float64         `json:"price_amount"`
+	PriceCurrency string          `json:"price_currency"`
+	InvoiceURL    string          `json:"invoice_url"`
+	SuccessURL    string          `json:"success_url"`
+	CancelURL     string          `json:"cancel_url"`
+	CreatedAt     string          `json:"created_at"`
+	UpdatedAt     string          `json:"updated_at"`
 }
 
 type NowPaymentsPaymentResponse struct {
 	PaymentID              dto.StringValue `json:"payment_id"`
 	ParentPaymentID        dto.StringValue `json:"parent_payment_id"`
+	InvoiceID              dto.StringValue `json:"invoice_id"`
 	PaymentStatus          string          `json:"payment_status"`
 	PayAddress             string          `json:"pay_address"`
 	PayinExtraID           string          `json:"payin_extra_id"`
@@ -47,31 +62,45 @@ type NowPaymentsPaymentResponse struct {
 	ExpirationEstimateDate string          `json:"expiration_estimate_date"`
 }
 
-func CreateNowPaymentsPayment(ctx context.Context, params *NowPaymentsCreatePaymentRequest) (*NowPaymentsPaymentResponse, error) {
-	if params == nil || params.PriceAmount <= 0 || strings.TrimSpace(params.PayCurrency) == "" || strings.TrimSpace(params.OrderID) == "" {
-		return nil, fmt.Errorf("invalid NOWPayments payment parameters")
+func CreateNowPaymentsInvoice(ctx context.Context, params *NowPaymentsCreateInvoiceRequest) (*NowPaymentsInvoiceResponse, error) {
+	if params == nil || params.PriceAmount <= 0 || strings.TrimSpace(params.OrderID) == "" {
+		return nil, fmt.Errorf("invalid NOWPayments invoice parameters")
 	}
 	body, err := common.Marshal(params)
 	if err != nil {
-		return nil, fmt.Errorf("marshal NOWPayments payment: %w", err)
+		return nil, fmt.Errorf("marshal NOWPayments invoice: %w", err)
 	}
-	return requestNowPayments(ctx, http.MethodPost, "/payment", bytes.NewReader(body))
+	var result NowPaymentsInvoiceResponse
+	if err := requestNowPayments(ctx, http.MethodPost, "/invoice", bytes.NewReader(body), &result); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(string(result.ID)) == "" || strings.TrimSpace(result.InvoiceURL) == "" {
+		return nil, fmt.Errorf("NOWPayments returned an incomplete invoice")
+	}
+	return &result, nil
 }
 
 func GetNowPaymentsPayment(ctx context.Context, paymentID string) (*NowPaymentsPaymentResponse, error) {
 	if strings.TrimSpace(paymentID) == "" {
 		return nil, fmt.Errorf("missing NOWPayments payment id")
 	}
-	return requestNowPayments(ctx, http.MethodGet, "/payment/"+paymentID, nil)
+	var result NowPaymentsPaymentResponse
+	if err := requestNowPayments(ctx, http.MethodGet, "/payment/"+paymentID, nil, &result); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(string(result.PaymentID)) == "" {
+		return nil, fmt.Errorf("NOWPayments returned empty payment id")
+	}
+	return &result, nil
 }
 
-func requestNowPayments(ctx context.Context, method, path string, body io.Reader) (*NowPaymentsPaymentResponse, error) {
+func requestNowPayments(ctx context.Context, method, path string, body io.Reader, result any) error {
 	if strings.TrimSpace(setting.NowPaymentsAPIKey) == "" {
-		return nil, fmt.Errorf("NOWPayments API key is not configured")
+		return fmt.Errorf("NOWPayments API key is not configured")
 	}
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(nowPaymentsAPIBaseURL, "/")+path, body)
 	if err != nil {
-		return nil, fmt.Errorf("build NOWPayments request: %w", err)
+		return fmt.Errorf("build NOWPayments request: %w", err)
 	}
 	req.Header.Set("x-api-key", setting.NowPaymentsAPIKey)
 	if body != nil {
@@ -80,24 +109,20 @@ func requestNowPayments(ctx context.Context, method, path string, body io.Reader
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request NOWPayments: %w", err)
+		return fmt.Errorf("request NOWPayments: %w", err)
 	}
 	defer resp.Body.Close()
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read NOWPayments response: %w", err)
-	}
-	var result NowPaymentsPaymentResponse
-	if err := common.Unmarshal(responseBody, &result); err != nil {
-		return nil, fmt.Errorf("decode NOWPayments response: %w", err)
+		return fmt.Errorf("read NOWPayments response: %w", err)
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
-		return nil, fmt.Errorf("NOWPayments request failed with status %d", resp.StatusCode)
+		return fmt.Errorf("NOWPayments request failed with status %d", resp.StatusCode)
 	}
-	if strings.TrimSpace(string(result.PaymentID)) == "" {
-		return nil, fmt.Errorf("NOWPayments returned empty payment id")
+	if err := common.Unmarshal(responseBody, result); err != nil {
+		return fmt.Errorf("decode NOWPayments response: %w", err)
 	}
-	return &result, nil
+	return nil
 }
 
 func VerifyNowPaymentsIPN(payload []byte, signature string) bool {

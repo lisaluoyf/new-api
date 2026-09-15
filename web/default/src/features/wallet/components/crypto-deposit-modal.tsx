@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect } from 'react'
 import { Loader2, CheckCircle2, XCircle, ExternalLink } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -28,6 +29,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { requestNowPaymentsInvoice } from '../api'
 import {
   CHAINS,
   NATIVE_COINGECKO,
@@ -45,7 +48,11 @@ interface CryptoDepositModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   amount: number
+  nowPaymentsAmount?: number
+  nowPaymentsEnabled?: boolean
+  nowPaymentsMinTopup?: number
   onSuccess: () => void
+  onPaymentAttempted?: () => void
   onSettled?: () => void
 }
 
@@ -67,7 +74,11 @@ export function CryptoDepositModal({
   open,
   onOpenChange,
   amount,
+  nowPaymentsAmount = amount,
+  nowPaymentsEnabled = false,
+  nowPaymentsMinTopup = 1,
   onSuccess,
+  onPaymentAttempted,
   onSettled,
 }: CryptoDepositModalProps) {
   const { t } = useTranslation()
@@ -78,6 +89,8 @@ export function CryptoDepositModal({
   const [walletOptions, setWalletOptions] = useState<CryptoWalletOption[]>([])
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null)
   const [walletDiscoveryReady, setWalletDiscoveryReady] = useState(false)
+  const [paymentMode, setPaymentMode] = useState('wallet')
+  const [hostedCheckoutLoading, setHostedCheckoutLoading] = useState(false)
 
   const { step, error, txHash, usdAdded, walletAddress, startPayment, reset } =
     useCryptoPayment()
@@ -85,6 +98,7 @@ export function CryptoDepositModal({
 
   useEffect(() => {
     if (!open) return
+    setPaymentMode('wallet')
     let cancelled = false
     discoverCryptoWallets(selectedChain.family)
       .then((wallets) => {
@@ -132,6 +146,41 @@ export function CryptoDepositModal({
     onOpenChange(false)
   }
 
+  async function openHostedCheckout() {
+    if (nowPaymentsAmount < nowPaymentsMinTopup) {
+      toast.error(
+        t('The minimum top-up amount is ${{amount}} USD.', {
+          amount: nowPaymentsMinTopup,
+        })
+      )
+      return
+    }
+    const paymentWindow = window.open('about:blank', '_blank')
+    if (!paymentWindow) {
+      toast.error(t('Please allow pop-ups to continue to payment.'))
+      return
+    }
+    paymentWindow.opener = null
+    setHostedCheckoutLoading(true)
+    try {
+      const result = await requestNowPaymentsInvoice({
+        amount: Math.round(nowPaymentsAmount),
+      })
+      if (!result.success || !result.data?.invoice_url) {
+        paymentWindow.close()
+        toast.error(result.message || t('Failed to create payment'))
+        return
+      }
+      paymentWindow.location.replace(result.data.invoice_url)
+      onPaymentAttempted?.()
+    } catch {
+      paymentWindow.close()
+      toast.error(t('Failed to create payment'))
+    } finally {
+      setHostedCheckoutLoading(false)
+    }
+  }
+
   const isNativeToken = selectedToken.isNative
   const nativeAmount =
     isNativeToken && displayPrice > 0
@@ -163,8 +212,19 @@ export function CryptoDepositModal({
           </DialogDescription>
         </DialogHeader>
 
+        {nowPaymentsEnabled && step === 'form' && (
+          <Tabs value={paymentMode} onValueChange={setPaymentMode}>
+            <TabsList className='grid w-full grid-cols-2'>
+              <TabsTrigger value='wallet'>{t('Connect wallet')}</TabsTrigger>
+              <TabsTrigger value='transfer'>
+                {t('Address transfer')}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+
         {/* ── 表单 ── */}
-        {step === 'form' && (
+        {step === 'form' && paymentMode === 'wallet' && (
           <div className='flex flex-col gap-5 py-1'>
             {/* 钱包地址 */}
             {walletOptions.length > 1 && (
@@ -330,6 +390,38 @@ export function CryptoDepositModal({
             </Button>
           </div>
         )}
+
+        {step === 'form' &&
+          paymentMode === 'transfer' &&
+          nowPaymentsEnabled && (
+            <div className='flex flex-col gap-5 py-2'>
+              <div>
+                <div className='text-muted-foreground text-sm'>
+                  {t('Top-up amount')}
+                </div>
+                <div className='mt-1 text-2xl font-semibold'>
+                  ${nowPaymentsAmount.toFixed(2)} USD
+                </div>
+              </div>
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  'Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.'
+                )}
+              </p>
+              <Button
+                className='w-full gap-2'
+                disabled={hostedCheckoutLoading}
+                onClick={() => void openHostedCheckout()}
+              >
+                {hostedCheckoutLoading ? (
+                  <Loader2 className='size-4 animate-spin' />
+                ) : (
+                  <ExternalLink className='size-4' />
+                )}
+                {t('Continue to NOWPayments')}
+              </Button>
+            </div>
+          )}
 
         {/* ── 处理中 ── */}
         {isProcessing && (

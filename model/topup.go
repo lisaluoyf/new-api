@@ -1400,6 +1400,29 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		if actualPayment != "" {
 			lines = append(lines, "实付金额："+actualPayment)
 		}
+		if paymentMethod == PaymentMethodNowPayments {
+			var payment NowPaymentsPayment
+			if err := DB.Where("top_up_trade_no = ?", tradeNo).First(&payment).Error; err == nil {
+				cryptoAmount := strings.TrimSpace(payment.ActuallyPaid)
+				if cryptoAmount == "" || cryptoAmount == "0" {
+					cryptoAmount = strings.TrimSpace(payment.PayAmount)
+				}
+				if cryptoAmount != "" && payment.PayCurrency != "" {
+					lines = append(lines, fmt.Sprintf("链上实付：%s %s", cryptoAmount, strings.ToUpper(payment.PayCurrency)))
+				}
+				if payment.Network != "" {
+					lines = append(lines, "网络："+payment.Network)
+				}
+				lines = append(lines,
+					"NOWPayments Payment ID："+payment.PaymentID,
+					"NOWPayments Invoice ID："+payment.InvoiceID,
+					"内部订单号："+payment.TopUpTradeNo,
+				)
+				if payment.PayinHash != "" {
+					lines = append(lines, "交易哈希："+payment.PayinHash)
+				}
+			}
+		}
 
 		lines = append(lines,
 			cumulativeLine,
