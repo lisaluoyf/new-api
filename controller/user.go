@@ -353,12 +353,39 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
+	// Keep the legacy new-api aff_code untouched, but expose the APIMaster
+	// referral code used by the Affiliate page when the mapping is available.
+	referralCode := lookupApimasterReferralCode(user.Username)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    user,
+		"data": struct {
+			*model.User
+			ReferralCode string `json:"referral_code,omitempty"`
+		}{
+			User:         user,
+			ReferralCode: referralCode,
+		},
 	})
 	return
+}
+
+// lookupApimasterReferralCode reads the referral code maintained by APIMaster.
+// A missing database or mapping is intentionally treated as an empty result so
+// callers can safely fall back to the legacy new-api aff_code.
+func lookupApimasterReferralCode(username string) string {
+	if model.APIMASTER_PG_DB == nil || username == "" {
+		return ""
+	}
+	var refCode string
+	err := model.APIMASTER_PG_DB.Raw(
+		`SELECT referral_code FROM users WHERE REPLACE(id::text, '-', '') LIKE ? LIMIT 1`,
+		username+"%",
+	).Scan(&refCode).Error
+	if err != nil {
+		return ""
+	}
+	return refCode
 }
 
 func GenerateAccessToken(c *gin.Context) {
@@ -457,17 +484,7 @@ func GetReferralCode(c *gin.Context) {
 		return
 	}
 
-	code := ""
-	if model.APIMASTER_PG_DB != nil && user.Username != "" {
-		var refCode string
-		qErr := model.APIMASTER_PG_DB.Raw(
-			`SELECT referral_code FROM users WHERE REPLACE(id::text, '-', '') LIKE ? LIMIT 1`,
-			user.Username+"%",
-		).Scan(&refCode).Error
-		if qErr == nil {
-			code = refCode
-		}
-	}
+	code := lookupApimasterReferralCode(user.Username)
 
 	if code == "" {
 		if user.AffCode == "" {

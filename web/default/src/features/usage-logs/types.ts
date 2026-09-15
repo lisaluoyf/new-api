@@ -410,6 +410,7 @@ export interface UserInfo {
   request_count: number
   group?: string
   aff_code?: string
+  referral_code?: string
   aff_count?: number
   aff_quota?: number
   remark?: string

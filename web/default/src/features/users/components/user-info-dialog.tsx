@@ -44,6 +44,7 @@ interface UserInfo {
   request_count?: number
   group?: string
   aff_code?: string
+  referral_code?: string
   aff_count?: number
   aff_quota?: number
   aff_ratio_override?: number | null
@@ -196,15 +197,16 @@ export function UserInfoDialog({
               />
             </div>
 
-            {(userInfo.aff_code ||
+            {(userInfo.referral_code ||
+              userInfo.aff_code ||
               userInfo.aff_count !== undefined ||
               (userInfo.aff_quota !== undefined && userInfo.aff_quota > 0)) && (
               <>
                 <div className='grid grid-cols-2 gap-4'>
-                  {userInfo.aff_code && (
+                  {(userInfo.referral_code || userInfo.aff_code) && (
                     <InfoItem
                       label={t('Invitation Code')}
-                      value={userInfo.aff_code}
+                      value={userInfo.referral_code || userInfo.aff_code || '-'}
                     />
                   )}
                   {userInfo.aff_count !== undefined && (
