@@ -54,10 +54,6 @@ func RequestNowPaymentsPay(c *gin.Context) {
 		common.ApiErrorMsg(c, "User does not exist")
 		return
 	}
-	if !isNowPaymentsAllowedEmail(user.Email) {
-		c.Status(http.StatusNotFound)
-		return
-	}
 	// Hosted Checkout is priced in USD. Keep the requested top-up amount as
 	// the credited amount, and apply only the explicit top-up/promo discounts
 	// to determine what the customer pays.

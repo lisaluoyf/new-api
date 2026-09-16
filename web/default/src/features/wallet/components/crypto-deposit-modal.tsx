@@ -134,6 +134,7 @@ export function CryptoDepositModal({
     (wallet) => wallet.id === selectedWalletId
   )
   const walletRequired = !walletDiscoveryReady || !selectedWallet
+  const nowPaymentsBelowMinimum = nowPaymentsRequestAmount < nowPaymentsMinTopup
 
   function handleChainChange(chain: ChainConfig) {
     setWalletDiscoveryReady(false)
@@ -425,12 +426,17 @@ export function CryptoDepositModal({
           nowPaymentsEnabled && (
             <div className='flex flex-col gap-5 py-2'>
               <ul className='text-muted-foreground list-disc space-y-1 pl-5 text-sm'>
-                <li>{t('Prefer not to connect a wallet?')}</li>
                 <li>
                   {t(
-                    'You can choose direct transfer and pay securely on NOWPayments.'
+                    'Prefer not to connect a wallet? You can use direct transfer.'
                   )}
                 </li>
+                <li>
+                  {t(
+                    'Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.'
+                  )}
+                </li>
+                <li>{t('You are responsible for any applicable fees.')}</li>
               </ul>
               <div>
                 <div className='text-muted-foreground text-sm'>
@@ -443,21 +449,20 @@ export function CryptoDepositModal({
                   {t('Top-up amount')}: ${nowPaymentsRequestAmount.toFixed(2)}{' '}
                   USD
                 </div>
-                <div className='text-muted-foreground mt-1 text-sm'>
+                <div
+                  className={cn(
+                    'mt-1 text-sm',
+                    nowPaymentsBelowMinimum
+                      ? 'text-destructive font-medium'
+                      : 'text-muted-foreground'
+                  )}
+                >
                   {t('Minimum top-up')}: ${nowPaymentsMinTopup.toFixed(2)} USD
                 </div>
               </div>
-              <p className='text-muted-foreground text-sm'>
-                {t(
-                  'Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.'
-                )}
-              </p>
               <Button
                 className='w-full gap-2'
-                disabled={
-                  hostedCheckoutLoading ||
-                  nowPaymentsRequestAmount < nowPaymentsMinTopup
-                }
+                disabled={hostedCheckoutLoading || nowPaymentsBelowMinimum}
                 onClick={() => void openHostedCheckout()}
               >
                 {hostedCheckoutLoading ? (

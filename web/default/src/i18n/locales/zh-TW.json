@@ -4658,8 +4658,8 @@
     "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "使用任意交易所或錢包，在 NOWPayments 安全付款頁選擇幣種和網路。",
     "Minimum top-up": "最低儲值金額",
     "Top-up amount": "儲值金額",
-    "Prefer not to connect a wallet?": "不想連接錢包？",
-    "You can choose direct transfer and pay securely on NOWPayments.": "可以選擇直接轉帳，在 NOWPayments 安全完成付款。"
+    "Prefer not to connect a wallet? You can use direct transfer.": "不想連接錢包？可以使用直接轉帳。",
+    "You are responsible for any applicable fees.": "需要承擔產生的手續費。"
   },
   "User Balance": "用戶餘額",
   "No active subscription": "目前沒有可用訂閱",

@@ -4647,8 +4647,8 @@
     "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Użyj dowolnej giełdy lub portfela. Wybierz kryptowalutę i sieć na bezpiecznej stronie NOWPayments.",
     "Minimum top-up": "Minimalne doładowanie",
     "Top-up amount": "Kwota doładowania",
-    "Prefer not to connect a wallet?": "Nie chcesz łączyć portfela?",
-    "You can choose direct transfer and pay securely on NOWPayments.": "Wybierz przelew bezpośredni i zapłać bezpiecznie przez NOWPayments."
+    "Prefer not to connect a wallet? You can use direct transfer.": "Nie chcesz łączyć portfela? Skorzystaj z przelewu bezpośredniego.",
+    "You are responsible for any applicable fees.": "Wszelkie naliczone opłaty ponosi użytkownik."
   },
   "User Balance": "Saldo użytkowników",
   "No active subscription": "Brak aktywnej subskrypcji",

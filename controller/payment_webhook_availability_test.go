@@ -172,8 +172,23 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	require.False(t, isEpayWebhookEnabled())
 }
 
-func TestNowPaymentsPreviewEmail(t *testing.T) {
-	require.True(t, isNowPaymentsAllowedEmail("lisa.luoyf@gmail.com"))
-	require.True(t, isNowPaymentsAllowedEmail(" LISA.LUOYF@GMAIL.COM "))
-	require.False(t, isNowPaymentsAllowedEmail("other@example.com"))
+func TestNowPaymentsTopUpEnabledForAllAuthenticatedUsers(t *testing.T) {
+	originalEnabled := setting.NowPaymentsEnabled
+	originalAPIKey := setting.NowPaymentsAPIKey
+	originalIPNSecret := setting.NowPaymentsIPNSecret
+	t.Cleanup(func() {
+		setting.NowPaymentsEnabled = originalEnabled
+		setting.NowPaymentsAPIKey = originalAPIKey
+		setting.NowPaymentsIPNSecret = originalIPNSecret
+	})
+
+	setting.NowPaymentsEnabled = true
+	setting.NowPaymentsAPIKey = "test-api-key"
+	setting.NowPaymentsIPNSecret = "test-ipn-secret"
+	require.True(t, isNowPaymentsTopUpEnabledForUser(1))
+	require.True(t, isNowPaymentsTopUpEnabledForUser(999))
+	require.False(t, isNowPaymentsTopUpEnabledForUser(0))
+
+	setting.NowPaymentsEnabled = false
+	require.False(t, isNowPaymentsTopUpEnabledForUser(1))
 }
