@@ -116,7 +116,7 @@ func FormatPaymentMethodLabel(method string) string {
 	case PaymentMethodClink:
 		return "Clink"
 	case PaymentMethodNowPayments:
-		return "NOWPayments"
+		return "加密货币（NOWPayments）"
 	case "crypto":
 		return "加密货币"
 	case "epay":
@@ -129,6 +129,82 @@ func FormatPaymentMethodLabel(method string) string {
 		}
 		return method
 	}
+}
+
+func formatCryptoNetworkLabel(network string) string {
+	normalized := strings.ToLower(strings.TrimSpace(network))
+	switch normalized {
+	case "bsc", "bnb", "bnb smart chain", "bep20":
+		return "BSC"
+	case "eth", "ethereum", "erc20":
+		return "ETH"
+	case "trx", "tron", "trc20":
+		return "TRON"
+	case "sol", "solana", "spl":
+		return "SOLANA"
+	case "arb", "arbitrum":
+		return "ARBITRUM"
+	case "matic", "polygon":
+		return "POLYGON"
+	case "base":
+		return "BASE"
+	case "btc", "bitcoin":
+		return "BITCOIN"
+	default:
+		return strings.ToUpper(strings.TrimSpace(network))
+	}
+}
+
+func formatCryptoAssetLabel(token, network string) string {
+	tokenLabel := strings.ToUpper(strings.TrimSpace(token))
+	networkLabel := formatCryptoNetworkLabel(network)
+	if tokenLabel == "" {
+		return networkLabel
+	}
+	if networkLabel == "" {
+		return tokenLabel
+	}
+	return tokenLabel + " " + networkLabel
+}
+
+func formatNowPaymentsAssetLabel(payCurrency, network string) string {
+	token := strings.ToUpper(strings.TrimSpace(payCurrency))
+	aliases := map[string][]string{
+		"BSC":      {"BEP20", "BSC"},
+		"ETH":      {"ERC20", "ETH"},
+		"TRON":     {"TRC20", "TRON", "TRX"},
+		"SOLANA":   {"SOLANA", "SPL", "SOL"},
+		"ARBITRUM": {"ARBITRUM", "ARB"},
+		"POLYGON":  {"POLYGON", "MATIC"},
+		"BASE":     {"BASE"},
+		"BITCOIN":  {"BTC"},
+	}
+	networkLabel := formatCryptoNetworkLabel(network)
+	for _, suffix := range aliases[networkLabel] {
+		if len(token) > len(suffix) && strings.HasSuffix(token, suffix) {
+			token = strings.TrimRight(strings.TrimSuffix(token, suffix), "-_ ")
+			break
+		}
+	}
+	return formatCryptoAssetLabel(token, networkLabel)
+}
+
+func cryptoDepositAssetLabel(tradeNo string) string {
+	tradeNo = strings.TrimSpace(tradeNo)
+	if tradeNo == "" {
+		return ""
+	}
+
+	query := DB.Where("subscription_order_trade_no = ?", tradeNo)
+	parts := strings.SplitN(tradeNo, ":", 3)
+	if len(parts) == 3 && strings.EqualFold(parts[0], "CRYPTO") {
+		query = query.Or("chain = ? AND tx_hash = ?", strings.ToLower(parts[1]), parts[2])
+	}
+	var intent CryptoDepositIntent
+	if err := query.First(&intent).Error; err != nil {
+		return ""
+	}
+	return formatCryptoAssetLabel(intent.TokenSymbol, intent.Chain)
 }
 
 // FormatCountryLabel returns the ISO country code with a Chinese country name
@@ -1400,9 +1476,18 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		if actualPayment != "" {
 			lines = append(lines, "实付金额："+actualPayment)
 		}
+		if paymentMethod == PaymentMethodCrypto {
+			if assetLabel := cryptoDepositAssetLabel(tradeNo); assetLabel != "" {
+				lines = append(lines, "币种："+assetLabel)
+			}
+		}
 		if paymentMethod == PaymentMethodNowPayments {
 			var payment NowPaymentsPayment
 			if err := DB.Where("top_up_trade_no = ?", tradeNo).First(&payment).Error; err == nil {
+				assetLabel := formatNowPaymentsAssetLabel(payment.PayCurrency, payment.Network)
+				if assetLabel != "" {
+					lines = append(lines, "币种："+assetLabel)
+				}
 				cryptoAmount := strings.TrimSpace(payment.ActuallyPaid)
 				if cryptoAmount == "" || cryptoAmount == "0" {
 					cryptoAmount = strings.TrimSpace(payment.PayAmount)
