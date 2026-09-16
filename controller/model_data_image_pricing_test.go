@@ -36,6 +36,16 @@ func TestBuildImagePricingViewAppliesAllChannelCoefficients(t *testing.T) {
 	require.InDelta(t, 0.25*0.05*0.8*3, view.BillingPrices["1K"], 1e-9)
 	require.InDelta(t, 0.30*0.05*0.8*3, view.BillingPrices["2K"], 1e-9)
 	require.InDelta(t, 0.60*0.05*0.8*3, view.BillingPrices["4K"], 1e-9)
+
+	fdView := buildImagePricingView("gpt-image-2-fd", 0.05, 1, 2)
+	require.NotNil(t, fdView)
+	require.Equal(t, "image", fdView.Unit)
+	require.Equal(t, "1K", fdView.BaseVariant)
+	for tier, base := range map[string]float64{"1K": 0.25, "2K": 0.3, "4K": 0.6} {
+		require.InDelta(t, base, fdView.OfficialPrices[tier], 1e-9, tier)
+		require.InDelta(t, base*0.05, fdView.ProcurementPrices[tier], 1e-9, tier)
+		require.InDelta(t, base*0.05*2, fdView.BillingPrices[tier], 1e-9, tier)
+	}
 }
 
 func TestFilterImagePricingViewForChannel73KeepsOnly1K(t *testing.T) {

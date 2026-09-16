@@ -78,6 +78,12 @@ const DEFAULT_PRICING: Record<string, ImagePricingConfig> = {
     base_variant: '1K',
     prices: { '1K': 0.25, '2K': 0.3, '4K': 0.6 },
   },
+  'gpt-image-2-fd': {
+    unit: 'image',
+    base_price: 0.25,
+    base_variant: '1K',
+    prices: { '1K': 0.25, '2K': 0.3, '4K': 0.6 },
+  },
   'gpt-image-2.5-sunburst': {
     unit: 'image',
     base_price: 0.25,
