@@ -74,6 +74,7 @@ func PrepareGptImage2ModelRequest(c *gin.Context, modelName string) string {
 	if !IsGptImage2Family(modelName) {
 		return modelName
 	}
+	InitImageRoutingDiagnostic(c, modelName)
 	// None of the enabled gpt-image-2 upstreams (packy #72, APIMart #59/#73/#81)
 	// accept response_format; PackyAPI returns 400 Unknown parameter. Strip it here
 	// — before routing and forwarding — so the request stays eligible for the cheap
@@ -592,7 +593,14 @@ func GptImage2ChannelPickFilter(c *gin.Context, modelName string) model.ChannelP
 	}
 	request := gptImage2CapabilityRequestFromContext(c, modelName)
 	return func(ch *model.Channel) bool {
-		return gptImage2ChannelSupportsRequest(ch, request)
+		reason := gptImage2ChannelRejectionReason(ch, request)
+		if ch != nil {
+			recordImageRoutingEvent(c, map[string]interface{}{
+				"stage": "capability", "channel_id": ch.Id,
+				"eligible": reason == "", "reason": reason,
+			})
+		}
+		return reason == ""
 	}
 }
 
@@ -801,27 +809,41 @@ func configuredGptImage2ChannelSupportsRequest(
 	capabilities *dto.GptImage2Capabilities,
 	req gptImage2CapabilityRequest,
 ) bool {
+	return configuredGptImage2RejectionReason(capabilities, req) == ""
+}
+
+func configuredGptImage2RejectionReason(capabilities *dto.GptImage2Capabilities, req gptImage2CapabilityRequest) string {
 	if capabilities == nil || !capabilities.Enabled || capabilities.Version != 1 {
-		return false
+		return "capabilities_disabled_or_invalid"
 	}
 	if req.ExplicitOfficial && !capabilities.OfficialAlias {
-		return false
+		return "official_alias_not_supported"
 	}
 	endpoint := configuredGptImage2EndpointCapabilities(capabilities, req)
 	if endpoint == nil || !endpoint.Enabled {
-		return false
+		return "endpoint_not_supported"
 	}
-	if req.Multipart && !endpoint.Multipart || req.HasUploadedImage && !endpoint.UploadedImage ||
-		req.HasUploadedMask && !endpoint.UploadedMask || endpoint.RequireUploadedImage && !req.HasUploadedImage ||
-		req.HasMaskURL && !endpoint.MaskURL || req.HasStream && !endpoint.Stream ||
-		req.HasPartialImages && !endpoint.PartialImages {
-		return false
+	for _, check := range []struct {
+		rejected bool
+		reason   string
+	}{
+		{req.Multipart && !endpoint.Multipart, "multipart_not_supported"},
+		{req.HasUploadedImage && !endpoint.UploadedImage, "uploaded_image_not_supported"},
+		{req.HasUploadedMask && !endpoint.UploadedMask, "uploaded_mask_not_supported"},
+		{endpoint.RequireUploadedImage && !req.HasUploadedImage, "uploaded_image_required"},
+		{req.HasMaskURL && !endpoint.MaskURL, "mask_not_supported"},
+		{req.HasStream && !endpoint.Stream, "stream_not_supported"},
+		{req.HasPartialImages && !endpoint.PartialImages, "partial_images_not_supported"},
+	} {
+		if check.rejected {
+			return check.reason
+		}
 	}
 	if req.N < 1 || endpoint.MaxN <= 0 || req.N > endpoint.MaxN {
-		return false
+		return "image_count_out_of_range"
 	}
 	if req.ImageURLCount > endpoint.MaxImageURLs {
-		return false
+		return "too_many_reference_images"
 	}
 	fields := map[string]string{
 		"size":            req.Size,
@@ -838,31 +860,42 @@ func configuredGptImage2ChannelSupportsRequest(
 	if req.OutputCompression {
 		fields["output_compression"] = "true"
 	}
-	for field, value := range fields {
+	for _, field := range []string{"size", "resolution", "quality", "background", "output_format", "response_format", "moderation", "input_fidelity", "user", "style", "output_compression"} {
+		value := fields[field]
 		if !configuredGptImage2FieldAllowed(endpoint, field, value) {
-			return false
+			return "unsupported_field_or_value:" + field
 		}
 	}
-	return true
+	return ""
 }
 
 // gptImage2ChannelSupportsRequest uses the admin-configured capability matrix
 // when present. Legacy channel-ID rules remain only as a no-downtime fallback
 // for channels that have not been migrated yet.
 func gptImage2ChannelSupportsRequest(ch *model.Channel, req gptImage2CapabilityRequest) bool {
+	return gptImage2ChannelRejectionReason(ch, req) == ""
+}
+
+func gptImage2ChannelRejectionReason(ch *model.Channel, req gptImage2CapabilityRequest) string {
 	if ch == nil {
-		return false
+		return "channel_missing"
 	}
 	// Channel 73's upstream only produces 1K images. Keep this physical
 	// limitation outside the editable capability matrix so a stale/broad admin
 	// config cannot route 2K/4K requests back to it.
 	if ch.Id == 73 && gptImage2RequestResolutionTier(req) != "1k" {
-		return false
+		return "channel_73_only_supports_1k"
 	}
 	if capabilities := ch.GetOtherSettings().GptImage2Capabilities; capabilities != nil {
-		return configuredGptImage2ChannelSupportsRequest(capabilities, req)
+		return configuredGptImage2RejectionReason(capabilities, req)
 	}
-	return legacyGptImage2ChannelSupportsRequest(ch, req)
+	if legacyGptImage2ChannelSupportsRequest(ch, req) {
+		return ""
+	}
+	if req.ExplicitOfficial && (ch.Id == 72 || ch.Id == 73 || ch.Id == 81) {
+		return "official_alias_not_supported"
+	}
+	return "legacy_capability_mismatch"
 }
 
 func gptImage2RequestResolutionTier(req gptImage2CapabilityRequest) string {

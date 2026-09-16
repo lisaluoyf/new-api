@@ -89,17 +89,48 @@ func RoutingRetryFromHeader(c *gin.Context) int {
 func SelectCheapestEnabledChannel(c *gin.Context, modelName string) (*model.Channel, error) {
 	bannedIDs := bannedChannelIDsFromContext(c)
 	filter := ChannelPickFilter(c, modelName)
+	for _, id := range bannedIDs {
+		recordImageRoutingEvent(c, map[string]interface{}{
+			"stage": "exclusion", "channel_id": id, "reason": "already_attempted",
+		})
+	}
 	const maxAttempts = 32
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		pickedID := selectCheapestChannelID(modelName, bannedIDs)
+		var pickedID int
+		if imageRoutingTrace(c) != nil {
+			observe := func(id int, price float64, priced bool) {
+				recordImageRoutingEvent(c, map[string]interface{}{
+					"stage": "price", "attempt": attempt, "channel_id": id,
+					"priced": priced, "routing_base_price_usd": price,
+				})
+			}
+			pickedID = selectPricedChannelIDObserved(modelName, bannedIDs, true, observe, func(cachedID int) {
+				// Preserve the cached choice. A separate current-price snapshot
+				// lets diagnostics expose stale cache decisions without fixing them.
+				currentID := selectPricedChannelIDFromDBObserved(modelName, bannedIDs, true, observe)
+				recordImageRoutingEvent(c, map[string]interface{}{
+					"stage": "cache_hit", "channel_id": cachedID,
+					"current_cheapest_channel_id": currentID, "prices_are_current_snapshot": true,
+				})
+			})
+		} else {
+			pickedID = selectCheapestChannelID(modelName, bannedIDs)
+		}
 		if pickedID == 0 {
+			recordImageRoutingEvent(c, map[string]interface{}{"stage": "selection", "reason": "no_priced_candidate"})
 			return nil, ErrNoCheapestChannel
 		}
 		ch, err := model.GetChannelById(pickedID, true)
 		if err != nil {
+			recordImageRoutingEvent(c, map[string]interface{}{
+				"stage": "selection", "channel_id": pickedID, "reason": "channel_load_failed",
+			})
 			return nil, fmt.Errorf("auto-cheapest load channel %d: %w", pickedID, err)
 		}
 		if filter == nil || filter(ch) {
+			recordImageRoutingEvent(c, map[string]interface{}{
+				"stage": "selection", "channel_id": ch.Id, "reason": "cheapest_compatible",
+			})
 			return ch, nil
 		}
 		bannedIDs = append(bannedIDs, pickedID)
@@ -190,10 +221,14 @@ func selectMostExpensiveChannelID(modelName string, bannedIDs []int) int {
 }
 
 func selectPricedChannelID(modelName string, bannedIDs []int, ascending bool) int {
+	return selectPricedChannelIDObserved(modelName, bannedIDs, ascending, nil, nil)
+}
+
+func selectPricedChannelIDObserved(modelName string, bannedIDs []int, ascending bool, observe func(int, float64, bool), onCacheHit func(int)) int {
 	// DeepSeek V4 prices change at fixed Beijing-time boundaries. Bypass the
 	// static route cache so selection switches at the same instant as billing.
 	if _, timed := DeepSeekV4OfficialPricingAt(modelName, time.Now()); timed {
-		return selectPricedChannelIDFromDB(modelName, bannedIDs, ascending)
+		return selectPricedChannelIDFromDBObserved(modelName, bannedIDs, ascending, observe)
 	}
 
 	// 只缓存无 bannedIDs 的首选（热路径）；重试时绕过缓存，直接查库
@@ -205,18 +240,25 @@ func selectPricedChannelID(modelName string, bannedIDs []int, ascending bool) in
 		cacheKey := modelName + ":" + direction
 		cache := getChannelRoutingCache()
 		if id, found, err := cache.Get(cacheKey); err == nil && found && id > 0 {
+			if onCacheHit != nil {
+				onCacheHit(id)
+			}
 			return id
 		}
-		id := selectPricedChannelIDFromDB(modelName, bannedIDs, ascending)
+		id := selectPricedChannelIDFromDBObserved(modelName, bannedIDs, ascending, observe)
 		if id > 0 {
 			_ = cache.SetWithTTL(cacheKey, id, channelRoutingCacheTTL)
 		}
 		return id
 	}
-	return selectPricedChannelIDFromDB(modelName, bannedIDs, ascending)
+	return selectPricedChannelIDFromDBObserved(modelName, bannedIDs, ascending, observe)
 }
 
 func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bool) int {
+	return selectPricedChannelIDFromDBObserved(modelName, bannedIDs, ascending, nil)
+}
+
+func selectPricedChannelIDFromDBObserved(modelName string, bannedIDs []int, ascending bool, observe func(int, float64, bool)) int {
 	globalInputUSD, _, _, _, hasGlobal := GlobalModelPricingUSD(modelName)
 	if !hasGlobal || globalInputUSD <= 0 {
 		globalInputUSD = 0
@@ -310,6 +352,9 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 	pricingAt := time.Now()
 	for _, candidate := range candidatesByChannel {
 		price, ok := routeCandidateUserInputPriceAt(candidate, modelName, globalInputUSD, pricingAt)
+		if observe != nil {
+			observe(candidate.ChannelID, price, ok)
+		}
 		if !ok {
 			continue
 		}

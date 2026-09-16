@@ -22,7 +22,7 @@ func TestFormatUserLogsRemovesProviderDiagnostics(t *testing.T) {
 			"loser_channel_id":99,
 			"base_model_price":0.14,
 			"is_model_mapped":true,
-			"admin_info":{"key":"secret"},
+			"admin_info":{"key":"secret","image_routing":{"original_model":"gpt-image-2","events":[{"channel_id":73,"reason":"unsupported_field_or_value:output_format"}]}},
 			"stream_status":"done",
 			"model_price":0.16,
 			"request_data":{"duration":6}
@@ -39,6 +39,8 @@ func TestFormatUserLogsRemovesProviderDiagnostics(t *testing.T) {
 	}
 	require.Contains(t, logs[0].Other, "model_price")
 	require.Contains(t, logs[0].Other, "request_data")
+	require.NotContains(t, logs[0].Other, "image_routing")
+	require.NotContains(t, logs[0].Other, "unsupported_field_or_value")
 }
 
 func setupUserLogVisibilityTestDB(t *testing.T) {

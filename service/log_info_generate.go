@@ -79,6 +79,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	AppendChannelAffinityAdminInfo(ctx, adminInfo)
 	appendOfficialFallbackAdminInfo(ctx, adminInfo)
 	AppendFreeModelRouteAdminInfo(ctx, adminInfo)
+	AppendImageRoutingAdminInfo(ctx, adminInfo)
 	AppendUpstreamFalseSuccessSummary(ctx, adminInfo)
 	appendNonStreamHedgeWinnerAdminInfo(ctx, adminInfo)
 

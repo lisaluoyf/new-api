@@ -1365,6 +1365,7 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
 		service.AppendFreeModelRouteAdminInfo(c, adminInfo)
+		service.AppendImageRoutingAdminInfo(c, adminInfo)
 		service.AppendUpstreamFalseSuccessSummary(c, adminInfo)
 		other["admin_info"] = adminInfo
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
