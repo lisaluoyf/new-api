@@ -120,6 +120,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			if relayInfo != nil {
+				recordCanceledRelayLog(c, relayInfo)
 				recordFailedRequestSnapshot(c, relayInfo, relayFormat, newAPIError)
 			}
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
@@ -308,6 +309,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			}
 		}
 		attemptStartedAt := time.Now()
+		// Transport errors and upstream response IDs belong to this attempt.
+		relayInfo.StreamStatus = nil
+		c.Set("stream_status", nil)
+		c.Set("downstream_delivery_failed", false)
 		if service.IsFreeModel(relayInfo.OriginModelName) {
 			service.BeginFreeModelAttempt(c, retryParam.GetRetry()+1, attemptStartedAt)
 		}
@@ -1286,7 +1291,7 @@ func taskRetryDecisionToMap(decision taskRetryDecision) map[string]interface{} {
 
 func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, channelError types.ChannelError, err *types.NewAPIError) {
 	if c.Request != nil && c.Request.Context().Err() != nil {
-		// 客户端已断开导致的上游请求取消不是渠道故障：不计健康统计、不触发禁用、不记错误日志
+		// 客户端取消不计渠道故障；最终请求的审计日志由 Relay 收尾统一记录，避免记录竞速败方。
 		logger.LogError(c, fmt.Sprintf("skip channel error accounting, client gone (channel #%d): %s", channelError.ChannelId, err.Error()))
 		return
 	}

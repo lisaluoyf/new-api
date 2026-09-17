@@ -27,6 +27,14 @@ func ValidateRelayStreamEnd(c *gin.Context, info *relaycommon.RelayInfo, status 
 	if status == nil {
 		return types.NewOpenAIError(fmt.Errorf("upstream stream did not start"), types.ErrorCodeBadResponse, http.StatusBadGateway)
 	}
+	// A fully parsed terminal response remains billable when the client closes
+	// immediately after receiving it or the next upstream read fails.
+	if terminalFrame && status.HasTerminalUsage() && !status.HasErrors() && (len(validOutput) == 0 || validOutput[0]) {
+		switch status.EndReason {
+		case relaycommon.StreamEndReasonDone, relaycommon.StreamEndReasonEOF, relaycommon.StreamEndReasonClientGone, relaycommon.StreamEndReasonScannerErr:
+			return nil
+		}
+	}
 	if status.EndReason == relaycommon.StreamEndReasonDone && !status.HasErrors() {
 		if len(validOutput) == 0 || (terminalFrame && validOutput[0]) {
 			return nil

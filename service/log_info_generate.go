@@ -91,6 +91,9 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendBillingInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
+	if ctx.GetBool("downstream_delivery_failed") {
+		other["downstream_delivery_failed"] = true
+	}
 	appendChannelActualPrice(relayInfo, other)
 	if ctx != nil && relayInfo != nil {
 		AppendClientExclusiveLogInfo(ctx, relayInfo.OriginModelName, other)
@@ -183,6 +186,11 @@ func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other map[string]inter
 	streamInfo := map[string]interface{}{
 		"status":     status,
 		"end_reason": string(ss.EndReason),
+	}
+	if event, responseID := ss.TerminalUsage(); event != "" {
+		streamInfo["terminal_event"] = event
+		streamInfo["upstream_response_id"] = responseID
+		streamInfo["usage_source"] = "upstream_terminal"
 	}
 	if ss.EndError != nil {
 		streamInfo["end_error"] = ss.EndError.Error()

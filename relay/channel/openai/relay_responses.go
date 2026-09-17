@@ -107,6 +107,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var responseTextBuilder strings.Builder
 
 	terminalFrame := false
+	terminalUsageReceived := false
 	validOutput := false
 	var streamEventErr *types.NewAPIError
 	var lastEventType string
@@ -128,6 +129,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 		lastEventType = streamResponse.Type
 		lastResponse = streamResponse.Response
+		if streamResponse.Response != nil {
+			sr.ObserveResponseID(streamResponse.Response.ID)
+		}
 		if streamResponse.Type == "error" || streamResponse.Type == "response.error" || streamResponse.Type == "response.failed" || (streamResponse.Response != nil && streamResponse.Response.Error != nil) {
 			if !falseSuccessFallbackEnabled() {
 				// 关闭假成功判定：恢复上线前的通用错误，不再返回带诊断的 502。
@@ -162,6 +166,14 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		if streamResponse.Type == "response.incomplete" && responsesResponseHasValidEmptyTerminal(streamResponse.Response) {
 			validOutput = true
 		}
+		// Capture billing evidence before forwarding a terminal event: clients
+		// may close the request from inside that write/flush.
+		if terminalUsage, ok := responsesTerminalUsage(streamResponse); ok && validOutput {
+			usage = terminalUsage
+			terminalUsageReceived = true
+			terminalFrame = true
+			sr.CompleteWithUsage(streamResponse.Type, streamResponse.Response.ID)
+		}
 		if validOutput && !outputCommitted {
 			c.Set(helper.ContextKeySuppressStreamPing, false)
 			for _, pending := range pendingFrames {
@@ -179,7 +191,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sendResponsesStreamData(c, streamResponse, data)
 		}
 		switch streamResponse.Type {
-		case "response.completed":
+		case "response.completed", "response.incomplete":
 			terminalFrame = true
 			if streamResponse.Response != nil {
 				if streamResponse.Response.Usage != nil {
@@ -202,11 +214,6 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 					c.Set("image_generation_call_size", streamResponse.Response.GetSize())
 				}
 			}
-		case "response.incomplete":
-			// A partial response is usable if it already emitted output. An empty
-			// one is accepted only for an explicit policy terminal such as
-			// content_filter.
-			terminalFrame = true
 		case "response.output_text.delta":
 			// 处理输出文本
 			responseTextBuilder.WriteString(streamResponse.Delta)
@@ -249,7 +256,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		return nil, streamErr
 	}
 
-	if usage.CompletionTokens == 0 {
+	if !terminalUsageReceived && usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量
 		tempStr := responseTextBuilder.String()
 		if len(tempStr) > 0 {
@@ -259,7 +266,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 	}
 
-	if usage.PromptTokens == 0 && usage.CompletionTokens != 0 {
+	if !terminalUsageReceived && usage.PromptTokens == 0 && usage.CompletionTokens != 0 {
 		usage.PromptTokens = info.GetEstimatePromptTokens()
 	}
 

@@ -29,13 +29,43 @@ type StreamErrorEntry struct {
 }
 
 type StreamStatus struct {
-	EndReason  StreamEndReason
-	EndError   error
-	endOnce    sync.Once
+	EndReason StreamEndReason
+	EndError  error
+	endOnce   sync.Once
 
-	mu         sync.Mutex
-	Errors     []StreamErrorEntry
-	ErrorCount int
+	mu                 sync.Mutex
+	Errors             []StreamErrorEntry
+	ErrorCount         int
+	terminalEvent      string
+	upstreamResponseID string
+}
+
+// Terminal usage is protocol evidence, independent of a concurrent transport
+// cancellation. Only adapters that validated a terminal response may record it.
+func (s *StreamStatus) RecordTerminalUsage(event, responseID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.terminalEvent, s.upstreamResponseID = event, responseID
+}
+
+func (s *StreamStatus) RecordResponseID(responseID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.upstreamResponseID = responseID
+}
+
+func (s *StreamStatus) TerminalUsage() (event, responseID string) {
+	if s == nil {
+		return "", ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.terminalEvent, s.upstreamResponseID
+}
+
+func (s *StreamStatus) HasTerminalUsage() bool {
+	event, _ := s.TerminalUsage()
+	return event != ""
 }
 
 func NewStreamStatus() *StreamStatus {

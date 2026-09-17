@@ -41,6 +41,17 @@ func (r *StreamResult) Done() {
 	r.stopped = true
 }
 
+func (r *StreamResult) CompleteWithUsage(event, responseID string) {
+	r.status.RecordTerminalUsage(event, responseID)
+	r.Done()
+}
+
+func (r *StreamResult) ObserveResponseID(responseID string) {
+	if responseID != "" {
+		r.status.RecordResponseID(responseID)
+	}
+}
+
 // IsStopped returns whether Stop() or Done() was called during this chunk.
 func (r *StreamResult) IsStopped() bool {
 	return r.stopped

@@ -119,19 +119,21 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	model := info.UpstreamModelName
 
 	var (
-		usage           = &dto.Usage{}
-		outputText      strings.Builder
-		usageText       strings.Builder
-		sentStart       bool
-		sentStop        bool
-		sawToolCall     bool
-		terminalFrame   bool
-		validOutput     bool
-		contentFiltered bool
-		streamErr       *types.NewAPIError
-		lastEventType   string
-		lastResponse    *dto.OpenAIResponsesResponse
-		observedFrames  []string
+		usage                    = &dto.Usage{}
+		outputText               strings.Builder
+		usageText                strings.Builder
+		sentStart                bool
+		sentStop                 bool
+		sawToolCall              bool
+		terminalFrame            bool
+		terminalUsageReceived    bool
+		downstreamDeliveryFailed bool
+		validOutput              bool
+		contentFiltered          bool
+		streamErr                *types.NewAPIError
+		lastEventType            string
+		lastResponse             *dto.OpenAIResponsesResponse
+		observedFrames           []string
 	)
 
 	toolCallIndexByID := make(map[string]int)
@@ -148,11 +150,19 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	}
 
 	sendChatChunk := func(chunk *dto.ChatCompletionsStreamResponse) bool {
+		if terminalUsageReceived && downstreamDeliveryFailed {
+			return true
+		}
 		if chunk == nil {
 			return true
 		}
 		if info.RelayFormat == types.RelayFormatOpenAI {
 			if err := helper.ObjectData(c, chunk); err != nil {
+				if terminalUsageReceived {
+					downstreamDeliveryFailed = true
+					c.Set("downstream_delivery_failed", true)
+					return true
+				}
 				streamErr = types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
 				return false
 			}
@@ -165,6 +175,11 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			return false
 		}
 		if err := HandleStreamFormat(c, info, string(chunkData), false, false); err != nil {
+			if terminalUsageReceived {
+				downstreamDeliveryFailed = true
+				c.Set("downstream_delivery_failed", true)
+				return true
+			}
 			streamErr = types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
 			return false
 		}
@@ -356,6 +371,9 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 		lastEventType = streamResp.Type
 		lastResponse = streamResp.Response
+		if streamResp.Response != nil {
+			sr.ObserveResponseID(streamResp.Response.ID)
+		}
 		if !validOutput && len(observedFrames) < 64 {
 			observedFrames = append(observedFrames, data)
 		}
@@ -496,8 +514,17 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 		case "response.function_call_arguments.done":
 
-		case "response.completed":
+		case "response.completed", "response.incomplete":
 			terminalFrame = true
+			if streamResp.Type == "response.incomplete" && responsesResponseHasValidEmptyTerminal(streamResp.Response) {
+				validOutput = true
+				contentFiltered = true
+			}
+			if terminalUsage, ok := responsesTerminalUsage(streamResp); ok && (validOutput || responsesResponseHasUsableOutput(streamResp.Response)) {
+				usage = terminalUsage
+				terminalUsageReceived = true
+				sr.CompleteWithUsage(streamResp.Type, streamResp.Response.ID)
+			}
 			if streamResp.Response != nil {
 				if streamResp.Response.Model != "" {
 					model = streamResp.Response.Model
@@ -578,13 +605,6 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 				sentStop = true
 			}
 
-		case "response.incomplete":
-			terminalFrame = true
-			if responsesResponseHasValidEmptyTerminal(streamResp.Response) {
-				validOutput = true
-				contentFiltered = true
-			}
-
 		default:
 		}
 	})
@@ -614,7 +634,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		return nil, validationErr
 	}
 
-	if usage.TotalTokens == 0 {
+	if !terminalUsageReceived && usage.TotalTokens == 0 {
 		usage = service.ResponseText2Usage(c, usageText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 	}
 
@@ -640,6 +660,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	}
 	if info.RelayFormat == types.RelayFormatOpenAI && info.ShouldIncludeUsage && usage != nil {
 		if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseId, createAt, model, *usage)); err != nil {
+			if terminalUsageReceived {
+				c.Set("downstream_delivery_failed", true)
+				return usage, nil
+			}
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
 		}
 	}

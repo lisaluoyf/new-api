@@ -9,6 +9,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	modelsetting "github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -117,6 +118,11 @@ func TestHasBillableHedgeUsage(t *testing.T) {
 
 func TestShouldClientGoneHedgeSkipsAudioBillingModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	previousAudioRatios := ratio_setting.AudioRatio2JSONString()
+	t.Cleanup(func() { _ = ratio_setting.UpdateAudioRatioByJSONString(previousAudioRatios) })
+	if err := ratio_setting.UpdateAudioRatioByJSONString(`{"gpt-4o-audio-preview":20}`); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		_, _ = modelsetting.ApplyClientGoneFallbackSettings(`{"policies":[]}`)
 	})

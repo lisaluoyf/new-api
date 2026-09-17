@@ -1,12 +1,28 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/stretchr/testify/require"
 )
+
+func TestValidateRelayStreamEndRequiresTerminalUsageForCanceledSettlement(t *testing.T) {
+	for _, reason := range []relaycommon.StreamEndReason{relaycommon.StreamEndReasonClientGone, relaycommon.StreamEndReasonScannerErr} {
+		s := relaycommon.NewStreamStatus()
+		s.SetEndReason(reason, context.Canceled)
+		info := &relaycommon.RelayInfo{}
+		require.NotNil(t, ValidateRelayStreamEnd(nil, info, s, true, true))
+		s.RecordTerminalUsage("response.completed", "resp_test")
+		require.Nil(t, ValidateRelayStreamEnd(nil, info, s, true, true))
+		require.NotNil(t, ValidateRelayStreamEnd(nil, info, s, true, false))
+		require.NotNil(t, ValidateRelayStreamEnd(nil, info, s, false, true))
+		s.RecordError("malformed upstream event")
+		require.NotNil(t, ValidateRelayStreamEnd(nil, info, s, true, true))
+	}
+}
 
 func TestValidateRelayStreamEndRejectsHTTP200WithoutUsableOutput(t *testing.T) {
 	info := &relaycommon.RelayInfo{}
