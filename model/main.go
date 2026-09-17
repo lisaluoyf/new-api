@@ -343,6 +343,8 @@ func migrateDB() error {
 		&FailedRequestSnapshot{},
 		&ShadowBenchmarkLog{},
 		&BillingHourlySummary{},
+		&BillingDailyUserActivity{},
+		&BillingSummaryState{},
 		&BillingWalletDailySnapshot{},
 		&BillingSubscriptionDailySnapshot{},
 		&BillingExperienceDailySnapshot{},
@@ -474,6 +476,12 @@ func migrateLOGDB() error {
 		return err
 	}
 	if err = LOG_DB.AutoMigrate(&BillingHourlySummary{}); err != nil {
+		return err
+	}
+	if err = LOG_DB.AutoMigrate(&BillingDailyUserActivity{}); err != nil {
+		return err
+	}
+	if err = LOG_DB.AutoMigrate(&BillingSummaryState{}); err != nil {
 		return err
 	}
 	return nil

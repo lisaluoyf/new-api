@@ -45,5 +45,9 @@ export async function getBillingSummary(
   if (filters.channel) params.set('channel', filters.channel)
 
   const res = await api.get(`/api/billing-summary/?${params.toString()}`)
-  return res.data
+  const response = res.data as BillingSummaryResponse
+  if (!response.success) {
+    throw new Error(response.message ?? 'Failed to load')
+  }
+  return response
 }

@@ -22,6 +22,8 @@ import { getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 import { DataTablePage } from '@/components/data-table'
 import { SectionPageLayout } from '@/components/layout'
+import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { getBillingSummary } from './api'
 import { buildBillingSummaryColumns } from './components/billing-summary-columns'
 import { BillingSummaryFilterBar } from './components/billing-summary-filter-bar'
@@ -35,9 +37,12 @@ export function BillingSummaryPage() {
     return { startTime: start, endTime: end }
   })
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: ['billing-summary', filters],
     queryFn: () => getBillingSummary(filters),
+    staleTime: 60_000,
+    placeholderData: (previousData) => previousData,
+    refetchOnWindowFocus: false,
   })
 
   const rows = useMemo(() => (data?.success ? (data.data ?? []) : []), [data])
@@ -165,6 +170,20 @@ export function BillingSummaryPage() {
         {t('Daily cost, revenue, profit and margin across the platform')}
       </SectionPageLayout.Description>
       <SectionPageLayout.Content>
+        {isError && (
+          <Alert variant='destructive' className='mb-3'>
+            <AlertDescription>{t('Failed to load')}</AlertDescription>
+            <AlertAction>
+              <Button
+                size='sm'
+                variant='outline'
+                onClick={() => void refetch()}
+              >
+                {t('Try again')}
+              </Button>
+            </AlertAction>
+          </Alert>
+        )}
         <DataTablePage
           table={table}
           columns={columns}
@@ -174,7 +193,7 @@ export function BillingSummaryPage() {
           hideMobile
           showPagination={false}
           tableClassName='[&_table]:text-xs [&_th]:h-9 [&_th]:overflow-hidden [&_th]:px-1 [&_th]:text-xs [&_td]:overflow-hidden [&_td]:px-1 [&_td]:py-2'
-          emptyTitle={t('No Data')}
+          emptyTitle={isError ? t('Failed to load') : t('No Data')}
           getRowClassName={(row) =>
             row.original.isTotal ? 'bg-muted/40 border-b-2' : undefined
           }

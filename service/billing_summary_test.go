@@ -25,6 +25,10 @@ func TestBillingDayStartUsesBeijingBoundary(t *testing.T) {
 	}
 }
 
+func TestBillingSummaryIntervalIsFiveMinutes(t *testing.T) {
+	assert.Equal(t, 5*time.Minute, billingSummaryInterval)
+}
+
 func TestPlanBillingDailyHybridRange_HistoryOnly(t *testing.T) {
 	nowUnix := int64(1_783_836_000) // 2026-07-12 14:00:00 Asia/Shanghai
 	start := int64(1_783_612_800)   // 2026-07-10 00:00:00 Asia/Shanghai
@@ -328,12 +332,75 @@ func TestGetBillingUserCountsTotal_DistinctAcrossWholeRange(t *testing.T) {
 		AccountingStatus:               "ok",
 	})
 
+	originalNow := billingSummaryNow
+	billingSummaryNow = func() time.Time { return time.Unix(dayTwoTs+3600, 0) }
+	defer func() { billingSummaryNow = originalNow }()
+	runBillingSummaryOnce()
+
 	totals, err := model.GetBillingUserCountsTotal(dayOneTs-10, dayTwoTs+10, modelName, channelID, "", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), totals.WalletUserCount)
 	assert.Equal(t, int64(2), totals.ExperienceUserCount)
 	assert.Equal(t, int64(1), totals.PaidSubscriptionUserCount)
 	assert.Equal(t, int64(1), totals.CodingPlanUserCount)
+}
+
+func TestBillingSummaryDeduplicatesUsersAcrossHoursModelsAndChannels(t *testing.T) {
+	truncate(t)
+
+	const (
+		dayStart   = int64(1_783_785_600)
+		channelOne = 2101
+		channelTwo = 2102
+		modelOne   = "gpt-5"
+		modelTwo   = "claude-sonnet-4"
+	)
+	require.NoError(t, model.DB.Create(&[]model.User{
+		{Id: 1101, Username: "summary-user-1", AffCode: "summary-user-1", Status: common.UserStatusEnabled},
+		{Id: 1102, Username: "summary-user-2", AffCode: "summary-user-2", Status: common.UserStatusEnabled},
+	}).Error)
+	seedChannel(t, channelOne)
+	seedChannel(t, channelTwo)
+
+	logs := []model.Log{
+		{UserId: 1101, Type: model.LogTypeConsume, CreatedAt: dayStart + 60, ModelName: modelOne, ChannelId: channelOne, Quota: 100, AccountingStatus: "ok", Other: common.MapToJsonStr(map[string]any{"billing_source": BillingSourceWallet})},
+		{UserId: 1101, Type: model.LogTypeConsume, CreatedAt: dayStart + 3660, ModelName: modelOne, ChannelId: channelOne, Quota: 100, AccountingStatus: "ok", Other: common.MapToJsonStr(map[string]any{"billing_source": BillingSourceWallet})},
+		{UserId: 1101, Type: model.LogTypeConsume, CreatedAt: dayStart + 7260, ModelName: modelTwo, ChannelId: channelTwo, Quota: 100, AccountingStatus: "ok", Other: common.MapToJsonStr(map[string]any{"billing_source": BillingSourceWallet})},
+		{UserId: 1102, Type: model.LogTypeConsume, CreatedAt: dayStart + 120, ModelName: modelOne, ChannelId: channelOne, Quota: 100, AccountingStatus: "ok", Other: common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription, "subscription_type": model.SubscriptionPlanTypeGPTTrial})},
+	}
+	for i := range logs {
+		seedConsumeLog(t, &logs[i])
+	}
+
+	originalNow := billingSummaryNow
+	billingSummaryNow = func() time.Time { return time.Unix(dayStart+12*3600, 0) }
+	defer func() { billingSummaryNow = originalNow }()
+	runBillingSummaryOnce()
+	backfillComplete, err := model.BillingUserActivityBackfillComplete()
+	require.NoError(t, err)
+	assert.True(t, backfillComplete)
+
+	// The default report must remain complete after raw logs are unavailable.
+	require.NoError(t, model.LOG_DB.Exec("DELETE FROM logs").Error)
+	rows, err := GetBillingDaily(dayStart, dayStart+86400-1, "", 0, "", "", "")
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, int64(4), rows[0].AccountingOKRequestCount)
+	assert.Equal(t, int64(4), rows[0].AccountingTargetReqCount)
+	assert.Equal(t, int64(1), rows[0].WalletUserCount)
+	assert.Equal(t, int64(1), rows[0].ExperienceUserCount)
+
+	filteredRows, err := GetBillingDaily(dayStart, dayStart+86400-1, modelOne, channelOne, "", "", "")
+	require.NoError(t, err)
+	require.Len(t, filteredRows, 1)
+	assert.Equal(t, int64(3), filteredRows[0].AccountingOKRequestCount)
+	assert.Equal(t, int64(1), filteredRows[0].WalletUserCount)
+	assert.Equal(t, int64(1), filteredRows[0].ExperienceUserCount)
+
+	totals, err := GetBillingUserCountsTotal(dayStart, dayStart+86400-1, "", 0, "", "", "")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), totals.WalletUserCount)
+	assert.Equal(t, int64(1), totals.ExperienceUserCount)
 }
 
 func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {
@@ -416,6 +483,7 @@ func TestRunBillingSummaryOnce_SplitsSubscriptionMetrics(t *testing.T) {
 	assert.InDelta(t, 0.6, row.CodingPlanCostUSD, 1e-9)
 	assert.InDelta(t, 0.6, row.CodingPlanRevenueUSD, 1e-9)
 	assert.Equal(t, int64(4), row.RequestCount)
+	assert.Equal(t, int64(4), row.AccountingTargetRequestCount)
 }
 
 func TestRunBillingSummaryOnceClearsRefundedOnlyBucket(t *testing.T) {

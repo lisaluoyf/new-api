@@ -10,26 +10,50 @@ import (
 )
 
 // BillingHourlySummary is a pre-aggregated rollup of Log accounting fields,
-// grain = (hour_bucket, model_name, channel_id). Refreshed hourly by
+// grain = (hour_bucket, model_name, channel_id). Refreshed periodically by
 // service.StartBillingSummaryTask(). Backs the 平台账单 dashboard's default
 // view (no token/username/email filter). Lives in LOG_DB since it's built
 // from the logs table, which itself may live in a separate LOG_SQL_DSN db.
 type BillingHourlySummary struct {
-	Id                         int64   `json:"id" gorm:"primaryKey;autoIncrement"`
-	HourBucket                 int64   `json:"hour_bucket" gorm:"uniqueIndex:idx_bill_hour_model_ch;index;not null"` // unix seconds, floored to the hour
-	ModelName                  string  `json:"model_name" gorm:"size:256;uniqueIndex:idx_bill_hour_model_ch;default:''"`
-	ChannelId                  int     `json:"channel_id" gorm:"uniqueIndex:idx_bill_hour_model_ch;default:0"`
-	CostUSD                    float64 `json:"cost_usd" gorm:"type:decimal(20,10);default:0"`                      // SUM(accounting_channel_cost_amount_usd)
-	RevenueUSD                 float64 `json:"revenue_usd" gorm:"type:decimal(20,10);default:0"`                   // SUM(accounting_user_final_amount_usd) + subscription official billing
-	SubscriptionCostUSD        float64 `json:"subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`         // SUM(accounting_channel_cost_amount_usd) for all subscription traffic
-	SubscriptionBillingUSD     float64 `json:"subscription_billing_usd" gorm:"type:decimal(20,10);default:0"`      // SUM(subscription official price, quota / QuotaPerUnit) for all subscription traffic
-	PaidSubscriptionCostUSD    float64 `json:"paid_subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`    // GPT subscription only
-	PaidSubscriptionRevenueUSD float64 `json:"paid_subscription_revenue_usd" gorm:"type:decimal(20,10);default:0"` // GPT subscription only
-	CodingPlanCostUSD          float64 `json:"coding_plan_cost_usd" gorm:"type:decimal(20,10);default:0"`
-	CodingPlanRevenueUSD       float64 `json:"coding_plan_revenue_usd" gorm:"type:decimal(20,10);default:0"`
-	RequestCount               int64   `json:"request_count" gorm:"default:0"`
-	UpdatedAt                  int64   `json:"updated_at"`
+	Id                           int64   `json:"id" gorm:"primaryKey;autoIncrement"`
+	HourBucket                   int64   `json:"hour_bucket" gorm:"uniqueIndex:idx_bill_hour_model_ch;index;not null"` // unix seconds, floored to the hour
+	ModelName                    string  `json:"model_name" gorm:"size:256;uniqueIndex:idx_bill_hour_model_ch;default:''"`
+	ChannelId                    int     `json:"channel_id" gorm:"uniqueIndex:idx_bill_hour_model_ch;default:0"`
+	CostUSD                      float64 `json:"cost_usd" gorm:"type:decimal(20,10);default:0"`                      // SUM(accounting_channel_cost_amount_usd)
+	RevenueUSD                   float64 `json:"revenue_usd" gorm:"type:decimal(20,10);default:0"`                   // SUM(accounting_user_final_amount_usd) + subscription official billing
+	SubscriptionCostUSD          float64 `json:"subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`         // SUM(accounting_channel_cost_amount_usd) for all subscription traffic
+	SubscriptionBillingUSD       float64 `json:"subscription_billing_usd" gorm:"type:decimal(20,10);default:0"`      // SUM(subscription official price, quota / QuotaPerUnit) for all subscription traffic
+	PaidSubscriptionCostUSD      float64 `json:"paid_subscription_cost_usd" gorm:"type:decimal(20,10);default:0"`    // GPT subscription only
+	PaidSubscriptionRevenueUSD   float64 `json:"paid_subscription_revenue_usd" gorm:"type:decimal(20,10);default:0"` // GPT subscription only
+	CodingPlanCostUSD            float64 `json:"coding_plan_cost_usd" gorm:"type:decimal(20,10);default:0"`
+	CodingPlanRevenueUSD         float64 `json:"coding_plan_revenue_usd" gorm:"type:decimal(20,10);default:0"`
+	RequestCount                 int64   `json:"request_count" gorm:"default:0"`
+	AccountingTargetRequestCount int64   `json:"accounting_target_request_count" gorm:"default:0"`
+	UpdatedAt                    int64   `json:"updated_at"`
 }
+
+// BillingDailyUserActivity stores one row per user and report grain whenever
+// that user has successful billable activity on a Beijing calendar day.
+type BillingDailyUserActivity struct {
+	Id               int64  `json:"id" gorm:"primaryKey;autoIncrement"`
+	Day              int64  `json:"day" gorm:"uniqueIndex:idx_bill_day_model_ch_user;index;not null"`
+	ModelName        string `json:"model_name" gorm:"size:256;uniqueIndex:idx_bill_day_model_ch_user;default:''"`
+	ChannelId        int    `json:"channel_id" gorm:"uniqueIndex:idx_bill_day_model_ch_user;default:0"`
+	UserId           int    `json:"user_id" gorm:"uniqueIndex:idx_bill_day_model_ch_user;index;not null"`
+	Wallet           int    `json:"wallet" gorm:"default:0"`
+	Experience       int    `json:"experience" gorm:"default:0"`
+	PaidSubscription int    `json:"paid_subscription" gorm:"default:0"`
+	CodingPlan       int    `json:"coding_plan" gorm:"default:0"`
+	UpdatedAt        int64  `json:"updated_at"`
+}
+
+type BillingSummaryState struct {
+	StateKey   string `json:"state_key" gorm:"primaryKey;size:64"`
+	StateValue string `json:"state_value" gorm:"size:256;not null"`
+	UpdatedAt  int64  `json:"updated_at"`
+}
+
+const billingUserActivityBackfillKey = "user_activity_backfill_v1"
 
 // BillingWalletDailySnapshot stores the latest non-admin wallet balance seen
 // for each Beijing calendar day. Hourly refreshes overwrite the same day, so
@@ -83,9 +107,69 @@ func UpsertBillingHourlySummaries(rows []BillingHourlySummary) error {
 	return LOG_DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "hour_bucket"}, {Name: "model_name"}, {Name: "channel_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"cost_usd", "revenue_usd", "subscription_cost_usd", "subscription_billing_usd", "paid_subscription_cost_usd", "paid_subscription_revenue_usd", "coding_plan_cost_usd", "coding_plan_revenue_usd", "request_count", "updated_at",
+			"cost_usd", "revenue_usd", "subscription_cost_usd", "subscription_billing_usd", "paid_subscription_cost_usd", "paid_subscription_revenue_usd", "coding_plan_cost_usd", "coding_plan_revenue_usd", "request_count", "accounting_target_request_count", "updated_at",
 		}),
-	}).Create(&rows).Error
+	}).CreateInBatches(&rows, 50).Error
+}
+
+func BillingUserActivityBackfillComplete() (bool, error) {
+	var state BillingSummaryState
+	tx := LOG_DB.Where("state_key = ?", billingUserActivityBackfillKey).Limit(1).Find(&state)
+	if tx.Error != nil {
+		return false, tx.Error
+	}
+	if tx.RowsAffected == 0 {
+		return false, nil
+	}
+	return state.StateValue == "complete", nil
+}
+
+func MarkBillingUserActivityBackfillComplete(updatedAt int64) error {
+	state := BillingSummaryState{
+		StateKey:   billingUserActivityBackfillKey,
+		StateValue: "complete",
+		UpdatedAt:  updatedAt,
+	}
+	return LOG_DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "state_key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"state_value", "updated_at"}),
+	}).Create(&state).Error
+}
+
+func ReplaceBillingDailyUserActivities(day int64, rows []BillingDailyUserActivity) error {
+	return LOG_DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("day = ?", day).Delete(&BillingDailyUserActivity{}).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		return tx.CreateInBatches(&rows, 50).Error
+	})
+}
+
+func BuildBillingDailyUserActivities(day, updatedAt int64) ([]BillingDailyUserActivity, error) {
+	dayExpr := billingDayExpr("created_at")
+	var rows []BillingDailyUserActivity
+	err := LOG_DB.Table("logs").
+		Select(dayExpr+` as day,
+			model_name,
+			channel_id,
+			user_id,
+			MAX(CASE WHEN `+billingWalletCondition()+` THEN 1 ELSE 0 END) as wallet,
+			MAX(CASE WHEN `+billingExperienceSubscriptionCondition()+` THEN 1 ELSE 0 END) as experience,
+			MAX(CASE WHEN `+billingGPTSubscriptionCondition()+` THEN 1 ELSE 0 END) as paid_subscription,
+			MAX(CASE WHEN `+billingCodingPlanCondition()+` THEN 1 ELSE 0 END) as coding_plan`).
+		Where("type = ? AND quota > 0 AND accounting_status = 'ok' AND created_at >= ? AND created_at < ?", LogTypeConsume, day, day+86400).
+		Group(dayExpr + ", model_name, channel_id, user_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		rows[i].UpdatedAt = updatedAt
+	}
+	return rows, nil
 }
 
 // BillingDailyRow is one day's aggregated cost/revenue, returned to the
@@ -125,11 +209,6 @@ type BillingChannelDailyCostRow struct {
 	ExperienceCostUSD       float64 `json:"experience_cost_usd" gorm:"column:experience_cost_usd"`
 	PaidSubscriptionCostUSD float64 `json:"paid_subscription_cost_usd" gorm:"column:paid_subscription_cost_usd"`
 	CodingPlanCostUSD       float64 `json:"coding_plan_cost_usd" gorm:"column:coding_plan_cost_usd"`
-}
-
-type billingDailyCountRow struct {
-	Day                      int64 `gorm:"column:day"`
-	AccountingTargetReqCount int64 `gorm:"column:accounting_target_request_count"`
 }
 
 type billingDailyUserCountRow struct {
@@ -395,7 +474,8 @@ func GetBillingDailyFromSummary(startTimestamp, endTimestamp int64, modelName st
 			COALESCE(SUM(paid_subscription_revenue_usd), 0) as paid_subscription_revenue_usd,
 			COALESCE(SUM(coding_plan_cost_usd), 0) as coding_plan_cost_usd,
 			COALESCE(SUM(coding_plan_revenue_usd), 0) as coding_plan_revenue_usd,
-			SUM(request_count) as accounting_ok_request_count`)
+			SUM(request_count) as accounting_ok_request_count,
+			SUM(accounting_target_request_count) as accounting_target_request_count`)
 	if startTimestamp != 0 {
 		tx = tx.Where("hour_bucket >= ?", startTimestamp)
 	}
@@ -413,17 +493,64 @@ func GetBillingDailyFromSummary(startTimestamp, endTimestamp int64, modelName st
 	if err != nil {
 		return nil, err
 	}
-	counts, err := getBillingDailyTargetRequestCounts(startTimestamp, endTimestamp, modelName, channel, "", "", "")
-	if err != nil {
-		return nil, err
-	}
-	mergeBillingDailyTargetRequestCounts(&rows, counts)
-	userCounts, err := getBillingDailyUserCounts(startTimestamp, endTimestamp, modelName, channel, "", "", "")
+	userCounts, err := getBillingDailyUserCountsFromSummary(startTimestamp, endTimestamp, modelName, channel)
 	if err != nil {
 		return nil, err
 	}
 	mergeBillingDailyUserCounts(&rows, userCounts)
 	return rows, nil
+}
+
+func getBillingDailyUserCountsFromSummary(startTimestamp, endTimestamp int64, modelName string, channel int) (map[int64]billingDailyUserCountRow, error) {
+	tx := LOG_DB.Table("billing_daily_user_activities").
+		Select(`day,
+			COUNT(DISTINCT CASE WHEN wallet = 1 THEN user_id ELSE NULL END) as wallet_user_count,
+			COUNT(DISTINCT CASE WHEN experience = 1 THEN user_id ELSE NULL END) as experience_user_count,
+			COUNT(DISTINCT CASE WHEN paid_subscription = 1 THEN user_id ELSE NULL END) as paid_subscription_user_count,
+			COUNT(DISTINCT CASE WHEN coding_plan = 1 THEN user_id ELSE NULL END) as coding_plan_user_count`)
+	if startTimestamp != 0 {
+		tx = tx.Where("day >= ?", billingDayStartUnix(startTimestamp))
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("day <= ?", billingDayStartUnix(endTimestamp))
+	}
+	if modelName != "" {
+		tx = tx.Where("model_name = ?", modelName)
+	}
+	if channel != 0 {
+		tx = tx.Where("channel_id = ?", channel)
+	}
+	var rows []billingDailyUserCountRow
+	if err := tx.Group("day").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	counts := make(map[int64]billingDailyUserCountRow, len(rows))
+	for _, row := range rows {
+		counts[row.Day] = row
+	}
+	return counts, nil
+}
+
+func getBillingUserCountsTotalFromSummary(startTimestamp, endTimestamp int64, modelName string, channel int) (billingUserCountTotals, error) {
+	tx := LOG_DB.Table("billing_daily_user_activities")
+	if startTimestamp != 0 {
+		tx = tx.Where("day >= ?", billingDayStartUnix(startTimestamp))
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("day <= ?", billingDayStartUnix(endTimestamp))
+	}
+	if modelName != "" {
+		tx = tx.Where("model_name = ?", modelName)
+	}
+	if channel != 0 {
+		tx = tx.Where("channel_id = ?", channel)
+	}
+	var totals billingUserCountTotals
+	err := tx.Select(`COUNT(DISTINCT CASE WHEN wallet = 1 THEN user_id ELSE NULL END) as wallet_user_count,
+		COUNT(DISTINCT CASE WHEN experience = 1 THEN user_id ELSE NULL END) as experience_user_count,
+		COUNT(DISTINCT CASE WHEN coding_plan = 1 THEN user_id ELSE NULL END) as coding_plan_user_count`).
+		Scan(&totals).Error
+	return totals, err
 }
 
 func GetBillingChannelDailyCostsFromSummary(startTimestamp, endTimestamp int64, channelIDs []int) ([]BillingChannelDailyCostRow, error) {
@@ -541,77 +668,6 @@ func GetBillingChannelDailyCostsFromRawLogs(startTimestamp, endTimestamp int64, 
 	return rows, err
 }
 
-func getBillingDailyTargetRequestCounts(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string) (map[int64]int64, error) {
-	dayExpr := billingDayExpr("created_at")
-	tx := LOG_DB.Table("logs").
-		Select(dayExpr+" as day, COUNT(*) as accounting_target_request_count").
-		Where("type = ? AND quota > 0 AND accounting_status <> ''", LogTypeConsume)
-
-	if startTimestamp != 0 {
-		tx = tx.Where("created_at >= ?", startTimestamp)
-	}
-	if endTimestamp != 0 {
-		tx = tx.Where("created_at <= ?", endTimestamp)
-	}
-	if modelName != "" {
-		tx = tx.Where("model_name = ?", modelName)
-	}
-	if channel != 0 {
-		tx = tx.Where("channel_id = ?", channel)
-	}
-	if tokenName != "" {
-		tx = tx.Where("token_name = ?", tokenName)
-	}
-	if username != "" {
-		tx = tx.Where("username = ?", username)
-	}
-	if email != "" {
-		var resolvedUsername string
-		err := DB.Table("users").Select("username").Where("email = ?", email).Limit(1).Scan(&resolvedUsername).Error
-		if err != nil {
-			return nil, err
-		}
-		if resolvedUsername == "" {
-			return map[int64]int64{}, nil
-		}
-		tx = tx.Where("username = ?", resolvedUsername)
-	}
-
-	var rows []billingDailyCountRow
-	if err := tx.Group(dayExpr).Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-	counts := make(map[int64]int64, len(rows))
-	for _, row := range rows {
-		counts[row.Day] = row.AccountingTargetReqCount
-	}
-	return counts, nil
-}
-
-func mergeBillingDailyTargetRequestCounts(rows *[]BillingDailyRow, counts map[int64]int64) {
-	if rows == nil {
-		return
-	}
-	byDay := make(map[int64]*BillingDailyRow, len(*rows))
-	for i := range *rows {
-		row := &(*rows)[i]
-		row.AccountingTargetReqCount = counts[row.Day]
-		byDay[row.Day] = row
-	}
-	for day, count := range counts {
-		if _, ok := byDay[day]; ok {
-			continue
-		}
-		*rows = append(*rows, BillingDailyRow{
-			Day:                      day,
-			AccountingTargetReqCount: count,
-		})
-	}
-	sort.Slice(*rows, func(i, j int) bool {
-		return (*rows)[i].Day > (*rows)[j].Day
-	})
-}
-
 func getBillingDailyUserCounts(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string) (map[int64]billingDailyUserCountRow, error) {
 	dayExpr := billingDayExpr("created_at")
 	tx, err := buildBillingDailyUserCountsBaseQuery(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
@@ -673,16 +729,21 @@ func GetBillingUserCountsTotal(startTimestamp, endTimestamp int64, modelName str
 }
 
 func GetBillingUserCountsTotalAt(startTimestamp, endTimestamp int64, modelName string, channel int, tokenName, username, email string, asOfTimestamp int64) (billingUserCountTotals, error) {
-	tx, err := buildBillingDailyUserCountsBaseQuery(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
-	if err != nil {
-		return billingUserCountTotals{}, err
-	}
 	var totals billingUserCountTotals
-	if err := tx.
-		Select(`COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingWalletCondition() + ` THEN user_id ELSE NULL END) as wallet_user_count,
-			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count,
-			COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingCodingPlanCondition() + ` THEN user_id ELSE NULL END) as coding_plan_user_count`).
-		Scan(&totals).Error; err != nil {
+	var err error
+	if tokenName == "" && username == "" && email == "" {
+		totals, err = getBillingUserCountsTotalFromSummary(startTimestamp, endTimestamp, modelName, channel)
+	} else {
+		var tx *gorm.DB
+		tx, err = buildBillingDailyUserCountsBaseQuery(startTimestamp, endTimestamp, modelName, channel, tokenName, username, email)
+		if err == nil {
+			err = tx.Select(`COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingWalletCondition() + ` THEN user_id ELSE NULL END) as wallet_user_count,
+				COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingExperienceSubscriptionCondition() + ` THEN user_id ELSE NULL END) as experience_user_count,
+				COUNT(DISTINCT CASE WHEN quota > 0 AND accounting_status = 'ok' AND ` + billingCodingPlanCondition() + ` THEN user_id ELSE NULL END) as coding_plan_user_count`).
+				Scan(&totals).Error
+		}
+	}
+	if err != nil {
 		return billingUserCountTotals{}, err
 	}
 	totals.PaidSubscriptionUserCount, err = GetBillingPaidSubscriptionUserCountTotalAt(startTimestamp, endTimestamp, asOfTimestamp)

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	billingSummaryInterval = 1 * time.Hour
+	billingSummaryInterval = 5 * time.Minute
 	// Re-aggregate a rolling lookback window rather than only "since last run",
 	// so late-arriving/updated accounting rows still get folded in. Idempotent
 	// via the OnConflict upsert in model.UpsertBillingHourlySummaries.
@@ -53,7 +53,7 @@ func billingDayStart(unixSeconds int64) int64 {
 	return ((unixSeconds + billingDayTZOffsetSeconds) / 86400 * 86400) - billingDayTZOffsetSeconds
 }
 
-// StartBillingSummaryTask starts the hourly job that rolls Log accounting
+// StartBillingSummaryTask starts the periodic job that rolls Log accounting
 // fields up into billing_hourly_summaries, backing the 平台账单 admin page.
 func StartBillingSummaryTask() {
 	billingSummaryOnce.Do(func() {
@@ -96,10 +96,26 @@ func runBillingSummaryOnce() {
 	// its rows and clobbers the previously complete value (found 2026-07-10:
 	// every bucket lost its pre-boundary slice ~26h after its hour).
 	since := billingSummaryNow().Add(-billingSummaryLookback).Unix() / 3600 * 3600
+	backfillComplete, err := model.BillingUserActivityBackfillComplete()
+	if err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: activity state check failed: %v", err))
+		return
+	}
+	fullBackfill := !backfillComplete
+	if fullBackfill {
+		var oldest int64
+		if err := model.LOG_DB.Table("logs").Where("type = ?", model.LogTypeConsume).Select("COALESCE(MIN(created_at), 0)").Scan(&oldest).Error; err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("billing-summary: oldest log query failed: %v", err))
+			return
+		}
+		if oldest > 0 {
+			since = oldest / 3600 * 3600
+		}
+	}
 	hourExpr := billingHourExpr("created_at")
 
 	var rows []model.BillingHourlySummary
-	err := model.LOG_DB.Table("logs").
+	err = model.LOG_DB.Table("logs").
 		Select(hourExpr+` as hour_bucket,
 		         model_name,
 		         channel_id,
@@ -111,7 +127,8 @@ func runBillingSummaryOnce() {
 		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"gpt_subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
 		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"coding_plan"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as coding_plan_cost_usd,
 		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"coding_plan"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as coding_plan_revenue_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' THEN 1 ELSE 0 END) as request_count`).
+		         SUM(CASE WHEN accounting_status = 'ok' THEN 1 ELSE 0 END) as request_count,
+		         COUNT(*) as accounting_target_request_count`).
 		Where("type = ? AND quota > 0 AND accounting_status <> '' AND created_at >= ?", model.LogTypeConsume, since).
 		Group(hourExpr + ", model_name, channel_id").
 		Scan(&rows).Error
@@ -126,7 +143,31 @@ func runBillingSummaryOnce() {
 		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: upsert failed: %v", err))
 		return
 	}
+	activityStart := billingDayStart(billingSummaryNow().Add(-billingSummaryLookback).Unix())
+	if fullBackfill {
+		activityStart = billingDayStart(since)
+	}
+	for day := activityStart; day <= billingDayStart(now); day += 86400 {
+		if err := refreshBillingDailyUserActivities(day, now); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("billing-summary: user activity refresh failed for day %d: %v", day, err))
+			return
+		}
+	}
+	if fullBackfill {
+		if err := model.MarkBillingUserActivityBackfillComplete(now); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("billing-summary: backfill state update failed: %v", err))
+			return
+		}
+	}
 	logger.LogInfo(ctx, fmt.Sprintf("billing-summary: refreshed %d bucket rows since %d", len(rows), since))
+}
+
+func refreshBillingDailyUserActivities(day, updatedAt int64) error {
+	rows, err := model.BuildBillingDailyUserActivities(day, updatedAt)
+	if err != nil {
+		return err
+	}
+	return model.ReplaceBillingDailyUserActivities(day, rows)
 }
 
 func applyPaidSubscriptionAccruals(rows *[]model.BillingDailyRow, accruals map[int64]model.BillingPaidSubscriptionDailyAccrual) {
@@ -354,33 +395,11 @@ func planBillingDailyHybridRange(startTimestamp, endTimestamp, nowUnix int64) bi
 	return plan
 }
 
-// getBillingDailyHybrid keeps historical days on the hourly summary table for
-// performance, but routes the current Beijing day directly through raw logs so
-// the "OK / Requests" percentage stays on the same freshness window.
+// getBillingDailyHybrid uses the periodically refreshed summaries for the full
+// range, including today. This bounds dashboard latency at the cost of up to
+// five minutes of freshness.
 func getBillingDailyHybrid(startTimestamp, endTimestamp int64, modelName string, channel int) ([]model.BillingDailyRow, error) {
-	plan := planBillingDailyHybridRange(startTimestamp, endTimestamp, billingSummaryNow().Unix())
-	rows := make([]model.BillingDailyRow, 0, 8)
-
-	if plan.useSummary {
-		summaryRows, err := model.GetBillingDailyFromSummary(plan.summaryStart, plan.summaryEnd, modelName, channel)
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, summaryRows...)
-	}
-
-	if plan.useRaw {
-		rawRows, err := model.GetBillingDailyFromRawLogs(plan.rawStart, plan.rawEnd, modelName, channel, "", "", "")
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, rawRows...)
-	}
-
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].Day > rows[j].Day
-	})
-	return rows, nil
+	return model.GetBillingDailyFromSummary(startTimestamp, endTimestamp, modelName, channel)
 }
 
 // GetBillingChannelDailyCosts uses the same historical-summary/current-day
