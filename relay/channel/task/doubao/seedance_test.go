@@ -115,3 +115,19 @@ func TestNativeDoubaoRequestUnchanged(t *testing.T) {
 	require.Contains(t, string(data), `"duration":5`)
 	require.Contains(t, string(data), `"generate_audio":false`)
 }
+
+func TestDoubaoCompletedTaskRequiresVideo(t *testing.T) {
+	a := &TaskAdaptor{}
+	result, err := a.ParseTaskResult([]byte(`{"status":"succeeded","video_url":"https://example.com/video.mp4"}`))
+	require.NoError(t, err)
+	require.Equal(t, model.TaskStatusSuccess, result.Status)
+	require.Equal(t, "https://example.com/video.mp4", result.Url)
+	result, err = a.ParseTaskResult([]byte(`{"status":"succeeded","progress":100}`))
+	require.NoError(t, err)
+	require.Equal(t, model.TaskStatusFailure, result.Status)
+	require.NotEmpty(t, result.Reason)
+	task := &model.Task{Status: model.TaskStatusFailure, Data: []byte(`{"status":"succeeded"}`)}
+	body, err := a.ConvertToOpenAIVideo(task)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `"generation_failed"`)
+}

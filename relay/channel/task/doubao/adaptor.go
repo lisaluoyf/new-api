@@ -67,10 +67,11 @@ type responsePayload struct {
 }
 
 type responseTask struct {
-	ID      string `json:"id"`
-	Model   string `json:"model"`
-	Status  string `json:"status"`
-	Content struct {
+	ID       string `json:"id"`
+	Model    string `json:"model"`
+	Status   string `json:"status"`
+	VideoURL string `json:"video_url"`
+	Content  struct {
 		VideoURL string `json:"video_url"`
 	} `json:"content"`
 	Seed            int    `json:"seed"`
@@ -335,6 +336,16 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusSuccess
 		taskResult.Progress = "100%"
 		taskResult.Url = resTask.Content.VideoURL
+		if taskResult.Url == "" {
+			taskResult.Url = resTask.VideoURL
+		}
+		if strings.TrimSpace(taskResult.Url) == "" {
+			// Some compatible providers report success even when generation
+			// produced no file. Fail and refund instead of saving a broken URL.
+			taskResult.Status = model.TaskStatusFailure
+			taskResult.Reason = "Video generation returned no video file"
+			return &taskResult, nil
+		}
 		// 解析 usage 信息用于按倍率计费
 		taskResult.CompletionTokens = resTask.Usage.CompletionTokens
 		taskResult.TotalTokens = resTask.Usage.TotalTokens
@@ -371,10 +382,10 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 		openAIVideo.SetMetadata("url", taskcommon.BuildProxyURL(originTask.TaskID))
 	}
 
-	if dResp.Status == "failed" {
+	if originTask.Status == model.TaskStatusFailure {
 		openAIVideo.Error = &dto.OpenAIVideoError{
-			Message: dResp.Error.Message,
-			Code:    dResp.Error.Code,
+			Message: "Video generation failed",
+			Code:    "generation_failed",
 		}
 	}
 
