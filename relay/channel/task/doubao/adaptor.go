@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -115,8 +116,10 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
-	// Accept only POST /v1/video/generations as "generate" action.
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	if taskErr = relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate); taskErr != nil {
+		return taskErr
+	}
+	return a.normalizeSeedanceRequest(c)
 }
 
 // BuildRequestURL constructs the upstream URL.
@@ -137,6 +140,9 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil
+	}
+	if isSeedanceAlias(req.Model) {
+		return seedanceBillingRatios(req)
 	}
 	if hasVideoInMetadata(req.Metadata) {
 		if ratio, ok := GetVideoInputRatio(info.OriginModelName); ok {
@@ -222,6 +228,10 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	if dResp.ID == "" {
 		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
 		return
+	}
+	if isSeedanceAlias(info.OriginModelName) && strings.HasSuffix(c.Request.URL.Path, "/videos/generations") {
+		c.JSON(http.StatusOK, gin.H{"code": 200, "data": []gin.H{{"status": "submitted", "task_id": info.PublicTaskID}}})
+		return dResp.ID, responseBody, nil
 	}
 
 	ov := dto.NewOpenAIVideo()
@@ -328,6 +338,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		// 解析 usage 信息用于按倍率计费
 		taskResult.CompletionTokens = resTask.Usage.CompletionTokens
 		taskResult.TotalTokens = resTask.Usage.TotalTokens
+		taskResult.BillableSeconds = resTask.Duration
 	case "failed":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = "100%"
@@ -356,6 +367,9 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	openAIVideo.CreatedAt = originTask.CreatedAt
 	openAIVideo.CompletedAt = originTask.UpdatedAt
 	openAIVideo.Model = originTask.Properties.OriginModelName
+	if isSeedanceAlias(openAIVideo.Model) {
+		openAIVideo.SetMetadata("url", taskcommon.BuildProxyURL(originTask.TaskID))
+	}
 
 	if dResp.Status == "failed" {
 		openAIVideo.Error = &dto.OpenAIVideoError{
