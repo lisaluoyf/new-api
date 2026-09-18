@@ -74,6 +74,7 @@ type User struct {
 	// (not_claimed / shared / claiming / granted / failed). "granted" means the
 	// user successfully claimed the GPT trial subscription card.
 	TrialClaimStatus         string `json:"trial_claim_status,omitempty" gorm:"-:all"`
+	TrialRiskAllowlisted     bool   `json:"trial_risk_allowlisted" gorm:"-:all"`
 	GPTSubscriptionStatus    string `json:"gpt_subscription_status,omitempty" gorm:"-:all"`
 	GPTSubscriptionPlanId    int    `json:"gpt_subscription_plan_id,omitempty" gorm:"-:all"`
 	GPTSubscriptionPlanTitle string `json:"gpt_subscription_plan_title,omitempty" gorm:"-:all"`
@@ -366,6 +367,7 @@ func GetAllUsers(pageInfo *common.PageInfo, filters UserListFilters) (users []*U
 
 	EnrichUsersRegistrationChannels(users)
 	EnrichUsersTrialClaimStatus(users)
+	EnrichUsersTrialRiskAllowlist(users)
 	EnrichUsersGPTSubscriptionStatus(users)
 	if err := EnrichUsersTotalTopupUSD(users); err != nil {
 		return nil, 0, err
@@ -449,6 +451,7 @@ func SearchUsers(keyword string, group string, filters UserListFilters, startIdx
 
 	EnrichUsersRegistrationChannels(users)
 	EnrichUsersTrialClaimStatus(users)
+	EnrichUsersTrialRiskAllowlist(users)
 	EnrichUsersGPTSubscriptionStatus(users)
 	if err := EnrichUsersTotalTopupUSD(users); err != nil {
 		return nil, 0, err

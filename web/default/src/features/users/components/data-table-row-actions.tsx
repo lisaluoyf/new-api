@@ -28,6 +28,8 @@ import {
   ArrowDown,
   KeyRound,
   ShieldAlert,
+  ShieldCheck,
+  ShieldX,
   Link2,
   CreditCard,
 } from 'lucide-react'
@@ -46,9 +48,11 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { UserSubscriptionsDialog } from '@/features/subscriptions/components/dialogs/user-subscriptions-dialog'
 import {
   addTrialBlockedEmailDomain,
+  addTrialRiskAllowlist,
   invalidateUserGPTSubscription,
   manageUser,
   removeTrialBlockedEmailDomain,
+  removeTrialRiskAllowlist,
   resetUserPasskey,
   resetUserTwoFA,
 } from '../api'
@@ -77,6 +81,8 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     useState(false)
   const [removeTrialBlockedDomainOpen, setRemoveTrialBlockedDomainOpen] =
     useState(false)
+  const [trialAllowlistOpen, setTrialAllowlistOpen] = useState(false)
+  const [updatingTrialAllowlist, setUpdatingTrialAllowlist] = useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
   const [closeGPTSubscriptionOpen, setCloseGPTSubscriptionOpen] =
@@ -147,12 +153,16 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     try {
       const result = await addTrialBlockedEmailDomain(user.id)
       if (result.success) {
-        toast.success(t('Added {{domain}} to the GPT Trial blocked domains', {
-          domain: result.data?.domain || emailDomain,
-        }))
+        toast.success(
+          t('Added {{domain}} to the GPT Trial blocked domains', {
+            domain: result.data?.domain || emailDomain,
+          })
+        )
         triggerRefresh()
       } else {
-        toast.error(result.message || t('Failed to add GPT Trial blocked domain'))
+        toast.error(
+          result.message || t('Failed to add GPT Trial blocked domain')
+        )
       }
     } catch (_error) {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
@@ -165,17 +175,54 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     try {
       const result = await removeTrialBlockedEmailDomain(user.id)
       if (result.success) {
-        toast.success(t('Removed {{domain}} from the GPT Trial blocked domains', {
-          domain: result.data?.domain || emailDomain,
-        }))
+        toast.success(
+          t('Removed {{domain}} from the GPT Trial blocked domains', {
+            domain: result.data?.domain || emailDomain,
+          })
+        )
         triggerRefresh()
       } else {
-        toast.error(result.message || t('Failed to remove GPT Trial blocked domain'))
+        toast.error(
+          result.message || t('Failed to remove GPT Trial blocked domain')
+        )
       }
     } catch (_error) {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setRemoveTrialBlockedDomainOpen(false)
+    }
+  }
+
+  const handleTrialAllowlist = async () => {
+    setUpdatingTrialAllowlist(true)
+    try {
+      const result = user.trial_risk_allowlisted
+        ? await removeTrialRiskAllowlist(user.id)
+        : await addTrialRiskAllowlist(user.id)
+      if (result.success) {
+        toast.success(
+          t(
+            user.trial_risk_allowlisted
+              ? 'GPT Trial allowlist removed'
+              : 'GPT Trial allowlist added'
+          )
+        )
+        triggerRefresh()
+      } else {
+        toast.error(
+          result.message ||
+            t(
+              user.trial_risk_allowlisted
+                ? 'Failed to remove GPT Trial allowlist'
+                : 'Failed to add GPT Trial allowlist'
+            )
+        )
+      }
+    } catch (_error) {
+      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } finally {
+      setUpdatingTrialAllowlist(false)
+      setTrialAllowlistOpen(false)
     }
   }
 
@@ -202,6 +249,9 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const isRoot = user.role === USER_ROLE.ROOT
   const isTopupForbidden = user.topup_forbidden === true
   const hasActiveGPTSubscription = user.gpt_subscription_status === 'active'
+  const canManageTrialAllowlist =
+    user.trial_claim_status !== 'granted' ||
+    user.trial_risk_allowlisted === true
 
   if (isUserDeleted(user)) {
     return null
@@ -348,6 +398,29 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             </>
           )}
 
+          {canManageTrialAllowlist && (
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                setTrialAllowlistOpen(true)
+              }}
+              disabled={isRoot}
+            >
+              {t(
+                user.trial_risk_allowlisted
+                  ? 'Remove GPT Trial allowlist'
+                  : 'Add GPT Trial allowlist'
+              )}
+              <DropdownMenuShortcut>
+                {user.trial_risk_allowlisted ? (
+                  <ShieldX size={16} />
+                ) : (
+                  <ShieldCheck size={16} />
+                )}
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          )}
+
           <DropdownMenuSeparator />
 
           <DropdownMenuItem
@@ -413,9 +486,12 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         open={addTrialBlockedDomainOpen}
         onOpenChange={setAddTrialBlockedDomainOpen}
         title={t('Add GPT Trial blocked domain')}
-        desc={t('Accounts under {{domain}} will no longer be eligible for the GPT Trial.', {
-          domain: emailDomain || t('this domain'),
-        })}
+        desc={t(
+          'Accounts under {{domain}} will no longer be eligible for the GPT Trial.',
+          {
+            domain: emailDomain || t('this domain'),
+          }
+        )}
         confirmText={t('Confirm add')}
         handleConfirm={handleAddTrialBlockedDomain}
       />
@@ -424,11 +500,36 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         open={removeTrialBlockedDomainOpen}
         onOpenChange={setRemoveTrialBlockedDomainOpen}
         title={t('Remove GPT Trial blocked domain')}
-        desc={t('Accounts under {{domain}} will be evaluated for the GPT Trial under the current rules.', {
-          domain: emailDomain || t('this domain'),
-        })}
+        desc={t(
+          'Accounts under {{domain}} will be evaluated for the GPT Trial under the current rules.',
+          {
+            domain: emailDomain || t('this domain'),
+          }
+        )}
         confirmText={t('Confirm remove')}
         handleConfirm={handleRemoveTrialBlockedDomain}
+      />
+
+      <ConfirmDialog
+        open={trialAllowlistOpen}
+        onOpenChange={setTrialAllowlistOpen}
+        title={t(
+          user.trial_risk_allowlisted
+            ? 'Remove GPT Trial allowlist'
+            : 'Add GPT Trial allowlist'
+        )}
+        desc={t(
+          user.trial_risk_allowlisted
+            ? 'Restore automatic GPT Trial risk checks for {{email}}? The account will be evaluated again on its next visit or claim.'
+            : 'Allow {{email}} to bypass automatic GPT Trial risk checks? The user must still complete the normal claim requirements.',
+          { email: user.email || user.username }
+        )}
+        confirmText={t(
+          user.trial_risk_allowlisted ? 'Confirm removal' : 'Confirm allowlist'
+        )}
+        destructive={user.trial_risk_allowlisted === true}
+        isLoading={updatingTrialAllowlist}
+        handleConfirm={handleTrialAllowlist}
       />
 
       <ConfirmDialog

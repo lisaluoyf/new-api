@@ -353,6 +353,7 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
+	model.EnrichUsersTrialRiskAllowlist([]*model.User{user})
 	// Keep the legacy new-api aff_code untouched, but expose the APIMaster
 	// referral code used by the Affiliate page when the mapping is available.
 	referralCode := lookupApimasterReferralCode(user.Username)

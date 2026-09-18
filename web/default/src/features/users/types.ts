@@ -60,6 +60,7 @@ export const userSchema = z.object({
   registration_inviter_email: z.string().optional(),
   registration_provider: z.string().optional(),
   trial_claim_status: z.string().optional(),
+  trial_risk_allowlisted: z.boolean().optional(),
   gpt_subscription_status: z.string().optional(),
   gpt_subscription_plan_id: z.number().optional(),
   gpt_subscription_plan_title: z.string().optional(),

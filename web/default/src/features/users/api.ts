@@ -167,6 +167,20 @@ export async function removeTrialBlockedEmailDomain(
   return res.data
 }
 
+export async function addTrialRiskAllowlist(
+  id: number
+): Promise<ApiResponse<{ trial_risk_allowlisted?: boolean }>> {
+  const res = await api.post(`/api/user/${id}/trial/allowlist`)
+  return res.data
+}
+
+export async function removeTrialRiskAllowlist(
+  id: number
+): Promise<ApiResponse<{ trial_risk_allowlisted?: boolean }>> {
+  const res = await api.delete(`/api/user/${id}/trial/allowlist`)
+  return res.data
+}
+
 export async function invalidateUserGPTSubscription(
   userId: number
 ): Promise<ApiResponse<{ message?: string }>> {

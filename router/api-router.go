@@ -203,6 +203,8 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
 				adminRoute.POST("/:id/trial/blocked_email_domain", controller.AdminAddTrialBlockedEmailDomain)
 				adminRoute.DELETE("/:id/trial/blocked_email_domain", controller.AdminRemoveTrialBlockedEmailDomain)
+				adminRoute.POST("/:id/trial/allowlist", controller.AdminAddTrialRiskAllowlist)
+				adminRoute.DELETE("/:id/trial/allowlist", controller.AdminRemoveTrialRiskAllowlist)
 				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)

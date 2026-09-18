@@ -319,6 +319,26 @@ export function useUsersColumns(): ColumnDef<User>[] {
         const { riskReason } = parseTrialBlocked(row.original.remark)
         const status = row.original.trial_claim_status
 
+        if (status === 'granted') {
+          return (
+            <StatusBadge
+              label={t('Claimed')}
+              variant='success'
+              copyable={false}
+            />
+          )
+        }
+
+        if (row.original.trial_risk_allowlisted) {
+          return (
+            <StatusBadge
+              label={t('Allowlisted')}
+              variant='info'
+              copyable={false}
+            />
+          )
+        }
+
         if (riskReason) {
           return (
             <Tooltip>
@@ -342,7 +362,6 @@ export function useUsersColumns(): ColumnDef<User>[] {
           string,
           { label: string; variant: 'success' | 'info' | 'warning' | 'danger' }
         > = {
-          granted: { label: t('Claimed'), variant: 'success' },
           shared: { label: t('Shared'), variant: 'info' },
           claiming: { label: t('Claiming'), variant: 'warning' },
           failed: { label: t('Claim Failed'), variant: 'danger' },
