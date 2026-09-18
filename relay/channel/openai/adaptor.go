@@ -26,6 +26,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/common_handler"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
@@ -168,10 +169,15 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 			info.RelayMode != relayconstant.RelayModeResponsesCompact {
 			return fmt.Sprintf("%s/v1/chat/completions", info.ChannelBaseUrl), nil
 		}
-		requestPath := normalizeImageGenerationsRequestPath(
-			info.RequestURLPath,
+		requestPath, mode := info.RequestURLPath, info.RelayMode
+		if imageEditsViaGenerations(info) {
+			requestPath = strings.Replace(requestPath, "/images/edits", "/images/generations", 1)
+			mode = relayconstant.RelayModeImagesGenerations
+		}
+		requestPath = normalizeImageGenerationsRequestPath(
+			requestPath,
 			info.ChannelBaseUrl,
-			info.RelayMode,
+			mode,
 			info.OriginModelName,
 			info.ChannelOtherSettings.ImageGenerationSubmitPath,
 		)
@@ -463,8 +469,22 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 	}
 }
 
+func imageEditsViaGenerations(info *relaycommon.RelayInfo) bool {
+	return info != nil && info.ChannelMeta != nil && info.RelayMode == relayconstant.RelayModeImagesEdits &&
+		service.GptImage2EditsViaGenerations(info.ChannelId, info.OriginModelName)
+}
+
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
-	switch info.RelayMode {
+	mode := info.RelayMode
+	if imageEditsViaGenerations(info) {
+		var err error
+		request, err = helper.ConvertImageEditsToGeneration(c, request)
+		if err != nil {
+			return nil, err
+		}
+		mode = relayconstant.RelayModeImagesGenerations
+	}
+	switch mode {
 	case relayconstant.RelayModeImagesEdits:
 		if isJSONRequest(c) {
 			return request, nil

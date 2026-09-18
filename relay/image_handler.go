@@ -23,6 +23,10 @@ import (
 
 func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
+	// Adaptors change Content-Type for their upstream body. Restore it before
+	// fallback selection so the next channel still sees the client's request.
+	originalContentType := c.Request.Header.Get("Content-Type")
+	defer c.Request.Header.Set("Content-Type", originalContentType)
 
 	imageReq, ok := info.Request.(*dto.ImageRequest)
 	if !ok {
@@ -54,7 +58,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	var requestBody io.Reader
 
-	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
+	convertEdits := strings.HasSuffix(c.Request.URL.Path, "/images/edits") &&
+		service.GptImage2EditsViaGenerations(info.ChannelId, info.OriginModelName)
+	if !convertEdits && (model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) {
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())

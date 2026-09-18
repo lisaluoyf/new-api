@@ -178,6 +178,7 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 			imageRequest.N = common.GetPointer(uint(common.String2Int(firstFormValue(form, "n"))))
 			imageRequest.Quality = firstFormValue(form, "quality")
 			imageRequest.Size = firstFormValue(form, "size")
+			imageRequest.Resolution = firstFormValue(form, "resolution")
 			if imageValue := firstFormValue(form, "image"); imageValue != "" {
 				imageRequest.Image, _ = common.Marshal(imageValue)
 			}

@@ -1,7 +1,12 @@
 package relay
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/helper"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -53,5 +58,70 @@ func TestImageHelperSeedreamInvalidParameter(t *testing.T) {
 			require.Contains(t, err.Error(), "test upstream error")
 			require.Equal(t, tc.skipRetry, types.IsSkipRetryError(err))
 		})
+	}
+}
+
+// Exercise two converted retries followed by a native multipart retry through
+// the real ImageHelper, including pass-through-enabled channel settings.
+func TestImageEditsGenerationFallbackPreservesMultipart(t *testing.T) {
+	service.InitHttpClient()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for k, v := range map[string]string{"model": "gpt-image-2", "prompt": "edit", "resolution": "2k", "size": "1:1"} {
+		require.NoError(t, writer.WriteField(k, v))
+	}
+	part, err := writer.CreateFormFile("image", "ref.png")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("original-image"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	ct := writer.FormDataContentType()
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/images/edits", bytes.NewReader(body.Bytes()))
+	c.Request.Header.Set("Content-Type", ct)
+	t.Cleanup(func() { common.CleanupBodyStorage(c) })
+	request, err := helper.GetAndValidOpenAIImageRequest(c, relayconstant.RelayModeImagesEdits)
+	require.NoError(t, err)
+	require.Equal(t, "2k", request.Resolution)
+	info := &relaycommon.RelayInfo{OriginModelName: "gpt-image-2", RelayMode: relayconstant.RelayModeImagesEdits, RequestURLPath: "/v1/images/edits", Request: request}
+	common.SetContextKey(c, constant.ContextKeyChannelType, constant.ChannelTypeOpenAI)
+	common.SetContextKey(c, constant.ContextKeyOriginalModel, "gpt-image-2")
+	common.SetContextKey(c, constant.ContextKeyChannelOtherSetting, dto.ChannelOtherSettings{GptImage2Capabilities: &dto.GptImage2Capabilities{SizeFormat: dto.GptImage2SizeFormatAspectRatioWithResolution}})
+	for _, id := range []int{81, 59, 102} {
+		var gotPath, gotType string
+		var raw []byte
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotPath = r.URL.Path
+			gotType = r.Header.Get("Content-Type")
+			raw, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(503)
+			_, _ = io.WriteString(w, `{"error":{"message":"test retry","type":"upstream_error"}}`)
+		}))
+		common.SetContextKey(c, constant.ContextKeyChannelId, id)
+		common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, upstream.URL)
+		common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: id != 102})
+		relayErr := ImageHelper(c, info)
+		upstream.Close()
+		require.NotNil(t, relayErr)
+		require.Equal(t, 503, relayErr.StatusCode)
+		require.Equal(t, ct, c.GetHeader("Content-Type"))
+		require.Equal(t, "/v1/images/edits", c.Request.URL.Path)
+		if id == 102 {
+			require.Equal(t, "/v1/images/edits", gotPath)
+			require.Contains(t, gotType, "multipart/form-data")
+			require.Contains(t, string(raw), "original-image")
+		} else {
+			require.Equal(t, "/v1/images/generations", gotPath)
+			require.Equal(t, "application/json", gotType)
+			var converted dto.ImageRequest
+			require.NoError(t, common.Unmarshal(raw, &converted))
+			require.Len(t, converted.ImageUrls, 1)
+			require.Equal(t, "2k", converted.Resolution)
+			filter := service.GptImage2ChannelPickFilter(c, "gpt-image-2")
+			ch := &model.Channel{Id: 59}
+			ch.SetOtherSettings(dto.ChannelOtherSettings{GptImage2Capabilities: &dto.GptImage2Capabilities{Version: 1, Enabled: true, Generations: &dto.GptImage2EndpointCapabilities{Enabled: true, MaxN: 1, MaxImageURLs: 16, OptionalFields: []string{"size", "resolution"}}}})
+			require.True(t, filter(ch), "fallback must still recognize the original multipart body")
+		}
 	}
 }

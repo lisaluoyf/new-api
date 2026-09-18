@@ -618,32 +618,34 @@ func GptImage2ChannelPickFilterForTask(modelName string, requestBody []byte) mod
 // gptImage2CapabilityRequest is the subset of an Images API request that changes
 // upstream compatibility. It mirrors the published APIMart and PackyAPI docs.
 type gptImage2CapabilityRequest struct {
-	ExplicitOfficial  bool
-	AsyncPath         bool
-	EditsPath         bool
-	Multipart         bool
-	HasUploadedImage  bool
-	HasUploadedMask   bool
-	N                 int
-	ImageURLCount     int
-	HasMaskURL        bool
-	HasStream         bool
-	HasPartialImages  bool
-	Size              string
-	Resolution        string
-	Quality           string
-	Background        string
-	OutputFormat      string
-	OutputCompression bool
-	ResponseFormat    string
-	Moderation        string
-	InputFidelity     string
-	User              string
-	Style             string
+	ModelName          string
+	UploadedImageCount int
+	ExplicitOfficial   bool
+	AsyncPath          bool
+	EditsPath          bool
+	Multipart          bool
+	HasUploadedImage   bool
+	HasUploadedMask    bool
+	N                  int
+	ImageURLCount      int
+	HasMaskURL         bool
+	HasStream          bool
+	HasPartialImages   bool
+	Size               string
+	Resolution         string
+	Quality            string
+	Background         string
+	OutputFormat       string
+	OutputCompression  bool
+	ResponseFormat     string
+	Moderation         string
+	InputFidelity      string
+	User               string
+	Style              string
 }
 
 func gptImage2CapabilityRequestFromContext(c *gin.Context, modelName string) gptImage2CapabilityRequest {
-	req := gptImage2CapabilityRequest{ExplicitOfficial: strings.EqualFold(strings.TrimSpace(modelName), gptImage2OfficialAliasModel), N: 1}
+	req := gptImage2CapabilityRequest{ModelName: modelName, ExplicitOfficial: strings.EqualFold(strings.TrimSpace(modelName), gptImage2OfficialAliasModel), N: 1}
 	if c == nil || c.Request == nil {
 		return req
 	}
@@ -653,6 +655,11 @@ func gptImage2CapabilityRequestFromContext(c *gin.Context, modelName string) gpt
 	if req.Multipart {
 		if form, err := common.ParseMultipartFormReusable(c); err == nil && form != nil {
 			req.HasUploadedImage = multipartFormHasImageFiles(form)
+			for name, files := range form.File {
+				if name == "image" || name == "images" || strings.HasPrefix(name, "image[") {
+					req.UploadedImageCount += len(files)
+				}
+			}
 			for _, key := range []string{"mask", "mask[]"} {
 				if len(form.File[key]) > 0 {
 					req.HasUploadedMask = true
@@ -670,7 +677,7 @@ func gptImage2CapabilityRequestFromContext(c *gin.Context, modelName string) gpt
 }
 
 func gptImage2CapabilityRequestFromJSON(modelName string, raw []byte) gptImage2CapabilityRequest {
-	req := gptImage2CapabilityRequest{ExplicitOfficial: strings.EqualFold(strings.TrimSpace(modelName), gptImage2OfficialAliasModel), N: 1}
+	req := gptImage2CapabilityRequest{ModelName: modelName, ExplicitOfficial: strings.EqualFold(strings.TrimSpace(modelName), gptImage2OfficialAliasModel), N: 1}
 	var fields map[string]json.RawMessage
 	if len(raw) == 0 || common.Unmarshal(raw, &fields) != nil {
 		return req
@@ -685,12 +692,9 @@ func gptImage2CapabilityRequestFromJSON(modelName string, raw []byte) gptImage2C
 		}
 	}
 	req.ImageURLCount = jsonArrayLength(fields["image_urls"])
-	if req.ImageURLCount == 0 {
-		for _, key := range []string{"images", "image"} {
-			if jsonFieldPresent(fields[key]) {
-				req.ImageURLCount = 1
-				break
-			}
+	for _, key := range []string{"images", "image"} {
+		if jsonFieldPresent(fields[key]) {
+			req.ImageURLCount += jsonArrayLength(fields[key])
 		}
 	}
 	req.HasMaskURL = jsonFieldPresent(fields["mask_url"]) || jsonFieldPresent(fields["mask"])
@@ -730,7 +734,12 @@ func applyGptImage2FormCapabilities(req *gptImage2CapabilityRequest, values map[
 	req.Style = firstGptImage2FormValue(values, "style")
 	req.HasStream = formValuePresent(values, "stream")
 	req.HasPartialImages = formValuePresent(values, "partial_images")
-	req.HasMaskURL = formValuePresent(values, "mask_url")
+	req.HasMaskURL = formValuePresent(values, "mask_url") || formValuePresent(values, "mask")
+	for _, key := range []string{"image_urls", "image", "images"} {
+		if value := firstGptImage2FormValue(values, key); value != "" {
+			req.ImageURLCount += jsonArrayLength(json.RawMessage(value))
+		}
+	}
 }
 
 func jsonString(v json.RawMessage) string {
@@ -885,6 +894,18 @@ func gptImage2ChannelRejectionReason(ch *model.Channel, req gptImage2CapabilityR
 	// config cannot route 2K/4K requests back to it.
 	if ch.Id == 73 && gptImage2RequestResolutionTier(req) != "1k" {
 		return "channel_73_only_supports_1k"
+	}
+	if req.EditsPath && GptImage2EditsViaGenerations(ch.Id, req.ModelName) {
+		if req.HasUploadedMask {
+			return "uploaded_mask_not_supported"
+		}
+		req.ImageURLCount += req.UploadedImageCount
+		if req.ImageURLCount == 0 {
+			return "reference_image_required"
+		}
+		req.EditsPath, req.Multipart, req.HasUploadedImage = false, false, false
+		// The response handler implements the client's requested format locally.
+		req.ResponseFormat = ""
 	}
 	if capabilities := ch.GetOtherSettings().GptImage2Capabilities; capabilities != nil {
 		return configuredGptImage2RejectionReason(capabilities, req)
