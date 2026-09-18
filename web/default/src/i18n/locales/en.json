@@ -4974,5 +4974,6 @@
     "Rounded to {{count}} quota units": "Rounded to {{count}} quota units"
   },
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "Do not close or refresh this page until payment is complete.": "Do not close or refresh this page until payment is complete."
 }

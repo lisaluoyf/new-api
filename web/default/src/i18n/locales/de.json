@@ -4655,5 +4655,6 @@
   "Not claimed": "Nicht beansprucht",
   "Days left with date": "Noch {{days}} Tage ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "Do not close or refresh this page until payment is complete.": "Schließen oder aktualisieren Sie diese Seite nicht, bis die Zahlung abgeschlossen ist."
 }

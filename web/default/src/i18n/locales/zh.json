@@ -5013,5 +5013,6 @@
     "Rounded to {{count}} quota units": "四舍五入为 {{count}} 个额度单位"
   },
   "Coding Plan Users": "Coding Plan 用户",
-  "Coding Plan Balance": "Coding Plan 余额"
+  "Coding Plan Balance": "Coding Plan 余额",
+  "Do not close or refresh this page until payment is complete.": "支付完成前，请勿关闭或刷新此页面。"
 }

@@ -4698,5 +4698,6 @@
   "Not claimed": "Chưa nhận",
   "Days left with date": "Còn {{days}} ngày ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "Do not close or refresh this page until payment is complete.": "Không đóng hoặc làm mới trang này cho đến khi thanh toán hoàn tất."
 }

@@ -4655,5 +4655,6 @@
   "Not claimed": "Non riscattato",
   "Days left with date": "Mancano {{days}} giorni ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "Do not close or refresh this page until payment is complete.": "Non chiudere o aggiornare questa pagina fino al completamento del pagamento."
 }

@@ -4698,5 +4698,6 @@
   "Not claimed": "未受取",
   "Days left with date": "残り {{days}} 日 ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "Do not close or refresh this page until payment is complete.": "支払いが完了するまで、このページを閉じたり再読み込みしたりしないでください。"
 }

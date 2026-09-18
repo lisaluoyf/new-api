@@ -4689,5 +4689,6 @@
   "Not claimed": "미수령",
   "Days left with date": "{{days}}일 남음 ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "Do not close or refresh this page until payment is complete.": "결제가 완료될 때까지 이 페이지를 닫거나 새로고침하지 마세요."
 }

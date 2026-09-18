@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect } from 'react'
-import { Loader2, CheckCircle2, XCircle, ExternalLink } from 'lucide-react'
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  ExternalLink,
+  AlertTriangle,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -254,6 +260,17 @@ export function CryptoDepositModal({
               <TabsTrigger value='transfer'>{t('Direct transfer')}</TabsTrigger>
             </TabsList>
           </Tabs>
+        )}
+
+        {paymentMode === 'wallet' && (step === 'form' || isProcessing) && (
+          <div className='flex gap-2.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900'>
+            <AlertTriangle className='mt-0.5 size-4 shrink-0 text-amber-600' />
+            <span>
+              {t(
+                'Do not close or refresh this page until payment is complete.'
+              )}
+            </span>
+          </div>
         )}
 
         {/* ── 表单 ── */}
