@@ -17,7 +17,7 @@ import (
 
 func TestCanceledRelayPersistsAuditWithoutChargingOrHealthPenalty(t *testing.T) {
 	db := setupModelDataToggleTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &model.CancellationObservation{}))
 	oldLogDB, oldRedis, oldErrorLog := model.LOG_DB, common.RedisEnabled, constant.ErrorLogEnabled
 	model.LOG_DB, common.RedisEnabled, constant.ErrorLogEnabled = db, false, false
 	t.Cleanup(func() { model.LOG_DB, common.RedisEnabled, constant.ErrorLogEnabled = oldLogDB, oldRedis, oldErrorLog })
@@ -59,4 +59,11 @@ func TestCanceledRelayPersistsAuditWithoutChargingOrHealthPenalty(t *testing.T) 
 	var user model.User
 	require.NoError(t, db.First(&user, 123).Error)
 	require.Equal(t, 100000, user.Quota)
+	item, err := model.GetCancellationObservation("cancel-audit-test")
+	require.NoError(t, err)
+	require.Equal(t, "live_cancel", item.Source)
+	require.Equal(t, 123, item.UserId)
+	require.Equal(t, 456, item.TokenId)
+	require.Equal(t, 17, item.ReceivedResponses)
+	require.Contains(t, item.RequestSnapshot, `"automatic_charge_allowed":false`)
 }

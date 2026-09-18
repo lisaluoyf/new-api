@@ -3,6 +3,7 @@ package controller
 import (
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
@@ -56,5 +57,10 @@ func recordCanceledRelayLog(c *gin.Context, info *relaycommon.RelayInfo) {
 		"Client canceled; upstream usage unavailable; cost pending reconciliation (not settled)",
 		info.TokenId, int(time.Since(start).Seconds()), info.IsStream, info.UsingGroup, other); err == nil {
 		c.Set("client_cancel_log_recorded", true)
+	}
+	if err := service.ObserveCanceledRelay(c, info); err != nil {
+		// The worker retries from durable cancellation audit logs. Observation
+		// failure must not change the request's refund/settlement behavior.
+		common.SysLog("cancellation observation enqueue failed: " + err.Error())
 	}
 }

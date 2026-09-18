@@ -520,6 +520,7 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	return doRequest(c, req, info)
 }
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
+	info.ObservationUpstreamRequestID = ""
 	var client *http.Client
 	var err error
 	if info.ChannelSetting.Proxy != "" {
@@ -558,6 +559,12 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 	if resp == nil {
 		return nil, errors.New("resp is nil")
+	}
+	for _, name := range []string{"X-Request-Id", "Request-Id", "X-Amzn-Requestid"} {
+		if id := strings.TrimSpace(resp.Header.Get(name)); id != "" && len(id) <= 255 {
+			info.ObservationUpstreamRequestID = id
+			break
+		}
 	}
 
 	_ = req.Body.Close()

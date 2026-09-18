@@ -334,6 +334,8 @@ func SetApiRouter(router *gin.Engine) {
 			adminRoute.POST("/registration-channels", controller.UpsertRegistrationChannel)
 			adminRoute.PATCH("/registration-channels/status", controller.SetRegistrationChannelStatus)
 			adminRoute.GET("/failed-request-snapshots/:request_id", controller.GetFailedRequestSnapshot)
+			adminRoute.GET("/cancellation-observations", middleware.RootAuth(), controller.ListCancellationObservations)
+			adminRoute.GET("/cancellation-observations/:request_id", middleware.RootAuth(), controller.GetCancellationObservation)
 			adminRoute.POST("/failed-request-snapshots/:request_id/replay", controller.ReplayFailedRequestSnapshot)
 		}
 

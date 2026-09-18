@@ -147,6 +147,8 @@ type RelayInfo struct {
 	SubscriptionPlanType  string
 	// RequestId is used for idempotent pre-consume/refund
 	RequestId string
+	// Last attempt's response header, diagnostic only (not a billing proof).
+	ObservationUpstreamRequestID string
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
 	SubscriptionAmountTotal               int64
 	SubscriptionAmountUsedAfterPreConsume int64
@@ -226,6 +228,7 @@ type RelayInfo struct {
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
+	info.ObservationUpstreamRequestID = ""
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)
 	headerOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelHeaderOverride)

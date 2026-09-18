@@ -333,6 +333,8 @@ func migrateDB() error {
 		&ReferralGPTRewardLog{},
 		&ResellerModelRule{},
 		&BillingHold{},
+		&CancellationObservation{},
+		&CancellationObservationCursor{},
 		&ImagineBatch{},
 		&ImagineTask{},
 		&ImagineBillingEvent{},
@@ -423,6 +425,8 @@ func migrateDBFast() error {
 		{&PerfMetric{}, "PerfMetric"},
 		{&CryptoDepositIntent{}, "CryptoDepositIntent"},
 		{&FailedRequestSnapshot{}, "FailedRequestSnapshot"},
+		{&CancellationObservation{}, "CancellationObservation"},
+		{&CancellationObservationCursor{}, "CancellationObservationCursor"},
 		{&ShadowBenchmarkLog{}, "ShadowBenchmarkLog"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
