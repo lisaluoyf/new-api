@@ -376,6 +376,10 @@ func InitResources() error {
 	// Initialize apimaster PG (optional, for detection sync)
 	if err := model.InitApimasterPGDB(); err != nil {
 		common.SysLog("warning: apimaster PG init failed: " + err.Error())
+	} else if model.APIMASTER_PG_DB != nil {
+		if err := model.EnsureTrialRiskAllowlistSchema(); err != nil {
+			common.SysLog("warning: trial risk allowlist migration failed: " + err.Error())
+		}
 	}
 
 	// Initialize Redis

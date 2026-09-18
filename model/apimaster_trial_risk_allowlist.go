@@ -50,6 +50,12 @@ func ensureApimasterTrialRiskAllowlistSchema() error {
 	return nil
 }
 
+// EnsureTrialRiskAllowlistSchema creates the account-level allowlist table
+// during startup, before an administrator first opens the user list.
+func EnsureTrialRiskAllowlistSchema() error {
+	return ensureApimasterTrialRiskAllowlistSchema()
+}
+
 func apimasterUserIdSelectExpression() string {
 	if APIMASTER_PG_DB != nil && APIMASTER_PG_DB.Dialector.Name() == "postgres" {
 		return "id::text"
