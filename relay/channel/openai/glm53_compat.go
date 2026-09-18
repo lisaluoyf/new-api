@@ -3,8 +3,10 @@ package openai
 import (
 	"bytes"
 	"encoding/json"
+	"net/url"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 )
 
@@ -21,43 +23,68 @@ var glm53DisabledReasoningValues = map[string]struct{}{
 	"minimal":  {},
 }
 
-func normalizeGLM53Reasoning(modelName string, request *dto.GeneralOpenAIRequest) glm53ReasoningCompatibilityResult {
-	if request == nil || !strings.EqualFold(strings.TrimSpace(modelName), "glm-5.3") {
+// Normalize only this always-thinking model family. Missing controls retain the
+// upstream default; explicit attempts to disable reasoning use its lowest effort.
+func normalizeGLM53Reasoning(modelName, baseURL string, request *dto.GeneralOpenAIRequest) glm53ReasoningCompatibilityResult {
+	if request == nil || !isGLM53Model(modelName) {
 		return glm53ReasoningCompatibilityResult{}
 	}
-
 	effort, source := selectGLM53LegalEffort(request)
 	if effort == "" {
-		if disabledSource := disabledGLM53ReasoningSource(request); disabledSource != "" {
-			source = disabledSource
-		} else {
-			source = "model_default"
+		source = disabledGLM53ReasoningSource(request)
+		if source != "" {
+			effort = "low"
 		}
-		effort = "low"
 	}
-
-	canonicalThinking := json.RawMessage(`{"type":"enabled"}`)
+	thinking := normalizeGLM53Thinking(request.THINKING, baseURL)
+	if len(thinking) == 0 && len(request.THINKING) == 0 {
+		var extra map[string]json.RawMessage
+		if common.Unmarshal(request.ExtraBody, &extra) == nil {
+			thinking = normalizeGLM53Thinking(extra["thinking"], baseURL)
+		}
+	}
 	changed := request.ReasoningEffort != effort ||
-		!bytes.Equal(bytes.TrimSpace(request.THINKING), canonicalThinking) ||
-		len(request.Reasoning) > 0 ||
-		len(request.EnableThinking) > 0 ||
-		len(request.Think) > 0 ||
-		hasGLM53ReasoningKeys(request.ChatTemplateKwargs) ||
-		hasGLM53ReasoningKeys(request.ExtraBody)
-
+		!bytes.Equal(bytes.TrimSpace(request.THINKING), bytes.TrimSpace(thinking)) ||
+		len(request.Reasoning) > 0 || len(request.EnableThinking) > 0 || len(request.Think) > 0 ||
+		hasGLM53ReasoningKeys(request.ChatTemplateKwargs) || hasGLM53ReasoningKeys(request.ExtraBody)
 	request.ReasoningEffort = effort
-	request.THINKING = canonicalThinking
+	request.THINKING = thinking
 	request.Reasoning = nil
 	request.EnableThinking = nil
 	request.Think = nil
 	request.ChatTemplateKwargs = stripGLM53ReasoningKeys(request.ChatTemplateKwargs)
 	request.ExtraBody = stripGLM53ReasoningKeys(request.ExtraBody)
+	return glm53ReasoningCompatibilityResult{Changed: changed, Effort: effort, Source: source}
+}
 
-	return glm53ReasoningCompatibilityResult{
-		Changed: changed,
-		Effort:  effort,
-		Source:  source,
+func isGLM53Model(modelName string) bool {
+	name := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(modelName)), "zai-org/")
+	return name == "glm-5.3" || name == "glm-5.3-flash"
+}
+
+// GMI rejects any top-level thinking object, including type=enabled. Other
+// providers can still use clear_thinking to preserve reasoning across turns.
+func normalizeGLM53Thinking(raw json.RawMessage, baseURL string) json.RawMessage {
+	endpoint, err := url.Parse(baseURL)
+	if err == nil && strings.EqualFold(endpoint.Hostname(), "api.gmi-serving.com") {
+		return nil
 	}
+	var object map[string]json.RawMessage
+	if common.Unmarshal(raw, &object) != nil {
+		return raw
+	}
+	for _, key := range []string{"type", "enabled", "effort", "reasoning_effort"} {
+		delete(object, key)
+	}
+	if len(object) == 0 {
+		return nil
+	}
+	object["type"] = json.RawMessage(`"enabled"`)
+	normalized, err := common.Marshal(object)
+	if err != nil {
+		return raw
+	}
+	return normalized
 }
 
 // Legal explicit values win in a stable order when clients send multiple
@@ -75,6 +102,13 @@ func selectGLM53LegalEffort(request *dto.GeneralOpenAIRequest) (string, string) 
 	if effort := legalGLM53Effort(rawObjectString(request.ChatTemplateKwargs, "reasoning_effort", "effort")); effort != "" {
 		return effort, "chat_template_kwargs.reasoning_effort"
 	}
+	var extra dto.GeneralOpenAIRequest
+	if common.Unmarshal(request.ExtraBody, &extra) == nil && len(request.ExtraBody) > 0 {
+		extra.ExtraBody = nil
+		if effort, source := selectGLM53LegalEffort(&extra); effort != "" {
+			return effort, "extra_body." + source
+		}
+	}
 	return "", ""
 }
 
@@ -89,8 +123,8 @@ func legalGLM53Effort(value string) string {
 }
 
 func disabledGLM53ReasoningSource(request *dto.GeneralOpenAIRequest) string {
-	if isDisabledGLM53Value(request.ReasoningEffort) {
-		return "reasoning_effort_disabled"
+	if strings.TrimSpace(request.ReasoningEffort) != "" && legalGLM53Effort(request.ReasoningEffort) == "" {
+		return "reasoning_effort_invalid"
 	}
 	if rawObjectDisabled(request.THINKING) {
 		return "thinking_disabled"
@@ -104,8 +138,15 @@ func disabledGLM53ReasoningSource(request *dto.GeneralOpenAIRequest) string {
 	if rawFalseOrDisabled(request.Think) {
 		return "think_disabled"
 	}
-	if rawObjectFalse(request.ChatTemplateKwargs, "enable_thinking") {
+	if rawObjectFalse(request.ChatTemplateKwargs, "enable_thinking") || rawObjectDisabled(request.ChatTemplateKwargs) {
 		return "chat_template_kwargs_disabled"
+	}
+	var extra dto.GeneralOpenAIRequest
+	if common.Unmarshal(request.ExtraBody, &extra) == nil && len(request.ExtraBody) > 0 {
+		extra.ExtraBody = nil
+		if source := disabledGLM53ReasoningSource(&extra); source != "" {
+			return "extra_body." + source
+		}
 	}
 	return ""
 }
@@ -120,7 +161,7 @@ func rawObjectString(raw json.RawMessage, keys ...string) string {
 		return ""
 	}
 	var object map[string]any
-	if json.Unmarshal(raw, &object) != nil {
+	if common.Unmarshal(raw, &object) != nil {
 		return ""
 	}
 	for _, key := range keys {
@@ -136,7 +177,7 @@ func rawObjectDisabled(raw json.RawMessage) bool {
 		return false
 	}
 	var object map[string]any
-	if json.Unmarshal(raw, &object) != nil {
+	if common.Unmarshal(raw, &object) != nil {
 		return false
 	}
 	for _, key := range []string{"type", "effort", "reasoning_effort"} {
@@ -155,7 +196,7 @@ func rawFalseOrDisabled(raw json.RawMessage) bool {
 		return false
 	}
 	var value any
-	if json.Unmarshal(raw, &value) != nil {
+	if common.Unmarshal(raw, &value) != nil {
 		return false
 	}
 	switch typed := value.(type) {
@@ -173,7 +214,7 @@ func rawObjectFalse(raw json.RawMessage, key string) bool {
 		return false
 	}
 	var object map[string]any
-	if json.Unmarshal(raw, &object) != nil {
+	if common.Unmarshal(raw, &object) != nil {
 		return false
 	}
 	value, exists := object[key]
@@ -203,7 +244,7 @@ func hasGLM53ReasoningKeys(raw json.RawMessage) bool {
 		return false
 	}
 	var object map[string]any
-	if json.Unmarshal(raw, &object) != nil {
+	if common.Unmarshal(raw, &object) != nil {
 		return false
 	}
 	for key := range object {
@@ -219,7 +260,7 @@ func stripGLM53ReasoningKeys(raw json.RawMessage) json.RawMessage {
 		return raw
 	}
 	var object map[string]any
-	if json.Unmarshal(raw, &object) != nil {
+	if common.Unmarshal(raw, &object) != nil {
 		return raw
 	}
 	for key := range glm53ConflictingObjectKeys {
@@ -228,7 +269,7 @@ func stripGLM53ReasoningKeys(raw json.RawMessage) json.RawMessage {
 	if len(object) == 0 {
 		return nil
 	}
-	cleaned, err := json.Marshal(object)
+	cleaned, err := common.Marshal(object)
 	if err != nil {
 		return raw
 	}

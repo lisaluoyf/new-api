@@ -258,9 +258,14 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-	if result := normalizeGLM53Reasoning(info.UpstreamModelName, request); result.Changed {
+	reasoningModel := info.UpstreamModelName
+	if !isGLM53Model(reasoningModel) {
+		reasoningModel = info.OriginModelName
+	}
+	if result := normalizeGLM53Reasoning(reasoningModel, info.ChannelBaseUrl, request); result.Changed {
 		logger.LogInfo(c, fmt.Sprintf(
-			"glm-5.3 compatibility: normalized reasoning to thinking.type=enabled effort=%s source=%s",
+			"GLM-5.3 compatibility: model=%s normalized reasoning effort=%q source=%q",
+			reasoningModel,
 			result.Effort,
 			result.Source,
 		))

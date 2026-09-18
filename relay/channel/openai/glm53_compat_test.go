@@ -2,143 +2,146 @@ package openai
 
 import (
 	"encoding/json"
+	"net/http/httptest"
+	"reflect"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/gin-gonic/gin"
 )
 
 func TestNormalizeGLM53Reasoning(t *testing.T) {
-	tests := []struct {
-		name             string
-		model            string
-		reasoningEffort  string
-		thinking         json.RawMessage
-		wantEffort       string
-		wantThinkingType string
-		wantChanged      bool
-	}{
-		{name: "none becomes low", model: "glm-5.3", reasoningEffort: "none", wantEffort: "low", wantThinkingType: "enabled", wantChanged: true},
-		{name: "off becomes low", model: "glm-5.3", reasoningEffort: "off", wantEffort: "low", wantThinkingType: "enabled", wantChanged: true},
-		{name: "disabled becomes low", model: "glm-5.3", reasoningEffort: "disabled", wantEffort: "low", wantThinkingType: "enabled", wantChanged: true},
-		{name: "minimal becomes low", model: "glm-5.3", reasoningEffort: "minimal", wantEffort: "low", wantThinkingType: "enabled", wantChanged: true},
-		{name: "disabled thinking becomes enabled low", model: "glm-5.3", thinking: json.RawMessage(`{"type":"disabled"}`), wantEffort: "low", wantThinkingType: "enabled", wantChanged: true},
-		{name: "low stays low", model: "glm-5.3", reasoningEffort: "low", wantEffort: "low", wantThinkingType: "enabled", wantChanged: true},
-		{name: "high stays high", model: "glm-5.3", reasoningEffort: "high", wantEffort: "high", wantThinkingType: "enabled", wantChanged: true},
-		{name: "max stays max", model: "glm-5.3", reasoningEffort: "max", wantEffort: "max", wantThinkingType: "enabled", wantChanged: true},
-		{name: "missing reasoning uses legal compatibility default", model: "glm-5.3", wantEffort: "low", wantThinkingType: "enabled", wantChanged: true},
-		{name: "glm-5.2 remains unchanged", model: "glm-5.2", thinking: json.RawMessage(`{"type":"disabled"}`), wantThinkingType: "disabled", wantChanged: false},
-		{name: "OpenAI model remains unchanged", model: "gpt-5.4", reasoningEffort: "none", wantEffort: "none", wantChanged: false},
-		{name: "Claude model remains unchanged", model: "claude-opus-4-6", thinking: json.RawMessage(`{"type":"disabled"}`), wantThinkingType: "disabled", wantChanged: false},
+	for _, model := range []string{"glm-5.3", "glm-5.3-flash", "zai-org/GLM-5.3", "zai-org/GLM-5.3-Flash"} {
+		for _, base := range []string{"https://api.apikey.fan", "https://api.gmi-serving.com"} {
+			for _, tc := range []struct{ name, input, want string }{
+				{"missing stays missing", `{}`, `{}`},
+				{"disabled becomes low", `{"thinking":{"type":"disabled"},"enable_thinking":false}`, `{"reasoning_effort":"low"}`},
+				{"none becomes low", `{"reasoning_effort":"none"}`, `{"reasoning_effort":"low"}`},
+				{"invalid effort becomes low", `{"reasoning_effort":"medium"}`, `{"reasoning_effort":"low"}`},
+				{"false becomes low", `{"enable_thinking":false}`, `{"reasoning_effort":"low"}`},
+				{"ollama false becomes low", `{"think":false}`, `{"reasoning_effort":"low"}`},
+				{"enabled needs no switch", `{"thinking":{"type":"enabled"}}`, `{}`},
+				{"legal low preserved", `{"reasoning_effort":"low"}`, `{"reasoning_effort":"low"}`},
+				{"legal high wins", `{"reasoning_effort":"high","thinking":{"type":"disabled"},"enable_thinking":false}`, `{"reasoning_effort":"high"}`},
+				{"legal max preserved", `{"reasoning_effort":"max"}`, `{"reasoning_effort":"max"}`},
+				{"alternate legal wins", `{"reasoning":{"effort":"max","enabled":false},"thinking":{"type":"disabled","effort":"high"}}`, `{"reasoning_effort":"max"}`},
+				{"template false cleaned", `{"chat_template_kwargs":{"enable_thinking":false,"unrelated":7}}`, `{"reasoning_effort":"low","chat_template_kwargs":{"unrelated":7}}`},
+				{"nested extra disabled", `{"extra_body":{"thinking":{"type":"disabled"},"unrelated":7}}`, `{"reasoning_effort":"low","extra_body":{"unrelated":7}}`},
+				{"nested legal wins", `{"thinking":{"type":"disabled"},"extra_body":{"reasoning_effort":"high","other":7}}`, `{"reasoning_effort":"high","extra_body":{"other":7}}`},
+			} {
+				t.Run(model+"/"+base+"/"+tc.name, func(t *testing.T) {
+					var request, want dto.GeneralOpenAIRequest
+					if err := common.Unmarshal([]byte(tc.input), &request); err != nil {
+						t.Fatal(err)
+					}
+					if err := common.Unmarshal([]byte(tc.want), &want); err != nil {
+						t.Fatal(err)
+					}
+					normalizeGLM53Reasoning(model, base, &request)
+					gotJSON, err := common.Marshal(request)
+					if err != nil {
+						t.Fatal(err)
+					}
+					wantJSON, _ := common.Marshal(want)
+					assertJSONEqual(t, gotJSON, wantJSON)
+					if result := normalizeGLM53Reasoning(model, base, &request); result.Changed {
+						t.Fatalf("normalization not idempotent: %+v", result)
+					}
+				})
+			}
+		}
 	}
+}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			request := &dto.GeneralOpenAIRequest{
-				ReasoningEffort: test.reasoningEffort,
-				THINKING:        test.thinking,
+func TestNormalizeGLM53ReasoningPreservesOtherModelsAndSampling(t *testing.T) {
+	for _, model := range []string{"glm-5.2", "glm-5.3-extra", "glm-5.3-flash-preview", "gpt-5.4", "claude-opus-4-6"} {
+		request := dto.GeneralOpenAIRequest{THINKING: json.RawMessage(`{"type":"disabled"}`), ReasoningEffort: "none"}
+		before, _ := common.Marshal(request)
+		if result := normalizeGLM53Reasoning(model, "https://api.gmi-serving.com", &request); result.Changed {
+			t.Fatalf("unrelated model %s changed", model)
+		}
+		after, _ := common.Marshal(request)
+		assertJSONEqual(t, after, before)
+	}
+	var request dto.GeneralOpenAIRequest
+	if err := common.Unmarshal([]byte(`{"temperature":0,"top_p":0.45,"top_k":45,"frequency_penalty":1.45,"messages":[{"role":"user","content":"hello"}],"stream":true}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := common.Marshal(request)
+	normalizeGLM53Reasoning("glm-5.3", "https://api.apikey.fan", &request)
+	after, _ := common.Marshal(request)
+	assertJSONEqual(t, after, before)
+	if result := normalizeGLM53Reasoning("glm-5.3", "", nil); result.Changed {
+		t.Fatal("nil request changed")
+	}
+}
+
+func TestNormalizeGLM53ReasoningPreservesThinkingHistoryOutsideGMI(t *testing.T) {
+	for _, base := range []string{"https://api.apikey.fan", "https://api.bigmodel.cn", "https://api.gmi-serving.com.evil.invalid"} {
+		request := dto.GeneralOpenAIRequest{THINKING: json.RawMessage(`{"type":"disabled","clear_thinking":false}`)}
+		normalizeGLM53Reasoning("glm-5.3", base, &request)
+		if request.ReasoningEffort != "low" {
+			t.Fatal("disabled did not become low")
+		}
+		assertJSONEqual(t, request.THINKING, []byte(`{"type":"enabled","clear_thinking":false}`))
+	}
+	request := dto.GeneralOpenAIRequest{THINKING: json.RawMessage(`{"type":"enabled","clear_thinking":false}`)}
+	normalizeGLM53Reasoning("glm-5.3", "https://API.GMI-SERVING.COM:443/v1", &request)
+	if len(request.THINKING) != 0 || request.ReasoningEffort != "" {
+		t.Fatalf("GMI thinking must be omitted without changing default effort: %+v", request)
+	}
+	request = dto.GeneralOpenAIRequest{ExtraBody: json.RawMessage(`{"thinking":{"type":"disabled","clear_thinking":false},"other":7}`)}
+	normalizeGLM53Reasoning("glm-5.3", "https://api.apikey.fan", &request)
+	assertJSONEqual(t, request.THINKING, []byte(`{"type":"enabled","clear_thinking":false}`))
+	assertJSONEqual(t, request.ExtraBody, []byte(`{"other":7}`))
+}
+
+func TestGLM53AdaptorNormalizesMappedRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, upstream := range []string{"glm-5.3", "glm-5.3-flash", "zai-org/GLM-5.3-Flash", "private-deployment"} {
+		t.Run(upstream, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			info := &relaycommon.RelayInfo{OriginModelName: "glm-5.3-flash"}
+			info.ChannelMeta = &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenAI, ChannelBaseUrl: "https://api.gmi-serving.com", UpstreamModelName: upstream}
+			request := &dto.GeneralOpenAIRequest{Model: upstream, THINKING: json.RawMessage(`{"type":"disabled"}`), EnableThinking: json.RawMessage(`false`)}
+			converted, err := (&Adaptor{}).ConvertOpenAIRequest(c, info, request)
+			if err != nil {
+				t.Fatal(err)
 			}
-			result := normalizeGLM53Reasoning(test.model, request)
-			if result.Changed != test.wantChanged {
-				t.Fatalf("Changed = %v, want %v", result.Changed, test.wantChanged)
+			encoded, err := common.Marshal(converted)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if request.ReasoningEffort != test.wantEffort {
-				t.Fatalf("ReasoningEffort = %q, want %q", request.ReasoningEffort, test.wantEffort)
+			var body map[string]any
+			if err = common.Unmarshal(encoded, &body); err != nil {
+				t.Fatal(err)
 			}
-			if got := thinkingType(t, request.THINKING); got != test.wantThinkingType {
-				t.Fatalf("thinking.type = %q, want %q", got, test.wantThinkingType)
+			if body["model"] != upstream || body["reasoning_effort"] != "low" {
+				t.Fatalf("bad upstream payload: %s", encoded)
 			}
-			if test.model == "glm-5.3" && (request.ReasoningEffort == "none" || request.ReasoningEffort == "disabled") {
-				t.Fatalf("glm-5.3 retained disabled reasoning: %q", request.ReasoningEffort)
+			if _, ok := body["thinking"]; ok {
+				t.Fatalf("thinking survived: %s", encoded)
+			}
+			if _, ok := body["enable_thinking"]; ok {
+				t.Fatalf("enable_thinking survived: %s", encoded)
 			}
 		})
 	}
 }
 
-func TestNormalizeGLM53ReasoningPreservesJanitorSampling(t *testing.T) {
-	temperature := 1.0
-	topP := 0.45
-	topK := 45
-	frequencyPenalty := 1.45
-	request := &dto.GeneralOpenAIRequest{
-		Temperature:      &temperature,
-		TopP:             &topP,
-		TopK:             &topK,
-		FrequencyPenalty: &frequencyPenalty,
-	}
-
-	normalizeGLM53Reasoning("glm-5.3", request)
-	if request.Temperature == nil || *request.Temperature != temperature ||
-		request.TopP == nil || *request.TopP != topP ||
-		request.TopK == nil || *request.TopK != topK ||
-		request.FrequencyPenalty == nil || *request.FrequencyPenalty != frequencyPenalty {
-		t.Fatal("Janitor sampling parameters changed during GLM-5.3 compatibility normalization")
-	}
-	if request.ReasoningEffort != "low" || thinkingType(t, request.THINKING) != "enabled" {
-		t.Fatalf("compatibility fields = effort %q thinking %q", request.ReasoningEffort, thinkingType(t, request.THINKING))
-	}
-}
-
-func TestNormalizeGLM53ReasoningLegalEffortWinsConflicts(t *testing.T) {
-	request := &dto.GeneralOpenAIRequest{
-		ReasoningEffort:    "high",
-		THINKING:           json.RawMessage(`{"type":"disabled","effort":"max"}`),
-		Reasoning:          json.RawMessage(`{"enabled":false,"effort":"low"}`),
-		EnableThinking:     json.RawMessage(`false`),
-		Think:              json.RawMessage(`false`),
-		ChatTemplateKwargs: json.RawMessage(`{"enable_thinking":false,"unrelated":"preserved"}`),
-		ExtraBody:          json.RawMessage(`{"thinking":{"type":"disabled"},"other":7}`),
-	}
-
-	result := normalizeGLM53Reasoning("glm-5.3", request)
-	if result.Effort != "high" || request.ReasoningEffort != "high" {
-		t.Fatalf("legal top-level effort did not win: result=%+v request=%q", result, request.ReasoningEffort)
-	}
-	if got := thinkingType(t, request.THINKING); got != "enabled" {
-		t.Fatalf("thinking.type = %q, want enabled", got)
-	}
-	if len(request.Reasoning) != 0 || len(request.EnableThinking) != 0 || len(request.Think) != 0 {
-		t.Fatal("conflicting top-level reasoning fields were not removed")
-	}
-	assertJSONObject(t, request.ChatTemplateKwargs, map[string]any{"unrelated": "preserved"})
-	assertJSONObject(t, request.ExtraBody, map[string]any{"other": float64(7)})
-}
-
-func TestNormalizeGLM53ReasoningAlternateLegalPriority(t *testing.T) {
-	request := &dto.GeneralOpenAIRequest{
-		Reasoning: json.RawMessage(`{"effort":"max"}`),
-		THINKING:  json.RawMessage(`{"type":"disabled","effort":"high"}`),
-	}
-	result := normalizeGLM53Reasoning("glm-5.3", request)
-	if result.Effort != "max" || result.Source != "reasoning.effort" {
-		t.Fatalf("result = %+v, want reasoning.effort max", result)
-	}
-}
-
-func thinkingType(t *testing.T, raw json.RawMessage) string {
+func assertJSONEqual(t *testing.T, got, want []byte) {
 	t.Helper()
-	if len(raw) == 0 {
-		return ""
+	var a, b any
+	if err := common.Unmarshal(got, &a); err != nil {
+		t.Fatal(err)
 	}
-	var object map[string]any
-	if err := json.Unmarshal(raw, &object); err != nil {
-		t.Fatalf("invalid thinking JSON: %v", err)
+	if err := common.Unmarshal(want, &b); err != nil {
+		t.Fatal(err)
 	}
-	value, _ := object["type"].(string)
-	return value
-}
-
-func assertJSONObject(t *testing.T, raw json.RawMessage, want map[string]any) {
-	t.Helper()
-	var got map[string]any
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
-	if len(got) != len(want) {
-		t.Fatalf("object = %#v, want %#v", got, want)
-	}
-	for key, wantValue := range want {
-		if got[key] != wantValue {
-			t.Fatalf("object[%q] = %#v, want %#v", key, got[key], wantValue)
-		}
+	if !reflect.DeepEqual(a, b) {
+		t.Fatalf("JSON = %s, want %s", got, want)
 	}
 }
