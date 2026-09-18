@@ -102,6 +102,11 @@
     "accent": "#fb923c"
   },
   {
+    "model_id": "glm-5.3-flashx",
+    "label": "GLM 5.3 FlashX",
+    "accent": "#10b981"
+  },
+  {
     "model_id": "glm-5.3-flash",
     "label": "GLM 5.3 Flash",
     "accent": "#10b981"
