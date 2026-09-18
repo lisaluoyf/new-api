@@ -4647,6 +4647,7 @@
     "Paid Subscription Cost": "Subscription Cost",
     "Paid Subscription Revenue": "Subscription Revenue",
     "Direct transfer": "Transfer langsung",
+    "Do not close or refresh this page until payment is complete.": "Jangan tutup atau muat ulang halaman ini hingga pembayaran selesai.",
     "Continue to NOWPayments": "Lanjut ke NOWPayments",
     "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Gunakan bursa atau dompet apa pun. Pilih mata uang kripto dan jaringan di halaman aman NOWPayments.",
     "Minimum top-up": "Isi ulang minimum",
@@ -4689,6 +4690,5 @@
   "Not claimed": "Belum diklaim",
   "Days left with date": "Sisa {{days}} hari ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance",
-  "Do not close or refresh this page until payment is complete.": "Jangan tutup atau muat ulang halaman ini hingga pembayaran selesai."
+  "Coding Plan Balance": "Coding Plan Balance"
 }

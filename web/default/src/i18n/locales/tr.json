@@ -4643,6 +4643,7 @@
     "Paid Subscription Cost": "Subscription Cost",
     "Paid Subscription Revenue": "Subscription Revenue",
     "Direct transfer": "Doğrudan transfer",
+    "Do not close or refresh this page until payment is complete.": "Ödeme tamamlanana kadar bu sayfayı kapatmayın veya yenilemeyin.",
     "Continue to NOWPayments": "NOWPayments'a devam et",
     "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Dilediğiniz borsa veya cüzdanı kullanın. Güvenli NOWPayments sayfasında kripto para ve ağı seçin.",
     "Minimum top-up": "Minimum yükleme",
@@ -4655,6 +4656,5 @@
   "Not claimed": "Talep edilmedi",
   "Days left with date": "{{days}} gün kaldı ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance",
-  "Do not close or refresh this page until payment is complete.": "Ödeme tamamlanana kadar bu sayfayı kapatmayın veya yenilemeyin."
+  "Coding Plan Balance": "Coding Plan Balance"
 }

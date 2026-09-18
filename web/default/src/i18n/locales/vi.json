@@ -4656,6 +4656,7 @@
     "Paid Subscription Cost": "Subscription Cost",
     "Paid Subscription Revenue": "Subscription Revenue",
     "Direct transfer": "Chuyển khoản trực tiếp",
+    "Do not close or refresh this page until payment is complete.": "Không đóng hoặc làm mới trang này cho đến khi thanh toán hoàn tất.",
     "Continue to NOWPayments": "Tiếp tục đến NOWPayments",
     "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Dùng bất kỳ sàn giao dịch hoặc ví nào. Chọn tiền mã hóa và mạng trên trang thanh toán an toàn của NOWPayments.",
     "Minimum top-up": "Số tiền nạp tối thiểu",
@@ -4698,6 +4699,5 @@
   "Not claimed": "Chưa nhận",
   "Days left with date": "Còn {{days}} ngày ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance",
-  "Do not close or refresh this page until payment is complete.": "Không đóng hoặc làm mới trang này cho đến khi thanh toán hoàn tất."
+  "Coding Plan Balance": "Coding Plan Balance"
 }

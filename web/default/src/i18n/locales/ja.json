@@ -4656,6 +4656,7 @@
     "Paid Subscription Cost": "Subscription Cost",
     "Paid Subscription Revenue": "Subscription Revenue",
     "Direct transfer": "直接送金",
+    "Do not close or refresh this page until payment is complete.": "支払いが完了するまで、このページを閉じたり再読み込みしたりしないでください。",
     "Continue to NOWPayments": "NOWPayments に進む",
     "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "任意の取引所またはウォレットを利用できます。NOWPayments の安全なページで暗号資産とネットワークを選択してください。",
     "Minimum top-up": "最低チャージ額",
@@ -4698,6 +4699,5 @@
   "Not claimed": "未受取",
   "Days left with date": "残り {{days}} 日 ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance",
-  "Do not close or refresh this page until payment is complete.": "支払いが完了するまで、このページを閉じたり再読み込みしたりしないでください。"
+  "Coding Plan Balance": "Coding Plan Balance"
 }

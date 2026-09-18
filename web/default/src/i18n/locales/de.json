@@ -4643,6 +4643,7 @@
     "Paid Subscription Cost": "Subscription Cost",
     "Paid Subscription Revenue": "Subscription Revenue",
     "Direct transfer": "Direktüberweisung",
+    "Do not close or refresh this page until payment is complete.": "Schließen oder aktualisieren Sie diese Seite nicht, bis die Zahlung abgeschlossen ist.",
     "Continue to NOWPayments": "Weiter zu NOWPayments",
     "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "Nutzen Sie eine beliebige Börse oder Wallet. Wählen Sie Kryptowährung und Netzwerk auf der sicheren NOWPayments-Seite.",
     "Minimum top-up": "Mindestaufladung",
@@ -4655,6 +4656,5 @@
   "Not claimed": "Nicht beansprucht",
   "Days left with date": "Noch {{days}} Tage ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance",
-  "Do not close or refresh this page until payment is complete.": "Schließen oder aktualisieren Sie diese Seite nicht, bis die Zahlung abgeschlossen ist."
+  "Coding Plan Balance": "Coding Plan Balance"
 }

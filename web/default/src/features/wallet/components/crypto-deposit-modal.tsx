@@ -243,7 +243,7 @@ export function CryptoDepositModal({
         if (!v) handleClose()
       }}
     >
-      <DialogContent className='sm:max-w-md'>
+      <DialogContent className='max-h-[calc(100dvh-2rem)] gap-3 overflow-y-auto sm:max-w-md'>
         <DialogHeader>
           <DialogTitle>{t('Crypto Deposit')}</DialogTitle>
           <DialogDescription>
@@ -263,8 +263,8 @@ export function CryptoDepositModal({
         )}
 
         {paymentMode === 'wallet' && (step === 'form' || isProcessing) && (
-          <div className='flex gap-2.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900'>
-            <AlertTriangle className='mt-0.5 size-4 shrink-0 text-amber-600' />
+          <div className='flex gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900'>
+            <AlertTriangle className='size-3.5 shrink-0 text-amber-600' />
             <span>
               {t(
                 'Do not close or refresh this page until payment is complete.'
@@ -275,11 +275,11 @@ export function CryptoDepositModal({
 
         {/* ── 表单 ── */}
         {step === 'form' && paymentMode === 'wallet' && (
-          <div className='flex flex-col gap-5 py-1'>
+          <div className='flex flex-col gap-3'>
             {/* 钱包地址 */}
             {walletOptions.length > 0 && (
               <div>
-                <div className='text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase'>
+                <div className='text-muted-foreground mb-1.5 text-xs font-medium tracking-wider uppercase'>
                   {t('Wallet')}
                 </div>
                 <div className='flex flex-wrap gap-2'>
@@ -289,7 +289,7 @@ export function CryptoDepositModal({
                       type='button'
                       onClick={() => setSelectedWalletId(wallet.id)}
                       className={cn(
-                        'rounded-xl border px-4 py-2 text-sm font-semibold transition-all',
+                        'rounded-lg border px-3 py-1.5 text-sm font-semibold transition-all',
                         selectedWalletId === wallet.id
                           ? 'border-cyan-400 bg-cyan-50 text-cyan-700'
                           : 'border-border hover:border-cyan-300 hover:bg-cyan-50/40'
@@ -301,7 +301,7 @@ export function CryptoDepositModal({
                 </div>
                 <div
                   className={cn(
-                    'mt-2 text-xs',
+                    'mt-1.5 text-xs',
                     selectedWallet ? 'text-emerald-600' : 'text-amber-600'
                   )}
                 >
@@ -348,7 +348,7 @@ export function CryptoDepositModal({
 
             {/* 网络选择 chip */}
             <div>
-              <div className='text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase'>
+              <div className='text-muted-foreground mb-1.5 text-xs font-medium tracking-wider uppercase'>
                 {t('Network')}
               </div>
               <div className='flex flex-wrap gap-2'>
@@ -358,7 +358,7 @@ export function CryptoDepositModal({
                     type='button'
                     onClick={() => handleChainChange(c)}
                     className={cn(
-                      'rounded-xl border px-4 py-2 text-sm font-semibold transition-all',
+                      'rounded-lg border px-3 py-1.5 text-sm font-semibold transition-all',
                       selectedChain.id === c.id
                         ? 'border-cyan-400 bg-cyan-50 text-cyan-700'
                         : 'border-border hover:border-cyan-300 hover:bg-cyan-50/40'
@@ -368,14 +368,14 @@ export function CryptoDepositModal({
                   </button>
                 ))}
               </div>
-              <p className='text-muted-foreground mt-1.5 text-xs'>
+              <p className='text-muted-foreground mt-1 text-xs'>
                 {selectedChain.name}
               </p>
             </div>
 
             {/* 代币选择 chip */}
             <div>
-              <div className='text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase'>
+              <div className='text-muted-foreground mb-1.5 text-xs font-medium tracking-wider uppercase'>
                 {t('Token')}
               </div>
               <div className='flex flex-wrap gap-2'>
@@ -385,7 +385,7 @@ export function CryptoDepositModal({
                     type='button'
                     onClick={() => setSelectedToken(tok)}
                     className={cn(
-                      'rounded-xl border px-4 py-2 text-sm font-semibold transition-all',
+                      'rounded-lg border px-3 py-1.5 text-sm font-semibold transition-all',
                       selectedToken.symbol === tok.symbol
                         ? 'border-cyan-400 bg-cyan-50 text-cyan-700'
                         : 'border-border hover:border-cyan-300 hover:bg-cyan-50/40'
@@ -398,28 +398,21 @@ export function CryptoDepositModal({
             </div>
 
             {/* 金额预览 */}
-            <div className='bg-muted/30 rounded-xl px-4 py-3'>
-              <div className='text-muted-foreground mb-1 text-xs'>
-                {t('Amount to send')}
-              </div>
+            <div className='bg-muted/30 rounded-lg px-3 py-2'>
               {isNativeToken ? (
                 <div>
-                  <div className='font-mono text-xl font-bold'>
-                    ≈ {nativeAmount ?? '…'} {selectedToken.symbol}
+                  <div className='flex items-baseline justify-between gap-3'>
+                    <span className='text-muted-foreground shrink-0 text-xs'>
+                      {t('Amount to send')}
+                    </span>
+                    <span className='font-mono text-lg font-bold'>
+                      ≈ {nativeAmount ?? '…'} {selectedToken.symbol}
+                    </span>
                   </div>
-                  <div className='text-muted-foreground mt-0.5 text-xs'>
-                    {t('≈ ${{amount}} USD', { amount: amount.toFixed(2) })}
-                    {displayPrice > 0 && (
-                      <span className='ml-1'>
-                        · 1 {selectedToken.symbol} = $
-                        {displayPrice.toLocaleString()}
-                      </span>
-                    )}
+                  <div className='text-muted-foreground mt-0.5 text-right text-xs'>
+                    ${amount.toFixed(2)} USD · {selectedChain.name}
                   </div>
-                  <div className='text-muted-foreground mt-0.5 text-xs'>
-                    {t('on {{chain}}', { chain: selectedChain.name })}
-                  </div>
-                  <p className='mt-2 text-[11px] text-amber-600'>
+                  <p className='mt-1 text-[11px] text-amber-600'>
                     {t(
                       'Exact amount will be determined by your wallet at time of sending.'
                     )}
@@ -427,11 +420,16 @@ export function CryptoDepositModal({
                 </div>
               ) : (
                 <div>
-                  <div className='font-mono text-xl font-bold'>
-                    ${amount.toFixed(2)} {selectedToken.symbol}
+                  <div className='flex items-baseline justify-between gap-3'>
+                    <span className='text-muted-foreground shrink-0 text-xs'>
+                      {t('Amount to send')}
+                    </span>
+                    <span className='font-mono text-lg font-bold'>
+                      {amount.toFixed(2)} {selectedToken.symbol}
+                    </span>
                   </div>
-                  <div className='text-muted-foreground mt-0.5 text-xs'>
-                    {t('on {{chain}}', { chain: selectedChain.name })}
+                  <div className='text-muted-foreground mt-0.5 text-right text-xs'>
+                    {selectedChain.name}
                   </div>
                 </div>
               )}

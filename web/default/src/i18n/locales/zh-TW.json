@@ -4654,6 +4654,7 @@
     "Paid Subscription Cost": "訂閱成本",
     "Paid Subscription Revenue": "訂閱收入",
     "Direct transfer": "直接轉帳",
+    "Do not close or refresh this page until payment is complete.": "付款完成前，請勿關閉或重新整理此頁面。",
     "Continue to NOWPayments": "前往 NOWPayments 付款",
     "Use any exchange or wallet. Choose your cryptocurrency and network on the secure NOWPayments page.": "使用任意交易所或錢包，在 NOWPayments 安全付款頁選擇幣種和網路。",
     "Minimum top-up": "最低儲值金額",
@@ -4666,6 +4667,5 @@
   "Not claimed": "未領取",
   "Days left with date": "剩餘 {{days}} 天 ({{date}})",
   "Coding Plan Users": "Coding Plan 用戶",
-  "Coding Plan Balance": "Coding Plan 餘額",
-  "Do not close or refresh this page until payment is complete.": "付款完成前，請勿關閉或重新整理此頁面。"
+  "Coding Plan Balance": "Coding Plan 餘額"
 }

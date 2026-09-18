@@ -166,6 +166,7 @@
     "Actual Model:": "Actual Model:",
     "Add": "Add",
     "Direct transfer": "Direct transfer",
+    "Do not close or refresh this page until payment is complete.": "Do not close or refresh this page until payment is complete.",
     "Add a group identifier to the auto assignment list.": "Add a group identifier to the auto assignment list.",
     "Add a new API key by providing necessary info.": "Add a new API key by providing necessary info.",
     "Add a new channel by providing the necessary information.": "Add a new channel by providing the necessary information.",
@@ -4974,6 +4975,5 @@
     "Rounded to {{count}} quota units": "Rounded to {{count}} quota units"
   },
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance",
-  "Do not close or refresh this page until payment is complete.": "Do not close or refresh this page until payment is complete."
+  "Coding Plan Balance": "Coding Plan Balance"
 }

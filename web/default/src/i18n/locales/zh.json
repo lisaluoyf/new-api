@@ -166,6 +166,7 @@
     "Actual Model:": "实际模型：",
     "Add": "添加",
     "Direct transfer": "直接转账",
+    "Do not close or refresh this page until payment is complete.": "支付完成前，请勿关闭或刷新此页面。",
     "Add a group identifier to the auto assignment list.": "将分组标识符添加到自动分配列表。",
     "Add a new API key by providing necessary info.": "通过提供必要信息添加新的 API 密钥。",
     "Add a new channel by providing the necessary information.": "通过提供必要信息添加新的通道。",
@@ -5013,6 +5014,5 @@
     "Rounded to {{count}} quota units": "四舍五入为 {{count}} 个额度单位"
   },
   "Coding Plan Users": "Coding Plan 用户",
-  "Coding Plan Balance": "Coding Plan 余额",
-  "Do not close or refresh this page until payment is complete.": "支付完成前，请勿关闭或刷新此页面。"
+  "Coding Plan Balance": "Coding Plan 余额"
 }
