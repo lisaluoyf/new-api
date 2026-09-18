@@ -34,6 +34,20 @@ func TestSeedanceActualQuotaFallsBackToCredits(t *testing.T) {
 	require.Equal(t, int(math.Round(0.568*common.QuotaPerUnit)), got)
 }
 
+func TestRenamedSeedancePreservesMappingAndSettlement(t *testing.T) {
+	for _, name := range []string{ModelSeedance20, ModelDoubaoSeedance20} {
+		require.True(t, IsVideoModel(name))
+		payload := openAIToApimart(relaycommon.TaskSubmitReq{Model: name, Duration: 5}, ModelDoubaoSeedance20)
+		require.Equal(t, ModelDoubaoSeedance20, payload.Model)
+		task := &model.Task{
+			Data:        []byte(`{"data":{"cost":1.4176}}`),
+			Properties:  model.Properties{OriginModelName: name},
+			PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{GroupRatio: 1.05}},
+		}
+		require.Equal(t, int(math.Round(1.4176*common.QuotaPerUnit*1.05)), (&TaskAdaptor{}).AdjustBillingOnComplete(task, &relaycommon.TaskInfo{}))
+	}
+}
+
 func TestRecalcMotionControlQuotaAdjustsSeconds(t *testing.T) {
 	task := &model.Task{
 		Quota: 30000,

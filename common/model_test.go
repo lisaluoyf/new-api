@@ -53,6 +53,8 @@ func TestIsVideoGenerationModel(t *testing.T) {
 		"sora-2-pro":                 true,
 		"kling-v3-omni":              true,
 		"doubao-seedance-2.0":        true,
+		"seedance-2.0":               true,
+		"seedance-2.0-other":         false,
 		"doubao-seedance-2-0-260128": true,
 		"grok-imagine-video-1.5":     true,
 		"grok-1.5-video-10s":         true,
@@ -75,6 +77,7 @@ func TestVideoModelsExposeOpenAIVideoEndpointMetadata(t *testing.T) {
 		"sora-2",
 		"kling-v3-omni",
 		"doubao-seedance-2.0",
+		"seedance-2.0",
 		"grok-imagine-video-1.5",
 	} {
 		endpoints := GetEndpointTypesByChannelType(constant.ChannelTypeOpenAI, modelName)

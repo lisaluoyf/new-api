@@ -19,7 +19,11 @@ import (
 )
 
 func isSeedanceAlias(name string) bool {
-	return name == "doubao-seedance-2.0" || name == "seedance-2.5"
+	return isSeedance20Alias(name) || name == "seedance-2.5"
+}
+
+func isSeedance20Alias(name string) bool {
+	return name == "seedance-2.0" || name == "doubao-seedance-2.0"
 }
 
 // Keep the public Seedance request contract when a channel uses the Doubao protocol.
@@ -88,7 +92,7 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 	if resolution == "" {
 		resolution = "720p"
 	}
-	if resolution != "480p" && resolution != "720p" && resolution != "1080p" && !(req.Model == "doubao-seedance-2.0" && resolution == "4k") {
+	if resolution != "480p" && resolution != "720p" && resolution != "1080p" && !(isSeedance20Alias(req.Model) && resolution == "4k") {
 		return invalid(fmt.Errorf("unsupported Seedance resolution"))
 	}
 	req.Metadata["duration"] = seconds

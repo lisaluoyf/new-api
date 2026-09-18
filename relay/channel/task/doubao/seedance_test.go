@@ -24,7 +24,7 @@ func seedanceContext(body string) (*gin.Context, *httptest.ResponseRecorder) {
 }
 
 func TestSeedancePublicRequestMappingAndBilling(t *testing.T) {
-	for public, upstream := range map[string]string{"doubao-seedance-2.0": "tencent-seedance-1-0-pro", "seedance-2.5": "tencent-seedance-1-5-pro"} {
+	for public, upstream := range map[string]string{"seedance-2.0": "tencent-seedance-1-0-pro", "doubao-seedance-2.0": "tencent-seedance-1-0-pro", "seedance-2.5": "tencent-seedance-1-5-pro"} {
 		t.Run(public, func(t *testing.T) {
 			c, _ := seedanceContext(`{"model":"` + public + `","prompt":"A teapot","duration":5,"resolution":"1080p","aspect_ratio":"9:16","generate_audio":false,"watermark":false,"seed":0,"image_urls":["https://example.com/reference.png"]}`)
 			info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}, OriginModelName: public, ChannelMeta: &relaycommon.ChannelMeta{IsModelMapped: true, UpstreamModelName: upstream}}
@@ -114,6 +114,20 @@ func TestNativeDoubaoRequestUnchanged(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(data), `"duration":5`)
 	require.Contains(t, string(data), `"generate_audio":false`)
+}
+
+func TestSeedance20RenameKeeps4KVideoInputAndCompletionBilling(t *testing.T) {
+	for _, name := range []string{"seedance-2.0", "doubao-seedance-2.0"} {
+		c, _ := seedanceContext(`{"model":"` + name + `","prompt":"scene","duration":5,"resolution":"4K","video_urls":["https://example.com/ref.mp4"]}`)
+		a := &TaskAdaptor{}
+		info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+		require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+		ratios := a.EstimateBilling(c, info)
+		require.Equal(t, 5.0, ratios["seconds"])
+		require.InDelta(t, 0.44432/0.142, ratios["size"], 1e-9)
+		task := &model.Task{Quota: 30000, Properties: model.Properties{OriginModelName: name}, PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{OtherRatios: map[string]float64{"seconds": 30}}}}
+		require.Equal(t, 5000, a.AdjustBillingOnComplete(task, &relaycommon.TaskInfo{BillableSeconds: 5}))
+	}
 }
 
 func TestDoubaoCompletedTaskRequiresVideo(t *testing.T) {

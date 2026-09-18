@@ -33,7 +33,7 @@ const DEFAULT_PRICING = {
       '4k-sound': 0.5357,
     },
   },
-  'doubao-seedance-2.0': {
+  'seedance-2.0': {
     unit: 'second',
     base_price: 0.142,
     base_variant: '720P',
@@ -105,12 +105,16 @@ function parsePricing(raw: string | undefined): Record<
           official_prices?: Record<string, number>
         }
       >
-      if (!pricing['doubao-seedance-2.0']) {
-        pricing['doubao-seedance-2.0'] = DEFAULT_PRICING['doubao-seedance-2.0']
+      if (!pricing['seedance-2.0'] && pricing['doubao-seedance-2.0']) {
+        pricing['seedance-2.0'] = pricing['doubao-seedance-2.0']
+        delete pricing['doubao-seedance-2.0']
+      }
+      if (!pricing['seedance-2.0']) {
+        pricing['seedance-2.0'] = DEFAULT_PRICING['seedance-2.0']
       } else {
-        const configured = pricing['doubao-seedance-2.0']
-        const defaults = DEFAULT_PRICING['doubao-seedance-2.0']
-        pricing['doubao-seedance-2.0'] = {
+        const configured = pricing['seedance-2.0']
+        const defaults = DEFAULT_PRICING['seedance-2.0']
+        pricing['seedance-2.0'] = {
           ...defaults,
           ...configured,
           prices: { ...defaults.prices, ...configured.prices },

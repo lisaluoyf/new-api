@@ -110,7 +110,7 @@ describe('isLogMediaVideoModel', () => {
     assert.equal(isLogMediaVideoModel('doubao-seedance-2.0'), true)
     assert.equal(isLogMediaVideoModel('SEEDANCE-2.5'), true)
 
-    for (const model of ['doubao-seedance-2.0', 'seedance-2.5']) {
+    for (const model of ['seedance-2.0', 'doubao-seedance-2.0', 'seedance-2.5']) {
       const preview = getLogMediaPreview(
         { type: 2, model_name: model } as never,
         {

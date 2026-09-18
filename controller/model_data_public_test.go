@@ -42,7 +42,7 @@ func TestPublicMarketplaceItemDoesNotExposeInternalChannelData(t *testing.T) {
 }
 
 func TestBuildVideoMediaPricingViewUsesEightSeedanceTiers(t *testing.T) {
-	view := buildVideoMediaPricingView("doubao-seedance-2.0", 0.8)
+	view := buildVideoMediaPricingView("seedance-2.0", 0.8)
 	if view == nil {
 		t.Fatal("expected Seedance media pricing")
 	}

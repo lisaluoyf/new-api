@@ -206,7 +206,7 @@ func TestSeedanceEstimateBillingUsesConfiguredResolutionPrices(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			c.Set("task_request", relaycommon.TaskSubmitReq{
-				Model:    ModelDoubaoSeedance20,
+				Model:    ModelSeedance20,
 				Duration: 4,
 				Metadata: map[string]interface{}{
 					"resolution": tc.resolution,
@@ -223,7 +223,7 @@ func TestSeedanceEstimateBillingUsesConfiguredResolutionPrices(t *testing.T) {
 func TestSeedanceBuildRequestPreservesReferenceMediaFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	raw := []byte(`{
-		"model":"doubao-seedance-2.0",
+		"model":"seedance-2.0",
 		"prompt":"scene",
 		"duration":8,
 		"resolution":"1080p",
@@ -250,6 +250,7 @@ func TestSeedanceBuildRequestPreservesReferenceMediaFields(t *testing.T) {
 	body, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	text := string(body)
+	require.Contains(t, text, `"model":"doubao-seedance-2.0"`)
 	for _, expected := range []string{
 		`"video_urls":["https://example.com/ref.mp4"]`,
 		`"audio_urls":["https://example.com/ref.mp3"]`,

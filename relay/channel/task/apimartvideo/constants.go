@@ -7,6 +7,7 @@ import (
 const (
 	ModelKlingV3MotionControl = "kling-v3-motion-control"
 	ModelDoubaoSeedance20     = "doubao-seedance-2.0"
+	ModelSeedance20           = "seedance-2.0"
 	ModelSeedance25           = "seedance-2.5"
 	ModelGrokImagineVideo15   = "grok-imagine-video-1.5"
 	ModelGrokVideo10s         = "grok-1.5-video-10s"
@@ -24,6 +25,7 @@ var ModelList = []string{
 	"sora-2",
 	"sora-2-pro",
 	ModelDoubaoSeedance20,
+	ModelSeedance20,
 	ModelSeedance25,
 	ModelGrokImagineVideo15,
 	ModelGrokVideo10s,
@@ -37,7 +39,7 @@ var ChannelName = "apimart-video"
 
 func IsVideoModel(model string) bool {
 	switch strings.TrimSpace(model) {
-	case "sora", "sora-2", "sora-2-pro", ModelDoubaoSeedance20, ModelSeedance25,
+	case "sora", "sora-2", "sora-2-pro", ModelSeedance20, ModelDoubaoSeedance20, ModelSeedance25,
 		ModelGrokImagineVideo15, ModelGrokVideo10s, ModelGrokVideo15s, ModelGrokVideo6s,
 		ModelKlingV3Omni, ModelKlingV3MotionControl:
 		return true
@@ -48,6 +50,12 @@ func IsVideoModel(model string) bool {
 
 func IsMotionControlModel(model string) bool {
 	return strings.TrimSpace(model) == ModelKlingV3MotionControl
+}
+
+// The legacy name remains valid for upstream mappings and persisted tasks.
+func isSeedance20(model string) bool {
+	model = strings.TrimSpace(model)
+	return model == ModelSeedance20 || model == ModelDoubaoSeedance20
 }
 
 func IsChannel(baseURL string) bool {

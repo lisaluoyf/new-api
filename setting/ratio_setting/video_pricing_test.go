@@ -3,8 +3,42 @@ package ratio_setting
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+
 	"github.com/stretchr/testify/require"
 )
+
+func TestSeedancePricingRenamePreservesConfiguredPrices(t *testing.T) {
+	common.OptionMapRWMutex.Lock()
+	previous, existed := common.OptionMap[VideoModelPricingOption]
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if existed {
+			common.OptionMap[VideoModelPricingOption] = previous
+		} else {
+			delete(common.OptionMap, VideoModelPricingOption)
+		}
+	})
+	for _, configuredName := range []string{"seedance-2.0", "doubao-seedance-2.0"} {
+		common.OptionMapRWMutex.Lock()
+		if common.OptionMap == nil {
+			common.OptionMap = map[string]string{}
+		}
+		common.OptionMap[VideoModelPricingOption] = `{"` + configuredName + `":{"base_price":0.2,"prices":{"720P":0.2,"4K-input":0.6}}}`
+		common.OptionMapRWMutex.Unlock()
+		for _, requestedName := range []string{"seedance-2.0", "doubao-seedance-2.0"} {
+			base, ok := GetVideoModelBasePrice(requestedName)
+			require.True(t, ok)
+			require.InDelta(t, 0.2, base, 1e-9)
+			require.InDelta(t, 3.0, GetVideoModelResolutionRatio(requestedName, "4K-input"), 1e-9)
+			price, ok := GetVideoModelPrice(requestedName, "480P")
+			require.True(t, ok)
+			require.InDelta(t, 0.066, price, 1e-9)
+		}
+	}
+}
 
 func TestDefaultVideoModelPricingIncludesKlingOmniTiers(t *testing.T) {
 	tests := map[string]float64{

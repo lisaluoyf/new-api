@@ -329,7 +329,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		}
 	}
 	variant := resolution
-	if normalizeModel(req.Model) == ModelDoubaoSeedance20 && hasVideo {
+	if isSeedance20(req.Model) && hasVideo {
 		variant += "-input"
 	}
 	ratio := taskcommon.VideoResolutionSizeRatio(resolution)
@@ -426,7 +426,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 				return nil, err
 			}
 			return bytes.NewReader(out), nil
-		} else if publicModel == ModelDoubaoSeedance20 || publicModel == ModelSeedance25 {
+		} else if isSeedance20(publicModel) || publicModel == ModelSeedance25 {
 			// Seedance 2.0 evolves quickly and supports fields such as video_urls,
 			// audio_urls, image_with_roles, size, and generate_audio. Preserve the
 			// complete request so reference-video inputs are not silently dropped.

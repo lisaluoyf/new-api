@@ -380,6 +380,7 @@ const NON_LLM_MODEL_IDS = new Set([
   'gpt-image-2-fd',
   'sora-2',
   'sora-2-pro',
+  'seedance-2.0',
   'doubao-seedance-2.0',
   'seedance-2.5',
   'kling-v3-motion-control',
@@ -392,6 +393,7 @@ const NON_LLM_MODEL_IDS = new Set([
 const VIDEO_MODEL_IDS = new Set([
   'sora-2',
   'sora-2-pro',
+  'seedance-2.0',
   'doubao-seedance-2.0',
   'seedance-2.5',
   'kling-v3-motion-control',
@@ -485,6 +487,7 @@ const DOMESTIC_MODEL_PREFIXES = [
   'kimi-',
   'qwen',
   'doubao-',
+  'seedance-',
   'minimax-',
   'mimo-',
   'kling-',
@@ -511,7 +514,8 @@ function modelMatchesCategory(
   if (category === 'glm') return modelId.startsWith('glm-')
   if (category === 'kimi') return modelId.startsWith('kimi-')
   if (category === 'qwen') return modelId.startsWith('qwen')
-  if (category === 'doubao') return modelId.startsWith('doubao-')
+  if (category === 'doubao')
+    return modelId.startsWith('doubao-') || modelId.startsWith('seedance-')
   if (category === 'minimax') return modelId.startsWith('minimax-')
   if (category === 'mimo') return modelId.startsWith('mimo-')
   if (category === 'kling') return modelId.startsWith('kling-')
