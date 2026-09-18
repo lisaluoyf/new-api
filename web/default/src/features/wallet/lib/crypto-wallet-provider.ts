@@ -6,7 +6,11 @@ it under the terms of the GNU Affero General Public License as
 published by the Free Software Foundation, either version 3 of the
 License, or (at your option) any later version.
 */
-import { discoverEvmWallets, type EthereumProvider } from './evm-provider'
+import {
+  discoverEvmWallets,
+  subscribeToEvmWalletAnnouncements,
+  type EthereumProvider,
+} from './evm-provider'
 
 export type CryptoChainFamily = 'evm' | 'tron' | 'solana'
 
@@ -136,4 +140,14 @@ export async function discoverCryptoWallets(
     })
   }
   return wallets
+}
+
+export function subscribeToCryptoWalletChanges(
+  family: CryptoChainFamily,
+  listener: () => void
+): () => void {
+  if (family === 'evm') {
+    return subscribeToEvmWalletAnnouncements(listener)
+  }
+  return () => {}
 }

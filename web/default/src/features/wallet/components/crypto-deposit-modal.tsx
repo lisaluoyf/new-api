@@ -41,6 +41,7 @@ import {
 } from '../hooks/use-crypto-payment'
 import {
   discoverCryptoWallets,
+  subscribeToCryptoWalletChanges,
   type CryptoWalletOption,
 } from '../lib/crypto-wallet-provider'
 
@@ -102,8 +103,16 @@ export function CryptoDepositModal({
     if (!open) return
     setPaymentMode('wallet')
     let cancelled = false
-    discoverCryptoWallets(selectedChain.family)
-      .then((wallets) => {
+    let attempt = 0
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined
+    let refreshInFlight = false
+
+    const refreshWallets = async () => {
+      if (cancelled || refreshInFlight) return
+      refreshInFlight = true
+      attempt += 1
+      try {
+        const wallets = await discoverCryptoWallets(selectedChain.family)
         if (cancelled) return
         setWalletOptions(wallets)
         setSelectedWalletId((current) => {
@@ -112,13 +121,31 @@ export function CryptoDepositModal({
           }
           return wallets[0]?.id ?? null
         })
-        setWalletDiscoveryReady(true)
-      })
-      .catch(() => {
+        if (wallets.length > 0 || attempt >= 12) {
+          setWalletDiscoveryReady(true)
+        } else {
+          refreshTimer = setTimeout(() => void refreshWallets(), 250)
+        }
+      } catch {
         if (!cancelled) setWalletDiscoveryReady(true)
-      })
+      } finally {
+        refreshInFlight = false
+      }
+    }
+
+    const unsubscribe = subscribeToCryptoWalletChanges(
+      selectedChain.family,
+      () => {
+        void refreshWallets()
+      }
+    )
+
+    void refreshWallets()
+
     return () => {
       cancelled = true
+      if (refreshTimer) clearTimeout(refreshTimer)
+      unsubscribe()
     }
   }, [open, selectedChain.family])
 

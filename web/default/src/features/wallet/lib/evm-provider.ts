@@ -55,6 +55,7 @@ declare global {
 }
 
 const announcedProviders = new Map<string, EIP6963ProviderDetail>()
+const providerAnnouncementListeners = new Set<() => void>()
 let discoveryInitialized = false
 
 function isProviderDetail(value: unknown): value is EIP6963ProviderDetail {
@@ -75,12 +76,21 @@ function initializeEIP6963Discovery() {
       const detail = (event as CustomEvent<unknown>).detail
       if (isProviderDetail(detail)) {
         announcedProviders.set(detail.info.uuid, detail)
+        providerAnnouncementListeners.forEach((listener) => listener())
       }
     })
     discoveryInitialized = true
   }
 
   window.dispatchEvent(new Event('eip6963:requestProvider'))
+}
+
+export function subscribeToEvmWalletAnnouncements(
+  listener: () => void
+): () => void {
+  initializeEIP6963Discovery()
+  providerAnnouncementListeners.add(listener)
+  return () => providerAnnouncementListeners.delete(listener)
 }
 
 function getLegacyInjectedEvmProvider(): EthereumProvider | null {
