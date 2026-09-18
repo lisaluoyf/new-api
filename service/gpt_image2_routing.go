@@ -895,7 +895,16 @@ func gptImage2ChannelRejectionReason(ch *model.Channel, req gptImage2CapabilityR
 	if ch.Id == 73 && gptImage2RequestResolutionTier(req) != "1k" {
 		return "channel_73_only_supports_1k"
 	}
-	if req.EditsPath && GptImage2EditsViaGenerations(ch.Id, req.ModelName) {
+	convertEdits := req.EditsPath && GptImage2EditsViaGenerations(ch.Id, req.ModelName)
+	// Channel 149 accepts native multipart edits, but silently ignores data-URI
+	// image_urls on generations. Its old edits matrix is disabled; validate the
+	// verified native upload shape against the configured generation limits.
+	nativeEdits149 := req.EditsPath && ch.Id == 149 &&
+		NormalizeGptImage2ModelName(req.ModelName) == gptImage2CanonicalModel
+	if nativeEdits149 && (!req.Multipart || !req.HasUploadedImage || req.ImageURLCount != 0) {
+		return "multipart_image_required"
+	}
+	if convertEdits || nativeEdits149 {
 		if req.HasUploadedMask {
 			return "uploaded_mask_not_supported"
 		}
@@ -904,8 +913,10 @@ func gptImage2ChannelRejectionReason(ch *model.Channel, req gptImage2CapabilityR
 			return "reference_image_required"
 		}
 		req.EditsPath, req.Multipart, req.HasUploadedImage = false, false, false
-		// The response handler implements the client's requested format locally.
-		req.ResponseFormat = ""
+		if convertEdits {
+			// The response handler implements the client's requested format locally.
+			req.ResponseFormat = ""
+		}
 	}
 	if capabilities := ch.GetOtherSettings().GptImage2Capabilities; capabilities != nil {
 		return configuredGptImage2RejectionReason(capabilities, req)

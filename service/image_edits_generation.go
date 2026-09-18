@@ -8,7 +8,7 @@ func GptImage2EditsViaGenerations(channelID int, modelName string) bool {
 		return false
 	}
 	switch channelID {
-	case 59, 81, 149:
+	case 59, 81:
 		return true
 	default:
 		return false

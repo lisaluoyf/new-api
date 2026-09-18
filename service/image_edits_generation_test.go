@@ -14,7 +14,7 @@ import (
 )
 
 func TestImageEditsGenerationCapability(t *testing.T) {
-	for _, id := range []int{59, 81, 149} {
+	for _, id := range []int{59, 81} {
 		ch := &model.Channel{Id: id}
 		caps := &dto.GptImage2Capabilities{Version: 1, Enabled: true, Generations: &dto.GptImage2EndpointCapabilities{Enabled: true, MaxN: 1, MaxImageURLs: 2, OptionalFields: []string{"size", "resolution"}}}
 		ch.SetOtherSettings(dto.ChannelOtherSettings{GptImage2Capabilities: caps})
@@ -64,4 +64,22 @@ func TestImageEditsGenerationCountsActualMultipartReferences(t *testing.T) {
 	require.Equal(t, 1, req.ImageURLCount)
 	req = gptImage2CapabilityRequestFromJSON("gpt-image-2", []byte(`{"image_urls":["a"],"image":["b","c"],"images":["d"]}`))
 	require.Equal(t, 4, req.ImageURLCount)
+}
+
+func TestChannel149UsesNativeImageEdits(t *testing.T) {
+	require.False(t, GptImage2EditsViaGenerations(149, "gpt-image-2"))
+	ch := &model.Channel{Id: 149}
+	caps := &dto.GptImage2Capabilities{Version: 1, Enabled: true, Generations: &dto.GptImage2EndpointCapabilities{Enabled: true, MaxN: 1, MaxImageURLs: 16, OptionalFields: []string{"size", "resolution"}}, Edits: &dto.GptImage2EndpointCapabilities{Enabled: false}}
+	ch.SetOtherSettings(dto.ChannelOtherSettings{GptImage2Capabilities: caps})
+	req := gptImage2CapabilityRequest{ModelName: "gpt-image-2", EditsPath: true, Multipart: true, HasUploadedImage: true, UploadedImageCount: 1, N: 1, Size: "1:1", Resolution: "1k"}
+	require.Empty(t, gptImage2ChannelRejectionReason(ch, req))
+	req.ImageURLCount = 1
+	require.Equal(t, "multipart_image_required", gptImage2ChannelRejectionReason(ch, req))
+	req.ImageURLCount = 0
+	req.HasUploadedMask = true
+	require.Equal(t, "uploaded_mask_not_supported", gptImage2ChannelRejectionReason(ch, req))
+	req.HasUploadedMask = false
+	caps.Enabled = false
+	ch.SetOtherSettings(dto.ChannelOtherSettings{GptImage2Capabilities: caps})
+	require.Equal(t, "capabilities_disabled_or_invalid", gptImage2ChannelRejectionReason(ch, req))
 }

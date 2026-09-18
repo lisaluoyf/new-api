@@ -19,7 +19,7 @@ import (
 
 func TestImageEditsGenerationAdaptorSendsJSON(t *testing.T) {
 	service.InitHttpClient()
-	for _, id := range []int{59, 81, 149} {
+	for _, id := range []int{59, 81} {
 		var received dto.ImageRequest
 		var receivedPath, receivedType string
 		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

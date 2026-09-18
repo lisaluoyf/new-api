@@ -87,7 +87,7 @@ func TestImageEditsGenerationFallbackPreservesMultipart(t *testing.T) {
 	common.SetContextKey(c, constant.ContextKeyChannelType, constant.ChannelTypeOpenAI)
 	common.SetContextKey(c, constant.ContextKeyOriginalModel, "gpt-image-2")
 	common.SetContextKey(c, constant.ContextKeyChannelOtherSetting, dto.ChannelOtherSettings{GptImage2Capabilities: &dto.GptImage2Capabilities{SizeFormat: dto.GptImage2SizeFormatAspectRatioWithResolution}})
-	for _, id := range []int{81, 59, 102} {
+	for _, id := range []int{81, 59, 149, 102} {
 		var gotPath, gotType string
 		var raw []byte
 		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -100,14 +100,14 @@ func TestImageEditsGenerationFallbackPreservesMultipart(t *testing.T) {
 		}))
 		common.SetContextKey(c, constant.ContextKeyChannelId, id)
 		common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, upstream.URL)
-		common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: id != 102})
+		common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: id == 81 || id == 59})
 		relayErr := ImageHelper(c, info)
 		upstream.Close()
 		require.NotNil(t, relayErr)
 		require.Equal(t, 503, relayErr.StatusCode)
 		require.Equal(t, ct, c.GetHeader("Content-Type"))
 		require.Equal(t, "/v1/images/edits", c.Request.URL.Path)
-		if id == 102 {
+		if id == 102 || id == 149 {
 			require.Equal(t, "/v1/images/edits", gotPath)
 			require.Contains(t, gotType, "multipart/form-data")
 			require.Contains(t, string(raw), "original-image")
