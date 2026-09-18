@@ -23,7 +23,7 @@ func isSeedanceAlias(name string) bool {
 }
 
 // Keep the public Seedance request contract when a channel uses the Doubao protocol.
-func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context) *dto.TaskError {
+func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil || !isSeedanceAlias(req.Model) {
 		return nil
@@ -95,6 +95,9 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context) *dto.TaskError {
 	req.Metadata["resolution"] = resolution
 	if body.Ratio == "" {
 		req.Metadata["ratio"] = "16:9"
+	}
+	if err := a.normalizeTencentSeedanceFrames(c, info, &req, body); err != nil {
+		return invalid(err)
 	}
 	req.Duration = seconds
 	req.Seconds = strconv.Itoa(seconds)

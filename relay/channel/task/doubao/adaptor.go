@@ -120,7 +120,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if taskErr = relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate); taskErr != nil {
 		return taskErr
 	}
-	return a.normalizeSeedanceRequest(c)
+	return a.normalizeSeedanceRequest(c, info)
 }
 
 // BuildRequestURL constructs the upstream URL.
