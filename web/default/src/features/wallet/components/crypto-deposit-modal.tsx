@@ -47,6 +47,7 @@ import {
 } from '../hooks/use-crypto-payment'
 import {
   discoverCryptoWallets,
+  shouldRediscoverCryptoWallets,
   subscribeToCryptoWalletChanges,
   type CryptoWalletOption,
 } from '../lib/crypto-wallet-provider'
@@ -170,9 +171,11 @@ export function CryptoDepositModal({
   const nowPaymentsBelowMinimum = nowPaymentsRequestAmount < nowPaymentsMinTopup
 
   function handleChainChange(chain: ChainConfig) {
-    setWalletDiscoveryReady(false)
-    setWalletOptions([])
-    setSelectedWalletId(null)
+    if (shouldRediscoverCryptoWallets(selectedChain.family, chain.family)) {
+      setWalletDiscoveryReady(false)
+      setWalletOptions([])
+      setSelectedWalletId(null)
+    }
     setSelectedChain(chain)
     setSelectedToken(chain.tokens[0])
   }

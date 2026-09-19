@@ -65,6 +65,13 @@ export interface CryptoWalletOption {
   provider: CryptoWalletProvider
 }
 
+export function shouldRediscoverCryptoWallets(
+  currentFamily: CryptoChainFamily,
+  nextFamily: CryptoChainFamily
+): boolean {
+  return currentFamily !== nextFamily
+}
+
 declare global {
   interface Window {
     tronLink?: TronProvider
