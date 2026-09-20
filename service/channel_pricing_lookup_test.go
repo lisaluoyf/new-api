@@ -57,3 +57,24 @@ func TestChannelModelPriceDataUsesActualChannelPrices(t *testing.T) {
 	require.InDelta(t, 0.1, priceData.CacheRatio, 0.000001)
 	require.InDelta(t, 1.25, priceData.CacheCreationRatio, 0.000001)
 }
+
+func TestJevChannelPricingPreservesFreeOutput(t *testing.T) {
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.ChannelModelPricing{}))
+	require.NoError(t, db.Exec(`INSERT INTO channels (id,key,recharge_rate,apimaster_price_ratio) VALUES (249,'test',1,1)`).Error)
+	for _, name := range []string{"jev-latest", "jev-1.13.0", "jev-preview", "legacy-model"} {
+		require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings (channel_id,model_name,input_price,output_price,group_ratio,pricing_source) VALUES (249,?,0.042,0,1,'api')`, name).Error)
+		price, ok := ChannelModelPriceData(249, name)
+		require.True(t, ok)
+		require.InDelta(t, 0.021, price.ModelRatio, 0.000001)
+		expected := 0.0
+		if name == "legacy-model" {
+			expected = 1
+		}
+		require.Equal(t, expected, price.CompletionRatio)
+	}
+}

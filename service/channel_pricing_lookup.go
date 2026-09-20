@@ -171,7 +171,9 @@ func ChannelModelPriceData(channelID int, modelName string) (ChannelModelPriceRa
 		ModelRatio:      row.InputPrice * rechargeRate * apimasterRatio / 2.0,
 		CompletionRatio: 1.0,
 	}
-	if row.OutputPrice > 0 {
+	// Jev explicitly prices output at zero; preserve that value instead of
+	// applying the legacy missing-output fallback used by other providers.
+	if row.OutputPrice > 0 || modelName == "jev-latest" || modelName == "jev-1.13.0" || modelName == "jev-preview" {
 		priceData.CompletionRatio = row.OutputPrice / row.InputPrice
 	}
 	if row.CachePrice > 0 {
