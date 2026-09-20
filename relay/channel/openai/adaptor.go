@@ -115,6 +115,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		}
 		// https://learn.microsoft.com/en-us/azure/cognitive-services/openai/chatgpt-quickstart?pivots=rest-api&tabs=command-line#rest-api
 		requestURL := strings.Split(info.RequestURLPath, "?")[0]
+		if info.RelayMode == relayconstant.RelayModeImagesEdits {
+			requestURL = strings.TrimSuffix(requestURL, "/async")
+		}
 		requestURL = fmt.Sprintf("%s?api-version=%s", requestURL, apiVersion)
 		task := strings.TrimPrefix(requestURL, "/v1/")
 
@@ -189,10 +192,15 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 // Default (submitPathMode unset): submit to the SYNC endpoint /v1/images/generations and
 // strip any /async suffix. Sync upstreams return the image directly; async upstreams that
 // return a task_id on the sync endpoint are still polled server-side by relay-openai.go
-// (isClientAsyncImageGenerationsPath is false), so the client sees a sync response either way.
+// (isClientAsyncImagePath is false), so the client sees a sync response either way.
 // Only upstreams that expose task submission EXCLUSIVELY at /images/generations/async need to
 // opt in with channel setting ImageGenerationSubmitPath="generations_async".
 func normalizeImageGenerationsRequestPath(requestPath, channelBaseURL string, relayMode int, modelName, submitPathMode string) string {
+	// Async edits is a gateway task-response endpoint. Native edit upstreams
+	// still receive /images/edits, including when generation uses /async.
+	if relayMode == relayconstant.RelayModeImagesEdits {
+		return strings.TrimSuffix(requestPath, "/async")
+	}
 	if relayMode != relayconstant.RelayModeImagesGenerations {
 		return requestPath
 	}

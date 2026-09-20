@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/gin-gonic/gin"
 )
 
@@ -254,14 +255,14 @@ func gptImage2ClientAsyncPath(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return false
 	}
-	return strings.HasSuffix(c.Request.URL.Path, "/images/generations/async")
+	return relayconstant.IsAsyncImageRequestPath(c.Request.URL.Path)
 }
 
 func gptImage2EditsPath(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return false
 	}
-	return strings.HasSuffix(c.Request.URL.Path, "/images/edits")
+	return relayconstant.IsImageEditsPath(c.Request.URL.Path)
 }
 
 // SetGptImage2RoutingRetry stores relay retry index for channel-pick filters.
@@ -285,7 +286,7 @@ func ClassifyGptImage2Profile(c *gin.Context, modelName string) GptImage2Profile
 	}
 	if c != nil && strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
 		if form, err := common.ParseMultipartFormReusable(c); err == nil && form != nil {
-			if strings.HasSuffix(c.Request.URL.Path, "/images/edits") {
+			if gptImage2EditsPath(c) {
 				return classifyGptImage2ProfileFromMultipartForm(form, true)
 			}
 			if multipartFormHasImageFiles(form) {
@@ -913,6 +914,9 @@ func gptImage2ChannelRejectionReason(ch *model.Channel, req gptImage2CapabilityR
 			return "reference_image_required"
 		}
 		req.EditsPath, req.Multipart, req.HasUploadedImage = false, false, false
+		// These adapters submit to the generation capability they implement.
+		// The client's async task response is independent of upstream submission.
+		req.AsyncPath = false
 		if convertEdits {
 			// The response handler implements the client's requested format locally.
 			req.ResponseFormat = ""

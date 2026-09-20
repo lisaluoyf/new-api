@@ -60,7 +60,7 @@ func TestImagePollTierFromSize(t *testing.T) {
 	}
 }
 
-func TestIsClientAsyncImageGenerationsPath(t *testing.T) {
+func TestIsClientAsyncImagePath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	cases := []struct {
@@ -68,6 +68,9 @@ func TestIsClientAsyncImageGenerationsPath(t *testing.T) {
 		want bool
 	}{
 		{path: "/v1/images/generations/async", want: true},
+		{path: "/v1/images/edits/async", want: true},
+		{path: "/v1/images/edits", want: false},
+		{path: "/v1/images/edits/async/extra", want: false},
 		{path: "/v1/images/generations", want: false},
 		{path: "/pg/images/generations/async", want: true},
 	}
@@ -76,8 +79,8 @@ func TestIsClientAsyncImageGenerationsPath(t *testing.T) {
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
 			c.Request = httptest.NewRequest("POST", tc.path, strings.NewReader("{}"))
-			if got := isClientAsyncImageGenerationsPath(c); got != tc.want {
-				t.Fatalf("isClientAsyncImageGenerationsPath(%q) = %v, want %v", tc.path, got, tc.want)
+			if got := isClientAsyncImagePath(c); got != tc.want {
+				t.Fatalf("isClientAsyncImagePath(%q) = %v, want %v", tc.path, got, tc.want)
 			}
 		})
 	}

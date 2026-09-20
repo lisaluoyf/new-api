@@ -21,7 +21,7 @@ func NormalizeGptImage25ReferenceRequest(c *gin.Context, modelName string) error
 		return nil
 	}
 	path := c.Request.URL.Path
-	isEdit := path == "/v1/images/edits"
+	isEdit := relayconstant.IsImageEditsPath(path)
 	if !isEdit && path != "/v1/images/generations" && path != "/v1/images/generations/async" {
 		return nil
 	}

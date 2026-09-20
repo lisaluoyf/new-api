@@ -934,6 +934,11 @@ func startImageRaceHedge(c *gin.Context, info *relaycommon.RelayInfo) (target se
 	if info == nil || !common.UsesAsyncImageTaskUpstream(info.OriginModelName) {
 		return service.ImageTaskTarget{}, nil, false
 	}
+	// The hedge submitter only implements generations. Never replay an edit
+	// through it: JSON edit fields or uploaded references could be ignored.
+	if info.RelayMode == relayconstant.RelayModeImagesEdits {
+		return service.ImageTaskTarget{}, nil, false
+	}
 	rawBody, exists := c.Get(imageRequestBodyContextKey)
 	requestBody, _ := rawBody.([]byte)
 	if !exists || len(requestBody) == 0 {
@@ -945,7 +950,7 @@ func startImageRaceHedge(c *gin.Context, info *relaycommon.RelayInfo) (target se
 	if err != nil || channel == nil {
 		return service.ImageTaskTarget{}, nil, false
 	}
-	asyncPath := isClientAsyncImageGenerationsPath(c)
+	asyncPath := isClientAsyncImagePath(c)
 	taskID, err := service.SubmitImageGenerationToChannel(c.Request.Context(), channel, requestBody, info.OriginModelName, asyncPath)
 	if err != nil {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("image race hedge submit to channel #%d failed: %v", channel.Id, err))
@@ -1157,10 +1162,11 @@ func imageCacheAuthHeaders(c *gin.Context) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + apiKey}
 }
 
-// isClientAsyncImageGenerationsPath reports POST /v1/images/generations/async:
+// isClientAsyncImagePath reports either image task-response endpoint:
 // return upstream task_id immediately without server-side polling.
-func isClientAsyncImageGenerationsPath(c *gin.Context) bool {
-	return strings.HasSuffix(c.Request.URL.Path, "/images/generations/async")
+func isClientAsyncImagePath(c *gin.Context) bool {
+	return c != nil && c.Request != nil && c.Request.URL != nil &&
+		relayconstant.IsAsyncImageRequestPath(c.Request.URL.Path)
 }
 
 func apimartWebhookEnabled(c *gin.Context) bool {
@@ -1213,9 +1219,8 @@ func trackSubmittedImageTask(c *gin.Context, info *relaycommon.RelayInfo, respon
 	return responseBody, publicTaskID
 }
 
-func trackCompletedSyncImageTask(c *gin.Context, info *relaycommon.RelayInfo, resultURL string) ([]byte, string) {
-	resultURL = strings.TrimSpace(resultURL)
-	if info == nil || resultURL == "" {
+func trackCompletedSyncImageTask(c *gin.Context, info *relaycommon.RelayInfo, resultURLs []string) ([]byte, string) {
+	if info == nil || len(resultURLs) == 0 || strings.TrimSpace(resultURLs[0]) == "" {
 		return nil, ""
 	}
 	now := time.Now().Unix()
@@ -1233,7 +1238,8 @@ func trackCompletedSyncImageTask(c *gin.Context, info *relaycommon.RelayInfo, re
 		FinishTime: now,
 		Properties: model.Properties{OriginModelName: info.OriginModelName, UpstreamModelName: info.UpstreamModelName},
 		PrivateData: model.TaskPrivateData{
-			ResultURL:        resultURL,
+			ResultURL:        resultURLs[0],
+			ImageResultURLs:  append([]string(nil), resultURLs...),
 			GptImage2Profile: string(service.GptImage2ProfileFromContext(c)),
 		},
 	}
@@ -1266,13 +1272,16 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
+	// Task envelopes replace the upstream payload but must not discard usage
+	// needed for settlement and logs on synchronous upstreams.
+	upstreamResponseBody := responseBody
 
 	// Client async submit: mint our own public task_id (decoupled from the upstream's),
 	// persist a Task row mapping it to the real channel + upstream task_id, and — if the
 	// gpt-image-2 race fallback is enabled — schedule a background hedge so the client's
 	// later poll can transparently race a second channel without ever seeing either
 	// channel's identity.
-	if isClientAsyncImageGenerationsPath(c) {
+	if isClientAsyncImagePath(c) {
 		var asyncCheck struct {
 			Data []struct {
 				TaskID string `json:"task_id"`
@@ -1284,8 +1293,11 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 			upstreamTaskID := strings.TrimSpace(asyncCheck.Data[0].TaskID)
 			var publicTaskID string
 			responseBody, publicTaskID = trackSubmittedImageTask(c, info, responseBody, upstreamTaskID)
+			if info.RelayMode == relayconstant.RelayModeImagesEdits && publicTaskID == upstreamTaskID {
+				return nil, types.NewErrorWithStatusCode(fmt.Errorf("failed to persist image edit task"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
+			}
 			c.Set(imagePollTaskIDContextKey, publicTaskID)
-			if publicTaskID != upstreamTaskID {
+			if publicTaskID != upstreamTaskID && info.RelayMode != relayconstant.RelayModeImagesEdits {
 				if rawBody, exists := c.Get(imageRequestBodyContextKey); exists {
 					if bodyBytes, ok := rawBody.([]byte); ok && len(bodyBytes) > 0 {
 						scheduleAsyncImageRaceHedge(publicTaskID, info.OriginModelName, bodyBytes, imageRaceTriggerFromContext(c))
@@ -1295,8 +1307,9 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		}
 		if c.GetString(imagePollTaskIDContextKey) == "" {
 			rewrittenBody := service.RewriteImageResponseBodyWithHeaders(responseBody, imageCacheAuthHeaders(c))
-			if resultURL := service.ExtractFirstImageURLFromResponse(rewrittenBody); resultURL != "" {
-				if taskBody, publicTaskID := trackCompletedSyncImageTask(c, info, resultURL); publicTaskID != "" {
+			if resultURLs := service.ExtractImageURLsFromResponse(rewrittenBody); len(resultURLs) > 0 {
+				resultURL := resultURLs[0]
+				if taskBody, publicTaskID := trackCompletedSyncImageTask(c, info, resultURLs); publicTaskID != "" {
 					responseBody = taskBody
 					c.Set(imagePollTaskIDContextKey, publicTaskID)
 					c.Set("image_result_url", resultURL)
@@ -1307,10 +1320,13 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 				}
 			}
 		}
+		if info.RelayMode == relayconstant.RelayModeImagesEdits && c.GetString(imagePollTaskIDContextKey) == "" {
+			return nil, types.NewErrorWithStatusCode(fmt.Errorf("upstream response could not be stored as an image edit task"), types.ErrorCodeBadResponseBody, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+		}
 	}
 
 	// Detect async image task response and poll upstream until done (sync API only).
-	if !isClientAsyncImageGenerationsPath(c) {
+	if !isClientAsyncImagePath(c) {
 		var asyncCheck struct {
 			Data []struct {
 				Status string `json:"status"`
@@ -1361,7 +1377,11 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 
 	var usageResp dto.SimpleResponse
-	err = common.Unmarshal(responseBody, &usageResp)
+	usageBody := responseBody
+	if isClientAsyncImagePath(c) {
+		usageBody = upstreamResponseBody
+	}
+	err = common.Unmarshal(usageBody, &usageResp)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
@@ -1413,7 +1433,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		usageResp.PromptTokensDetails.ImageTokens += usageResp.InputTokensDetails.ImageTokens
 		usageResp.PromptTokensDetails.TextTokens += usageResp.InputTokensDetails.TextTokens
 	}
-	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
+	applyUsagePostProcessing(info, &usageResp.Usage, usageBody)
 	return &usageResp.Usage, nil
 }
 

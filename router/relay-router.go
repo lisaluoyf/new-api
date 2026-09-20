@@ -132,6 +132,9 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.POST("/images/edits", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIImage)
 		})
+		httpRouter.POST("/images/edits/async", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatOpenAIImage)
+		})
 		httpRouter.GET("/tasks/:task_id", controller.RelayImageTask)
 		httpRouter.POST("/midjourney/generations", controller.RelayImagine)
 		httpRouter.POST("/midjourney/generations/imagine", controller.RelayImagine)

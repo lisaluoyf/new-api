@@ -102,6 +102,17 @@ func EffectiveImageRequestPath(path string, contentType string) string {
 	return path
 }
 
+// IsAsyncImageRequestPath describes the client task-response contract, not the
+// path supported by the selected upstream.
+func IsAsyncImageRequestPath(path string) bool {
+	return strings.HasSuffix(path, "/images/generations/async") ||
+		strings.HasSuffix(path, "/images/edits/async")
+}
+
+func IsImageEditsPath(path string) bool {
+	return strings.HasSuffix(strings.TrimSuffix(path, "/async"), "/images/edits")
+}
+
 func Request2RelayMode(path string, contentType string) int {
 	return Path2RelayMode(EffectiveImageRequestPath(path, contentType))
 }
