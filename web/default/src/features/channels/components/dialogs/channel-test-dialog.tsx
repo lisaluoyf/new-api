@@ -28,7 +28,6 @@ import {
 } from '@tanstack/react-table'
 import { Loader2, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { openModelPricingSettingsInNewTab } from '@/features/system-settings/billing/model-pricing-link'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -66,6 +65,7 @@ import {
 import { DataTableBulkActions as BulkActionsToolbar } from '@/components/data-table'
 import { DataTablePagination } from '@/components/data-table/pagination'
 import { StatusBadge } from '@/components/status-badge'
+import { openModelPricingSettingsInNewTab } from '@/features/system-settings/billing/model-pricing-link'
 import { formatResponseTime, handleTestChannel } from '../../lib'
 import { useChannels } from '../channels-provider'
 
@@ -100,6 +100,7 @@ const endpointTypeOptions: Array<{ value: string; label: string }> = [
     value: 'gemini',
     label: 'Gemini (/v1beta/models/{model}:generateContent)',
   },
+  { value: 'typesafe', label: 'TypeSafe (/v1/systemone)' },
   { value: 'jina-rerank', label: 'Jina Rerank (/v1/rerank)' },
   {
     value: 'image-generation',
@@ -112,6 +113,7 @@ const STREAM_INCOMPATIBLE_ENDPOINTS = new Set([
   'embeddings',
   'image-generation',
   'jina-rerank',
+  'typesafe',
   'openai-response-compact',
 ])
 
@@ -153,7 +155,8 @@ export function ChannelTestDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentRow?.id, resetState])
 
-  const streamDisabled = STREAM_INCOMPATIBLE_ENDPOINTS.has(endpointType)
+  const streamDisabled =
+    currentRow?.type === 58 || STREAM_INCOMPATIBLE_ENDPOINTS.has(endpointType)
 
   useEffect(() => {
     if (streamDisabled) {

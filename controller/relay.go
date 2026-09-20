@@ -73,6 +73,8 @@ func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIErro
 		fallthrough
 	case relayconstant.RelayModeAudioTranscription:
 		err = relay.AudioHelper(c, info)
+	case relayconstant.RelayModeSystemOne:
+		err = relay.TypeSafeHelper(c, info)
 	case relayconstant.RelayModeRerank:
 		err = relay.RerankHelper(c, info)
 	case relayconstant.RelayModeEmbeddings:
@@ -153,6 +155,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
+	if c.GetInt("channel_type") == constant.ChannelTypeTypeSafe && relayFormat != types.RelayFormatTypeSafe {
+		newAPIError = types.NewErrorWithStatusCode(errors.New("TypeSafe requires POST /v1/systemone with state and questions"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		return
+	}
 	request, err := helper.GetAndValidateRequest(c, relayFormat)
 	if err != nil {
 		// Map "request body too large" to 413 so clients can handle it correctly
@@ -858,6 +864,8 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 		meta.MaxTokens = int(lo.FromPtrOr(r.MaxOutputTokens, uint(0)))
 	case *dto.ClaudeRequest:
 		meta.MaxTokens = int(lo.FromPtr(r.MaxTokens))
+	case *dto.TypeSafeRequest:
+		return r.GetTokenCountMeta()
 	case *dto.ImageRequest:
 		// Pricing for image requests depends on ImagePriceRatio; safe to compute even when CountToken is disabled.
 		return r.GetTokenCountMeta()

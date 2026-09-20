@@ -207,6 +207,16 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 		return
 	}
 
+	if ch.Type == constant.ChannelTypeTypeSafe {
+		result, err := sendTypeSafeUptimeProbe(ctx, &http.Client{Timeout: uptimeRequestTimeout}, baseURL, apiKey, targetModel)
+		if err != nil {
+			recordUptimeResult(ch, targetModel, baseURL, "notcomplete", result.LatencyMs, err.msg)
+			return
+		}
+		recordUptimeResult(ch, targetModel, baseURL, "pass", result.LatencyMs, "")
+		return
+	}
+
 	// Anthropic-type channels serve real relay traffic over /v1/messages with
 	// x-api-key auth (relay/channel/claude/adaptor.go), not OpenAI's
 	// /chat/completions + Bearer auth. Probing them with the OpenAI shape produces

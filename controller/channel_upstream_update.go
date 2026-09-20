@@ -331,6 +331,14 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 		return nil, err
 	}
 
+	if channel.Type == constant.ChannelTypeTypeSafe {
+		var result dto.TypeSafeModelsResponse
+		if err := common.Unmarshal(body, &result); err != nil {
+			return nil, err
+		}
+		return normalizeModelNames(result.ModelNames()), nil
+	}
+
 	var result OpenAIModelsResponse
 	if err := common.Unmarshal(body, &result); err != nil {
 		return nil, err

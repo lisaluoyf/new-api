@@ -46,6 +46,9 @@ type testResult struct {
 }
 
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
+	if channel != nil && channel.Type == constant.ChannelTypeTypeSafe {
+		return string(constant.EndpointTypeTypeSafe)
+	}
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
 		return normalized
@@ -82,6 +85,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	testModel = automaticChannelTestModel(channel, testModel)
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
+	if channel.Type == constant.ChannelTypeTypeSafe {
+		isStream = false
+	}
 
 	requestPath := "/v1/chat/completions"
 
@@ -173,6 +179,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			relayFormat = types.RelayFormatClaude
 		case constant.EndpointTypeGemini:
 			relayFormat = types.RelayFormatGemini
+		case constant.EndpointTypeTypeSafe:
+			relayFormat = types.RelayFormatTypeSafe
 		case constant.EndpointTypeJinaRerank:
 			relayFormat = types.RelayFormatRerank
 		case constant.EndpointTypeImageGeneration:
@@ -305,6 +313,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 				newAPIError: types.NewError(errors.New("invalid image request type"), types.ErrorCodeConvertRequestFailed),
 			}
 		}
+	case relayconstant.RelayModeSystemOne:
+		convertedRequest = request
 	case relayconstant.RelayModeRerank:
 		// Rerank 请求 - request 已经是正确的类型
 		if rerankReq, ok := request.(*dto.RerankRequest); ok {
@@ -736,6 +746,9 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 }
 
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+	if endpointType == string(constant.EndpointTypeTypeSafe) || (channel != nil && channel.Type == constant.ChannelTypeTypeSafe) {
+		return &dto.TypeSafeRequest{Model: model, State: json.RawMessage(`"The service is working."`), Questions: map[string]json.RawMessage{"healthy": json.RawMessage(`{"type":"noul","instructions":"Does the text say the service is working?"}`)}}
+	}
 	request := buildDefaultTestRequest(model, endpointType, channel, isStream)
 	prompt, maxTokens, ok := service.ChannelCodeReviewProbe(channel)
 	if !ok {

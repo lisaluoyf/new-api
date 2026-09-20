@@ -1091,6 +1091,16 @@ func FetchModels(c *gin.Context) {
 	}
 	defer response.Body.Close()
 
+	if req.Type == constant.ChannelTypeTypeSafe {
+		var result dto.TypeSafeModelsResponse
+		if err := common.DecodeJson(response.Body, &result); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": result.ModelNames()})
+		return
+	}
+
 	var result struct {
 		Data []struct {
 			ID string `json:"id"`

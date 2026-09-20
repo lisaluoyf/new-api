@@ -24,6 +24,9 @@ const (
 // 1 === ￥0.014 / 1k tokens
 
 var defaultModelRatio = map[string]float64{
+	"jev-latest":    0.021, // TypeSafe $0.042 / 1M input, 2026-09-20
+	"jev-1.13.0":    0.021,
+	"jev-preview":   0.021,
 	"gpt-6-astra":   5,     // $10 / 1M input tokens
 	"kimi-k3":       1.5,   // $3 / 1M input tokens
 	"qwen3.8-max":   1.25,  // $2.5 / 1M input tokens
@@ -350,6 +353,9 @@ var modelRatioMap = types.NewRWMap[string, float64]()
 var completionRatioMap = types.NewRWMap[string, float64]()
 
 var defaultCompletionRatio = map[string]float64{
+	"jev-latest":     0, // TypeSafe output is free.
+	"jev-1.13.0":     0,
+	"jev-preview":    0,
 	"kimi-k3":        5, // $15 / $3
 	"qwen3.8-max":    3, // $7.5 / $2.5
 	"qwen3.8-flash":  3, // $0.45 / $0.15
