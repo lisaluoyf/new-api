@@ -173,7 +173,7 @@ func ChannelModelPriceData(channelID int, modelName string) (ChannelModelPriceRa
 	}
 	// Jev explicitly prices output at zero; preserve that value instead of
 	// applying the legacy missing-output fallback used by other providers.
-	if row.OutputPrice > 0 || modelName == "jev-latest" || modelName == "jev-1.13.0" || modelName == "jev-preview" {
+	if row.OutputPrice > 0 || IsJevModel(modelName) {
 		priceData.CompletionRatio = row.OutputPrice / row.InputPrice
 	}
 	if row.CachePrice > 0 {
@@ -191,4 +191,9 @@ func ChannelModelPriceRatio(channelID int, modelName string) (modelRatio, comple
 		return 0, 0, false
 	}
 	return priceData.ModelRatio, priceData.CompletionRatio, true
+}
+
+// IsJevModel identifies the native Jev models whose output is explicitly free.
+func IsJevModel(name string) bool {
+	return name == "jev-latest" || name == "jev-1.13.0" || name == "jev-preview"
 }

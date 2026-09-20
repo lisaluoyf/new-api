@@ -114,3 +114,30 @@ func TestManualGroupRatioDisplayWithStalePricing(t *testing.T) {
 	require.InDelta(t, 13*recharge, *item.UserPrice, 1e-9)
 	require.InDelta(t, 65*recharge, *item.ActualOutputUserPrice, 1e-9)
 }
+
+func TestJevMarketplaceReportsExplicitFreeOutput(t *testing.T) {
+	for _, config := range []struct {
+		previous map[string]float64
+		update   func(string) error
+		value    string
+	}{
+		{ratio_setting.GetModelRatioCopy(), ratio_setting.UpdateModelRatioByJSONString, `{"jev-latest":0.021}`},
+		{ratio_setting.GetCompletionRatioCopy(), ratio_setting.UpdateCompletionRatioByJSONString, `{"jev-latest":0}`},
+	} {
+		previous, err := common.Marshal(config.previous)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, config.update(string(previous))) })
+		require.NoError(t, config.update(config.value))
+	}
+	setting := `{"manual_group_ratio":1,"model_price_ratio":1}`
+	var in, out, group *float64
+	applyPublicManualPricingToRow(&setting, "jev-latest", &in, &out, nil, nil, &group, nil)
+	require.NotNil(t, out)
+	require.Equal(t, 0.0, *out)
+	item := publicMarketplacePriceItem("jev-latest", publicMarketplacePricingRow{
+		Setting: &setting, InputPrice: in, OutputPrice: out, GroupRatio: group, ApimasterPriceRatio: 1,
+	})
+	require.InDelta(t, 0.042, *item.UserPrice, 1e-9)
+	require.NotNil(t, item.ActualOutputUserPrice)
+	require.Equal(t, 0.0, *item.ActualOutputUserPrice)
+}

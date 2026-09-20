@@ -1010,7 +1010,7 @@ func applyModelMappingPricingToRow(
 	}
 	in := pr.InputPrice
 	*inputPrice = &in
-	if outputPrice != nil && pr.OutputPrice > 0 {
+	if outputPrice != nil && (pr.OutputPrice > 0 || service.IsJevModel(canonical)) {
 		out := pr.OutputPrice
 		*outputPrice = &out
 	}
@@ -1049,7 +1049,7 @@ func applyPublicManualPricingToRow(
 	}
 	in := pr.InputPrice
 	*inputPrice = &in
-	if outputPrice != nil && pr.OutputPrice > 0 {
+	if outputPrice != nil && (pr.OutputPrice > 0 || service.IsJevModel(canonical)) {
 		out := pr.OutputPrice
 		*outputPrice = &out
 	}
@@ -1086,7 +1086,7 @@ func applyGlobalModelPricingToRow(
 		return
 	}
 	*inputPrice = &in
-	if outputPrice != nil && out > 0 {
+	if outputPrice != nil && (out > 0 || service.IsJevModel(canonical)) {
 		o := out
 		*outputPrice = &o
 	}
