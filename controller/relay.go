@@ -1004,6 +1004,10 @@ func evaluateRetry(c *gin.Context, openaiErr *types.NewAPIError, retryIndex int,
 	}
 	decision.StatusCode = openaiErr.StatusCode
 	decision.ErrorCode = string(openaiErr.GetErrorCode())
+	if isContentSafetyRejection(string(openaiErr.GetErrorCode()), openaiErr.ToOpenAIError().Type, openaiErr.Error()) {
+		decision.Reason = "content_safety_rejection"
+		return decision
+	}
 	if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
 		// 客户端已断开：重试的结果无人接收，直接放弃
 		decision.Reason = "client_canceled"
@@ -1098,6 +1102,10 @@ func evaluateFreeModelRetry(c *gin.Context, openaiErr *types.NewAPIError, retryI
 	}
 	decision.StatusCode = openaiErr.StatusCode
 	decision.ErrorCode = string(openaiErr.GetErrorCode())
+	if isContentSafetyRejection(string(openaiErr.GetErrorCode()), openaiErr.ToOpenAIError().Type, openaiErr.Error()) {
+		decision.Reason = "content_safety_rejection"
+		return decision
+	}
 	if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
 		decision.Reason = "client_canceled"
 		return decision
@@ -1198,6 +1206,10 @@ func evaluateTaskRetry(c *gin.Context, channelId int, taskErr *dto.TaskError, re
 	}
 	decision.StatusCode = taskErr.StatusCode
 	decision.ErrorCode = taskErr.Code
+	if isContentSafetyRejection(taskErr.Code, "", taskErr.Message) {
+		decision.Reason = "content_safety_rejection"
+		return decision
+	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		decision.Reason = "channel_affinity_skip_retry"
 		return decision
