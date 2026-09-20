@@ -13,8 +13,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Normalize before channel selection so capability checks, retries and billing
-// all see the same JSON request that the Image 2.5 upstream accepts.
+// Validate references before channel selection. Native edits must retain their
+// endpoint and body: Image 2.5 upstreams can ignore image_urls on generations.
+// Only multipart generation requests are normalized to JSON.
 func NormalizeGptImage25ReferenceRequest(c *gin.Context, modelName string) error {
 	if !service.IsGptImage25Model(modelName) || c == nil || c.Request == nil {
 		return nil
@@ -93,6 +94,12 @@ func NormalizeGptImage25ReferenceRequest(c *gin.Context, modelName string) error
 	if isEdit && len(urls) == 0 {
 		return fmt.Errorf("image edit requires at least one reference image")
 	}
+	if isEdit {
+		// Preserve the reusable body as well as the path and Content-Type so
+		// capability checks and every retry use the native edits protocol.
+		c.Set("relay_mode", relayconstant.RelayModeImagesEdits)
+		return nil
+	}
 	if len(urls) > 0 {
 		fields["image_urls"], _ = common.Marshal(urls)
 	}
@@ -110,9 +117,6 @@ func NormalizeGptImage25ReferenceRequest(c *gin.Context, modelName string) error
 	c.Request.Body = io.NopCloser(storage)
 	c.Request.ContentLength = int64(len(raw))
 	c.Request.Header.Set("Content-Type", "application/json")
-	if isEdit {
-		c.Request.URL.Path = "/v1/images/generations"
-	}
 	c.Set("relay_mode", relayconstant.RelayModeImagesGenerations)
 	return nil
 }

@@ -550,6 +550,10 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 						}
 					}
 
+					if len(imageFiles) == 0 && service.IsGptImage25Model(info.OriginModelName) {
+						imageFiles = mf.File["images"]
+					}
+
 					// If no image fields found at all
 					if !foundArrayImages && (len(imageFiles) == 0) {
 						return nil, errors.New("image is required")

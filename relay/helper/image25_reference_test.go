@@ -30,7 +30,7 @@ func image25Context(t *testing.T, path, contentType string, body []byte) *gin.Co
 
 func TestImage25MultipartReferenceRouting(t *testing.T) {
 	for _, name := range []string{"gpt-image-2.5-sunburst", "gpt-image-2.5-flare"} {
-		for _, path := range []string{"/v1/images/edits", "/v1/images/generations", "/v1/images/generations/async"} {
+		for _, path := range []string{"/v1/images/generations", "/v1/images/generations/async"} {
 			t.Run(name+path, func(t *testing.T) {
 				var body bytes.Buffer
 				writer := multipart.NewWriter(&body)
@@ -47,11 +47,7 @@ func TestImage25MultipartReferenceRouting(t *testing.T) {
 				c := image25Context(t, path, writer.FormDataContentType(), body.Bytes())
 				require.NoError(t, NormalizeGptImage25ReferenceRequest(c, name))
 				require.Equal(t, "application/json", c.ContentType())
-				wantPath := path
-				if path == "/v1/images/edits" {
-					wantPath = "/v1/images/generations"
-				}
-				require.Equal(t, wantPath, c.Request.URL.Path)
+				require.Equal(t, path, c.Request.URL.Path)
 				require.Equal(t, name, service.PrepareGptImage2ModelRequest(c, name))
 				filter := service.GptImage2ChannelPickFilter(c, name)
 				require.NotNil(t, filter)
@@ -80,10 +76,14 @@ func TestImage25JSONEdit(t *testing.T) {
 	for _, input := range []string{`"image":"https://example.com/ref.png"`, `"image_urls":["https://example.com/ref.png"]`} {
 		c := image25Context(t, "/v1/images/edits", "application/json", []byte(`{"model":"gpt-image-2.5-flare","prompt":"edit","resolution":"2K",`+input+`}`))
 		require.NoError(t, NormalizeGptImage25ReferenceRequest(c, "gpt-image-2.5-flare"))
-		req, err := GetAndValidOpenAIImageRequest(c, relayconstant.RelayModeImagesGenerations)
+		req, err := GetAndValidOpenAIImageRequest(c, relayconstant.RelayModeImagesEdits)
 		require.NoError(t, err)
-		require.Equal(t, []string{"https://example.com/ref.png"}, req.ImageUrls)
-		require.Empty(t, req.Image)
+		require.Equal(t, "/v1/images/edits", c.Request.URL.Path)
+		if bytes.Contains([]byte(input), []byte(`"image":`)) {
+			require.Equal(t, `"https://example.com/ref.png"`, string(req.Image))
+		} else {
+			require.Equal(t, []string{"https://example.com/ref.png"}, req.ImageUrls)
+		}
 		require.Equal(t, "2K", req.EffectiveResolutionTier())
 	}
 }
