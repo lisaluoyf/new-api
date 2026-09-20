@@ -99,3 +99,13 @@ func TestImaginePricingAuditDoesNotRequireTokenPrices(t *testing.T) {
 		require.False(t, channelDataAuditShouldAlert(items[0]))
 	}
 }
+
+func TestJevProcurementAuditRequiresOnlyInputPrice(t *testing.T) {
+	items, summary, _ := buildChannelDataAudit("jev-latest", []ModelDataItem{{
+		ChannelID: 249, ChannelName: "TypeSafe-Jev", PricingSource: "manual",
+		ActualPrice: floatPtr(0.042), ActualOutputPrice: floatPtr(0),
+	}})
+	require.Empty(t, items[0].MissingFields)
+	require.Equal(t, 1, summary.CompleteCount)
+	require.Equal(t, 0, summary.AnomalyCount)
+}

@@ -235,6 +235,9 @@ func channelDataAuditShouldAlert(item ChannelDataAuditItem) bool {
 }
 
 func channelDataAuditRequiresFourPiece(modelName string) bool {
+	if service.IsJevModel(modelName) {
+		return false
+	}
 	switch strings.TrimSpace(modelName) {
 	case "midjourney-v8.2", "midjourney-niji-7":
 		return false

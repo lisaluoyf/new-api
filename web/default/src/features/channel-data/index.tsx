@@ -367,6 +367,9 @@ const STATUS_LABEL_KEY: Record<string, string> = {
 }
 
 const NON_LLM_MODEL_IDS = new Set([
+  'jev-latest',
+  'jev-preview',
+  'jev-1.13.0',
   'doubao-seedream-5-0-pro-260628',
   'midjourney-v8.2',
   'midjourney-niji-7',
