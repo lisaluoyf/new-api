@@ -17,6 +17,8 @@ var ErrInvoiceUnavailable = errors.New("invoice is only available for successful
 type TopupInvoice struct {
 	ID            int
 	UserID        int
+	CustomerName  string
+	CustomerEmail string
 	TradeNo       string
 	PaidAt        int64
 	Description   string
@@ -47,6 +49,19 @@ func GetTopupInvoice(id, userID int, admin bool) (*TopupInvoice, error) {
 		PaymentMethod: topup.PaymentMethod,
 		AmountPaid:    FormatTopupPaidAmount(topup.Money, topup.PaymentMethod),
 		HasRefund:     topup.RefundedAmount > 0 || topup.RefundedQuota > 0,
+	}
+	// Always use the order owner's profile, including for admin downloads.
+	var customer User
+	if err := DB.Select("id", "display_name", "username", "email").Where("id = ?", topup.UserId).First(&customer).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	} else {
+		invoice.CustomerName = strings.TrimSpace(customer.DisplayName)
+		if invoice.CustomerName == "" {
+			invoice.CustomerName = strings.TrimSpace(customer.Username)
+		}
+		invoice.CustomerEmail = strings.TrimSpace(customer.Email)
 	}
 	// Subscription top-up rows store USD, even when the provider charged CNY
 	// or RUB. Use the original payment snapshot rather than today's FX rate.

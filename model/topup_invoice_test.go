@@ -12,7 +12,7 @@ import (
 func TestTopupInvoiceOriginalPaymentAmounts(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&TopUp{}, &SubscriptionOrder{}, &PlategaOrder{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &TopUp{}, &SubscriptionOrder{}, &PlategaOrder{}))
 	previous := DB
 	DB = db
 	t.Cleanup(func() { DB = previous })
@@ -58,4 +58,33 @@ func TestTopupInvoiceOriginalPaymentAmounts(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTopupInvoiceCustomerProfile(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&User{}, &TopUp{}, &SubscriptionOrder{}))
+	previous := DB
+	DB = db
+	t.Cleanup(func() { DB = previous })
+	require.NoError(t, db.Create(&User{Id: 7, AffCode: "customer-code", Username: "customer", DisplayName: "张三", Email: "customer@example.com"}).Error)
+	require.NoError(t, db.Create(&User{Id: 8, AffCode: "admin-code", Username: "admin", Email: "admin@example.com"}).Error)
+	order := TopUp{UserId: 7, TradeNo: "PROFILE-1", Money: 10, PaymentMethod: "stripe", Status: common.TopUpStatusSuccess}
+	require.NoError(t, db.Create(&order).Error)
+	invoice, err := GetTopupInvoice(order.Id, 8, true)
+	require.NoError(t, err)
+	require.Equal(t, "张三", invoice.CustomerName)
+	require.Equal(t, "customer@example.com", invoice.CustomerEmail)
+	_, err = GetTopupInvoice(order.Id, 8, false)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	require.NoError(t, db.Model(&User{}).Where("id = ?", 7).Updates(map[string]interface{}{"display_name": " ", "email": ""}).Error)
+	invoice, err = GetTopupInvoice(order.Id, 7, false)
+	require.NoError(t, err)
+	require.Equal(t, "customer", invoice.CustomerName)
+	require.Empty(t, invoice.CustomerEmail)
+	require.NoError(t, db.Delete(&User{}, 7).Error)
+	invoice, err = GetTopupInvoice(order.Id, 8, true)
+	require.NoError(t, err)
+	require.Empty(t, invoice.CustomerName)
+	require.Empty(t, invoice.CustomerEmail)
 }
