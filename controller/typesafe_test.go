@@ -1,13 +1,17 @@
 package controller
 
 import (
+	"net/http/httptest"
+	"strings"
+	"testing"
+
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestTypeSafeChannelTestUsesNativeProtocol(t *testing.T) {
@@ -18,6 +22,22 @@ func TestTypeSafeChannelTestUsesNativeProtocol(t *testing.T) {
 	require.NoError(t, req.Validate())
 	require.False(t, req.IsStream(nil))
 	require.Contains(t, fastTokenCountMetaForPricing(req).CombineText, "working")
+}
+
+func TestTypeSafeInvalidRequestsReturn400BeforeBilling(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"jev-latest","state":"x"}`,
+		`{"model":"jev-latest","state":"x","stream":true,"questions":{"a":{"type":"noul","instructions":"x"}}}`,
+	} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest("POST", "/v1/systemone", strings.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Set("channel_type", constant.ChannelTypeTypeSafe)
+		Relay(c, types.RelayFormatTypeSafe)
+		require.Equal(t, 400, w.Code)
+		require.Contains(t, w.Body.String(), "invalid_request")
+	}
 }
 
 func TestTypeSafeTestBillingIgnoresOutputTokens(t *testing.T) {

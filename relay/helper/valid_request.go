@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -46,6 +47,9 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 		err = common.UnmarshalBodyReusable(c, r)
 		if err == nil {
 			err = r.Validate()
+		}
+		if err != nil {
+			err = types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		request = r
 	case types.RelayFormatRerank:
