@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 type ConsumeAccountingInput struct {
@@ -21,6 +22,7 @@ type ConsumeAccountingInput struct {
 	BillingMode              string
 	ImageCount               int
 	ImageBaseUnits           float64
+	ImagePriceVariant        string
 	DurationSeconds          int
 	GroupRatio               float64
 	Quota                    int
@@ -39,6 +41,7 @@ type accountingPriceTuple struct {
 type consumeAccountingSnapshot struct {
 	Version                  int                `json:"version"`
 	ImageBaseUnits           float64            `json:"image_base_units,omitempty"`
+	ImagePriceVariant        string             `json:"image_price_variant,omitempty"`
 	Currency                 string             `json:"currency"`
 	Status                   string             `json:"status"`
 	Error                    string             `json:"error,omitempty"`
@@ -82,9 +85,17 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 	if input.GroupRatio <= 0 {
 		input.GroupRatio = 1
 	}
+	// Match image relay pricing: the configured media base price is authoritative,
+	// including resolution weights, even if upstream token-price rows are absent.
+	imagePricing, useImagePricing := GlobalImageMediaPricingUSD(input.ModelName)
+	useImagePricing = useImagePricing && normalizedAccountingBillingMode(input) == accountingBillingModeImageCount
+	if useImagePricing && input.ImageBaseUnits <= 0 {
+		input.ImageBaseUnits = float64(input.ImageCount) * ratio_setting.GetImageModelPriceRatio(input.ModelName, input.ImagePriceVariant)
+	}
 	snap := consumeAccountingSnapshot{
 		Version:                  2,
 		ImageBaseUnits:           input.ImageBaseUnits,
+		ImagePriceVariant:        input.ImagePriceVariant,
 		Currency:                 "USD",
 		Status:                   "ok",
 		UserId:                   input.UserId,
@@ -114,7 +125,14 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 
 	var channelCost *model.ChannelActualPrices
 	var err error
-	if prices, ok := DeepSeekV4ProcurementPricingAt(input.ChannelId, input.ModelName, input.BillingAt); ok {
+	if useImagePricing {
+		ch, lookupErr := loadChannelPricingResolveContext(input.ChannelId)
+		err = lookupErr
+		if err == nil {
+			cost := imagePricing.BasePrice * channelBasePriceGroupRatio(input.ChannelId, input.ModelName, ch) * ch.RechargeRate
+			channelCost = &model.ChannelActualPrices{InputPrice: cost}
+		}
+	} else if prices, ok := DeepSeekV4ProcurementPricingAt(input.ChannelId, input.ModelName, input.BillingAt); ok {
 		channelCost = &model.ChannelActualPrices{
 			InputPrice:         prices.InputPrice,
 			OutputPrice:        prices.OutputPrice,
@@ -138,7 +156,13 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 	}
 
 	var userPrice *model.ChannelActualPrices
-	if prices, ok := DeepSeekV4UserPricingAt(input.ChannelId, input.ModelName, input.BillingAt); ok {
+	if useImagePricing {
+		price, lookupErr := ChannelBaseUserPriceResolved(input.ChannelId, input.ModelName, imagePricing.BasePrice)
+		err = lookupErr
+		if err == nil {
+			userPrice = &model.ChannelActualPrices{InputPrice: price}
+		}
+	} else if prices, ok := DeepSeekV4UserPricingAt(input.ChannelId, input.ModelName, input.BillingAt); ok {
 		userPrice = &model.ChannelActualPrices{
 			InputPrice:         prices.InputPrice,
 			OutputPrice:        prices.OutputPrice,
@@ -178,6 +202,9 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 	official := accountingPriceTuple{}
 	if input.ModelName != "" {
 		in, out, cache, cacheCreation, ok := GlobalModelPricingUSDAt(input.ModelName, input.BillingAt)
+		if useImagePricing {
+			in, out, cache, cacheCreation, ok = imagePricing.BasePrice, 0, 0, 0, true
+		}
 		if ok {
 			official = accountingPriceTuple{
 				InputPrice:         in,

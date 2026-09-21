@@ -626,6 +626,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		if imageCount := coerceRequestInt(requestData["actual_image_count"]); imageCount > 0 {
 			accountingInput.BillingMode = accountingBillingModeImageCount
 			accountingInput.ImageCount = imageCount
+			accountingInput.ImagePriceVariant, _ = requestData["effective_resolution"].(string)
 		}
 	}
 
