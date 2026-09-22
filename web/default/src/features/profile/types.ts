@@ -151,7 +151,7 @@ export interface UpdateUserSettingsRequest {
  * Account deletion request
  */
 export interface DeleteAccountRequest {
-  password?: string
+  confirmation: string
 }
 
 /**

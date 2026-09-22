@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -52,7 +51,6 @@ export function DeleteAccountDialog({
   username,
 }: DeleteAccountDialogProps) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const { reset } = useAuthStore((state) => state.auth)
   const [loading, setLoading] = useState(false)
   const [confirmation, setConfirmation] = useState('')
@@ -65,19 +63,21 @@ export function DeleteAccountDialog({
 
     try {
       setLoading(true)
-      const response = await deleteUserAccount()
+      const response = await deleteUserAccount({ confirmation })
 
       if (response.success) {
         toast.success(t('Account deleted successfully'))
 
         reset()
         localStorage.removeItem('user')
-        if (window.parent !== window) {
-          // Leave the console shell instead of triggering its session repair.
-          window.parent.location.assign('/login')
-          return
+        if (window.self !== window.top) {
+          window.parent.postMessage(
+            { type: 'apimaster-account-deleted' },
+            window.location.origin
+          )
+        } else {
+          navigate({ to: '/sign-in' })
         }
-        navigate({ to: '/sign-in' })
       } else {
         toast.error(response.message || t('Failed to delete account'))
       }
@@ -107,7 +107,7 @@ export function DeleteAccountDialog({
           </DialogTitle>
           <DialogDescription>
             {t(
-              'This action cannot be undone. This will permanently delete your account and remove all your data from our servers.'
+              'This action cannot be undone. Your account identity and access credentials will be permanently deleted. Billing and usage records may be retained where required.'
             )}
           </DialogDescription>
         </DialogHeader>

@@ -81,7 +81,7 @@ export function ProfileSecurityCard({
     {
       icon: Trash2,
       title: t('Delete Account'),
-      description: t('Permanently delete your account and all data'),
+      description: t('Permanently delete account access and credentials'),
       action: () => dialogs.open('delete'),
       variant: 'destructive' as const,
     },

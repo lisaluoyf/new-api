@@ -519,8 +519,42 @@ func HardDeleteUserById(id int) error {
 	if id == 0 {
 		return errors.New("id 为空！")
 	}
-	err := DB.Unscoped().Delete(&User{}, "id = ?", id).Error
-	return err
+
+	var tokenKeys []string
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Model(&Token{}).Where("user_id = ?", id).Pluck("key", &tokenKeys).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Where("user_id = ?", id).Delete(&Token{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Where("user_id = ?", id).Delete(&TwoFABackupCode{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Where("user_id = ?", id).Delete(&TwoFA{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Where("user_id = ?", id).Delete(&PasskeyCredential{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", id).Delete(&UserOAuthBinding{}).Error; err != nil {
+			return err
+		}
+		return tx.Unscoped().Delete(&User{}, "id = ?", id).Error
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, tokenKey := range tokenKeys {
+		if err := cacheDeleteToken(tokenKey); err != nil {
+			common.SysLog("failed to clear deleted user token cache: " + err.Error())
+		}
+	}
+	if err := invalidateUserCache(id); err != nil {
+		common.SysLog("failed to clear deleted user cache: " + err.Error())
+	}
+	return nil
 }
 
 func inviteUser(inviterId int) (err error) {

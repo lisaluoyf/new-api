@@ -73,9 +73,9 @@ export async function updateUserLanguage(
  * Delete user account
  */
 export async function deleteUserAccount(
-  data?: DeleteAccountRequest
+  data: DeleteAccountRequest
 ): Promise<ApiResponse> {
-  const res = await api.delete('/api/user/self', { data })
+  const res = await api.post('/api/auth/delete-account', data)
   return res.data
 }
 
