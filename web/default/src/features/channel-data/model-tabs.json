@@ -137,21 +137,6 @@
     "accent": "#94a3b8"
   },
   {
-    "model_id": "grok-1.5-video-10s",
-    "label": "Grok 1.5 Video 10s",
-    "accent": "#94a3b8"
-  },
-  {
-    "model_id": "grok-1.5-video-15s",
-    "label": "Grok 1.5 Video 15s",
-    "accent": "#94a3b8"
-  },
-  {
-    "model_id": "grok-1.5-video-6s",
-    "label": "Grok 1.5 Video 6s",
-    "accent": "#94a3b8"
-  },
-  {
     "model_id": "gemini-3.1-pro-preview",
     "label": "Gemini 3.1 Pro",
     "accent": "#4285f4"
