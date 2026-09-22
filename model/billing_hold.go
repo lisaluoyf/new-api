@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -89,6 +89,7 @@ func ListDueBillingHolds(now int64, limit int) ([]*BillingHold, error) {
 	err := DB.Where("(status = ? AND reconcile_after <= ?) OR (status = ? AND ((resolved_at > 0 AND resolved_at <= ?) OR (resolved_at = 0 AND created_at <= ?)))",
 		BillingHoldStatusPending, now, "processing", now-300, now-300).
 		Order("reconcile_after ASC").
+		Order("id ASC").
 		Limit(limit).
 		Find(&holds).Error
 	return holds, err
@@ -158,7 +159,7 @@ func ResolveBillingHoldRefund(hold *BillingHold, hasConsume bool, verifyDetail, 
 	subscriptionRefunded := false
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var current BillingHold
-		if err := tx.Where("id = ? AND status = ?", hold.Id, "processing").First(&current).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND status = ? AND resolved_at = ?", hold.Id, "processing", hold.ResolvedAt).First(&current).Error; err != nil {
 			return err
 		}
 		quota := current.PreConsumedQuota
@@ -195,15 +196,32 @@ func ResolveBillingHoldRefund(hold *BillingHold, hasConsume bool, verifyDetail, 
 			}
 		}
 		if current.TokenId > 0 {
-			if res := tx.Model(&Token{}).Where("id = ?", current.TokenId).Updates(map[string]interface{}{
-				"remain_quota":  gorm.Expr("remain_quota + ?", quota),
-				"used_quota":    gorm.Expr("used_quota - ?", quota),
-				"accessed_time": common.GetTimestamp(),
-			}); res.Error != nil || res.RowsAffected != 1 {
-				if res.Error != nil {
-					return res.Error
+			// A deleted credential must not prevent refunding its owner's funds.
+			// Unscoped preserves historical counters without restoring deleted_at.
+			var token Token
+			res := tx.Unscoped().Clauses(clause.Locking{Strength: "UPDATE"}).
+				Where("id = ?", current.TokenId).Limit(1).Find(&token)
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				verifyDetail += "; token missing: original funding refunded without token counters"
+			} else {
+				if token.UserId != current.UserId {
+					return fmt.Errorf("billing hold refund token %d owner mismatch", current.TokenId)
 				}
-				return fmt.Errorf("billing hold refund token %d not found", current.TokenId)
+				tokenKey = token.Key
+				if err := tx.Unscoped().Model(&Token{}).Where("id = ? AND user_id = ?", token.Id, current.UserId).
+					Updates(map[string]interface{}{
+						"remain_quota":  gorm.Expr("remain_quota + ?", quota),
+						"used_quota":    gorm.Expr("used_quota - ?", quota),
+						"accessed_time": common.GetTimestamp(),
+					}).Error; err != nil {
+					return err
+				}
+				if token.DeletedAt.Valid {
+					verifyDetail += "; deleted token counters restored; credential remains deleted"
+				}
 			}
 		}
 		return tx.Model(&BillingHold{}).Where("id = ? AND status = ?", current.Id, "processing").Updates(map[string]interface{}{
@@ -216,18 +234,18 @@ func ResolveBillingHoldRefund(hold *BillingHold, hasConsume bool, verifyDetail, 
 		return err
 	}
 	if common.RedisEnabled {
-		gopool.Go(func() {
-			if !subscriptionRefunded {
-				if err := cacheIncrUserQuota(hold.UserId, int64(hold.PreConsumedQuota)); err != nil {
-					common.SysLog("failed to update billing hold wallet refund cache: " + err.Error())
-				}
+		// Invalidate after commit rather than repopulating a deleted credential
+		// or incrementing a cache that may already have reloaded the new balance.
+		if !subscriptionRefunded {
+			if err := invalidateUserCache(hold.UserId); err != nil {
+				common.SysLog("failed to invalidate billing hold wallet cache: " + err.Error())
 			}
-			if hold.TokenId > 0 && tokenKey != "" {
-				if err := cacheIncrTokenQuota(tokenKey, int64(hold.PreConsumedQuota)); err != nil {
-					common.SysLog("failed to update billing hold token refund cache: " + err.Error())
-				}
+		}
+		if tokenKey != "" {
+			if err := cacheDeleteToken(tokenKey); err != nil {
+				common.SysLog("failed to invalidate billing hold token cache: " + err.Error())
 			}
-		})
+		}
 	}
 	return nil
 }
@@ -240,7 +258,7 @@ func ResolveBillingHoldConfirm(hold *BillingHold, hasConsume bool, verifyDetail 
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var current BillingHold
-		if err := tx.Where("id = ? AND status = ?", hold.Id, "processing").First(&current).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND status = ? AND resolved_at = ?", hold.Id, "processing", hold.ResolvedAt).First(&current).Error; err != nil {
 			return err
 		}
 		subscriptionRecord, err := findSubscriptionPreConsumeForHold(tx, &current)
@@ -308,12 +326,13 @@ func UpdateBillingHoldContext(id int, patch BillingHoldContextPatch) error {
 }
 
 func ClaimBillingHold(id int) (bool, error) {
+	now := common.GetTimestamp()
 	res := DB.Model(&BillingHold{}).
-		Where("id = ? AND (status = ? OR (status = ? AND resolved_at > 0 AND resolved_at <= ?))",
-			id, BillingHoldStatusPending, "processing", common.GetTimestamp()-300).
+		Where("id = ? AND ((status = ? AND reconcile_after <= ?) OR (status = ? AND ((resolved_at > 0 AND resolved_at <= ?) OR (resolved_at = 0 AND created_at <= ?))))",
+			id, BillingHoldStatusPending, now, "processing", now-300, now-300).
 		Updates(map[string]interface{}{
 			"status":      "processing",
-			"resolved_at": common.GetTimestamp(), // processing lease timestamp
+			"resolved_at": now,
 		})
 	if res.Error != nil {
 		return false, res.Error
@@ -321,27 +340,28 @@ func ClaimBillingHold(id int) (bool, error) {
 	return res.RowsAffected > 0, nil
 }
 
+// Persist a retry time so a failed row cannot monopolize the oldest 200 slots.
 func ResetBillingHoldProcessing(id int) error {
-	return DB.Model(&BillingHold{}).
-		Where("id = ? AND status = ?", id, "processing").
-		Updates(map[string]interface{}{"status": BillingHoldStatusPending, "resolved_at": 0}).Error
+	return RescheduleBillingHold(id, common.GetTimestamp()+300, "reconcile failed; retry scheduled")
 }
 
 // RescheduleBillingHold releases a claimed hold without deciding the user's
 // money. Unknown upstream charge state must remain pending instead of being
 // converted into a consumption record.
-func RescheduleBillingHold(id int, reconcileAfter int64, verifyDetail string) error {
+func RescheduleBillingHold(id int, reconcileAfter int64, verifyDetail string, lease ...int64) error {
 	if id <= 0 || reconcileAfter <= 0 {
 		return errors.New("invalid billing hold reschedule")
 	}
-	res := DB.Model(&BillingHold{}).
-		Where("id = ? AND status = ?", id, "processing").
-		Updates(map[string]interface{}{
-			"status":          BillingHoldStatusPending,
-			"verify_detail":   verifyDetail,
-			"reconcile_after": reconcileAfter,
-			"resolved_at":     0,
-		})
+	query := DB.Model(&BillingHold{}).Where("id = ? AND status = ?", id, "processing")
+	if len(lease) > 0 {
+		query = query.Where("resolved_at = ?", lease[0])
+	}
+	res := query.Updates(map[string]interface{}{
+		"status":          BillingHoldStatusPending,
+		"verify_detail":   verifyDetail,
+		"reconcile_after": reconcileAfter,
+		"resolved_at":     0,
+	})
 	if res.Error != nil {
 		return res.Error
 	}

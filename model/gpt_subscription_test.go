@@ -67,7 +67,9 @@ func TestAdminInvalidateCurrentGPTSubscription(t *testing.T) {
 	var invalidated UserSubscription
 	require.NoError(t, DB.First(&invalidated, sub.Id).Error)
 	require.Equal(t, "cancelled", invalidated.Status)
-	require.Equal(t, now, invalidated.EndTime)
+	// The operation may cross a wall-clock second after fixture creation.
+	require.GreaterOrEqual(t, invalidated.EndTime, now)
+	require.LessOrEqual(t, invalidated.EndTime, GetDBTimestamp())
 }
 
 func TestGetPaymentNotificationContextMarksGPTSubscription(t *testing.T) {

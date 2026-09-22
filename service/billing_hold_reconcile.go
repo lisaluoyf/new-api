@@ -149,7 +149,9 @@ func runBillingHoldReconcile(holdId int) {
 
 	hold, err := model.GetBillingHoldById(holdId)
 	if err != nil {
-		_ = model.ResetBillingHoldProcessing(holdId)
+		if retryErr := model.RescheduleBillingHold(holdId, common.GetTimestamp()+billingHoldUnknownRetrySec, "reconcile failed: "+err.Error()); retryErr != nil {
+			common.SysLog(fmt.Sprintf("billing hold retry scheduling failed id=%d: %s", holdId, retryErr.Error()))
+		}
 		return
 	}
 	hold = enrichBillingHoldForVerify(hold)
@@ -169,6 +171,7 @@ func runBillingHoldReconcile(holdId int) {
 				hold.Id,
 				common.GetTimestamp()+billingHoldUnknownRetrySec,
 				detail,
+				hold.ResolvedAt,
 			)
 			if resolveErr == nil {
 				common.SysLog(fmt.Sprintf(
@@ -185,7 +188,9 @@ func runBillingHoldReconcile(holdId int) {
 	}
 	if resolveErr != nil {
 		common.SysLog(fmt.Sprintf("billing hold reconcile failed id=%d request=%s: %s", hold.Id, hold.RequestId, resolveErr.Error()))
-		_ = model.ResetBillingHoldProcessing(holdId)
+		if retryErr := model.RescheduleBillingHold(holdId, common.GetTimestamp()+billingHoldUnknownRetrySec, "reconcile failed: "+resolveErr.Error(), hold.ResolvedAt); retryErr != nil {
+			common.SysLog(fmt.Sprintf("billing hold retry scheduling failed id=%d: %s", holdId, retryErr.Error()))
+		}
 	}
 }
 
@@ -397,14 +402,7 @@ func RefundBillingHold(hold *model.BillingHold, detail string) error {
 	if err != nil {
 		return err
 	}
-	tokenKey := ""
-	if hold.TokenId > 0 {
-		token, err := model.GetTokenById(hold.TokenId)
-		if err == nil && token != nil {
-			tokenKey = token.Key
-		}
-	}
-	if err := model.ResolveBillingHoldRefund(hold, hasConsume, detail, tokenKey); err != nil {
+	if err := model.ResolveBillingHoldRefund(hold, hasConsume, detail, ""); err != nil {
 		return err
 	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
