@@ -1,6 +1,6 @@
 {
   "translation": {
-    "Your account will be closed and access revoked. Billing and usage records will be retained.": "Se cerrará tu cuenta y se revocará el acceso. Se conservarán los registros de facturación y uso.",
+    "Your account will be closed and access revoked.": "Se cerrará tu cuenta y se revocará el acceso.",
     "Type delete to confirm account deletion.": "Escribe delete para confirmar la eliminación de la cuenta.",
     "Close your account and revoke access": "Cerrar tu cuenta y revocar el acceso",
     "Retry Decision": "Decisión de reintento",

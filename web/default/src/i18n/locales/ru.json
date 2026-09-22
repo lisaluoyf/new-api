@@ -1,6 +1,6 @@
 {
   "translation": {
-    "Your account will be closed and access revoked. Billing and usage records will be retained.": "Ваш аккаунт будет закрыт, а доступ отозван. Данные о платежах и использовании будут сохранены.",
+    "Your account will be closed and access revoked.": "Ваш аккаунт будет закрыт, а доступ отозван.",
     "Type delete to confirm account deletion.": "Введите delete, чтобы подтвердить удаление аккаунта.",
     "Close your account and revoke access": "Закрыть аккаунт и отозвать доступ",
     "Retry Decision": "Решение о повторе",

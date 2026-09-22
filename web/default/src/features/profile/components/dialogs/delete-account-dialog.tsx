@@ -107,9 +107,7 @@ export function DeleteAccountDialog({
             {t('Delete Account')}
           </DialogTitle>
           <DialogDescription>
-            {t(
-              'Your account will be closed and access revoked. Billing and usage records will be retained.'
-            )}
+            {t('Your account will be closed and access revoked.')}
           </DialogDescription>
         </DialogHeader>
 
