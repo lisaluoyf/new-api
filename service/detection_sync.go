@@ -101,9 +101,8 @@ func applyDetectionResult(ctx context.Context, d apimasterDetectionRow) {
 			continue
 		}
 
-		// Apply confidence boost before persisting
-		boostedTop5Json, boostedTop1Score, rawTop1Score, rawTop5Json, boostedStatus := BoostDetectionResult(d.Top5Json, d.Top1Score, d.ClaimedModel, d.Status)
-		if syncedDetectionExists(ch.Id, d.ClaimedModel, boostedStatus, d.DetectTime) {
+		// The detection service owns presentation/boosting. Persist its final result unchanged.
+		if syncedDetectionExists(ch.Id, d.ClaimedModel, d.Status, d.DetectTime) {
 			continue
 		}
 
@@ -111,14 +110,12 @@ func applyDetectionResult(ctx context.Context, d apimasterDetectionRow) {
 		logEntry := model.ChannelDetectLog{
 			ChannelId:               ch.Id,
 			Source:                  "sync",
-			Status:                  boostedStatus,
+			Status:                  d.Status,
 			BaseURL:                 d.BaseURL,
 			ClaimedModel:            d.ClaimedModel,
 			PredictedModel:          d.PredictedTop1,
-			Top1Score:               boostedTop1Score,
-			Top1ScoreRaw:            rawTop1Score,
-			Top5Json:                boostedTop5Json,
-			Top5JsonRaw:             rawTop5Json,
+			Top1Score:               d.Top1Score,
+			Top5Json:                d.Top5Json,
 			FingerprintModelVersion: d.FingerprintModelVersion,
 			LatencyMeanMs:           d.LatencyMeanMs,
 			Note:                    d.NotcompleteReason,
@@ -129,7 +126,7 @@ func applyDetectionResult(ctx context.Context, d apimasterDetectionRow) {
 		now := time.Now().Unix()
 		updates := map[string]interface{}{
 			"last_detected_at":   now,
-			"last_detect_result": boostedStatus,
+			"last_detect_result": d.Status,
 		}
 
 		// Fingerprint auto-disable was removed: a "suspicious" synced detection no
@@ -137,7 +134,7 @@ func applyDetectionResult(ctx context.Context, d apimasterDetectionRow) {
 		// auto_detect). Only the recovery direction remains: a "pass" can still
 		// re-enable a model previously left AutoDisabled by other means.
 		if ch.Status != common.ChannelStatusManuallyDisabled {
-			switch boostedStatus {
+			switch d.Status {
 			case "pass":
 				recoverModelForFingerprint(&ch, d.ClaimedModel, updates)
 				if ch.Status == common.ChannelStatusAutoDisabled {
