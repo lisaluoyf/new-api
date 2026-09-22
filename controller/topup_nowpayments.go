@@ -27,6 +27,20 @@ import (
 var errNowPaymentsVerification = errors.New("NOWPayments payment verification failed")
 var getNowPaymentsPayment = service.GetNowPaymentsPayment
 
+func nowPaymentsPaymentCoversAmount(payAmount, actuallyPaid float64) bool {
+	expected := decimal.NewFromFloat(payAmount)
+	paid := decimal.NewFromFloat(actuallyPaid)
+	if expected.LessThanOrEqual(decimal.Zero) || paid.LessThan(decimal.Zero) {
+		return false
+	}
+	shortfall := expected.Sub(paid)
+	if shortfall.LessThanOrEqual(decimal.Zero) {
+		return true
+	}
+	tolerance := expected.Mul(decimal.NewFromFloat(setting.NowPaymentsPaymentShortfallPercent)).Div(decimal.NewFromInt(100))
+	return shortfall.LessThanOrEqual(tolerance.Add(decimal.NewFromFloat(0.00000001)))
+}
+
 type NowPaymentsPayRequest struct {
 	Amount int64 `json:"amount"`
 }
@@ -157,7 +171,7 @@ func settleNowPaymentsPayment(local *model.NowPaymentsPayment, paymentID, caller
 		}
 		return nil
 	}
-	if remoteStatus != "finished" {
+	if remoteStatus != "finished" && remoteStatus != "partially_paid" {
 		return nil
 	}
 	expectedCryptoAmount := decimal.NewFromFloat(float64(remote.PayAmount))
@@ -167,7 +181,7 @@ func settleNowPaymentsPayment(local *model.NowPaymentsPayment, paymentID, caller
 			return fmt.Errorf("%w: legacy cryptocurrency amount mismatch", errNowPaymentsVerification)
 		}
 	}
-	if expectedCryptoAmount.LessThanOrEqual(decimal.Zero) || decimal.NewFromFloat(float64(remote.ActuallyPaid)).Add(decimal.NewFromFloat(0.00000001)).LessThan(expectedCryptoAmount) {
+	if !nowPaymentsPaymentCoversAmount(float64(remote.PayAmount), float64(remote.ActuallyPaid)) {
 		return fmt.Errorf("%w: cryptocurrency amount underpaid", errNowPaymentsVerification)
 	}
 	var quota int

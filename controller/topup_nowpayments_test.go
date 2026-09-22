@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -23,9 +24,11 @@ func setupNowPaymentsSettlementTest(t *testing.T, status string) (*model.NowPaym
 	previousLogDB := model.LOG_DB
 	previousGetter := getNowPaymentsPayment
 	previousRedisEnabled := common.RedisEnabled
+	previousShortfallPercent := setting.NowPaymentsPaymentShortfallPercent
 	model.DB = db
 	model.LOG_DB = db
 	common.RedisEnabled = false
+	setting.NowPaymentsPaymentShortfallPercent = 3
 	t.Setenv("FEISHU_OPS_CHAT_ID", "")
 	t.Setenv("GA_MP_API_SECRET", "")
 	t.Cleanup(func() {
@@ -33,6 +36,7 @@ func setupNowPaymentsSettlementTest(t *testing.T, status string) (*model.NowPaym
 		model.LOG_DB = previousLogDB
 		getNowPaymentsPayment = previousGetter
 		common.RedisEnabled = previousRedisEnabled
+		setting.NowPaymentsPaymentShortfallPercent = previousShortfallPercent
 	})
 	user := &model.User{Username: "nowpayments-test", Email: "nowpayments@example.com", Quota: 0}
 	require.NoError(t, db.Create(user).Error)
@@ -76,7 +80,7 @@ func TestSettleNowPaymentsFinishedIsIdempotent(t *testing.T) {
 }
 
 func TestSettleNowPaymentsNonTerminalStaysPending(t *testing.T) {
-	payment, topUp, user := setupNowPaymentsSettlementTest(t, "partially_paid")
+	payment, topUp, user := setupNowPaymentsSettlementTest(t, "waiting")
 	require.NoError(t, settleNowPaymentsPayment(payment, "12345", "127.0.0.1"))
 	require.Equal(t, common.TopUpStatusPending, model.GetTopUpByTradeNo(topUp.TradeNo).Status)
 	var storedUser model.User
@@ -98,7 +102,40 @@ func TestSettleNowPaymentsRejectsUnderpayment(t *testing.T) {
 	getNowPaymentsPayment = func(_ context.Context, paymentID string) (*service.NowPaymentsPaymentResponse, error) {
 		return &service.NowPaymentsPaymentResponse{
 			PaymentID: dto.StringValue(paymentID), InvoiceID: dto.StringValue("987"), PaymentStatus: "finished",
-			PriceAmount: 9, PriceCurrency: "usd", PayAmount: 100, ActuallyPaid: 99,
+			PriceAmount: 9, PriceCurrency: "usd", PayAmount: 100, ActuallyPaid: 96.99,
+			PayCurrency: "usdttrc20", Network: "trx", OrderID: topUp.TradeNo,
+		}, nil
+	}
+	err := settleNowPaymentsPayment(payment, "12345", "127.0.0.1")
+	require.ErrorIs(t, err, errNowPaymentsVerification)
+	require.Equal(t, common.TopUpStatusPending, model.GetTopUpByTradeNo(topUp.TradeNo).Status)
+	var storedUser model.User
+	require.NoError(t, model.DB.First(&storedUser, user.Id).Error)
+	require.Zero(t, storedUser.Quota)
+}
+
+func TestSettleNowPaymentsAcceptsThreePercentShortfall(t *testing.T) {
+	payment, topUp, user := setupNowPaymentsSettlementTest(t, "partially_paid")
+	getNowPaymentsPayment = func(_ context.Context, paymentID string) (*service.NowPaymentsPaymentResponse, error) {
+		return &service.NowPaymentsPaymentResponse{
+			PaymentID: dto.StringValue(paymentID), InvoiceID: dto.StringValue("987"), PaymentStatus: "partially_paid",
+			PriceAmount: 9, PriceCurrency: "usd", PayAmount: 100, ActuallyPaid: 97,
+			PayCurrency: "usdttrc20", Network: "trx", OrderID: topUp.TradeNo,
+		}, nil
+	}
+	require.NoError(t, settleNowPaymentsPayment(payment, "12345", "127.0.0.1"))
+	require.Equal(t, common.TopUpStatusSuccess, model.GetTopUpByTradeNo(topUp.TradeNo).Status)
+	var storedUser model.User
+	require.NoError(t, model.DB.First(&storedUser, user.Id).Error)
+	require.Equal(t, int64(10*common.QuotaPerUnit), int64(storedUser.Quota))
+}
+
+func TestSettleNowPaymentsRejectsShortfallAboveThreePercent(t *testing.T) {
+	payment, topUp, user := setupNowPaymentsSettlementTest(t, "partially_paid")
+	getNowPaymentsPayment = func(_ context.Context, paymentID string) (*service.NowPaymentsPaymentResponse, error) {
+		return &service.NowPaymentsPaymentResponse{
+			PaymentID: dto.StringValue(paymentID), InvoiceID: dto.StringValue("987"), PaymentStatus: "partially_paid",
+			PriceAmount: 9, PriceCurrency: "usd", PayAmount: 100, ActuallyPaid: 96.99,
 			PayCurrency: "usdttrc20", Network: "trx", OrderID: topUp.TradeNo,
 		}, nil
 	}
