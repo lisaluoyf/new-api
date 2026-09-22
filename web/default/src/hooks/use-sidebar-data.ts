@@ -143,6 +143,11 @@ export function useSidebarData(): SidebarData {
             icon: DollarSign,
           },
           {
+            title: t('Daily Stats'),
+            url: '/daily-stats',
+            icon: BarChart2,
+          },
+          {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,

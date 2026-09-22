@@ -155,6 +155,7 @@ func main() {
 
 	// Platform billing hourly summary (平台账单)
 	service.StartBillingSummaryTask()
+	service.StartDailyStatsTask()
 
 	// Bound replay snapshot storage and remove expired request bodies in small batches.
 	service.StartFailedRequestSnapshotCleanupTask()

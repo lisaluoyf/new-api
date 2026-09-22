@@ -306,6 +306,11 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			billingSummaryRoute.GET("/", controller.GetBillingSummary)
 		}
+		dailyStatsRoute := apiRouter.Group("/daily-stats")
+		dailyStatsRoute.Use(middleware.RootAuth())
+		{
+			dailyStatsRoute.GET("/", controller.GetDailyStats)
+		}
 		adminRoute := apiRouter.Group("/admin")
 		adminRoute.Use(middleware.AdminAuth())
 		{

@@ -50,6 +50,7 @@ import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedModelDataIndexRouteImport } from './routes/_authenticated/model-data/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
+import { Route as AuthenticatedDailyStatsIndexRouteImport } from './routes/_authenticated/daily-stats/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChannelDataIndexRouteImport } from './routes/_authenticated/channel-data/index'
 import { Route as AuthenticatedBillingSummaryIndexRouteImport } from './routes/_authenticated/billing-summary/index'
@@ -292,6 +293,12 @@ const AuthenticatedDashboardIndexRoute =
     path: '/dashboard/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedDailyStatsIndexRoute =
+  AuthenticatedDailyStatsIndexRouteImport.update({
+    id: '/daily-stats/',
+    path: '/daily-stats/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedChannelsIndexRoute =
   AuthenticatedChannelsIndexRouteImport.update({
     id: '/channels/',
@@ -477,6 +484,7 @@ export interface FileRoutesByFullPath {
   '/billing-summary/': typeof AuthenticatedBillingSummaryIndexRoute
   '/channel-data/': typeof AuthenticatedChannelDataIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/daily-stats/': typeof AuthenticatedDailyStatsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/model-data/': typeof AuthenticatedModelDataIndexRoute
@@ -542,6 +550,7 @@ export interface FileRoutesByTo {
   '/billing-summary': typeof AuthenticatedBillingSummaryIndexRoute
   '/channel-data': typeof AuthenticatedChannelDataIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
+  '/daily-stats': typeof AuthenticatedDailyStatsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/model-data': typeof AuthenticatedModelDataIndexRoute
@@ -611,6 +620,7 @@ export interface FileRoutesById {
   '/_authenticated/billing-summary/': typeof AuthenticatedBillingSummaryIndexRoute
   '/_authenticated/channel-data/': typeof AuthenticatedChannelDataIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/_authenticated/daily-stats/': typeof AuthenticatedDailyStatsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/model-data/': typeof AuthenticatedModelDataIndexRoute
@@ -679,6 +689,7 @@ export interface FileRouteTypes {
     | '/billing-summary/'
     | '/channel-data/'
     | '/channels/'
+    | '/daily-stats/'
     | '/dashboard/'
     | '/keys/'
     | '/model-data/'
@@ -744,6 +755,7 @@ export interface FileRouteTypes {
     | '/billing-summary'
     | '/channel-data'
     | '/channels'
+    | '/daily-stats'
     | '/dashboard'
     | '/keys'
     | '/model-data'
@@ -812,6 +824,7 @@ export interface FileRouteTypes {
     | '/_authenticated/billing-summary/'
     | '/_authenticated/channel-data/'
     | '/_authenticated/channels/'
+    | '/_authenticated/daily-stats/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/keys/'
     | '/_authenticated/model-data/'
@@ -1154,6 +1167,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/daily-stats/': {
+      id: '/_authenticated/daily-stats/'
+      path: '/daily-stats'
+      fullPath: '/daily-stats/'
+      preLoaderRoute: typeof AuthenticatedDailyStatsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/channels/': {
       id: '/_authenticated/channels/'
       path: '/channels'
@@ -1426,6 +1446,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBillingSummaryIndexRoute: typeof AuthenticatedBillingSummaryIndexRoute
   AuthenticatedChannelDataIndexRoute: typeof AuthenticatedChannelDataIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
+  AuthenticatedDailyStatsIndexRoute: typeof AuthenticatedDailyStatsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelDataIndexRoute: typeof AuthenticatedModelDataIndexRoute
@@ -1455,6 +1476,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBillingSummaryIndexRoute: AuthenticatedBillingSummaryIndexRoute,
   AuthenticatedChannelDataIndexRoute: AuthenticatedChannelDataIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
+  AuthenticatedDailyStatsIndexRoute: AuthenticatedDailyStatsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelDataIndexRoute: AuthenticatedModelDataIndexRoute,
