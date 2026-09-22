@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPublicMarketplaceItemDoesNotExposeInternalChannelData(t *testing.T) {
@@ -70,5 +72,51 @@ func TestBuildVideoMediaPricingViewAppliesChannelCoefficients(t *testing.T) {
 	}
 	if got := view.BillingPrices["768P"]; math.Abs(got-0.032) > 1e-9 {
 		t.Fatalf("billing 768P=%v", got)
+	}
+}
+
+func TestMiniMaxH3MarketplaceOfficialPrices(t *testing.T) {
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
+	previous, existed := common.OptionMap[ratio_setting.VideoModelPricingOption]
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if existed {
+			common.OptionMap[ratio_setting.VideoModelPricingOption] = previous
+		} else {
+			delete(common.OptionMap, ratio_setting.VideoModelPricingOption)
+		}
+	})
+	for _, tc := range []struct {
+		name       string
+		configured string
+		base       float64
+		official2K float64
+	}{
+		{"default", "", 0.08, 0.13},
+		{"legacy config", `{"minimax-h3":{"unit":"second","prices":{"768P":0.08,"2K":0.13}}}`, 0.08, 0.13},
+		{"custom prices and partial official override", `{"minimax-h3":{"unit":"second","prices":{"768P":0.06,"2K":0.10},"official_prices":{"2K":0.15}}}`, 0.06, 0.15},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			common.OptionMapRWMutex.Lock()
+			common.OptionMap[ratio_setting.VideoModelPricingOption] = tc.configured
+			common.OptionMapRWMutex.Unlock()
+			setting := `{"manual_group_ratio":0.2}`
+			item := publicMarketplacePriceItem("minimax-h3", publicMarketplacePricingRow{
+				ChannelID: 155, Setting: &setting, ApimasterPriceRatio: 3,
+			})
+			require.NotNil(t, item.MediaPricing)
+			require.Equal(t, "768P", item.MediaPricing.BaseVariant)
+			require.Equal(t, map[string]float64{"768P": 0.08, "2K": tc.official2K}, item.MediaPricing.OfficialPrices)
+			require.NotNil(t, item.OfficialInputPrice)
+			require.Equal(t, 0.08, *item.OfficialInputPrice)
+			require.NotNil(t, item.UserPrice)
+			require.InDelta(t, tc.base*0.2*3, *item.UserPrice, 1e-9)
+			require.InDelta(t, *item.UserPrice, item.MediaPricing.BillingPrices["768P"], 1e-9)
+		})
 	}
 }
