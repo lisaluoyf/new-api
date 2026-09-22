@@ -290,7 +290,7 @@ func migrateDB() error {
 		return err
 	}
 
-	err := DB.AutoMigrate(
+	err := autoMigrateWithLimits(DB,
 		&Channel{},
 		&FreeModelMember{},
 		&ChannelDetectLog{},
@@ -362,7 +362,7 @@ func migrateDB() error {
 			return err
 		}
 	} else {
-		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
+		if err := autoMigrateWithLimits(DB, &SubscriptionPlan{}); err != nil {
 			return err
 		}
 	}
@@ -436,7 +436,7 @@ func migrateDBFast() error {
 		wg.Add(1)
 		go func(model interface{}, name string) {
 			defer wg.Done()
-			if err := DB.AutoMigrate(model); err != nil {
+			if err := autoMigrateWithLimits(DB, model); err != nil {
 				errChan <- fmt.Errorf("failed to migrate %s: %v", name, err)
 			}
 		}(m.model, m.name)
@@ -457,7 +457,7 @@ func migrateDBFast() error {
 			return err
 		}
 	} else {
-		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
+		if err := autoMigrateWithLimits(DB, &SubscriptionPlan{}); err != nil {
 			return err
 		}
 	}
@@ -470,22 +470,22 @@ func migrateDBFast() error {
 
 func migrateLOGDB() error {
 	var err error
-	if err = LOG_DB.AutoMigrate(&ImagineLogDelivery{}); err != nil {
+	if err = autoMigrateWithLimits(LOG_DB, &ImagineLogDelivery{}); err != nil {
 		return err
 	}
-	if err = LOG_DB.AutoMigrate(&Log{}); err != nil {
+	if err = autoMigrateWithLimits(LOG_DB, &Log{}); err != nil {
 		return err
 	}
-	if err = LOG_DB.AutoMigrate(&RegistryAccessLog{}); err != nil {
+	if err = autoMigrateWithLimits(LOG_DB, &RegistryAccessLog{}); err != nil {
 		return err
 	}
-	if err = LOG_DB.AutoMigrate(&BillingHourlySummary{}); err != nil {
+	if err = autoMigrateWithLimits(LOG_DB, &BillingHourlySummary{}); err != nil {
 		return err
 	}
-	if err = LOG_DB.AutoMigrate(&BillingDailyUserActivity{}); err != nil {
+	if err = autoMigrateWithLimits(LOG_DB, &BillingDailyUserActivity{}); err != nil {
 		return err
 	}
-	if err = LOG_DB.AutoMigrate(&BillingSummaryState{}); err != nil {
+	if err = autoMigrateWithLimits(LOG_DB, &BillingSummaryState{}); err != nil {
 		return err
 	}
 	return nil
@@ -628,7 +628,7 @@ func migrateTokenModelLimitsToText() error {
 	}
 
 	if alterSQL != "" {
-		if err := DB.Exec(alterSQL).Error; err != nil {
+		if err := withMigrationLimits(DB, func(tx *gorm.DB) error { return tx.Exec(alterSQL).Error }); err != nil {
 			return fmt.Errorf("failed to migrate %s.%s to text: %w", tableName, columnName, err)
 		}
 		common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to text", tableName, columnName))
@@ -688,7 +688,7 @@ func migrateSubscriptionPlanPriceAmount() {
 	}
 
 	if alterSQL != "" {
-		if err := DB.Exec(alterSQL).Error; err != nil {
+		if err := withMigrationLimits(DB, func(tx *gorm.DB) error { return tx.Exec(alterSQL).Error }); err != nil {
 			common.SysLog(fmt.Sprintf("Warning: failed to migrate %s.%s to decimal: %v", tableName, columnName, err))
 		} else {
 			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))

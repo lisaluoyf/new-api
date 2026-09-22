@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -8,6 +9,27 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestGetUserLogsHonorsCancellation(t *testing.T) {
+	setupUserLogVisibilityTestDB(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, err := GetUserLogsWithContext(ctx, 1, LogTypeUnknown, 0, 0, "", "", 0, 20, "", "")
+	require.Error(t, err)
+}
+
+func TestGetUserLogsKeepsExactTotalBeyondTenThousand(t *testing.T) {
+	setupUserLogVisibilityTestDB(t)
+	rows := make([]Log, 10005)
+	for i := range rows {
+		rows[i] = Log{UserId: 1, Type: LogTypeConsume, Other: "{}"}
+	}
+	require.NoError(t, LOG_DB.CreateInBatches(rows, 100).Error)
+	logs, total, err := GetUserLogs(1, LogTypeConsume, 0, 0, "", "", 10000, 20, "", "")
+	require.NoError(t, err)
+	require.EqualValues(t, 10005, total)
+	require.Len(t, logs, 5)
+}
 
 func TestFormatUserLogsRemovesProviderDiagnostics(t *testing.T) {
 	logs := []*Log{{

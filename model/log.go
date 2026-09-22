@@ -18,10 +18,10 @@ import (
 )
 
 type Log struct {
-	Id               int    `json:"id" gorm:"index:idx_created_at_id,priority:1;index:idx_user_id_id,priority:2"`
-	UserId           int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
+	Id               int    `json:"id" gorm:"index:idx_created_at_id,priority:1;index:idx_user_id_id,priority:2;index:idx_logs_user_request_type_id,priority:4"`
+	UserId           int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1;index:idx_logs_user_request_type_id,priority:1"`
 	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:2;index:idx_created_at_type"`
-	Type             int    `json:"type" gorm:"index:idx_created_at_type"`
+	Type             int    `json:"type" gorm:"index:idx_created_at_type;index:idx_logs_user_request_type_id,priority:3"`
 	Content          string `json:"content"`
 	Username         string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
 	TokenName        string `json:"token_name" gorm:"index;default:''"`
@@ -37,7 +37,7 @@ type Log struct {
 	TokenId          int    `json:"token_id" gorm:"default:0;index"`
 	Group            string `json:"group" gorm:"index"`
 	Ip               string `json:"ip" gorm:"index;default:''"`
-	RequestId        string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
+	RequestId        string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;index:idx_logs_user_request_type_id,priority:2;default:''"`
 	Other            string `json:"other"`
 
 	AccountingChannelCostAmountUSD  float64 `json:"-" gorm:"column:accounting_channel_cost_amount_usd;type:decimal(20,10);default:0;index"`
@@ -804,8 +804,6 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	return logs, total, err
 }
 
-const logSearchCountLimit = 10000
-
 // applyUserErrorLogVisibility collapses fallback attempt errors for the user-facing
 // log view. Retryable attempts are hidden immediately, even before a later attempt
 // succeeds or fails, so users never observe transient channel errors while fallback
@@ -841,14 +839,27 @@ func applyUserErrorLogVisibility(tx *gorm.DB) *gorm.DB {
 }
 
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string) (logs []*Log, total int64, err error) {
+	return GetUserLogsWithContext(context.Background(), userId, logType, startTimestamp, endTimestamp, modelName, tokenName, startIdx, num, group, requestId)
+}
+
+func GetUserLogsWithContext(ctx context.Context, userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string) (logs []*Log, total int64, err error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	db := LOG_DB.WithContext(ctx)
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = LOG_DB.Where("logs.user_id = ?", userId)
+		tx = db.Where("logs.user_id = ?", userId)
 	} else {
-		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
+		tx = db.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
-	tx = applyUserErrorLogVisibility(tx)
-	tx = applyUserConsumeLogVisibility(tx)
+	// A specific non-error type cannot contain fallback errors. Avoid planning
+	// correlated subqueries that cannot affect the result.
+	if logType == LogTypeUnknown || logType == LogTypeError {
+		tx = applyUserErrorLogVisibility(tx)
+	}
+	if logType == LogTypeUnknown || logType == LogTypeConsume {
+		tx = applyUserConsumeLogVisibility(tx)
+	}
 
 	if modelName != "" {
 		modelNamePattern, err := sanitizeLikePattern(modelName)
@@ -872,7 +883,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
 	}
-	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
+	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count user logs: " + err.Error())
 		return nil, 0, errors.New("查询日志失败")
