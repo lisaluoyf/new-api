@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -17,6 +18,7 @@ func Playground(c *gin.Context) {
 
 	defer func() {
 		if newAPIError != nil {
+			newAPIError.SetMessage(localizeRelayClientMessage(c, newAPIError))
 			c.JSON(newAPIError.StatusCode, gin.H{
 				"error": newAPIError.ToOpenAIError(),
 			})
@@ -25,7 +27,12 @@ func Playground(c *gin.Context) {
 
 	useAccessToken := c.GetBool("use_access_token")
 	if useAccessToken {
-		newAPIError = types.NewError(errors.New("暂不支持使用 access token"), types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
+		newAPIError = types.NewError(
+			errors.New("access tokens are not supported in Playground"),
+			types.ErrorCodeAccessDenied,
+			types.ErrOptionWithSkipRetry(),
+			types.ErrOptionWithClientMessage(i18n.MsgPlaygroundAccessTokenUnsupported),
+		)
 		return
 	}
 

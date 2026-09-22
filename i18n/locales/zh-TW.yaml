@@ -108,8 +108,12 @@ user.quota_change_zero: "額度變更量不能為0"
 quota.negative: "額度不能為負數！"
 quota.exceed_max: "額度值超出有效範圍"
 quota.insufficient: "額度不足"
+quota.insufficient_balance: "餘額不足，剩餘餘額：{{.Remaining}}"
+quota.request_exceeds_balance: "本次請求所需餘額不足，剩餘：{{.Remaining}}；需要：{{.Required}}"
+quota.pre_consume_failed: "無法為本次請求預留足夠額度"
 quota.warning_invalid: "無效的預警類型"
 quota.threshold_gt_zero: "預警閾值必須大於0"
+playground.access_token_unsupported: "Playground 暫不支援使用 access token"
 
 # Subscription messages
 subscription.not_enabled: "訂閱方案未啟用"

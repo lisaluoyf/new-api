@@ -94,9 +94,13 @@ user.linux_do_id_empty: Linux DO ID is empty!
 user.quota_change_zero: Quota change amount cannot be zero
 quota.negative: Quota cannot be negative!
 quota.exceed_max: Quota value exceeds valid range
-quota.insufficient: Insufficient quota
+quota.insufficient: "할당량이 부족합니다"
+quota.insufficient_balance: "잔액이 부족합니다. 남은 잔액: {{.Remaining}}"
+quota.request_exceeds_balance: "이 요청에 필요한 잔액이 부족합니다. 남음: {{.Remaining}}; 필요: {{.Required}}"
+quota.pre_consume_failed: "이 요청에 필요한 할당량을 충분히 예약할 수 없습니다"
 quota.warning_invalid: Invalid warning type
 quota.threshold_gt_zero: Warning threshold must be greater than 0
+playground.access_token_unsupported: "Playground에서는 액세스 토큰을 지원하지 않습니다"
 subscription.not_enabled: Subscription plan is not enabled
 subscription.title_empty: Subscription plan title cannot be empty
 subscription.price_negative: Price cannot be negative

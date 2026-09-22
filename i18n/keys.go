@@ -125,11 +125,18 @@ const (
 
 // Quota related messages
 const (
-	MsgQuotaNegative        = "quota.negative"
-	MsgQuotaExceedMax       = "quota.exceed_max"
-	MsgQuotaInsufficient    = "quota.insufficient"
-	MsgQuotaWarningInvalid  = "quota.warning_invalid"
-	MsgQuotaThresholdGtZero = "quota.threshold_gt_zero"
+	MsgQuotaNegative              = "quota.negative"
+	MsgQuotaExceedMax             = "quota.exceed_max"
+	MsgQuotaInsufficient          = "quota.insufficient"
+	MsgQuotaInsufficientBalance   = "quota.insufficient_balance"
+	MsgQuotaRequestExceedsBalance = "quota.request_exceeds_balance"
+	MsgQuotaPreConsumeFailed      = "quota.pre_consume_failed"
+	MsgQuotaWarningInvalid        = "quota.warning_invalid"
+	MsgQuotaThresholdGtZero       = "quota.threshold_gt_zero"
+)
+
+const (
+	MsgPlaygroundAccessTokenUnsupported = "playground.access_token_unsupported"
 )
 
 // Subscription related messages

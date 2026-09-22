@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -264,11 +265,12 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 			s.relayInfo.IsPlayground,
 		); err != nil {
 			return types.NewErrorWithStatusCode(
-				fmt.Errorf("fallback 预扣费额度失败: %w", err),
+				fmt.Errorf("fallback quota reservation failed: %w", err),
 				types.ErrorCodeInsufficientUserQuota,
 				http.StatusForbidden,
 				types.ErrOptionWithSkipRetry(),
 				types.ErrOptionWithNoRecordErrorLog(),
+				types.ErrOptionWithClientMessage(i18n.MsgQuotaInsufficient),
 			)
 		}
 		wallet.consumed += delta
@@ -355,7 +357,12 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "no active subscription") || strings.Contains(errMsg, "subscription quota insufficient") {
-			return types.NewErrorWithStatusCode(fmt.Errorf("订阅额度不足或未配置订阅: %s", errMsg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+			return types.NewErrorWithStatusCode(
+				fmt.Errorf("subscription quota is insufficient or unavailable: %s", errMsg),
+				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog(),
+				types.ErrOptionWithClientMessage(i18n.MsgQuotaInsufficient),
+			)
 		}
 		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
@@ -379,11 +386,12 @@ func (s *BillingSession) reserveFunding(delta int) error {
 	case *SubscriptionFunding:
 		if err := model.PostConsumeSubscriptionRequestDelta(funding.requestId, funding.subscriptionId, int64(delta)); err != nil {
 			return types.NewErrorWithStatusCode(
-				fmt.Errorf("订阅额度不足或未配置订阅: %s", err.Error()),
+				fmt.Errorf("subscription quota is insufficient or unavailable: %s", err.Error()),
 				types.ErrorCodeInsufficientUserQuota,
 				http.StatusForbidden,
 				types.ErrOptionWithSkipRetry(),
 				types.ErrOptionWithNoRecordErrorLog(),
+				types.ErrOptionWithClientMessage(i18n.MsgQuotaInsufficient),
 			)
 		}
 		return nil
@@ -884,18 +892,23 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 				return nil, newGPTSubscriptionRollingLimitAPIError(c, relayInfo, paidRollingLimitErr, userQuota, true)
 			}
 			return nil, types.NewErrorWithStatusCode(
-				fmt.Errorf("用户额度不足, 剩余额度: %s", logger.FormatQuota(userQuota)),
+				fmt.Errorf("user quota is insufficient, remaining quota: %s", logger.FormatQuota(userQuota)),
 				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
-				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog(),
+				types.ErrOptionWithClientMessage(i18n.MsgQuotaInsufficientBalance, map[string]any{"Remaining": logger.FormatQuota(userQuota)}))
 		}
 		if userQuota-preConsumedQuota < 0 {
 			if paidRollingLimitErr != nil {
 				return nil, newGPTSubscriptionRollingLimitAPIError(c, relayInfo, paidRollingLimitErr, userQuota, true)
 			}
 			return nil, types.NewErrorWithStatusCode(
-				fmt.Errorf("预扣费额度失败, 用户剩余额度: %s, 需要预扣费额度: %s", logger.FormatQuota(userQuota), logger.FormatQuota(preConsumedQuota)),
+				fmt.Errorf("user quota is insufficient, remaining quota: %s, required quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(preConsumedQuota)),
 				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
-				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog(),
+				types.ErrOptionWithClientMessage(i18n.MsgQuotaRequestExceedsBalance, map[string]any{
+					"Remaining": logger.FormatQuota(userQuota),
+					"Required":  logger.FormatQuota(preConsumedQuota),
+				}))
 		}
 		relayInfo.UserQuota = userQuota
 

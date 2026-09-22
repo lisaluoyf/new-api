@@ -94,9 +94,13 @@ user.linux_do_id_empty: Linux DO ID is empty!
 user.quota_change_zero: Quota change amount cannot be zero
 quota.negative: Quota cannot be negative!
 quota.exceed_max: Quota value exceeds valid range
-quota.insufficient: Insufficient quota
+quota.insufficient: "Hạn mức không đủ"
+quota.insufficient_balance: "Số dư không đủ. Số dư còn lại: {{.Remaining}}"
+quota.request_exceeds_balance: "Số dư không đủ cho yêu cầu này. Còn lại: {{.Remaining}}; cần: {{.Required}}"
+quota.pre_consume_failed: "Không thể giữ đủ hạn mức cho yêu cầu này"
 quota.warning_invalid: Invalid warning type
 quota.threshold_gt_zero: Warning threshold must be greater than 0
+playground.access_token_unsupported: "Playground không hỗ trợ access token"
 subscription.not_enabled: Subscription plan is not enabled
 subscription.title_empty: Subscription plan title cannot be empty
 subscription.price_negative: Price cannot be negative

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -86,6 +87,28 @@ func TestAllLanguageBundlesLoadAndFallback(t *testing.T) {
 	}
 	if got := Translate("xx-YY", MsgOperationFailed); got != "Operation failed" {
 		t.Fatalf("unknown language fallback = %q, want English", got)
+	}
+}
+
+func TestRelayQuotaMessagesAreLocalizedForEveryLanguage(t *testing.T) {
+	if err := Init(); err != nil {
+		t.Fatal(err)
+	}
+	args := map[string]any{"Remaining": "$1.250000", "Required": "$2.500000"}
+	englishBalance := Translate(LangEn, MsgQuotaInsufficientBalance, args)
+	englishRequest := Translate(LangEn, MsgQuotaRequestExceedsBalance, args)
+	englishPlayground := Translate(LangEn, MsgPlaygroundAccessTokenUnsupported)
+
+	for _, lang := range SupportedLanguages() {
+		balance := Translate(lang, MsgQuotaInsufficientBalance, args)
+		request := Translate(lang, MsgQuotaRequestExceedsBalance, args)
+		playground := Translate(lang, MsgPlaygroundAccessTokenUnsupported)
+		if !strings.Contains(balance, "$1.250000") || !strings.Contains(request, "$2.500000") {
+			t.Errorf("locale %s did not render quota template values", lang)
+		}
+		if lang != LangEn && (balance == englishBalance || request == englishRequest || playground == englishPlayground) {
+			t.Errorf("locale %s silently fell back to English relay messages", lang)
+		}
 	}
 }
 

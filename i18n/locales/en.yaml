@@ -107,8 +107,12 @@ user.quota_change_zero: "Quota change amount cannot be zero"
 quota.negative: "Quota cannot be negative!"
 quota.exceed_max: "Quota value exceeds valid range"
 quota.insufficient: "Insufficient quota"
+quota.insufficient_balance: "Insufficient balance. Remaining balance: {{.Remaining}}"
+quota.request_exceeds_balance: "Insufficient balance for this request. Remaining: {{.Remaining}}; required: {{.Required}}"
+quota.pre_consume_failed: "Unable to reserve enough quota for this request"
 quota.warning_invalid: "Invalid warning type"
 quota.threshold_gt_zero: "Warning threshold must be greater than 0"
+playground.access_token_unsupported: "Access tokens are not supported in Playground"
 
 # Subscription messages
 subscription.not_enabled: "Subscription plan is not enabled"

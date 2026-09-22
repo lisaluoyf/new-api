@@ -94,9 +94,13 @@ user.linux_do_id_empty: Linux DO ID is empty!
 user.quota_change_zero: Quota change amount cannot be zero
 quota.negative: Quota cannot be negative!
 quota.exceed_max: Quota value exceeds valid range
-quota.insufficient: Insufficient quota
+quota.insufficient: "Cuota insuficiente"
+quota.insufficient_balance: "Saldo insuficiente. Saldo restante: {{.Remaining}}"
+quota.request_exceeds_balance: "Saldo insuficiente para esta solicitud. Restante: {{.Remaining}}; necesario: {{.Required}}"
+quota.pre_consume_failed: "No se pudo reservar suficiente cuota para esta solicitud"
 quota.warning_invalid: Invalid warning type
 quota.threshold_gt_zero: Warning threshold must be greater than 0
+playground.access_token_unsupported: "Los tokens de acceso no son compatibles con Playground"
 subscription.not_enabled: Subscription plan is not enabled
 subscription.title_empty: Subscription plan title cannot be empty
 subscription.price_negative: Price cannot be negative

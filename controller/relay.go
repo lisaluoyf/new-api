@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -138,7 +139,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				}
 				responseError = types.NewOpenAIError(errors.New(message), types.ErrorCode("free_model_upstream_error"), newAPIError.StatusCode)
 			}
-			responseError.SetMessage(common.MessageWithRequestId(responseError.Error(), requestId))
+			responseError.SetMessage(common.MessageWithRequestId(localizeRelayClientMessage(c, responseError), requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, responseError.ToOpenAIError())
@@ -429,6 +430,28 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
 		})
 	}
+}
+
+func localizeRelayClientMessage(c *gin.Context, apiErr *types.NewAPIError) string {
+	if apiErr == nil {
+		return ""
+	}
+	if apiErr.GetErrorType() != types.ErrorTypeNewAPIError {
+		return apiErr.Error()
+	}
+	key, args := apiErr.GetClientMessage()
+	if key == "" {
+		switch apiErr.GetErrorCode() {
+		case types.ErrorCodeInsufficientUserQuota:
+			key = i18n.MsgQuotaInsufficient
+		case types.ErrorCodePreConsumeTokenQuotaFailed:
+			key = i18n.MsgQuotaPreConsumeFailed
+		}
+	}
+	if key == "" {
+		return apiErr.Error()
+	}
+	return common.TranslateMessage(c, key, args)
 }
 
 func writeStartedStreamError(c *gin.Context, relayFormat types.RelayFormat, relayErr *types.NewAPIError) {
@@ -1734,6 +1757,9 @@ func RelayTask(c *gin.Context) {
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
+	if apiErr, ok := taskErr.Error.(*types.NewAPIError); ok {
+		taskErr.Message = localizeRelayClientMessage(c, apiErr)
+	}
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}

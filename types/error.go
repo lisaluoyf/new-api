@@ -92,14 +92,16 @@ const (
 )
 
 type NewAPIError struct {
-	Err            error
-	RelayError     any
-	skipRetry      bool
-	recordErrorLog *bool
-	errorType      ErrorType
-	errorCode      ErrorCode
-	StatusCode     int
-	Metadata       json.RawMessage
+	Err               error
+	RelayError        any
+	skipRetry         bool
+	recordErrorLog    *bool
+	errorType         ErrorType
+	errorCode         ErrorCode
+	StatusCode        int
+	Metadata          json.RawMessage
+	clientMessageKey  string
+	clientMessageArgs map[string]any
 	// UpstreamResponseBody is retained for administrator diagnostics only.
 	// It must never be used as the client-facing error message.
 	UpstreamResponseBody string
@@ -168,6 +170,15 @@ func (e *NewAPIError) GetErrorType() ErrorType {
 		return ""
 	}
 	return e.errorType
+}
+
+// GetClientMessage returns the translation key and template data for an
+// APIMaster-generated client-facing error. Upstream errors leave these empty.
+func (e *NewAPIError) GetClientMessage() (string, map[string]any) {
+	if e == nil {
+		return "", nil
+	}
+	return e.clientMessageKey, e.clientMessageArgs
 }
 
 func (e *NewAPIError) Error() string {
@@ -293,6 +304,15 @@ func (e *NewAPIError) ToClaudeError() ClaudeError {
 }
 
 type NewAPIErrorOptions func(*NewAPIError)
+
+func ErrOptionWithClientMessage(key string, args ...map[string]any) NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.clientMessageKey = key
+		if len(args) > 0 {
+			e.clientMessageArgs = args[0]
+		}
+	}
+}
 
 func NewError(err error, errorCode ErrorCode, ops ...NewAPIErrorOptions) *NewAPIError {
 	var newErr *NewAPIError
