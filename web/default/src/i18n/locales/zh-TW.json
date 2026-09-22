@@ -1,6 +1,7 @@
 {
   "translation": {
     "Your account will be closed and access revoked. Billing and usage records will be retained.": "帳戶將被註銷，登入和 API 存取權限將被撤銷。帳單及使用記錄會保留。",
+    "Type delete to confirm account deletion.": "輸入 delete 以確認刪除帳號。",
     "Close your account and revoke access": "註銷帳戶並撤銷存取權限",
     "Retry Decision": "重試決定",
     "Retry allowed": "允許重試",

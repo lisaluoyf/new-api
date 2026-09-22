@@ -147,7 +147,6 @@ export function ProfileSecurityCard({
         onOpenChange={(open) =>
           open ? dialogs.open('delete') : dialogs.close('delete')
         }
-        username={profile.username}
       />
     </>
   )

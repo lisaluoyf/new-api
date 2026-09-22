@@ -43,23 +43,22 @@ import { deleteUserAccount } from '../../api'
 interface DeleteAccountDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  username: string
 }
 
 export function DeleteAccountDialog({
   open,
   onOpenChange,
-  username,
 }: DeleteAccountDialogProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { reset } = useAuthStore((state) => state.auth)
   const [loading, setLoading] = useState(false)
   const [confirmation, setConfirmation] = useState('')
+  const confirmationMatches = confirmation.trim().toLowerCase() === 'delete'
 
   const handleDelete = async () => {
-    if (confirmation !== username) {
-      toast.error(t('Username confirmation does not match'))
+    if (!confirmationMatches) {
+      toast.error(t('Type delete to confirm account deletion.'))
       return
     }
 
@@ -124,7 +123,7 @@ export function DeleteAccountDialog({
 
           <div className='space-y-2'>
             <Label htmlFor='confirmation'>
-              {t('Type')} <strong>{username}</strong> {t('to confirm')}
+              {t('Type delete to confirm account deletion.')}
             </Label>
             <Input
               id='confirmation'
@@ -132,7 +131,7 @@ export function DeleteAccountDialog({
               value={confirmation}
               onChange={(e) => setConfirmation(e.target.value)}
               disabled={loading}
-              placeholder={username}
+              placeholder='delete'
               autoComplete='off'
             />
           </div>
@@ -151,7 +150,7 @@ export function DeleteAccountDialog({
             type='button'
             variant='destructive'
             onClick={handleDelete}
-            disabled={loading || confirmation !== username}
+            disabled={loading || !confirmationMatches}
           >
             {loading && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
             {loading ? t('Deleting...') : t('Delete Account')}

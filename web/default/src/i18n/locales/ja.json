@@ -1,6 +1,7 @@
 {
   "translation": {
     "Your account will be closed and access revoked. Billing and usage records will be retained.": "アカウントは閉鎖され、アクセス権が取り消されます。請求と利用の記録は保持されます。",
+    "Type delete to confirm account deletion.": "アカウント削除を確認するには delete と入力してください。",
     "Close your account and revoke access": "アカウントを閉鎖し、アクセス権を取り消す",
     "Retry Decision": "再試行の判定",
     "Retry allowed": "再試行を許可",

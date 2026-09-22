@@ -1,6 +1,7 @@
 {
   "translation": {
     "Your account will be closed and access revoked. Billing and usage records will be retained.": "Tài khoản của bạn sẽ bị đóng và quyền truy cập sẽ bị thu hồi. Hồ sơ thanh toán và sử dụng sẽ được giữ lại.",
+    "Type delete to confirm account deletion.": "Nhập delete để xác nhận xóa tài khoản.",
     "Close your account and revoke access": "Đóng tài khoản và thu hồi quyền truy cập",
     "Retry Decision": "Quyết định thử lại",
     "Retry allowed": "Cho phép thử lại",
