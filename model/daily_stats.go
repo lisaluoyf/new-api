@@ -302,12 +302,12 @@ func BuildDailyStatsSummaries(startDay, endDay, updatedAt int64) ([]DailyStatsSu
 
 	var traffic []dailyStatsTrafficRow
 	trafficErr := APIMASTER_PG_DB.Raw(`
-		SELECT TO_CHAR(day, 'YYYY-MM-DD') AS day_key,
-		       COALESCE(SUM(uv), 0)::bigint AS uv,
-		       COALESCE(SUM(pv), 0)::bigint AS pv
-		FROM ga_daily_traffic
-		WHERE day >= ?::date AND day < ?::date
-		GROUP BY day`, startTime, endTime).Scan(&traffic).Error
+			SELECT TO_CHAR(day, 'YYYY-MM-DD') AS day_key,
+			       COALESCE(SUM(uv), 0)::bigint AS uv,
+			       COALESCE(SUM(pv), 0)::bigint AS pv
+			FROM ga_daily_traffic
+			WHERE day >= ? AND day <= ?
+			GROUP BY day`, dailyStatsDayKey(startDay), dailyStatsDayKey(endDay)).Scan(&traffic).Error
 	if trafficErr == nil {
 		for _, row := range traffic {
 			day, err := dayFromKey(row.DayKey)

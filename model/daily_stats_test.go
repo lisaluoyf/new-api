@@ -11,6 +11,7 @@ func TestDailyStatsDayStartUsesBeijingCalendarDay(t *testing.T) {
 	instant := time.Date(2026, 9, 22, 0, 30, 0, 0, time.UTC)
 	want := time.Date(2026, 9, 21, 16, 0, 0, 0, time.UTC).Unix()
 	require.Equal(t, want, dailyStatsDayStart(instant.Unix()))
+	require.Equal(t, "2026-09-22", dailyStatsDayKey(dailyStatsDayStart(instant.Unix())))
 }
 
 func TestDailyStatsPaidAmountMatchesDailyReportRules(t *testing.T) {
