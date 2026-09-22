@@ -132,6 +132,61 @@ func TestModelPriceHelperPerCallUsesExplicitMediaBasePrice(t *testing.T) {
 	require.Equal(t, int(0.142*common.QuotaPerUnit*price.GroupRatioInfo.GroupRatio), price.Quota)
 }
 
+func TestModelPriceHelperPerCallMediaBaseUsesChannelUserPrice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
+
+	common.OptionMapRWMutex.Lock()
+	mapWasNil := common.OptionMap == nil
+	if mapWasNil {
+		common.OptionMap = make(map[string]string)
+	}
+	previous, hadPrevious := common.OptionMap[ratio_setting.VideoModelPricingOption]
+	common.OptionMap[ratio_setting.VideoModelPricingOption] = ratio_setting.DefaultVideoModelPricingJSON()
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if mapWasNil {
+			common.OptionMap = nil
+			return
+		}
+		if hadPrevious {
+			common.OptionMap[ratio_setting.VideoModelPricingOption] = previous
+		} else {
+			delete(common.OptionMap, ratio_setting.VideoModelPricingOption)
+		}
+	})
+
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.Exec(`CREATE TABLE channels (
+		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		apimaster_price_ratio real, model_price_ratios text
+	)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channels
+		(id, recharge_rate, setting, apimaster_price_ratio)
+		VALUES (155, 1, '{"manual_group_ratio":0.2}', 2)`).Error)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	ctx.Set("channel_id", 155)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "MiniMax-H3",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	price, err := ModelPriceHelperPerCall(ctx, info)
+	require.NoError(t, err)
+	// H3 768P base $0.08/s × channel manual group 0.2 × user price ratio 2.
+	require.InDelta(t, 0.032, price.ModelPrice, 1e-9)
+	require.Equal(t, int(0.032*common.QuotaPerUnit*price.GroupRatioInfo.GroupRatio), price.Quota)
+}
+
 func TestImagePriceUsesResolutionBaseAndAllChannelCoefficients(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ratio_setting.InitRatioSettings()

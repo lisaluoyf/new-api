@@ -404,9 +404,17 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 	}
 
 	// An explicit media base price is authoritative for per-second/per-request
-	// task billing. Entries without base_price keep the legacy channel-price path.
+	// task billing. Apply the channel's procurement/group and user-price
+	// coefficients to that base before falling back to the legacy channel-price
+	// path. Without this resolution, media models with a configured base price
+	// bypass apimaster_price_ratio entirely.
 	if mediaBasePrice, ok := ratio_setting.GetVideoModelBasePrice(info.OriginModelName); ok {
 		modelPrice = mediaBasePrice
+		if channelID := c.GetInt("channel_id"); channelID > 0 {
+			if resolved, err := service.ChannelBaseUserPriceResolved(channelID, info.OriginModelName, mediaBasePrice); err == nil && resolved > 0 {
+				modelPrice = resolved
+			}
+		}
 		usePrice = true
 	} else if channelID := c.GetInt("channel_id"); channelID > 0 {
 		// Prefer channel user price (input × recharge × apimaster) for per-unit tasks like video/image.
