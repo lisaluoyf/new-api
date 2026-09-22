@@ -156,9 +156,10 @@ func authHelper(c *gin.Context, minRole int) {
 func TryUserAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
-		id := session.Get("id")
-		if id != nil {
-			c.Set("id", id)
+		if id, ok := session.Get("id").(int); ok {
+			if user, err := model.GetUserById(id, false); err == nil && user.Status == common.UserStatusEnabled {
+				c.Set("id", id)
+			}
 		}
 		c.Next()
 	}
@@ -193,11 +194,8 @@ func TokenOrUserAuth() func(c *gin.Context) {
 		// Try session auth first (dashboard users)
 		session := sessions.Default(c)
 		if id := session.Get("id"); id != nil {
-			if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
-				c.Set("id", id)
-				c.Next()
-				return
-			}
+			authHelper(c, common.RoleCommonUser)
+			return
 		}
 		// Fall back to token auth (API clients)
 		TokenAuth()(c)
