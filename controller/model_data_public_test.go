@@ -42,7 +42,7 @@ func TestPublicMarketplaceItemDoesNotExposeInternalChannelData(t *testing.T) {
 }
 
 func TestBuildVideoMediaPricingViewUsesEightSeedanceTiers(t *testing.T) {
-	view := buildVideoMediaPricingView("seedance-2.0", 0.8)
+	view := buildVideoMediaPricingView("seedance-2.0", 1, 0.8, 1)
 	if view == nil {
 		t.Fatal("expected Seedance media pricing")
 	}
@@ -55,7 +55,20 @@ func TestBuildVideoMediaPricingViewUsesEightSeedanceTiers(t *testing.T) {
 	if got := view.ProcurementPrices["720P"]; math.Abs(got-0.142*0.8) > 1e-9 {
 		t.Fatalf("procurement 720P=%v", got)
 	}
-	if got := view.BillingPrices["720P-input"]; got != 0.08584 {
+	if got := view.BillingPrices["720P-input"]; got != 0.068672 {
 		t.Fatalf("billing 720P-input=%v", got)
+	}
+}
+
+func TestBuildVideoMediaPricingViewAppliesChannelCoefficients(t *testing.T) {
+	view := buildVideoMediaPricingView("minimax-h3", 0.2, 1, 2)
+	if view == nil {
+		t.Fatal("expected MiniMax-H3 media pricing")
+	}
+	if got := view.ProcurementPrices["768P"]; math.Abs(got-0.016) > 1e-9 {
+		t.Fatalf("procurement 768P=%v", got)
+	}
+	if got := view.BillingPrices["768P"]; math.Abs(got-0.032) > 1e-9 {
+		t.Fatalf("billing 768P=%v", got)
 	}
 }

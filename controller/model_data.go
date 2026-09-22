@@ -635,17 +635,17 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		if r.PricingSource != nil {
 			pricingSource = *r.PricingSource
 		}
-		imageGroupRatio := 1.0
+		mediaGroupRatio := 1.0
 		if manualGroupRatio := service.EffectiveManualGroupRatio(r.Setting, modelName); manualGroupRatio > 0 {
-			imageGroupRatio = manualGroupRatio
+			mediaGroupRatio = manualGroupRatio
 		} else if r.GroupRatio != nil && *r.GroupRatio > 0 {
-			imageGroupRatio = *r.GroupRatio
+			mediaGroupRatio = *r.GroupRatio
 		}
-		mediaPricing := buildImagePricingView(modelName, imageGroupRatio, rechargeRate, apimasterRatio)
+		mediaPricing := buildImagePricingView(modelName, mediaGroupRatio, rechargeRate, apimasterRatio)
 		filterImagePricingViewForChannel(mediaPricing, modelName, &model.Channel{Id: r.ChannelID, OtherSettings: r.OtherSettings})
 		isImagePricing := mediaPricing != nil
 		if mediaPricing == nil {
-			mediaPricing = buildVideoMediaPricingView(modelName, rechargeRate)
+			mediaPricing = buildVideoMediaPricingView(modelName, mediaGroupRatio, rechargeRate, apimasterRatio)
 		}
 		if mediaPricing != nil {
 			baseVariant := mediaPricing.BaseVariant
@@ -653,19 +653,34 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			officialBase := mediaPricing.OfficialPrices[baseVariant]
 			procurementBase := mediaPricing.ProcurementPrices[baseVariant]
 			if isImagePricing && officialBase > 0 {
-				groupedBase := officialBase * imageGroupRatio
+				groupedBase := officialBase * mediaGroupRatio
 				modelPricePtr, inputPricePtr = &officialBase, &groupedBase
 				if billingBase > 0 {
 					userPricePtr = &billingBase
 				}
-				groupRatioPtr = &imageGroupRatio
+				groupRatioPtr = &mediaGroupRatio
 			} else if billingBase > 0 {
-				modelPricePtr, inputPricePtr, userPricePtr = &billingBase, &billingBase, &billingBase
-				one := 1.0
-				groupRatioPtr = &one
+				// Video prices use the system media price as the base. The
+				// effective channel procurement/user prices are represented by
+				// the media view, while GroupRatio keeps the manual channel
+				// multiplier visible to operators.
+				basePrice := billingBase
+				coefficient := mediaGroupRatio * rechargeRate * apimasterRatio
+				if coefficient > 0 {
+					basePrice /= coefficient
+				}
+				modelPricePtr, inputPricePtr, userPricePtr = &basePrice, &procurementBase, &billingBase
+				groupRatioPtr = &mediaGroupRatio
 			}
 			if officialBase > 0 {
 				officialInPtr = &officialBase
+			} else if billingBase > 0 {
+				basePrice := billingBase
+				coefficient := mediaGroupRatio * rechargeRate * apimasterRatio
+				if coefficient > 0 {
+					basePrice /= coefficient
+				}
+				officialInPtr = &basePrice
 			}
 			if procurementBase > 0 {
 				actualPricePtr = &procurementBase
@@ -800,13 +815,19 @@ func modelDataExtractKeyGroup(setting *string) string {
 	return service.ExtractKeyGroup(setting)
 }
 
-func buildVideoMediaPricingView(modelName string, rechargeRate float64) *VideoMediaPricingView {
+func buildVideoMediaPricingView(modelName string, groupRatio, rechargeRate, apimasterRatio float64) *VideoMediaPricingView {
 	pricing, ok := service.GlobalVideoMediaPricingUSD(modelName)
 	if !ok || pricing.BasePrice <= 0 || len(pricing.Prices) == 0 {
 		return nil
 	}
+	if groupRatio <= 0 {
+		groupRatio = 1
+	}
 	if rechargeRate <= 0 {
 		rechargeRate = 1
+	}
+	if apimasterRatio <= 0 {
+		apimasterRatio = 1
 	}
 	procurement := make(map[string]float64, len(pricing.Prices))
 	billing := make(map[string]float64, len(pricing.Prices))
@@ -814,8 +835,8 @@ func buildVideoMediaPricingView(modelName string, rechargeRate float64) *VideoMe
 		if price <= 0 {
 			continue
 		}
-		billing[variant] = price
-		procurement[variant] = price * rechargeRate
+		procurement[variant] = price * groupRatio * rechargeRate
+		billing[variant] = procurement[variant] * apimasterRatio
 	}
 	baseVariant := strings.TrimSpace(pricing.BaseVariant)
 	if baseVariant == "" {
@@ -1264,16 +1285,16 @@ func publicMarketplacePriceItem(modelName string, row publicMarketplacePricingRo
 		userPrice, outputUserPrice = &input, &output
 	}
 
-	imageGroupRatio := 1.0
+	mediaGroupRatio := 1.0
 	if manual := service.EffectiveManualGroupRatio(row.Setting, modelName); manual > 0 {
-		imageGroupRatio = manual
+		mediaGroupRatio = manual
 	} else if row.GroupRatio != nil && *row.GroupRatio > 0 {
-		imageGroupRatio = *row.GroupRatio
+		mediaGroupRatio = *row.GroupRatio
 	}
-	mediaPricing := buildImagePricingView(modelName, imageGroupRatio, rechargeRate, apimasterRatio)
+	mediaPricing := buildImagePricingView(modelName, mediaGroupRatio, rechargeRate, apimasterRatio)
 	filterImagePricingViewForChannel(mediaPricing, modelName, &model.Channel{Id: row.ChannelID, OtherSettings: row.OtherSettings})
 	if mediaPricing == nil {
-		mediaPricing = buildVideoMediaPricingView(modelName, rechargeRate)
+		mediaPricing = buildVideoMediaPricingView(modelName, mediaGroupRatio, rechargeRate, apimasterRatio)
 	}
 	var publicMediaPricing *PublicVideoMediaPricingView
 	if mediaPricing != nil {
