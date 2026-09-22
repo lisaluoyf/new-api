@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Your account will be closed and access revoked. Billing and usage records will be retained.": "Akun Anda akan ditutup dan akses dicabut. Catatan tagihan dan penggunaan akan disimpan.",
+    "Close your account and revoke access": "Tutup akun dan cabut akses",
     "Retry Decision": "Keputusan percobaan ulang",
     "Retry allowed": "Percobaan ulang diizinkan",
     "Retry stopped": "Percobaan ulang dihentikan",

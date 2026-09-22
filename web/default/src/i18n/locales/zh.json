@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Your account will be closed and access revoked. Billing and usage records will be retained.": "账户将被注销，登录和 API 访问权限将被撤销。账单及使用记录会保留。",
+    "Close your account and revoke access": "注销账户并撤销访问权限",
     "Retry Decision": "重试决定",
     "Retry allowed": "允许重试",
     "Retry stopped": "停止重试",

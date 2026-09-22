@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Your account will be closed and access revoked. Billing and usage records will be retained.": "계정이 폐쇄되고 접근 권한이 취소됩니다. 청구 및 사용 기록은 보관됩니다.",
+    "Close your account and revoke access": "계정 폐쇄 및 접근 권한 취소",
     "Retry Decision": "재시도 결정",
     "Retry allowed": "재시도 허용",
     "Retry stopped": "재시도 중지",

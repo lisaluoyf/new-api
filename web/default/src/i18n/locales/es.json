@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Your account will be closed and access revoked. Billing and usage records will be retained.": "Se cerrará tu cuenta y se revocará el acceso. Se conservarán los registros de facturación y uso.",
+    "Close your account and revoke access": "Cerrar tu cuenta y revocar el acceso",
     "Retry Decision": "Decisión de reintento",
     "Retry allowed": "Reintento permitido",
     "Retry stopped": "Reintento detenido",

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -51,6 +52,7 @@ export function DeleteAccountDialog({
   username,
 }: DeleteAccountDialogProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { reset } = useAuthStore((state) => state.auth)
   const [loading, setLoading] = useState(false)
   const [confirmation, setConfirmation] = useState('')
@@ -107,7 +109,7 @@ export function DeleteAccountDialog({
           </DialogTitle>
           <DialogDescription>
             {t(
-              'This action cannot be undone. Your account identity and access credentials will be permanently deleted. Billing and usage records may be retained where required.'
+              'Your account will be closed and access revoked. Billing and usage records will be retained.'
             )}
           </DialogDescription>
         </DialogHeader>

@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Your account will be closed and access revoked. Billing and usage records will be retained.": "Your account will be closed and access revoked. Billing and usage records will be retained.",
+    "Close your account and revoke access": "Close your account and revoke access",
     "Retry Decision": "Retry Decision",
     "Retry allowed": "Retry allowed",
     "Retry stopped": "Retry stopped",

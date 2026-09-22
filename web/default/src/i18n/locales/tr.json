@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Your account will be closed and access revoked. Billing and usage records will be retained.": "Hesabınız kapatılacak ve erişiminiz iptal edilecektir. Faturalandırma ve kullanım kayıtları saklanacaktır.",
+    "Close your account and revoke access": "Hesabınızı kapatın ve erişimi iptal edin",
     "Retry Decision": "Yeniden deneme kararı",
     "Retry allowed": "Yeniden denemeye izin verildi",
     "Retry stopped": "Yeniden deneme durduruldu",
