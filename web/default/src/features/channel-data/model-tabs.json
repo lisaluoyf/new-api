@@ -78,6 +78,16 @@
     "accent": "#f97316"
   },
   { "model_id": "mimo-v2.5", "label": "MiMo v2.5", "accent": "#fb923c" },
+  {
+    "model_id": "mimo-v2.6-pro",
+    "label": "MiMo v2.6 Pro",
+    "accent": "#f97316"
+  },
+  {
+    "model_id": "mimo-v2.6-flash",
+    "label": "MiMo v2.6 Flash",
+    "accent": "#fb923c"
+  },
   { "model_id": "qwen3.7-max", "label": "Qwen 3.7 Max", "accent": "#06b6d4" },
   { "model_id": "qwen3.8-max", "label": "Qwen 3.8 Max", "accent": "#06b6d4" },
   {
