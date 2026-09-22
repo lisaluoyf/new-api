@@ -66,6 +66,11 @@
     "label": "Kimi K2.7 Code",
     "accent": "#818cf8"
   },
+  {
+    "model_id": "kimi-k2.8-preview",
+    "label": "Kimi K2.8 Preview",
+    "accent": "#818cf8"
+  },
   { "model_id": "kimi-k3", "label": "Kimi K3", "accent": "#818cf8" },
   {
     "model_id": "mimo-v2.5-pro",
