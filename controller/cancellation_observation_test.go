@@ -16,17 +16,21 @@ import (
 
 func TestCancellationObservationRootOnlyReadAPI(t *testing.T) {
 	db := setupModelDataToggleTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.User{}))
+	user := model.User{Username: "test", Status: common.UserStatusEnabled, Role: common.RoleCommonUser, AffCode: "test-auth"}
+	require.NoError(t, db.Create(&user).Error)
 	require.NoError(t, db.AutoMigrate(&model.CancellationObservation{}))
 	require.NoError(t, model.CreateCancellationObservation(&model.CancellationObservation{
 		RequestId: "private-cancel", UserId: 123, TokenId: 456, ChannelId: 97, ModelName: "glm-5.3-flash",
 	}))
 	for _, role := range []int{common.RoleCommonUser, common.RoleAdminUser, common.RoleRootUser} {
+		require.NoError(t, db.Model(&user).Update("role", role).Error)
 		r := gin.New()
 		r.Use(sessions.Sessions("test", cookie.NewStore([]byte("test-cancellation-observation-key"))))
 		r.Use(func(c *gin.Context) {
 			s := sessions.Default(c)
 			s.Set("username", "test")
-			s.Set("id", 1)
+			s.Set("id", user.Id)
 			s.Set("role", role)
 			s.Set("status", common.UserStatusEnabled)
 			c.Next()

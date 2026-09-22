@@ -22,7 +22,6 @@ import { AlertTriangle, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
-import { api } from '@/lib/api'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -71,15 +70,13 @@ export function DeleteAccountDialog({
       if (response.success) {
         toast.success(t('Account deleted successfully'))
 
-        // Logout and redirect
-        try {
-          await api.get('/api/user/logout')
-        } catch {
-          // Ignore logout errors
-        }
-
         reset()
         localStorage.removeItem('user')
+        if (window.parent !== window) {
+          // Leave the console shell instead of triggering its session repair.
+          window.parent.location.assign('/login')
+          return
+        }
         navigate({ to: '/sign-in' })
       } else {
         toast.error(response.message || t('Failed to delete account'))

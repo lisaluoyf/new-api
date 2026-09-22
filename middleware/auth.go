@@ -92,6 +92,22 @@ func authHelper(c *gin.Context, minRole int) {
 			return
 		}
 	}
+	// Cookie sessions contain a snapshot of status. Recheck the database so
+	// deletion/disablement invalidates sessions on every browser immediately.
+	if !useAccessToken {
+		userID, ok := id.(int)
+		if !ok {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		current, err := model.GetUserById(userID, false)
+		if err != nil || current.Status != common.UserStatusEnabled {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn)})
+			return
+		}
+		status = current.Status
+		role = current.Role
+	}
 	// New-Api-User header is advisory only. For browser-originated requests it
 	// may be absent or stale (localStorage), so the session/token user id (set
 	// above) stays authoritative — we don't reject on a missing/mismatched

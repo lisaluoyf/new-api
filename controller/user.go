@@ -122,17 +122,6 @@ func InternalLogin(c *gin.Context) {
 		Password: loginRequest.Password,
 	}
 	if err := user.ValidateAndFill(); err != nil {
-		restored, restoreErr := user.ValidateDeletedMirrorAndRestore()
-		if restoreErr != nil {
-			common.SysLog(fmt.Sprintf("Internal login restore error for user %s: %v", loginRequest.Username, restoreErr))
-			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-			return
-		}
-		if restored {
-			common.SysLog(fmt.Sprintf("Restored deleted APIMaster mirror account %s during internal login", loginRequest.Username))
-			setupLogin(&user, c)
-			return
-		}
 		switch {
 		case errors.Is(err, model.ErrDatabase):
 			common.SysLog(fmt.Sprintf("Internal login database error for user %s: %v", loginRequest.Username, err))
@@ -1273,17 +1262,30 @@ func DeleteUser(c *gin.Context) {
 
 func DeleteSelf(c *gin.Context) {
 	id := c.GetInt("id")
-	user, _ := model.GetUserById(id, false)
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	if user.Role == common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotDeleteRootUser)
 		return
 	}
 
-	err := model.DeleteUserById(id)
+	err = model.DeleteSelfAccount(user)
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	// Clear both identity and console cookies before the iframe can renew them.
+	session := sessions.Default(c)
+	session.Clear()
+	if err := session.Save(); err != nil {
+		common.SysLog("DeleteSelf session cleanup: " + err.Error())
+	}
+	for _, name := range []string{"session", "apimaster_session", "apimaster_newapi_user"} {
+		c.SetCookie(name, "", -1, "/", "", c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https", true)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
