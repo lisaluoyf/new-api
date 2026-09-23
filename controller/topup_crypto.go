@@ -51,6 +51,9 @@ const (
 	cryptoIntentPurposeWalletTopup     = "wallet_topup"
 	cryptoIntentPurposeGPTSubscription = "gpt_subscription"
 	cryptoIntentPurposeCodingPlan      = "coding_plan"
+	cryptoUnsignedIntentWindow         = 30 * time.Minute
+	cryptoSignedTransferWindow         = 10 * time.Minute
+	cryptoHashVerificationWindow       = 30 * time.Minute
 )
 
 var cryptoChains = map[string]cryptoChainConfig{
@@ -479,12 +482,15 @@ func fetchCoinPrice(ctx context.Context, coingeckoID string) (float64, error) {
 
 func buildCryptoIntentChallenge(intent *model.CryptoDepositIntent) string {
 	return fmt.Sprintf(
-		"APIMaster Crypto Deposit Authorization\nIntent ID: %s\nPurpose: %s\nExpected USD: %.6f\nChain: %s\nToken: %s\nWallet: %s\nRecipient: %s\nExpires At: %d",
+		"APIMaster Crypto Deposit Authorization\nDomain: apimaster.ai\nIntent ID: %s\nOrder ID: %s\nPurpose: %s\nExpected USD: %.6f\nChain: %s\nToken: %s\nToken Contract or Mint: %s\nExact Base Units: %s\nWallet: %s\nRecipient: %s\nExpires At: %d",
 		intent.Id,
+		intent.TopUpTradeNo,
 		intent.Purpose,
 		intent.ExpectedUsdAmount,
 		strings.ToUpper(intent.Chain),
 		intent.TokenSymbol,
+		intent.TokenAddress,
+		intent.ExpectedBaseUnits,
 		intent.WalletAddressFrom,
 		intent.ExpectedToAddress,
 		intent.ExpiresAt,
@@ -562,9 +568,10 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 	)
 
 	for i, candidate := range rpcURLs {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-		currentReceipt, err := waitForReceipt(ctx, candidate, *intent.TxHash)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		receiptResult, err := ethCall(ctx, candidate, "eth_getTransactionReceipt", []interface{}{*intent.TxHash})
 		cancel()
+		currentReceipt, _ := receiptResult.(map[string]interface{})
 		if err != nil || currentReceipt == nil {
 			lastErr = err
 			common.SysLog(fmt.Sprintf("crypto: receipt error txHash=%s rpc=%s err=%v", *intent.TxHash, candidate, err))
@@ -607,6 +614,17 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 	if statusHex != "0x1" {
 		return 0, fmt.Errorf("transaction failed on-chain")
 	}
+	receiptBlock, ok := hexToInt64(stringValue(receipt["blockNumber"]))
+	if !ok {
+		return 0, retryableCryptoError("transaction block unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	latestResult, latestErr := ethCall(ctx, rpcURL, "eth_blockNumber", nil)
+	cancel()
+	latestBlock, latestOK := hexToInt64(stringValue(latestResult))
+	if latestErr != nil || !latestOK || latestBlock-receiptBlock < cryptoEVMConfirmations {
+		return 0, retryableCryptoError("transaction confirmations are not sufficient")
+	}
 
 	fromField, _ := txMap["from"].(string)
 	if strings.ToLower(strings.TrimSpace(fromField)) != intent.WalletAddressFrom {
@@ -626,6 +644,9 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 		weiAmount, ok := hexToDecimal(valueField)
 		if !ok || weiAmount.Sign() <= 0 {
 			return 0, fmt.Errorf("invalid transfer value")
+		}
+		if err := verifyExpectedBaseUnits(intent, weiAmount); err != nil {
+			return 0, err
 		}
 		nativeAmt := decimal.NewFromBigInt(weiAmount, int32(-cfg.nativeDecimals))
 		return cryptoAssetUSD(intent, cfg, nativeAmt)
@@ -667,6 +688,9 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 		amountBig, ok := hexToDecimal(data)
 		if !ok {
 			continue
+		}
+		if err := verifyExpectedBaseUnits(intent, amountBig); err != nil {
+			return 0, err
 		}
 		decimals := getTokenDecimals(cfg, intent.TokenSymbol)
 		if decimals <= 0 {
@@ -729,6 +753,20 @@ func cryptoAssetUSD(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, am
 	}
 	value, _ := amount.Float64()
 	return value * price, nil
+}
+
+func verifyExpectedBaseUnits(intent *model.CryptoDepositIntent, actual *big.Int) error {
+	if intent == nil || actual == nil || actual.Sign() <= 0 {
+		return fmt.Errorf("invalid transfer amount")
+	}
+	if strings.TrimSpace(intent.ExpectedBaseUnits) == "" {
+		return nil
+	}
+	expected, ok := new(big.Int).SetString(intent.ExpectedBaseUnits, 10)
+	if !ok || expected.Sign() <= 0 || expected.Cmp(actual) != 0 {
+		return retryableCryptoError("transfer amount mismatch")
+	}
+	return nil
 }
 
 func verifyTronIntent(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, rpcURLs []string) (float64, error) {
@@ -803,6 +841,9 @@ func verifyTronIntent(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, 
 		if contract.Parameter.Value.Amount <= 0 {
 			return 0, fmt.Errorf("invalid transfer value")
 		}
+		if err := verifyExpectedBaseUnits(intent, big.NewInt(contract.Parameter.Value.Amount)); err != nil {
+			return 0, err
+		}
 		return cryptoAssetUSD(intent, cfg, decimal.NewFromInt(contract.Parameter.Value.Amount).Shift(-6))
 	}
 
@@ -821,6 +862,9 @@ func verifyTronIntent(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, 
 	amount, ok := new(big.Int).SetString(data[72:136], 16)
 	if !ok || amount.Sign() <= 0 {
 		return 0, fmt.Errorf("invalid transfer value")
+	}
+	if err := verifyExpectedBaseUnits(intent, amount); err != nil {
+		return 0, err
 	}
 	return cryptoAssetUSD(intent, cfg, decimal.NewFromBigInt(amount, -6))
 }
@@ -890,7 +934,11 @@ func verifySolanaIntent(intent *model.CryptoDepositIntent, cfg cryptoChainConfig
 			if !ok || lamports <= 0 {
 				continue
 			}
-			return cryptoAssetUSD(intent, cfg, decimal.NewFromFloat(lamports).Shift(-9))
+			lamportAmount := new(big.Int).SetUint64(uint64(lamports))
+			if err := verifyExpectedBaseUnits(intent, lamportAmount); err != nil {
+				continue
+			}
+			return cryptoAssetUSD(intent, cfg, decimal.NewFromBigInt(lamportAmount, -9))
 		}
 		return 0, fmt.Errorf("matching SOL transfer not found")
 	}
@@ -942,6 +990,9 @@ func verifySolanaIntent(intent *model.CryptoDepositIntent, cfg cryptoChainConfig
 	if received.Sign() <= 0 || sent.Cmp(received) < 0 {
 		return 0, fmt.Errorf("matching SPL token transfer not found")
 	}
+	if err := verifyExpectedBaseUnits(intent, received); err != nil {
+		return 0, err
+	}
 	return cryptoAssetUSD(intent, cfg, decimal.NewFromBigInt(received, -6))
 }
 
@@ -950,25 +1001,37 @@ func markCryptoIntentFailed(intentId string, err error) {
 	if err != nil {
 		message = err.Error()
 	}
-	updates := map[string]interface{}{
-		"status":        model.CryptoDepositIntentStatusFailed,
-		"error_message": message,
-	}
-	result := model.DB.Model(&model.CryptoDepositIntent{}).
-		Where("id = ? AND status = ?", intentId, model.CryptoDepositIntentStatusPending).
-		Updates(updates)
-	if result.Error != nil {
-		updateErr := result.Error
-		common.SysLog(fmt.Sprintf("crypto: mark failed intent=%s err=%v", intentId, updateErr))
-		return
-	}
-	if result.RowsAffected == 0 {
-		return
-	}
-
 	var intent model.CryptoDepositIntent
-	if loadErr := model.DB.Where("id = ?", intentId).First(&intent).Error; loadErr != nil {
-		common.SysLog(fmt.Sprintf("crypto: reload failed intent=%s err=%v", intentId, loadErr))
+	transitioned := false
+	transactionErr := model.DB.Transaction(func(tx *gorm.DB) error {
+		if loadErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", intentId).First(&intent).Error; loadErr != nil {
+			return loadErr
+		}
+		if intent.Status != model.CryptoDepositIntentStatusPending {
+			return nil
+		}
+		if updateErr := tx.Model(&intent).Updates(map[string]interface{}{
+			"status":        model.CryptoDepositIntentStatusFailed,
+			"error_message": message,
+			"next_check_at": 0,
+		}).Error; updateErr != nil {
+			return updateErr
+		}
+		if intent.Purpose == cryptoIntentPurposeWalletTopup && intent.TopUpTradeNo != "" {
+			if updateErr := tx.Model(&model.TopUp{}).
+				Where("trade_no = ? AND payment_provider = ? AND status = ?", intent.TopUpTradeNo, model.PaymentProviderCrypto, common.TopUpStatusPending).
+				Update("status", common.TopUpStatusFailed).Error; updateErr != nil {
+				return updateErr
+			}
+		}
+		transitioned = true
+		return nil
+	})
+	if transactionErr != nil {
+		common.SysLog(fmt.Sprintf("crypto: mark failed intent=%s err=%v", intentId, transactionErr))
+		return
+	}
+	if !transitioned {
 		return
 	}
 	if (intent.Purpose == cryptoIntentPurposeGPTSubscription || intent.Purpose == cryptoIntentPurposeCodingPlan) && strings.TrimSpace(intent.SubscriptionOrderTradeNo) != "" {
@@ -1049,6 +1112,80 @@ func applyCryptoFirstTopupPromo(usdValue float64) (float64, float64, bool) {
 	return usdValue + bonus, bonus, true
 }
 
+func settleCryptoWalletTopup(intent *model.CryptoDepositIntent, usdValue, creditUsd float64, quotaToAdd int, tradeNo string, now int64) (bool, error) {
+	if intent == nil || intent.TxHash == nil {
+		return false, fmt.Errorf("crypto transaction hash missing")
+	}
+	credited := false
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var current model.CryptoDepositIntent
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", intent.Id).First(&current).Error; err != nil {
+			return err
+		}
+		if current.Status == model.CryptoDepositIntentStatusConfirmed {
+			return nil
+		}
+		if current.Status != model.CryptoDepositIntentStatusPending {
+			return fmt.Errorf("intent status is %s", current.Status)
+		}
+		if current.TxHash == nil || *current.TxHash != *intent.TxHash {
+			return fmt.Errorf("intent transaction hash mismatch")
+		}
+
+		var topUp model.TopUp
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("trade_no = ?", tradeNo).First(&topUp).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) && current.TopUpTradeNo == "" {
+			topUp = model.TopUp{
+				UserId: current.UserId, TradeNo: tradeNo, CreateTime: now,
+				PaymentMethod: model.PaymentMethodCrypto, PaymentProvider: model.PaymentProviderCrypto,
+				Status: common.TopUpStatusPending,
+			}
+			if err := tx.Create(&topUp).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+		if topUp.UserId != current.UserId || topUp.PaymentProvider != model.PaymentProviderCrypto {
+			return fmt.Errorf("crypto topup order ownership mismatch")
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			return tx.Model(&current).Updates(map[string]interface{}{
+				"status": model.CryptoDepositIntentStatusConfirmed, "usd_added": creditUsd,
+				"confirmed_at": now, "error_message": "", "next_check_at": 0,
+			}).Error
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return fmt.Errorf("crypto topup order status is %s", topUp.Status)
+		}
+		topUp.Amount = int64(math.Round(creditUsd))
+		topUp.CreditedAmount = creditUsd
+		topUp.PaidAmountUSD = usdValue
+		topUp.PaidAmountUSDSource = "settlement"
+		topUp.Money = usdValue
+		topUp.CompleteTime = now
+		topUp.Status = common.TopUpStatusSuccess
+		if err := tx.Save(&topUp).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.User{}).Where("id = ?", current.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&current).Updates(map[string]interface{}{
+			"status":        model.CryptoDepositIntentStatusConfirmed,
+			"usd_added":     creditUsd,
+			"confirmed_at":  now,
+			"error_message": "",
+			"next_check_at": 0,
+		}).Error; err != nil {
+			return err
+		}
+		credited = true
+		return nil
+	})
+	return credited, err
+}
+
 func verifyAndCredit(intentId string) {
 	var intent model.CryptoDepositIntent
 	if err := model.DB.Where("id = ?", intentId).First(&intent).Error; err != nil {
@@ -1058,6 +1195,14 @@ func verifyAndCredit(intentId string) {
 	if intent.Status != model.CryptoDepositIntentStatusPending || intent.TxHash == nil {
 		return
 	}
+	now := common.GetTimestamp()
+	model.DB.Model(&model.CryptoDepositIntent{}).
+		Where("id = ? AND status = ?", intent.Id, model.CryptoDepositIntentStatusPending).
+		Updates(map[string]interface{}{
+			"last_checked_at": now,
+			"next_check_at":   now + cryptoVerificationRetrySeconds,
+			"retry_count":     gorm.Expr("retry_count + ?", 1),
+		})
 
 	cfg, ok := cryptoChains[intent.Chain]
 	if !ok {
@@ -1079,6 +1224,9 @@ func verifyAndCredit(intentId string) {
 		common.SysLog(fmt.Sprintf("crypto: verify failed intent=%s txHash=%s err=%v", intent.Id, *intent.TxHash, err))
 		var retryable *cryptoRetryableError
 		if errors.As(err, &retryable) {
+			model.DB.Model(&model.CryptoDepositIntent{}).
+				Where("id = ? AND status = ?", intent.Id, model.CryptoDepositIntentStatusPending).
+				Update("next_check_at", common.GetTimestamp()+5*60)
 			return
 		}
 		markCryptoIntentFailed(intentId, err)
@@ -1156,73 +1304,21 @@ func verifyAndCredit(intentId string) {
 		}
 	}
 	quotaToAdd := int(decimal.NewFromFloat(creditUsd).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
-	tradeNo := fmt.Sprintf("CRYPTO:%s:%s", strings.ToUpper(intent.Chain), *intent.TxHash)
-	now := common.GetTimestamp()
+	tradeNo := intent.TopUpTradeNo
+	if tradeNo == "" {
+		tradeNo = fmt.Sprintf("CRYPTO:%s:%s", strings.ToUpper(intent.Chain), *intent.TxHash)
+	}
+	now = common.GetTimestamp()
 
-	createdNewTopup := false
-	err = model.DB.Transaction(func(tx *gorm.DB) error {
-		var current model.CryptoDepositIntent
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", intentId).First(&current).Error; err != nil {
-			return err
-		}
-		if current.Status == model.CryptoDepositIntentStatusConfirmed {
-			return nil
-		}
-		if current.Status != model.CryptoDepositIntentStatusPending {
-			return fmt.Errorf("intent status is %s", current.Status)
-		}
-		if current.TxHash == nil || *current.TxHash != *intent.TxHash {
-			return fmt.Errorf("intent transaction hash mismatch")
-		}
-
-		var existingTopup model.TopUp
-		err := tx.Where("trade_no = ?", tradeNo).First(&existingTopup).Error
-		if err == nil {
-			return tx.Model(&current).Updates(map[string]interface{}{
-				"status":        model.CryptoDepositIntentStatusConfirmed,
-				"usd_added":     creditUsd,
-				"confirmed_at":  now,
-				"error_message": "",
-			}).Error
-		}
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-
-		topUp := &model.TopUp{
-			UserId:              current.UserId,
-			Amount:              int64(math.Round(creditUsd)),
-			CreditedAmount:      creditUsd,
-			PaidAmountUSD:       usdValue,
-			PaidAmountUSDSource: "settlement",
-			Money:               usdValue,
-			TradeNo:             tradeNo,
-			PaymentMethod:       "crypto",
-			PaymentProvider:     "crypto",
-			CreateTime:          now,
-			CompleteTime:        now,
-			Status:              common.TopUpStatusSuccess,
-		}
-		if err := tx.Create(topUp).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&model.User{}).Where("id = ?", current.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&current).Updates(map[string]interface{}{
-			"status":        model.CryptoDepositIntentStatusConfirmed,
-			"usd_added":     creditUsd,
-			"confirmed_at":  now,
-			"error_message": "",
-		}).Error; err != nil {
-			return err
-		}
-		createdNewTopup = true
-		return nil
-	})
+	createdNewTopup, err := settleCryptoWalletTopup(&intent, usdValue, creditUsd, quotaToAdd, tradeNo, now)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("crypto: credit failed intent=%s txHash=%s err=%v", intent.Id, *intent.TxHash, err))
-		markCryptoIntentFailed(intentId, err)
+		model.DB.Model(&model.CryptoDepositIntent{}).
+			Where("id = ? AND status = ?", intentId, model.CryptoDepositIntentStatusPending).
+			Updates(map[string]interface{}{
+				"next_check_at": common.GetTimestamp() + 5*60,
+				"error_message": "credit settlement temporarily unavailable",
+			})
 		return
 	}
 
@@ -1238,17 +1334,6 @@ func verifyAndCredit(intentId string) {
 	common.SysLog(fmt.Sprintf("crypto: confirmed userId=%d intent=%s txHash=%s usd=%.4f quota=%d", intent.UserId, intent.Id, *intent.TxHash, usdValue, quotaToAdd))
 }
 
-func scheduleCryptoVerification(intentId string) {
-	for attempt := 0; attempt < 60; attempt++ {
-		verifyAndCredit(intentId)
-		var intent model.CryptoDepositIntent
-		if err := model.DB.Select("status").Where("id = ?", intentId).First(&intent).Error; err != nil || intent.Status != model.CryptoDepositIntentStatusPending {
-			return
-		}
-		time.Sleep(15 * time.Second)
-	}
-}
-
 type createCryptoIntentRequest struct {
 	Chain             string  `json:"chain"`
 	TokenSymbol       string  `json:"token_symbol"`
@@ -1260,7 +1345,36 @@ type createCryptoIntentRequest struct {
 type submitCryptoRequest struct {
 	IntentId        string `json:"intent_id"`
 	TxHash          string `json:"tx_hash"`
+	WalletSignature string `json:"wallet_signature,omitempty"`
+}
+
+type authorizeCryptoIntentRequest struct {
 	WalletSignature string `json:"wallet_signature"`
+}
+
+func cryptoExpectedBaseUnits(intent *model.CryptoDepositIntent, cfg cryptoChainConfig) (string, error) {
+	if intent == nil || intent.ExpectedUsdAmount <= 0 {
+		return "", fmt.Errorf("invalid payment amount")
+	}
+	decimals := cfg.nativeDecimals
+	assetAmount := decimal.Zero
+	if intent.TokenAddress == "" {
+		if intent.AssetUsdPrice <= 0 {
+			return "", fmt.Errorf("invalid native asset quote")
+		}
+		assetAmount = decimal.NewFromFloat(intent.ExpectedUsdAmount).Div(decimal.NewFromFloat(intent.AssetUsdPrice))
+	} else {
+		decimals = getTokenDecimals(cfg, intent.TokenSymbol)
+		if decimals <= 0 {
+			return "", fmt.Errorf("invalid token decimals")
+		}
+		assetAmount = decimal.NewFromFloat(intent.ExpectedUsdAmount)
+	}
+	baseUnits := assetAmount.Shift(int32(decimals)).Ceil().BigInt()
+	if baseUnits == nil || baseUnits.Sign() <= 0 {
+		return "", fmt.Errorf("invalid payment amount")
+	}
+	return baseUnits.String(), nil
 }
 
 func CreateCryptoDepositIntent(c *gin.Context) {
@@ -1317,8 +1431,12 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 	if plan != nil {
 		expectedUsdAmount = terms.Payable
 	}
-	if expectedUsdAmount > 1_000_000 || (expectedUsdAmount <= 0 && cfg.kind != "") {
+	if expectedUsdAmount <= 0 || expectedUsdAmount > 1_000_000 {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid payment amount"})
+		return
+	}
+	if plan == nil && expectedUsdAmount+1e-9 < float64(getWalletMinTopupUSDForUser(userId, operation_setting.MinTopUp)) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "payment amount is below the minimum top-up"})
 		return
 	}
 
@@ -1338,7 +1456,8 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		ExpectedToAddress: platformWallet,
 		ExpectedUsdAmount: expectedUsdAmount,
 		Purpose:           cryptoIntentPurposeWalletTopup,
-		ExpiresAt:         common.GetTimestamp() + 30*60,
+		ExpiresAt:         common.GetTimestamp() + int64(cryptoUnsignedIntentWindow/time.Second),
+		RecoveryExpiresAt: common.GetTimestamp() + int64(cryptoUnsignedIntentWindow/time.Second),
 	}
 	if plan != nil {
 		intent.Purpose = cryptoIntentPurposeGPTSubscription
@@ -1346,6 +1465,8 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 			intent.Purpose = cryptoIntentPurposeCodingPlan
 		}
 		intent.SubscriptionOrderTradeNo = fmt.Sprintf("CRYPTO-SUB:%s", intent.Id)
+	} else {
+		intent.TopUpTradeNo = fmt.Sprintf("CRYPTO:%s", intent.Id)
 	}
 	if tokenAddress == "" {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
@@ -1357,6 +1478,12 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		}
 		intent.AssetUsdPrice = price
 	}
+	expectedBaseUnits, err := cryptoExpectedBaseUnits(intent, cfg)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "failed to calculate payment amount"})
+		return
+	}
+	intent.ExpectedBaseUnits = expectedBaseUnits
 	intent.Challenge = buildCryptoIntentChallenge(intent)
 
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -1370,6 +1497,16 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 				model.PaymentProviderCrypto,
 			)
 			if err := model.InsertSubscriptionOrderTx(tx, order); err != nil {
+				return err
+			}
+		} else {
+			topUp := (&model.TopUp{
+				UserId: userId, Amount: int64(math.Round(expectedUsdAmount)), Money: expectedUsdAmount,
+				TradeNo: intent.TopUpTradeNo, PaymentMethod: model.PaymentMethodCrypto,
+				PaymentProvider: model.PaymentProviderCrypto, CreateTime: common.GetTimestamp(),
+				Status: common.TopUpStatusPending,
+			}).FillCountryFromIP(c.ClientIP())
+			if err := tx.Create(topUp).Error; err != nil {
 				return err
 			}
 		}
@@ -1409,7 +1546,125 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		"expectedUsdAmount": intent.ExpectedUsdAmount,
 		"assetUsdPrice":     intent.AssetUsdPrice,
 		"nativeAssetAmount": nativeAssetAmount,
+		"baseUnitAmount":    intent.ExpectedBaseUnits,
+		"orderId":           intent.TopUpTradeNo,
 	})
+}
+
+func AuthorizeCryptoDepositIntent(c *gin.Context) {
+	if abortIfTopupForbidden(c) {
+		return
+	}
+	userId := c.GetInt("id")
+	if userId == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "unauthorized"})
+		return
+	}
+	intentId := strings.TrimSpace(c.Param("id"))
+	var req authorizeCryptoIntentRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.WalletSignature) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid request"})
+		return
+	}
+
+	var intent model.CryptoDepositIntent
+	if err := model.DB.Where("id = ? AND user_id = ?", intentId, userId).First(&intent).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "deposit intent not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to load deposit intent"})
+		return
+	}
+	if intent.Status != model.CryptoDepositIntentStatusPending {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "error": "deposit intent is not pending"})
+		return
+	}
+	if intent.ExpiresAt < common.GetTimestamp() {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "deposit intent expired"})
+		return
+	}
+	if err := verifyWalletSignature(&intent, req.WalletSignature); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	signature := strings.TrimSpace(req.WalletSignature)
+	now := common.GetTimestamp()
+	result := model.DB.Model(&model.CryptoDepositIntent{}).
+		Where("id = ? AND user_id = ? AND status = ? AND (wallet_signature = '' OR wallet_signature = ?)", intent.Id, userId, model.CryptoDepositIntentStatusPending, signature).
+		Updates(map[string]interface{}{
+			"wallet_signature":    signature,
+			"authorized_at":       now,
+			"recovery_expires_at": now + int64(cryptoSignedTransferWindow/time.Second),
+			"next_check_at":       now,
+			"error_message":       "",
+		})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to authorize deposit intent"})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "error": "deposit intent already authorized with another signature"})
+		return
+	}
+	intent.WalletSignature = signature
+	intent.AuthorizedAt = now
+	recordCryptoIntentLog(userId, "加密货币充值钱包授权完成，等待链上交易", &intent, map[string]interface{}{"stage": "wallet_authorized"})
+	c.JSON(http.StatusOK, gin.H{"success": true, "depositId": intent.Id})
+}
+
+func CancelCryptoDepositIntent(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "unauthorized"})
+		return
+	}
+	intentId := strings.TrimSpace(c.Param("id"))
+	if intentId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid request"})
+		return
+	}
+
+	cancelled := false
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var intent model.CryptoDepositIntent
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", intentId, userId).First(&intent).Error; err != nil {
+			return err
+		}
+		if intent.Status != model.CryptoDepositIntentStatusPending || intent.TxHash != nil || intent.WalletSignature != "" {
+			return nil
+		}
+		if err := tx.Model(&intent).Updates(map[string]interface{}{
+			"status":        model.CryptoDepositIntentStatusFailed,
+			"error_message": "wallet transaction cancelled",
+			"next_check_at": 0,
+		}).Error; err != nil {
+			return err
+		}
+		if intent.Purpose == cryptoIntentPurposeWalletTopup && intent.TopUpTradeNo != "" {
+			if err := tx.Model(&model.TopUp{}).
+				Where("trade_no = ? AND payment_provider = ? AND status = ?", intent.TopUpTradeNo, model.PaymentProviderCrypto, common.TopUpStatusPending).
+				Update("status", common.TopUpStatusFailed).Error; err != nil {
+				return err
+			}
+		}
+		cancelled = true
+		return nil
+	})
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "deposit intent not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to cancel deposit intent"})
+		return
+	}
+	if !cancelled {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "error": "deposit intent can no longer be cancelled"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "depositId": intentId})
 }
 
 func SubmitCryptoDeposit(c *gin.Context) {
@@ -1424,7 +1679,7 @@ func SubmitCryptoDeposit(c *gin.Context) {
 	TouchUserCountry(userId, c.ClientIP())
 
 	var req submitCryptoRequest
-	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.IntentId) == "" || strings.TrimSpace(req.TxHash) == "" || strings.TrimSpace(req.WalletSignature) == "" {
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.IntentId) == "" || strings.TrimSpace(req.TxHash) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid request"})
 		return
 	}
@@ -1448,14 +1703,24 @@ func SubmitCryptoDeposit(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": true, "depositId": intent.Id})
 		return
 	}
-	if intent.ExpiresAt < common.GetTimestamp() {
+	deadline := intent.RecoveryExpiresAt
+	if deadline <= 0 {
+		deadline = intent.ExpiresAt
+	}
+	if deadline > 0 && deadline < common.GetTimestamp() {
 		markCryptoIntentFailed(intent.Id, fmt.Errorf("deposit intent expired"))
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "deposit intent expired"})
 		return
 	}
-	if err := verifyWalletSignature(&intent, req.WalletSignature); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
-		return
+	if intent.WalletSignature == "" {
+		if strings.TrimSpace(req.WalletSignature) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "wallet authorization is required"})
+			return
+		}
+		if err := verifyWalletSignature(&intent, req.WalletSignature); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
 	}
 
 	submittedNewTxHash := false
@@ -1472,8 +1737,16 @@ func SubmitCryptoDeposit(c *gin.Context) {
 		if current.Status != model.CryptoDepositIntentStatusPending {
 			return fmt.Errorf("deposit intent is not pending")
 		}
-		if current.ExpiresAt < common.GetTimestamp() {
+		currentDeadline := current.RecoveryExpiresAt
+		if currentDeadline <= 0 {
+			currentDeadline = current.ExpiresAt
+		}
+		if currentDeadline > 0 && currentDeadline < common.GetTimestamp() {
 			return fmt.Errorf("deposit intent expired")
+		}
+		if current.WalletSignature == "" {
+			current.WalletSignature = strings.TrimSpace(req.WalletSignature)
+			current.AuthorizedAt = common.GetTimestamp()
 		}
 		if current.TxHash != nil {
 			if *current.TxHash != txHash {
@@ -1481,9 +1754,11 @@ func SubmitCryptoDeposit(c *gin.Context) {
 			}
 			return nil
 		}
+		now := common.GetTimestamp()
 		current.TxHash = &txHash
-		current.WalletSignature = strings.TrimSpace(req.WalletSignature)
-		current.VerifiedAt = common.GetTimestamp()
+		current.TxSubmittedAt = now
+		current.RecoveryExpiresAt = now + int64(cryptoHashVerificationWindow/time.Second)
+		current.NextCheckAt = now
 		submittedNewTxHash = true
 		return tx.Save(&current).Error
 	})
@@ -1503,8 +1778,8 @@ func SubmitCryptoDeposit(c *gin.Context) {
 	}
 	if submittedNewTxHash {
 		intent.TxHash = &txHash
-		intent.WalletSignature = strings.TrimSpace(req.WalletSignature)
-		intent.VerifiedAt = common.GetTimestamp()
+		intent.TxSubmittedAt = common.GetTimestamp()
+		intent.NextCheckAt = common.GetTimestamp()
 		recordCryptoIntentLog(
 			userId,
 			fmt.Sprintf(
@@ -1518,7 +1793,7 @@ func SubmitCryptoDeposit(c *gin.Context) {
 		)
 	}
 
-	go scheduleCryptoVerification(intent.Id)
+	go runCryptoVerification(intent.Id)
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "depositId": intent.Id})
 }

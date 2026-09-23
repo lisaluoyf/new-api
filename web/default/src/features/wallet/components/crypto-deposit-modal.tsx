@@ -164,6 +164,13 @@ export function CryptoDepositModal({
       .catch(() => {})
   }, [open, selectedChain.id])
 
+  useEffect(() => {
+    if (open || (step !== 'done' && step !== 'failed')) return
+    if (step === 'done') onSuccess()
+    onSettled?.()
+    reset()
+  }, [onSettled, onSuccess, open, reset, step])
+
   const selectedWallet = walletOptions.find(
     (wallet) => wallet.id === selectedWalletId
   )
@@ -181,6 +188,10 @@ export function CryptoDepositModal({
   }
 
   function handleClose() {
+    if (isProcessing) {
+      onOpenChange(false)
+      return
+    }
     if (step === 'done') onSuccess()
     if (step === 'done' || step === 'failed') onSettled?.()
     reset()

@@ -156,6 +156,7 @@ func main() {
 	// Platform billing hourly summary (平台账单)
 	service.StartBillingSummaryTask()
 	service.StartDailyStatsTask()
+	controller.StartCryptoDepositReconcileTask()
 
 	// Bound replay snapshot storage and remove expired request bodies in small batches.
 	service.StartFailedRequestSnapshotCleanupTask()

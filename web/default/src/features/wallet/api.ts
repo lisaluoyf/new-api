@@ -462,6 +462,8 @@ export interface CryptoDepositIntentResponse {
   token?: string
   assetUsdPrice?: number
   nativeAssetAmount?: string
+  baseUnitAmount?: string
+  orderId?: string
   error?: string
 }
 
@@ -488,13 +490,43 @@ export async function createCryptoDepositIntent(
   }
 }
 
+export async function authorizeCryptoDepositIntent(
+  intentId: string,
+  walletSignature: string
+): Promise<{ success: boolean; depositId?: string; error?: string }> {
+  try {
+    const res = await api.post(
+      `/api/user/crypto/intent/${encodeURIComponent(intentId)}/authorize`,
+      { wallet_signature: walletSignature },
+      { skipBusinessError: true } as Record<string, unknown>
+    )
+    return res.data
+  } catch {
+    return { success: false, error: 'Request failed' }
+  }
+}
+
+export async function cancelCryptoDepositIntent(
+  intentId: string
+): Promise<{ success: boolean; depositId?: string; error?: string }> {
+  try {
+    const res = await api.post(
+      `/api/user/crypto/intent/${encodeURIComponent(intentId)}/cancel`,
+      undefined,
+      { skipBusinessError: true } as Record<string, unknown>
+    )
+    return res.data
+  } catch {
+    return { success: false, error: 'Request failed' }
+  }
+}
+
 /**
  * Submit a crypto on-chain transaction hash for verification
  */
 export async function submitCryptoDeposit(
   intentId: string,
-  txHash: string,
-  walletSignature: string
+  txHash: string
 ): Promise<{ success: boolean; depositId?: string; error?: string }> {
   try {
     const res = await api.post(
@@ -502,7 +534,6 @@ export async function submitCryptoDeposit(
       {
         intent_id: intentId,
         tx_hash: txHash,
-        wallet_signature: walletSignature,
       },
       { skipBusinessError: true } as Record<string, unknown>
     )
@@ -515,9 +546,10 @@ export async function submitCryptoDeposit(
 /**
  * Poll crypto deposit status
  */
-export async function getCryptoDepositStatus(
-  depositId: string
-): Promise<{ status: 'pending' | 'confirmed' | 'failed'; usdAdded?: number }> {
+export async function getCryptoDepositStatus(depositId: string): Promise<{
+  status: 'pending' | 'confirmed' | 'failed' | 'expired'
+  usdAdded?: number
+}> {
   const res = await api.get(`/api/user/crypto/deposit/${depositId}`)
   return res.data
 }

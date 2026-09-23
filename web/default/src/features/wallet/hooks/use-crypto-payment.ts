@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   createAssociatedTokenAccountIdempotentInstruction,
   createTransferCheckedInstruction,
@@ -31,6 +31,8 @@ import {
 import i18next from 'i18next'
 import { toast } from 'sonner'
 import {
+  authorizeCryptoDepositIntent,
+  cancelCryptoDepositIntent,
   createCryptoDepositIntent,
   submitCryptoDeposit,
   getCryptoDepositStatus,
@@ -205,6 +207,44 @@ export const CHAINS: ChainConfig[] = [
 ]
 
 const PLATFORM_WALLET = '0x33de43dad6955655ec0543f32069ac331e633c9c'
+const PENDING_CRYPTO_DEPOSIT_KEY = 'apimaster_pending_crypto_deposit'
+
+interface PendingCryptoDeposit {
+  depositId: string
+  createdAt: number
+}
+
+function readPendingCryptoDeposit(): PendingCryptoDeposit | null {
+  try {
+    const pending = JSON.parse(
+      localStorage.getItem(PENDING_CRYPTO_DEPOSIT_KEY) ?? 'null'
+    ) as PendingCryptoDeposit | null
+    if (
+      !pending?.depositId ||
+      !pending.createdAt ||
+      Date.now() - pending.createdAt >= 30 * 60 * 1000
+    ) {
+      localStorage.removeItem(PENDING_CRYPTO_DEPOSIT_KEY)
+      return null
+    }
+    return pending
+  } catch {
+    localStorage.removeItem(PENDING_CRYPTO_DEPOSIT_KEY)
+    return null
+  }
+}
+
+function savePendingCryptoDeposit(depositId: string) {
+  const pending: PendingCryptoDeposit = { depositId, createdAt: Date.now() }
+  localStorage.setItem(PENDING_CRYPTO_DEPOSIT_KEY, JSON.stringify(pending))
+}
+
+function clearPendingCryptoDeposit(depositId: string) {
+  const pending = readPendingCryptoDeposit()
+  if (pending?.depositId === depositId) {
+    localStorage.removeItem(PENDING_CRYPTO_DEPOSIT_KEY)
+  }
+}
 
 // ============================================================================
 // Encoding helpers
@@ -215,21 +255,6 @@ function encodeErc20Transfer(to: string, amount: bigint): string {
   const toHex = to.toLowerCase().replace('0x', '').padStart(64, '0')
   const amountHex = amount.toString(16).padStart(64, '0')
   return '0x' + selector + toHex + amountHex
-}
-
-function parseTokenAmount(usdAmount: number, decimals: number): bigint {
-  const scaled6 = BigInt(Math.round(usdAmount * 1_000_000))
-  if (decimals <= 6) return scaled6 / BigInt(10 ** (6 - decimals))
-  return scaled6 * BigInt(10 ** (decimals - 6))
-}
-
-function parseDecimalAmount(value: string, decimals: number): bigint {
-  const [whole = '0', fraction = ''] = value.split('.')
-  const normalizedFraction = fraction.padEnd(decimals, '0').slice(0, decimals)
-  return (
-    BigInt(whole || '0') * BigInt(10) ** BigInt(decimals) +
-    BigInt(normalizedFraction || '0')
-  )
 }
 
 function bytesToBase64(value: Uint8Array): string {
@@ -390,12 +415,58 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
   const [usdAdded, setUsdAdded] = useState(0)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [nativePrice, setNativePrice] = useState(0)
-  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [pendingDepositId, setPendingDepositId] = useState<string | null>(null)
   const paymentLockRef = useRef(false)
 
+  useEffect(() => {
+    const pending = readPendingCryptoDeposit()
+    if (!pending) return
+    paymentLockRef.current = true
+    setStep('processing')
+    setPendingDepositId(pending.depositId)
+  }, [])
+
+  useEffect(() => {
+    if (!pendingDepositId) return
+
+    let cancelled = false
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+    const poll = async () => {
+      try {
+        const status = await getCryptoDepositStatus(pendingDepositId)
+        if (cancelled) return
+        if (status.status === 'confirmed') {
+          clearPendingCryptoDeposit(pendingDepositId)
+          setUsdAdded(status.usdAdded ?? 0)
+          setStep('done')
+          setPendingDepositId(null)
+          paymentLockRef.current = false
+          return
+        }
+        if (status.status === 'failed' || status.status === 'expired') {
+          clearPendingCryptoDeposit(pendingDepositId)
+          setStep('failed')
+          setPendingDepositId(null)
+          paymentLockRef.current = false
+          return
+        }
+      } catch {
+        // Status failures are transient; the server owns final settlement.
+      }
+      if (!cancelled) {
+        pollTimer = setTimeout(() => void poll(), 3000)
+      }
+    }
+
+    void poll()
+    return () => {
+      cancelled = true
+      if (pollTimer) clearTimeout(pollTimer)
+    }
+  }, [pendingDepositId])
+
   const reset = useCallback(() => {
-    if (pollTimer.current) clearTimeout(pollTimer.current)
-    pollTimer.current = null
     setStep('form')
     setError(null)
     setTxHash(null)
@@ -415,8 +486,15 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
       if (paymentLockRef.current) {
         return
       }
+      if (readPendingCryptoDeposit()) {
+        setError(i18next.t('Please wait a moment before trying again.'))
+        setStep('processing')
+        return
+      }
 
       paymentLockRef.current = true
+      let currentDepositId = ''
+      let paymentAuthorized = false
 
       try {
         setError(null)
@@ -486,6 +564,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           )
         }
         const depositId = intentRes.depositId
+        currentDepositId = depositId
         const depositAddress =
           intentRes.toAddress ??
           (selectedProvider.family === 'evm' ? PLATFORM_WALLET : '')
@@ -510,6 +589,24 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           walletSignature = bytesToBase64(signed.signature)
         }
 
+        const authorization = await authorizeCryptoDepositIntent(
+          depositId,
+          walletSignature
+        )
+        if (!authorization.success) {
+          throw new Error(
+            authorization.error ??
+              i18next.t('Failed to create crypto deposit intent')
+          )
+        }
+        paymentAuthorized = true
+        if (!intentRes.baseUnitAmount) {
+          throw new Error(i18next.t('Failed to quote native asset'))
+        }
+        savePendingCryptoDeposit(depositId)
+        setPendingDepositId(depositId)
+        const baseUnitAmount = BigInt(intentRes.baseUnitAmount)
+
         setStep('confirming')
         let hash: string
 
@@ -518,10 +615,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
             if (!intentRes.nativeAssetAmount)
               throw new Error(i18next.t('Failed to quote native asset'))
             setNativePrice(intentRes.assetUsdPrice ?? 0)
-            const value = parseDecimalAmount(
-              intentRes.nativeAssetAmount,
-              token.decimals
-            )
+            const value = baseUnitAmount
             hash = (await selectedProvider.ethereum.request({
               method: 'eth_sendTransaction',
               params: [
@@ -534,10 +628,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
               ],
             })) as string
           } else {
-            const data = encodeErc20Transfer(
-              depositAddress,
-              parseTokenAmount(amount, token.decimals)
-            )
+            const data = encodeErc20Transfer(depositAddress, baseUnitAmount)
             hash = (await selectedProvider.ethereum.request({
               method: 'eth_sendTransaction',
               params: [{ from, to: token.address, data, value: '0x0' }],
@@ -552,12 +643,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
             transaction =
               await selectedProvider.tronWeb.transactionBuilder.sendTrx(
                 depositAddress,
-                Number(
-                  parseDecimalAmount(
-                    intentRes.nativeAssetAmount,
-                    token.decimals
-                  )
-                ),
+                Number(baseUnitAmount),
                 from
               )
           } else {
@@ -570,7 +656,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
                   { type: 'address', value: depositAddress },
                   {
                     type: 'uint256',
-                    value: parseTokenAmount(amount, token.decimals).toString(),
+                    value: baseUnitAmount.toString(),
                   },
                 ],
                 from
@@ -606,10 +692,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
               SystemProgram.transfer({
                 fromPubkey: fromKey,
                 toPubkey: toKey,
-                lamports: parseDecimalAmount(
-                  intentRes.nativeAssetAmount,
-                  token.decimals
-                ),
+                lamports: baseUnitAmount,
               })
             )
           } else {
@@ -631,7 +714,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
                 mint,
                 destinationAccount,
                 fromKey,
-                parseTokenAmount(amount, token.decimals),
+                baseUnitAmount,
                 token.decimals
               )
             )
@@ -648,72 +731,39 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
         setTxHash(hash)
 
         setStep('processing')
-        const submitRes = await submitCryptoDeposit(
-          depositId,
-          hash,
-          walletSignature
-        )
-        if (!submitRes.success || !submitRes.depositId) {
-          throw new Error(
-            submitRes.error ?? i18next.t('Failed to submit transaction')
+        const submitResult = await submitCryptoDeposit(depositId, hash)
+        if (!submitResult.success) {
+          setError(
+            submitResult.error ?? i18next.t('Failed to submit transaction')
           )
         }
-
-        const pollStartedAt = Date.now()
-        const maxWaitMs = 15 * 60 * 1000
-        const pollIntervalMs = 3000
-
-        await new Promise<void>((resolve, reject) => {
-          const stopPolling = () => {
-            if (pollTimer.current) {
-              clearTimeout(pollTimer.current)
-              pollTimer.current = null
-            }
-          }
-
-          const scheduleNextPoll = () => {
-            pollTimer.current = setTimeout(() => {
-              void pollOnce()
-            }, pollIntervalMs)
-          }
-
-          const pollOnce = async () => {
-            if (Date.now() - pollStartedAt >= maxWaitMs) {
-              stopPolling()
-              reject(new Error(i18next.t('Timed out waiting for confirmation')))
-              return
-            }
-
-            try {
-              const status = await getCryptoDepositStatus(depositId)
-              if (status.status === 'confirmed') {
-                stopPolling()
-                setUsdAdded(status.usdAdded ?? 0)
-                setStep('done')
-                resolve()
-                return
-              }
-              if (status.status === 'failed') {
-                stopPolling()
-                reject(new Error(i18next.t('Transaction verification failed')))
-                return
-              }
-            } catch {
-              // Transient query failures should not turn into a hard fail while
-              // the chain confirmation is still in flight.
-            }
-
-            scheduleNextPoll()
-          }
-
-          void pollOnce()
-        })
       } catch (err: unknown) {
         const msg = getProviderErrorMessage(err) ?? i18next.t('Payment failed')
         if ((err as { code?: number }).code === 4001) {
+          if (currentDepositId && !paymentAuthorized) {
+            const cancellation =
+              await cancelCryptoDepositIntent(currentDepositId)
+            if (!cancellation.success) {
+              setError(msg)
+              setStep('processing')
+              return
+            }
+            if (cancellation.success) {
+              clearPendingCryptoDeposit(currentDepositId)
+              setPendingDepositId(null)
+            }
+          }
           toast.info(i18next.t('Transaction cancelled'))
           setStep('form')
           return
+        }
+        if (currentDepositId && paymentAuthorized) {
+          setError(msg)
+          setStep('processing')
+          return
+        }
+        if (currentDepositId && !paymentAuthorized) {
+          void cancelCryptoDepositIntent(currentDepositId)
         }
         setError(
           isPendingWalletRequest(err)

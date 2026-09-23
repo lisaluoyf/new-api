@@ -195,7 +195,7 @@ func cryptoDepositAssetLabel(tradeNo string) string {
 		return ""
 	}
 
-	query := DB.Where("subscription_order_trade_no = ?", tradeNo)
+	query := DB.Where("subscription_order_trade_no = ? OR top_up_trade_no = ?", tradeNo, tradeNo)
 	parts := strings.SplitN(tradeNo, ":", 3)
 	if len(parts) == 3 && strings.EqualFold(parts[0], "CRYPTO") {
 		query = query.Or("chain = ? AND tx_hash = ?", strings.ToLower(parts[1]), parts[2])
