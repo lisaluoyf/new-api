@@ -19,6 +19,7 @@ func TestNormalizeGrokImage20(t *testing.T) {
 		{`{"prompt":"test","n":0}`, "", true},
 		{`{"prompt":"test","n":11}`, "", true},
 		{`{"prompt":"test","image_urls":[""]}`, "", true},
+		{`{"prompt":"test","image_urls":["https://example.test/a.png","https://example.test/a.png"]}`, "", true},
 		{`{"prompt":"test","size":"1024x1024"}`, "", true},
 		{`{"prompt":"test","size":"1:1","aspect_ratio":"16:9"}`, "", true},
 	} {

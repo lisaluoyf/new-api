@@ -29,10 +29,15 @@ func (r *ImageRequest) NormalizeGrokImage20() error {
 	if len(r.ImageUrls) > 5 {
 		return fmt.Errorf("grok-imagine-image-2.0 supports at most 5 reference images")
 	}
+	seenReferences := make(map[string]bool, len(r.ImageUrls))
 	for _, url := range r.ImageUrls {
 		if strings.TrimSpace(url) == "" {
 			return fmt.Errorf("reference image URL cannot be empty")
 		}
+		if seenReferences[strings.TrimSpace(url)] {
+			return fmt.Errorf("image_urls must not contain duplicate URLs")
+		}
+		seenReferences[strings.TrimSpace(url)] = true
 	}
 	if r.N == nil {
 		r.N = common.GetPointer(uint(1))

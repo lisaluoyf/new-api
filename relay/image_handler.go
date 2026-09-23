@@ -119,7 +119,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 				httpResp.StatusCode = http.StatusOK
 			} else {
 				newAPIError = service.RelayErrorHandler(c.Request.Context(), httpResp, false)
-				if dto.IsSeedream5Pro(info.OriginModelName) && httpResp.StatusCode == http.StatusBadRequest && newAPIError.GetErrorCode() == "InvalidParameter" {
+				if httpResp.StatusCode == http.StatusBadRequest && (dto.IsGrokImage20(info.OriginModelName) || (dto.IsSeedream5Pro(info.OriginModelName) && newAPIError.GetErrorCode() == "InvalidParameter")) {
 					// Retrying invalid image parameters can hide the useful upstream
 					// error behind a channel-selection failure on single-channel models.
 					newAPIError = types.NewError(newAPIError, newAPIError.GetErrorCode(), types.ErrOptionWithSkipRetry())
