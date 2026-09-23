@@ -21,6 +21,8 @@
   { "model_id": "gpt-5.6-luna", "label": "GPT 5.6 Luna", "accent": "#22d3ee" },
   { "model_id": "gpt-5.6-sol", "label": "GPT 5.6 Sol", "accent": "#22d3ee" },
   { "model_id": "gpt-6-astra", "label": "GPT 6 Astra", "accent": "#22d3ee" },
+  { "model_id": "gpt-6-sol", "label": "GPT 6 Sol", "accent": "#22d3ee" },
+  { "model_id": "gpt-6-luna", "label": "GPT 6 Luna", "accent": "#22d3ee" },
   {
     "model_id": "gpt-5.6-terra",
     "label": "GPT 5.6 Terra",
@@ -33,6 +35,7 @@
   },
   { "model_id": "claude-opus-4-7", "label": "Opus 4.7", "accent": "#a855f7" },
   { "model_id": "claude-opus-5", "label": "Opus 5", "accent": "#a855f7" },
+  { "model_id": "claude-opus-5-5", "label": "Opus 5.5", "accent": "#a855f7" },
   { "model_id": "claude-opus-4-8", "label": "Opus 4.8", "accent": "#a855f7" },
   { "model_id": "claude-haiku-4-5", "label": "Haiku 4.5", "accent": "#a855f7" },
   {
