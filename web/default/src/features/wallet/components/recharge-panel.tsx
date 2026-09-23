@@ -828,6 +828,7 @@ export function RechargePanel({
         open={cryptoOpen}
         onOpenChange={setCryptoOpen}
         amount={effectiveAmount}
+        creditAmount={requestAmount}
         nowPaymentsRequestAmount={requestAmount}
         nowPaymentsPayAmount={effectiveAmount}
         nowPaymentsEnabled={topupInfo?.enable_nowpayments_topup ?? false}

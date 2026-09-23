@@ -56,6 +56,7 @@ interface CryptoDepositModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   amount: number
+  creditAmount?: number
   nowPaymentsRequestAmount?: number
   nowPaymentsPayAmount?: number
   nowPaymentsEnabled?: boolean
@@ -83,6 +84,7 @@ export function CryptoDepositModal({
   open,
   onOpenChange,
   amount,
+  creditAmount = amount,
   nowPaymentsRequestAmount = amount,
   nowPaymentsPayAmount = amount,
   nowPaymentsEnabled = false,
@@ -471,6 +473,7 @@ export function CryptoDepositModal({
                 if (selectedWallet) {
                   void startPayment(
                     amount,
+                    creditAmount,
                     selectedChain,
                     selectedToken,
                     selectedWallet.provider

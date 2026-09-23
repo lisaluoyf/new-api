@@ -1330,7 +1330,14 @@ func verifyAndCredit(intentId string) {
 	}
 
 	creditUsd := usdValue
-	if matchedTier, matchedDiscount, ok := matchCryptoAmountDiscountTier(usdValue); ok {
+	if intent.CreditUsdAmount > 0 {
+		if usdValue+0.005 < intent.ExpectedUsdAmount {
+			markCryptoIntentFailed(intentId, fmt.Errorf("payment amount too low: expected %.2f USD, received %.4f USD", intent.ExpectedUsdAmount, usdValue))
+			return
+		}
+		creditUsd = intent.CreditUsdAmount
+		common.SysLog(fmt.Sprintf("crypto: locked credit amount userId=%d paid=%.4f credit=%.4f", intent.UserId, usdValue, creditUsd))
+	} else if matchedTier, matchedDiscount, ok := matchCryptoAmountDiscountTier(usdValue); ok {
 		creditUsd = usdValue / matchedDiscount
 		common.SysLog(fmt.Sprintf("crypto: amount-discount promo userId=%d tier=%d paid=%.4f credit=%.4f", intent.UserId, matchedTier, usdValue, creditUsd))
 	} else if eligible, _ := model.IsFirstTopupPromoEligible(intent.UserId); eligible {
@@ -1376,6 +1383,37 @@ type createCryptoIntentRequest struct {
 	WalletAddressFrom string  `json:"wallet_address_from"`
 	PlanId            int     `json:"plan_id,omitempty"`
 	ExpectedUsdAmount float64 `json:"expected_usd_amount,omitempty"`
+	CreditUsdAmount   float64 `json:"credit_usd_amount,omitempty"`
+}
+
+func resolveCryptoWalletCreditAmount(paidAmount, requestedCredit float64, now time.Time, firstTopupPromoCredit float64) (float64, error) {
+	if paidAmount <= 0 {
+		return 0, fmt.Errorf("invalid payment amount")
+	}
+	if requestedCredit <= 0 {
+		return paidAmount, nil
+	}
+	if requestedCredit+0.005 < paidAmount {
+		return 0, fmt.Errorf("invalid credited amount")
+	}
+
+	for tier := range operation_setting.GetPaymentSetting().AmountDiscount {
+		discount := operation_setting.GetActiveAmountDiscount(tier, now)
+		if tier <= 0 || discount >= 1 {
+			continue
+		}
+		expectedPaid := decimal.NewFromInt(int64(tier)).Mul(decimal.NewFromFloat(operation_setting.GetActiveAmountDiscount(tier, now)))
+		if math.Abs(requestedCredit-float64(tier)) <= 0.005 && math.Abs(paidAmount-expectedPaid.InexactFloat64()) <= 0.005 {
+			return float64(tier), nil
+		}
+	}
+	if firstTopupPromoCredit > 0 && math.Abs(requestedCredit-firstTopupPromoCredit) <= 0.005 {
+		return firstTopupPromoCredit, nil
+	}
+	if math.Abs(requestedCredit-paidAmount) <= 0.005 {
+		return paidAmount, nil
+	}
+	return 0, fmt.Errorf("credited amount does not match an active promotion")
 }
 
 type submitCryptoRequest struct {
@@ -1464,8 +1502,23 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 	}
 
 	expectedUsdAmount := req.ExpectedUsdAmount
+	creditUsdAmount := req.CreditUsdAmount
 	if plan != nil {
 		expectedUsdAmount = terms.Payable
+		creditUsdAmount = expectedUsdAmount
+	} else if creditUsdAmount > 0 {
+		firstTopupPromoCredit := 0.0
+		if eligible, _ := model.IsFirstTopupPromoEligible(userId); eligible {
+			firstTopupPromoCredit, _, _ = applyCryptoFirstTopupPromo(expectedUsdAmount)
+		}
+		var err error
+		creditUsdAmount, err = resolveCryptoWalletCreditAmount(expectedUsdAmount, creditUsdAmount, time.Now(), firstTopupPromoCredit)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid credited amount"})
+			return
+		}
+	} else {
+		creditUsdAmount = expectedUsdAmount
 	}
 	if expectedUsdAmount <= 0 || expectedUsdAmount > 1_000_000 {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid payment amount"})
@@ -1491,6 +1544,7 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		WalletAddressFrom: walletAddress,
 		ExpectedToAddress: platformWallet,
 		ExpectedUsdAmount: expectedUsdAmount,
+		CreditUsdAmount:   creditUsdAmount,
 		Purpose:           cryptoIntentPurposeWalletTopup,
 		ExpiresAt:         common.GetTimestamp() + int64(cryptoUnsignedIntentWindow/time.Second),
 		RecoveryExpiresAt: common.GetTimestamp() + int64(cryptoUnsignedIntentWindow/time.Second),
@@ -1537,7 +1591,7 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 			}
 		} else {
 			topUp := (&model.TopUp{
-				UserId: userId, Amount: int64(math.Round(expectedUsdAmount)), Money: expectedUsdAmount,
+				UserId: userId, Amount: int64(math.Round(creditUsdAmount)), CreditedAmount: creditUsdAmount, Money: expectedUsdAmount,
 				TradeNo: intent.TopUpTradeNo, PaymentMethod: model.PaymentMethodCrypto,
 				PaymentProvider: model.PaymentProviderCrypto, CreateTime: common.GetTimestamp(),
 				Status: common.TopUpStatusPending,
@@ -1580,6 +1634,7 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		"token":             intent.TokenSymbol,
 		"purpose":           intent.Purpose,
 		"expectedUsdAmount": intent.ExpectedUsdAmount,
+		"creditUsdAmount":   intent.CreditUsdAmount,
 		"assetUsdPrice":     intent.AssetUsdPrice,
 		"nativeAssetAmount": nativeAssetAmount,
 		"baseUnitAmount":    intent.ExpectedBaseUnits,
@@ -1858,5 +1913,6 @@ func GetCryptoDeposit(c *gin.Context) {
 		"error":             intent.ErrorMessage,
 		"purpose":           intent.Purpose,
 		"expectedUsdAmount": intent.ExpectedUsdAmount,
+		"creditUsdAmount":   intent.CreditUsdAmount,
 	})
 }

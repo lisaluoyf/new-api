@@ -326,6 +326,7 @@ export interface UseCryptoPaymentReturn {
   nativePrice: number
   startPayment: (
     amount: number,
+    creditAmount: number,
     chain: ChainConfig,
     token: TokenConfig,
     selectedProvider: CryptoWalletProvider
@@ -493,6 +494,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
   const startPayment = useCallback(
     async (
       amount: number,
+      creditAmount: number,
       chain: ChainConfig,
       token: TokenConfig,
       selectedProvider: CryptoWalletProvider
@@ -569,7 +571,8 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           chain.id,
           token.symbol,
           from,
-          amount
+          amount,
+          creditAmount
         )
         if (
           !intentRes.success ||

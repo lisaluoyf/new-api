@@ -29,6 +29,7 @@ type CryptoDepositIntent struct {
 	Purpose                  string  `json:"purpose" gorm:"type:varchar(32);not null;default:'wallet_topup';index"`
 	SubscriptionOrderTradeNo string  `json:"subscription_order_trade_no" gorm:"type:varchar(255);default:'';index"`
 	ExpectedUsdAmount        float64 `json:"expected_usd_amount" gorm:"type:decimal(18,6);not null;default:0"`
+	CreditUsdAmount          float64 `json:"credit_usd_amount" gorm:"type:decimal(18,6);not null;default:0"`
 	AssetUsdPrice            float64 `json:"asset_usd_price" gorm:"type:decimal(24,10);not null;default:0"`
 	ExpectedBaseUnits        string  `json:"expected_base_units" gorm:"type:varchar(128);not null;default:''"`
 	Status                   string  `json:"status" gorm:"type:varchar(32);not null;default:'pending';index"`
