@@ -4700,5 +4700,9 @@
   "Not claimed": "未領取",
   "Days left with date": "剩餘 {{days}} 天 ({{date}})",
   "Coding Plan Users": "Coding Plan 用戶",
-  "Coding Plan Balance": "Coding Plan 餘額"
+  "Coding Plan Balance": "Coding Plan 餘額",
+  "1K low": "1K 低品質",
+  "1K medium": "1K 中等品質",
+  "2K low": "2K 低品質",
+  "2K medium": "2K 中等品質"
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -245,6 +246,18 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 		CacheCreation5mRatio: cacheCreationRatio5m,
 		CacheCreation1hRatio: cacheCreationRatio1h,
 		QuotaToPreConsume:    preConsumedQuota,
+	}
+	if req, ok := info.Request.(*dto.ImageRequest); ok && dto.IsGrokImage20(info.OriginModelName) {
+		pricing, configured := ratio_setting.GetImageModelPricingDetails(info.OriginModelName)
+		if !configured || !usePrice || req.N == nil {
+			return types.PriceData{}, fmt.Errorf("Grok image pricing is not configured")
+		}
+		total, _, err := service.GrokImageCharge(req, int(*req.N), pricing)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		c.Set(service.GrokImagePricingContextKey, pricing)
+		priceData.QuotaToPreConsume = int(modelPrice * total / pricing.Prices[req.GrokImagePriceVariant()] * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
 	}
 
 	if common.DebugEnabled {

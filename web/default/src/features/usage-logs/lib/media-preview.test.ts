@@ -33,7 +33,11 @@ describe('isLogMediaImageModel', () => {
   })
 
   test('recognizes both Midjourney models and preserves all unique result images', () => {
-    for (const model of ['midjourney-v8.2', 'midjourney-niji-7']) {
+    for (const model of [
+      'midjourney-v8.2',
+      'midjourney-niji-7',
+      'grok-imagine-image-2.0',
+    ]) {
       assert.equal(isLogMediaImageModel(model.toUpperCase()), true)
       const urls = [1, 2, 3, 4].map((n) => `https://apimaster.ai/imgs/${n}.png`)
       assert.deepEqual(

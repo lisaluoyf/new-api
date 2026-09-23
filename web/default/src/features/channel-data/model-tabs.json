@@ -179,6 +179,11 @@
     "label": "Seedream 5.0 Pro",
     "accent": "#3b82f6"
   },
+  {
+    "model_id": "grok-imagine-image-2.0",
+    "label": "Grok Imagine Image 2.0",
+    "accent": "#64748b"
+  },
   { "model_id": "gpt-image-2", "label": "Image 2", "accent": "#22d3ee" },
   {
     "model_id": "gpt-image-2.5-sunburst",

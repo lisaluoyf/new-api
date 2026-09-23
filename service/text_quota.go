@@ -602,6 +602,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if imageBilling, ok := ctx.Get("seedream_image_billing"); ok {
 		other["image_billing"] = imageBilling
 	}
+	if imageBilling, ok := ctx.Get("grok_image_billing"); ok {
+		other["image_billing"] = imageBilling
+	}
 	if requestData := ImageRequestDataFromContext(ctx); len(requestData) > 0 {
 		other["request_data"] = requestData
 	}
@@ -638,6 +641,13 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		}
 	}
 
+	if billing, ok := ctx.Get("grok_image_billing"); ok {
+		if details, ok := billing.(map[string]interface{}); ok {
+			accountingInput.BillingMode = accountingBillingModeImageCount
+			accountingInput.ImageCount, _ = details["generated_images"].(int)
+			accountingInput.ImageBaseUnits, _ = details["base_units"].(float64)
+		}
+	}
 	accounting := BuildConsumeAccountingFields(accountingInput)
 	if summary.TotalTokens == 0 {
 		// A zero-quota billing diagnostic is an internal audit event, not a user

@@ -639,7 +639,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		return &requestBody, nil
 
 	default:
-		if isAPIMartCompatibleBase(info.ChannelBaseUrl) &&
+		if !dto.IsGrokImage20(info.OriginModelName) && isAPIMartCompatibleBase(info.ChannelBaseUrl) &&
 			strings.TrimSpace(request.Webhook) == "" {
 			request.Webhook = service.MediaTaskWebhookBase()
 		}

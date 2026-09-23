@@ -42,6 +42,18 @@ type PricingRow = {
 }
 
 const DEFAULT_PRICING: Record<string, ImagePricingConfig> = {
+  'grok-imagine-image-2.0': {
+    unit: 'image',
+    base_price: 0.04,
+    base_variant: '1K low',
+    prices: {
+      '1K low': 0.04,
+      '1K medium': 0.06,
+      '2K low': 0.06,
+      '2K medium': 0.08,
+      'Image Input': 0.01,
+    },
+  },
   'doubao-seedream-5-0-pro-260628': {
     unit: 'image',
     base_price: 0.045,

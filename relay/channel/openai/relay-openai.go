@@ -1338,7 +1338,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 			asyncCheck.Data[0].TaskID != "" &&
 			asyncCheck.Data[0].Status == "submitted" {
 			taskID := asyncCheck.Data[0].TaskID
-			if apimartWebhookEnabled(c) {
+			if apimartWebhookEnabled(c) && !dto.IsGrokImage20(info.OriginModelName) {
 				var publicTaskID string
 				responseBody, publicTaskID = trackSubmittedImageTask(c, info, responseBody, taskID)
 				c.Set(imagePollTaskIDContextKey, publicTaskID)
@@ -1391,6 +1391,9 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
 		}
 	}
+	if err := service.ApplyGrokImageBilling(c, info, responseBody); err != nil {
+		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+	}
 
 	// Rewrite upstream image URLs before returning to client (sync responses).
 	if info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits {
@@ -1412,7 +1415,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		}
 	}
 
-	if dto.IsSeedream5Pro(info.OriginModelName) {
+	if dto.IsSeedream5Pro(info.OriginModelName) || dto.IsGrokImage20(info.OriginModelName) {
 		c.Set("image_result_urls", service.ExtractImageURLsFromResponse(responseBody))
 	}
 

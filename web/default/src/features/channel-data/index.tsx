@@ -370,6 +370,7 @@ const NON_LLM_MODEL_IDS = new Set([
   'jev-latest',
   'jev-preview',
   'jev-1.13.0',
+  'grok-imagine-image-2.0',
   'doubao-seedream-5-0-pro-260628',
   'midjourney-v8.2',
   'midjourney-niji-7',
@@ -401,6 +402,7 @@ const VIDEO_MODEL_IDS = new Set([
 ])
 
 const IMAGE_MODEL_IDS = new Set([
+  'grok-imagine-image-2.0',
   'doubao-seedream-5-0-pro-260628',
   'gemini-2.5-flash-image',
   'gemini-3-pro-image',

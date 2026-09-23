@@ -71,3 +71,25 @@ test('does not invent image charges for unrelated or incomplete logs', () => {
   delete missingPrice.model_price
   assert.equal(getImageBillingBreakdown(missingPrice)!.calculatedCharge, null)
 })
+
+test('Grok bills each reference once with the recorded variant and coefficients', () => {
+  const result = getImageBillingBreakdown({
+    model_price: 0.0768,
+    group_ratio: 1.05,
+    user_group_ratio: -1,
+    image_billing: {
+      base_variant: '2K medium',
+      layer_decomposition: false,
+      input_images: 1,
+      generated_images: 2,
+      base_amount_usd: 0.17,
+      base_prices: { '2K medium': 0.08, 'Image Input': 0.01 },
+      billable_counts: { '2K medium': 2, 'Image Input': 1 },
+    },
+  })!
+  assert.equal(result.freeInputImages, 0)
+  assert.equal(result.paidInputImages, 1)
+  assert.equal(result.outputImages, 2)
+  assert(Math.abs(result.channelRatio! - 0.96) < 1e-10)
+  assert(Math.abs(result.calculatedCharge! - 0.17136) < 1e-10)
+})

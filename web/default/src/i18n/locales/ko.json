@@ -4723,5 +4723,9 @@
   "Not claimed": "미수령",
   "Days left with date": "{{days}}일 남음 ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "1K low": "1K 저화질",
+  "1K medium": "1K 중화질",
+  "2K low": "2K 저화질",
+  "2K medium": "2K 중화질"
 }

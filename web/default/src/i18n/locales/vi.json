@@ -4732,5 +4732,9 @@
   "Not claimed": "Chưa nhận",
   "Days left with date": "Còn {{days}} ngày ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "1K low": "1K chất lượng thấp",
+  "1K medium": "1K chất lượng trung bình",
+  "2K low": "2K chất lượng thấp",
+  "2K medium": "2K chất lượng trung bình"
 }

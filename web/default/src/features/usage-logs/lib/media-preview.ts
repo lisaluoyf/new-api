@@ -41,6 +41,7 @@ export function isValidMediaPreviewURL(url: string): boolean {
 export function isLogMediaImageModel(modelName: string): boolean {
   const model = modelName.trim().toLowerCase()
   return (
+    model === 'grok-imagine-image-2.0' ||
     model.startsWith('gpt-image-2') ||
     model === 'doubao-seedream-5-0-pro-260628' ||
     model === 'midjourney-v8.2' ||

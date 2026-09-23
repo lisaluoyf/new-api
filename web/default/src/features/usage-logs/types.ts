@@ -174,6 +174,7 @@ export interface LogOtherData {
   image_generation_call?: boolean
   image_generation_call_price?: number
   image_billing?: {
+    base_variant?: string
     layer_decomposition: boolean
     input_images: number
     generated_images: number

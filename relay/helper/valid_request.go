@@ -40,6 +40,13 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 
 	case types.RelayFormatOpenAIImage:
 		request, err = GetAndValidOpenAIImageRequest(c, relayMode)
+		if image, ok := request.(*dto.ImageRequest); err == nil && ok && dto.IsGrokImage20(image.Model) {
+			if relayMode != relayconstant.RelayModeImagesGenerations || strings.Contains(c.Request.URL.Path, "/async") {
+				err = errors.New("grok-imagine-image-2.0 uses /v1/images/generations; pass reference images in image_urls")
+			} else {
+				err = image.NormalizeGrokImage20()
+			}
+		}
 	case types.RelayFormatEmbedding:
 		request, err = GetAndValidateEmbeddingRequest(c, relayMode)
 	case types.RelayFormatTypeSafe:
@@ -174,7 +181,7 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 		if strings.Contains(imageRequest.Size, "×") {
 			return nil, errors.New("size an unexpected error occurred in the parameter, please use 'x' instead of the multiplication sign '×'")
 		}
-		if imageRequest.N == nil || *imageRequest.N == 0 {
+		if imageRequest.N == nil || (*imageRequest.N == 0 && !dto.IsGrokImage20(imageRequest.Model)) {
 			imageRequest.N = common.GetPointer(uint(1))
 		}
 		return imageRequest, nil
@@ -199,7 +206,7 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 					imageRequest.Quality = "standard"
 				}
 			}
-			if imageRequest.N == nil || *imageRequest.N == 0 {
+			if imageRequest.N == nil || (*imageRequest.N == 0 && !dto.IsGrokImage20(imageRequest.Model)) {
 				imageRequest.N = common.GetPointer(uint(1))
 			}
 
@@ -253,7 +260,7 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 		//	return nil, errors.New("prompt is required")
 		//}
 
-		if imageRequest.N == nil || *imageRequest.N == 0 {
+		if imageRequest.N == nil || (*imageRequest.N == 0 && !dto.IsGrokImage20(imageRequest.Model)) {
 			imageRequest.N = common.GetPointer(uint(1))
 		}
 	}

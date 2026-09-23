@@ -4723,5 +4723,9 @@
   "Not claimed": "Belum diklaim",
   "Days left with date": "Sisa {{days}} hari ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "1K low": "1K kualitas rendah",
+  "1K medium": "1K kualitas sedang",
+  "2K low": "2K kualitas rendah",
+  "2K medium": "2K kualitas sedang"
 }

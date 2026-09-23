@@ -4732,5 +4732,9 @@
   "Not claimed": "未受取",
   "Days left with date": "残り {{days}} 日 ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "1K low": "1K 低品質",
+  "1K medium": "1K 中品質",
+  "2K low": "2K 低品質",
+  "2K medium": "2K 中品質"
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -714,4 +715,80 @@ func TestTieredPriceSnapshotFollowsSelectedFundingSource(t *testing.T) {
 	require.Equal(t, "gpt_trial", info.PriceDataSource)
 	require.Equal(t, trialPrice, info.PriceData)
 	require.Same(t, trialSnapshot, info.TieredBillingSnapshot)
+}
+
+func TestGrokImageReserveUsesReferencesAndAllCoefficients(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
+
+	common.OptionMapRWMutex.Lock()
+	mapWasNil := common.OptionMap == nil
+	if mapWasNil {
+		common.OptionMap = make(map[string]string)
+	}
+	previous, hadPrevious := common.OptionMap[ratio_setting.ImageModelPricingOption]
+	common.OptionMap[ratio_setting.ImageModelPricingOption] = ratio_setting.DefaultImageModelPricingJSON()
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if mapWasNil {
+			common.OptionMap = nil
+			return
+		}
+		if hadPrevious {
+			common.OptionMap[ratio_setting.ImageModelPricingOption] = previous
+		} else {
+			delete(common.OptionMap, ratio_setting.ImageModelPricingOption)
+		}
+	})
+
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.Exec(`CREATE TABLE channels (
+		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		apimaster_price_ratio real, model_price_ratios text
+	)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channels
+		(id, recharge_rate, apimaster_price_ratio) VALUES (1, 0.5, 2)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
+		id integer primary key, channel_id integer not null, model_name text not null,
+		input_price real, output_price real, cache_price real, cache_creation_price real,
+		group_ratio real, pricing_source text
+	)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO channel_model_pricings
+		(channel_id, model_name, input_price, group_ratio, pricing_source)
+		VALUES (1, 'gpt-image-2', 0.002, 0.2, 'api')`).Error)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	ctx.Set("channel_id", 1)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-image-2",
+		RelayMode:       relayconstant.RelayModeImagesGenerations,
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	require.NoError(t, db.Exec(`UPDATE channels SET setting = '{"manual_group_ratio":0.8}' WHERE id=1`).Error)
+	info.OriginModelName = dto.GrokImage20Model
+	for _, tc := range []struct {
+		resolution, quality string
+		price               float64
+	}{{"1k", "low", .04}, {"1k", "medium", .06}, {"2k", "low", .06}, {"2k", "medium", .08}} {
+		req := &dto.ImageRequest{Model: dto.GrokImage20Model, Resolution: tc.resolution, Quality: tc.quality, N: common.GetPointer(uint(2)), ImageUrls: []string{"ref"}}
+		info.Request = req
+		price, err := ModelPriceHelper(ctx, info, 0, &types.TokenCountMeta{ImagePriceVariant: req.EffectiveResolutionTier()})
+		require.NoError(t, err)
+		require.InDelta(t, tc.price*.8*.5*2, price.ModelPrice, 1e-10)
+		want := (tc.price*2 + .01) * .8 * .5 * 2 * common.QuotaPerUnit * price.GroupRatioInfo.GroupRatio
+		require.InDelta(t, want, price.QuotaToPreConsume, 1)
+		info.PriceData = price
+		require.NoError(t, service.ApplyGrokImageBilling(ctx, info, []byte(`{"data":[{"url":"one"}]}`)))
+		actual := info.PriceData.ModelPrice * info.PriceData.OtherRatios["grok_images"] * price.GroupRatioInfo.GroupRatio
+		require.InDelta(t, (tc.price+.01)*.8*.5*2*price.GroupRatioInfo.GroupRatio, actual, 1e-10)
+	}
 }

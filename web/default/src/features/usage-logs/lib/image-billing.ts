@@ -1,6 +1,11 @@
 import type { LogOtherData } from '../types'
 
 const imagePriceLabels: Record<string, string> = {
+  '1K low': '1K low',
+  '1K medium': '1K medium',
+  '2K low': '2K low',
+  '2K medium': '2K medium',
+  'Image Input': 'Paid input images',
   'Image Output': 'Image output (<= 2,610,000 pixels)',
   'High-Resolution Image Output': 'Image output (> 2,610,000 pixels)',
   'Layer Image Output': 'Layer output (<= 2,610,000 pixels)',
@@ -34,7 +39,7 @@ export function getImageBillingBreakdown(other: LogOtherData | null) {
   if (!items.length) return null
 
   // Prices and quantities come from the settled log, never today's settings.
-  const basePrice = billing.base_prices['Image Output']
+  const basePrice = billing.base_prices[billing.base_variant || 'Image Output']
   const channelRatio =
     Number.isFinite(other?.model_price) && basePrice > 0
       ? other!.model_price! / basePrice
@@ -53,8 +58,13 @@ export function getImageBillingBreakdown(other: LogOtherData | null) {
     isLayers: billing.layer_decomposition,
     outputImages: billing.generated_images,
     inputImages: billing.input_images,
-    freeInputImages: Math.min(1, billing.input_images),
-    paidInputImages: billing.billable_counts['Image Input (after first)'] ?? 0,
+    freeInputImages: billing.base_variant
+      ? 0
+      : Math.min(1, billing.input_images),
+    paidInputImages:
+      billing.billable_counts['Image Input'] ??
+      billing.billable_counts['Image Input (after first)'] ??
+      0,
     baseAmount: billing.base_amount_usd,
     channelRatio,
     groupRatio,

@@ -4734,5 +4734,9 @@
   "Not claimed": "Не получено",
   "Days left with date": "Осталось {{days}} дн. ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "1K low": "1K низкое качество",
+  "1K medium": "1K среднее качество",
+  "2K low": "2K низкое качество",
+  "2K medium": "2K среднее качество"
 }

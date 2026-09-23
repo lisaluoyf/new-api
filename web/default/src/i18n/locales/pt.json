@@ -4689,5 +4689,9 @@
   "Not claimed": "Não resgatado",
   "Days left with date": "Faltam {{days}} dias ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "1K low": "1K qualidade baixa",
+  "1K medium": "1K qualidade média",
+  "2K low": "2K qualidade baixa",
+  "2K medium": "2K qualidade média"
 }

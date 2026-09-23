@@ -4689,5 +4689,9 @@
   "Not claimed": "Nicht beansprucht",
   "Days left with date": "Noch {{days}} Tage ({{date}})",
   "Coding Plan Users": "Coding Plan Users",
-  "Coding Plan Balance": "Coding Plan Balance"
+  "Coding Plan Balance": "Coding Plan Balance",
+  "1K low": "1K niedrige Qualität",
+  "1K medium": "1K mittlere Qualität",
+  "2K low": "2K niedrige Qualität",
+  "2K medium": "2K mittlere Qualität"
 }

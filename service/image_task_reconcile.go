@@ -53,6 +53,7 @@ func ScheduleImageTaskReconcile(c *gin.Context, relayInfo *relaycommon.RelayInfo
 		requestID:   c.GetString(common.RequestIdKey),
 		requestData: ImageRequestDataFromContext(c),
 	}
+	job.grokPricing, _ = c.Get(GrokImagePricingContextKey)
 
 	gopool.Go(func() {
 		runImageTaskReconcile(job)
@@ -60,6 +61,7 @@ func ScheduleImageTaskReconcile(c *gin.Context, relayInfo *relaycommon.RelayInfo
 }
 
 type imageReconcileJob struct {
+	grokPricing any
 	relayInfo   *relaycommon.RelayInfo
 	taskID      string
 	baseURL     string
@@ -93,6 +95,19 @@ func runImageTaskReconcile(job imageReconcileJob) {
 	defer imageReconcileClaim.Delete(job.taskID)
 
 	deadline := job.startedAt.Add(time.Duration(imageReconcileExtraSec) * time.Second)
+	if dto.IsGrokImage20(job.relayInfo.OriginModelName) {
+		poll := pollUpstreamImageTaskResult(job.baseURL, job.apiKey, job.taskID, deadline)
+		if poll.Status == "succeeded" || poll.Status == "success" || poll.Status == "completed" {
+			urls := poll.ImageURLs
+			if len(urls) == 0 && poll.ImageURL != "" {
+				urls = []string{poll.ImageURL}
+			}
+			finalizeImageReconcileSuccessURLs(job, urls)
+		} else {
+			finalizeImageReconcileFailure(job, fmt.Sprintf("Grok task %s: %s", poll.Status, poll.DisplayFailReason()))
+		}
+		return
+	}
 	status, imageURL, failReason := pollUpstreamImageTaskStatus(job.baseURL, job.apiKey, job.taskID, deadline)
 
 	switch status {
@@ -244,7 +259,10 @@ func extractImageTaskURLs(flatURL string, images []imageTaskPollImage) []string 
 }
 
 func finalizeImageReconcileSuccess(job imageReconcileJob, imageURL string) {
-	releaseImageBillingRefund(job.relayInfo)
+	finalizeImageReconcileSuccessURLs(job, []string{imageURL})
+}
+
+func finalizeImageReconcileSuccessURLs(job imageReconcileJob, imageURLs []string) {
 
 	bg := reconcileBackgroundContext(job.relayInfo.UserId, job.tokenName)
 	bg.Set(common.RequestIdKey, job.requestID)
@@ -254,15 +272,35 @@ func finalizeImageReconcileSuccess(job imageReconcileJob, imageURL string) {
 	} else if req, ok := job.relayInfo.Request.(*dto.ImageRequest); ok {
 		SetImageRequestDataOnContext(bg, req)
 	}
+	if dto.IsGrokImage20(job.relayInfo.OriginModelName) {
+		bg.Set(GrokImagePricingContextKey, job.grokPricing)
+		data := make([]dto.ImageData, 0, len(imageURLs))
+		for _, url := range imageURLs {
+			data = append(data, dto.ImageData{Url: url})
+		}
+		body, _ := common.Marshal(dto.ImageResponse{Data: data})
+		if err := ApplyGrokImageBilling(bg, job.relayInfo, body); err != nil {
+			finalizeImageReconcileFailure(job, err.Error())
+			return
+		}
+	}
+	releaseImageBillingRefund(job.relayInfo)
 	// The request context is gone after a synchronous timeout. Preserve the exact
 	// task's preview here so logs never have to guess from nearby cached files.
-	if strings.HasPrefix(imageURL, "data:image/") {
-		imageURL = CacheImageBase64Locally(imageURL)
-	} else if imageURL != "" {
-		imageURL = CacheImageLocallyWithHeaders(imageURL, map[string]string{"Authorization": "Bearer " + job.apiKey})
+	cachedURLs := make([]string, 0, len(imageURLs))
+	for _, imageURL := range imageURLs {
+		if strings.HasPrefix(imageURL, "data:image/") {
+			imageURL = CacheImageBase64Locally(imageURL)
+		} else if imageURL != "" {
+			imageURL = CacheImageLocallyWithHeaders(imageURL, map[string]string{"Authorization": "Bearer " + job.apiKey})
+		}
+		if imageURL != "" {
+			cachedURLs = append(cachedURLs, imageURL)
+		}
 	}
-	if imageURL != "" {
-		bg.Set("image_result_url", imageURL)
+	if len(cachedURLs) > 0 {
+		bg.Set("image_result_url", cachedURLs[0])
+		bg.Set("image_result_urls", cachedURLs)
 	}
 	usage := &dto.Usage{TotalTokens: 1, PromptTokens: 1}
 
