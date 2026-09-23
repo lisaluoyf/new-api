@@ -179,6 +179,12 @@ func scanEVMPlatformWallet(chain string, cfg cryptoChainConfig) {
 	if targetBlock < 0 {
 		return
 	}
+	if activeCount == 0 {
+		if err := saveCryptoChainCursor(chain, targetBlock); err != nil {
+			common.SysLog(fmt.Sprintf("crypto: advance idle scan cursor failed chain=%s err=%v", chain, err))
+		}
+		return
+	}
 
 	cursor, exists, err := loadCryptoChainCursor(chain)
 	if err != nil {
@@ -204,12 +210,6 @@ func scanEVMPlatformWallet(chain string, cfg cryptoChainConfig) {
 		if cursor < 0 {
 			cursor = 0
 		}
-	}
-	if activeCount == 0 {
-		if err := saveCryptoChainCursor(chain, targetBlock); err != nil {
-			common.SysLog(fmt.Sprintf("crypto: advance idle scan cursor failed chain=%s err=%v", chain, err))
-		}
-		return
 	}
 	if cursor >= targetBlock {
 		return
