@@ -46,6 +46,9 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 			} else {
 				err = image.NormalizeGrokImage20()
 			}
+			if err != nil {
+				err = types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
 		}
 	case types.RelayFormatEmbedding:
 		request, err = GetAndValidateEmbeddingRequest(c, relayMode)
