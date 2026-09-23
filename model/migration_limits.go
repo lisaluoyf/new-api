@@ -12,7 +12,12 @@ import (
 func withMigrationLimits(db *gorm.DB, migrate func(*gorm.DB) error) error {
 	ctx, cancel := context.WithTimeout(db.Statement.Context, 60*time.Second)
 	defer cancel()
-	db = db.WithContext(ctx)
+	db = db.Session(&gorm.Session{Context: ctx})
+	if prepared, ok := db.Statement.ConnPool.(*gorm.PreparedStmtDB); ok {
+		db.Statement.ConnPool = prepared.ConnPool
+		db.Config.ConnPool = prepared.ConnPool
+	}
+	db.Config.PrepareStmt = false
 	if db.Dialector.Name() != "postgres" {
 		return migrate(db)
 	}
