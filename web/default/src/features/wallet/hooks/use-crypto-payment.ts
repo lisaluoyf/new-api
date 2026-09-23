@@ -331,6 +331,7 @@ export interface UseCryptoPaymentReturn {
     selectedProvider: CryptoWalletProvider
   ) => Promise<void>
   reset: () => void
+  detach: () => void
 }
 
 // ============================================================================
@@ -417,12 +418,12 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
   const [nativePrice, setNativePrice] = useState(0)
   const [pendingDepositId, setPendingDepositId] = useState<string | null>(null)
   const paymentLockRef = useRef(false)
+  const paymentAttemptRef = useRef(0)
+  const presentPendingConfirmationRef = useRef(false)
 
   useEffect(() => {
     const pending = readPendingCryptoDeposit()
     if (!pending) return
-    paymentLockRef.current = true
-    setStep('processing')
     setPendingDepositId(pending.depositId)
   }, [])
 
@@ -438,15 +439,19 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
         if (cancelled) return
         if (status.status === 'confirmed') {
           clearPendingCryptoDeposit(pendingDepositId)
-          setUsdAdded(status.usdAdded ?? 0)
-          setStep('done')
+          if (presentPendingConfirmationRef.current) {
+            setUsdAdded(status.usdAdded ?? 0)
+            setStep('done')
+          }
           setPendingDepositId(null)
           paymentLockRef.current = false
           return
         }
         if (status.status === 'failed' || status.status === 'expired') {
           clearPendingCryptoDeposit(pendingDepositId)
-          setStep('failed')
+          if (presentPendingConfirmationRef.current) {
+            setStep('failed')
+          }
           setPendingDepositId(null)
           paymentLockRef.current = false
           return
@@ -474,7 +479,16 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
     setWalletAddress(null)
     setNativePrice(0)
     paymentLockRef.current = false
+    presentPendingConfirmationRef.current = false
   }, [])
+
+  const detach = useCallback(() => {
+    paymentAttemptRef.current += 1
+    const pending = readPendingCryptoDeposit()
+    if (pending) clearPendingCryptoDeposit(pending.depositId)
+    setPendingDepositId(null)
+    reset()
+  }, [reset])
 
   const startPayment = useCallback(
     async (
@@ -486,19 +500,23 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
       if (paymentLockRef.current) {
         return
       }
-      if (readPendingCryptoDeposit()) {
-        setError(i18next.t('Please wait a moment before trying again.'))
-        setStep('processing')
-        return
-      }
 
       paymentLockRef.current = true
+      const attemptId = paymentAttemptRef.current + 1
+      paymentAttemptRef.current = attemptId
+      const isCurrentAttempt = () => paymentAttemptRef.current === attemptId
+      const setCurrentStep = (nextStep: CryptoStep) => {
+        if (isCurrentAttempt()) setStep(nextStep)
+      }
+      const setCurrentError = (nextError: string | null) => {
+        if (isCurrentAttempt()) setError(nextError)
+      }
       let currentDepositId = ''
       let paymentAuthorized = false
 
       try {
-        setError(null)
-        setStep('connecting')
+        setCurrentError(null)
+        setCurrentStep('connecting')
         let from = ''
         if (selectedProvider.family === 'evm') {
           const accounts = (await selectedProvider.ethereum.request({
@@ -518,7 +536,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
             ''
         }
         if (!from) throw new Error('No account selected')
-        setWalletAddress(from)
+        if (isCurrentAttempt()) setWalletAddress(from)
 
         if (selectedProvider.family === 'evm') {
           if (isUnsupportedPhantomChain(selectedProvider.ethereum, chain)) {
@@ -528,7 +546,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
               )
             )
           }
-          setStep('switching')
+          setCurrentStep('switching')
           try {
             await selectedProvider.ethereum.request({
               method: 'wallet_switchEthereumChain',
@@ -570,7 +588,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           (selectedProvider.family === 'evm' ? PLATFORM_WALLET : '')
         if (!depositAddress)
           throw new Error(i18next.t('Crypto recipient is not configured'))
-        setStep('signing')
+        setCurrentStep('signing')
         let walletSignature = ''
         if (selectedProvider.family === 'evm') {
           walletSignature = await signWalletChallenge(
@@ -603,18 +621,22 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
         if (!intentRes.baseUnitAmount) {
           throw new Error(i18next.t('Failed to quote native asset'))
         }
-        savePendingCryptoDeposit(depositId)
-        setPendingDepositId(depositId)
+        if (isCurrentAttempt()) {
+          savePendingCryptoDeposit(depositId)
+          setPendingDepositId(depositId)
+          presentPendingConfirmationRef.current = true
+        }
         const baseUnitAmount = BigInt(intentRes.baseUnitAmount)
 
-        setStep('confirming')
+        setCurrentStep('confirming')
         let hash: string
 
         if (selectedProvider.family === 'evm') {
           if (token.isNative) {
             if (!intentRes.nativeAssetAmount)
               throw new Error(i18next.t('Failed to quote native asset'))
-            setNativePrice(intentRes.assetUsdPrice ?? 0)
+            if (isCurrentAttempt())
+              setNativePrice(intentRes.assetUsdPrice ?? 0)
             const value = baseUnitAmount
             hash = (await selectedProvider.ethereum.request({
               method: 'eth_sendTransaction',
@@ -639,7 +661,8 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           if (token.isNative) {
             if (!intentRes.nativeAssetAmount)
               throw new Error(i18next.t('Failed to quote native asset'))
-            setNativePrice(intentRes.assetUsdPrice ?? 0)
+            if (isCurrentAttempt())
+              setNativePrice(intentRes.assetUsdPrice ?? 0)
             transaction =
               await selectedProvider.tronWeb.transactionBuilder.sendTrx(
                 depositAddress,
@@ -687,7 +710,8 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           if (token.isNative) {
             if (!intentRes.nativeAssetAmount)
               throw new Error(i18next.t('Failed to quote native asset'))
-            setNativePrice(intentRes.assetUsdPrice ?? 0)
+            if (isCurrentAttempt())
+              setNativePrice(intentRes.assetUsdPrice ?? 0)
             transaction.add(
               SystemProgram.transfer({
                 fromPubkey: fromKey,
@@ -728,12 +752,12 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           hash = typeof sent === 'string' ? sent : sent.signature
         }
 
-        setTxHash(hash)
+        if (isCurrentAttempt()) setTxHash(hash)
 
-        setStep('processing')
+        setCurrentStep('processing')
         const submitResult = await submitCryptoDeposit(depositId, hash)
         if (!submitResult.success) {
-          setError(
+          setCurrentError(
             submitResult.error ?? i18next.t('Failed to submit transaction')
           )
         }
@@ -744,37 +768,39 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
             const cancellation =
               await cancelCryptoDepositIntent(currentDepositId)
             if (!cancellation.success) {
-              setError(msg)
-              setStep('processing')
+              setCurrentError(msg)
+              setCurrentStep('processing')
               return
             }
             if (cancellation.success) {
               clearPendingCryptoDeposit(currentDepositId)
-              setPendingDepositId(null)
+              if (isCurrentAttempt()) setPendingDepositId(null)
             }
           }
-          toast.info(i18next.t('Transaction cancelled'))
-          setStep('form')
+          if (isCurrentAttempt()) {
+            toast.info(i18next.t('Transaction cancelled'))
+          }
+          setCurrentStep('form')
           return
         }
         if (currentDepositId && paymentAuthorized) {
-          setError(msg)
-          setStep('processing')
+          setCurrentError(msg)
+          setCurrentStep('processing')
           return
         }
         if (currentDepositId && !paymentAuthorized) {
           void cancelCryptoDepositIntent(currentDepositId)
         }
-        setError(
+        setCurrentError(
           isPendingWalletRequest(err)
             ? i18next.t(
                 'A wallet request is already pending. Please open your wallet extension and finish or cancel it before trying again.'
               )
             : msg
         )
-        setStep('failed')
+        setCurrentStep('failed')
       } finally {
-        paymentLockRef.current = false
+        if (isCurrentAttempt()) paymentLockRef.current = false
       }
     },
     []
@@ -789,5 +815,6 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
     nativePrice,
     startPayment,
     reset,
+    detach,
   }
 }

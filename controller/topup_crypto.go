@@ -560,11 +560,12 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 	}
 
 	var (
-		receipt   map[string]interface{}
-		txMap     map[string]interface{}
-		lastErr   error
-		rpcURL    string
-		usedIndex int
+		receipt        map[string]interface{}
+		txMap          map[string]interface{}
+		lastErr        error
+		rpcURL         string
+		usedIndex      int
+		receiptPending bool
 	)
 
 	for i, candidate := range rpcURLs {
@@ -572,9 +573,13 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 		receiptResult, err := ethCall(ctx, candidate, "eth_getTransactionReceipt", []interface{}{*intent.TxHash})
 		cancel()
 		currentReceipt, _ := receiptResult.(map[string]interface{})
-		if err != nil || currentReceipt == nil {
+		if err != nil {
 			lastErr = err
 			common.SysLog(fmt.Sprintf("crypto: receipt error txHash=%s rpc=%s err=%v", *intent.TxHash, candidate, err))
+			continue
+		}
+		if currentReceipt == nil {
+			receiptPending = true
 			continue
 		}
 
@@ -601,6 +606,9 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 	}
 
 	if receipt == nil || txMap == nil {
+		if receiptPending {
+			return 0, pendingCryptoRetryableError("transaction receipt is not available yet")
+		}
 		if lastErr == nil {
 			lastErr = fmt.Errorf("transaction receipt unavailable")
 		}
@@ -616,14 +624,17 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 	}
 	receiptBlock, ok := hexToInt64(stringValue(receipt["blockNumber"]))
 	if !ok {
-		return 0, retryableCryptoError("transaction block unavailable")
+		return 0, pendingCryptoRetryableError("transaction block unavailable")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	latestResult, latestErr := ethCall(ctx, rpcURL, "eth_blockNumber", nil)
 	cancel()
 	latestBlock, latestOK := hexToInt64(stringValue(latestResult))
 	if latestErr != nil || !latestOK || latestBlock-receiptBlock < cryptoEVMConfirmations {
-		return 0, retryableCryptoError("transaction confirmations are not sufficient")
+		if latestErr != nil || !latestOK {
+			return 0, retryableCryptoError("latest block unavailable")
+		}
+		return 0, pendingCryptoRetryableError("transaction confirmations are not sufficient")
 	}
 
 	fromField, _ := txMap["from"].(string)
@@ -706,13 +717,26 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 	return 0, fmt.Errorf("matching token transfer not found")
 }
 
-type cryptoRetryableError struct{ err error }
+type cryptoRetryableError struct {
+	err               error
+	retryAfterSeconds int64
+}
 
 func (err *cryptoRetryableError) Error() string { return err.err.Error() }
 func (err *cryptoRetryableError) Unwrap() error { return err.err }
 
 func retryableCryptoError(format string, args ...interface{}) error {
-	return &cryptoRetryableError{err: fmt.Errorf(format, args...)}
+	return &cryptoRetryableError{
+		err:               fmt.Errorf(format, args...),
+		retryAfterSeconds: cryptoVerificationUnavailableRetrySeconds,
+	}
+}
+
+func pendingCryptoRetryableError(format string, args ...interface{}) error {
+	return &cryptoRetryableError{
+		err:               fmt.Errorf(format, args...),
+		retryAfterSeconds: cryptoVerificationPendingRetrySeconds,
+	}
 }
 
 func postCryptoJSON(ctx context.Context, url string, payload interface{}, result interface{}) error {
@@ -820,7 +844,7 @@ func verifyTronIntent(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, 
 		return 0, retryableCryptoError("TRON RPC unavailable: %v", lastErr)
 	}
 	if info.BlockNumber <= 0 || len(transaction.RawData.Contract) == 0 {
-		return 0, retryableCryptoError("TRON transaction is not confirmed")
+		return 0, pendingCryptoRetryableError("TRON transaction is not confirmed")
 	}
 	if len(transaction.Ret) == 0 || transaction.Ret[0].ContractRet != "SUCCESS" ||
 		(info.Receipt.Result != "" && info.Receipt.Result != "SUCCESS") {
@@ -886,6 +910,7 @@ func verifySolanaIntent(intent *model.CryptoDepositIntent, cfg cryptoChainConfig
 	}
 	var result interface{}
 	var lastErr error
+	transactionPending := false
 	for _, rpcURL := range rpcURLs {
 		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 		response, err := ethCall(ctx, rpcURL, "getTransaction", []interface{}{*intent.TxHash, map[string]interface{}{"encoding": "jsonParsed", "commitment": "finalized", "maxSupportedTransactionVersion": 0}})
@@ -895,9 +920,16 @@ func verifySolanaIntent(intent *model.CryptoDepositIntent, cfg cryptoChainConfig
 			lastErr = nil
 			break
 		}
+		if err == nil {
+			transactionPending = true
+			continue
+		}
 		lastErr = err
 	}
 	if result == nil {
+		if transactionPending {
+			return 0, pendingCryptoRetryableError("Solana transaction is not finalized yet")
+		}
 		return 0, retryableCryptoError("Solana transaction is not finalized: %v", lastErr)
 	}
 	transactionResult, ok := result.(map[string]interface{})
@@ -1200,7 +1232,7 @@ func verifyAndCredit(intentId string) {
 		Where("id = ? AND status = ?", intent.Id, model.CryptoDepositIntentStatusPending).
 		Updates(map[string]interface{}{
 			"last_checked_at": now,
-			"next_check_at":   now + cryptoVerificationRetrySeconds,
+			"next_check_at":   now + cryptoVerificationPendingRetrySeconds,
 			"retry_count":     gorm.Expr("retry_count + ?", 1),
 		})
 
@@ -1224,9 +1256,13 @@ func verifyAndCredit(intentId string) {
 		common.SysLog(fmt.Sprintf("crypto: verify failed intent=%s txHash=%s err=%v", intent.Id, *intent.TxHash, err))
 		var retryable *cryptoRetryableError
 		if errors.As(err, &retryable) {
+			retryAfter := retryable.retryAfterSeconds
+			if retryAfter <= 0 {
+				retryAfter = cryptoVerificationUnavailableRetrySeconds
+			}
 			model.DB.Model(&model.CryptoDepositIntent{}).
 				Where("id = ? AND status = ?", intent.Id, model.CryptoDepositIntentStatusPending).
-				Update("next_check_at", common.GetTimestamp()+5*60)
+				Update("next_check_at", common.GetTimestamp()+retryAfter)
 			return
 		}
 		markCryptoIntentFailed(intentId, err)

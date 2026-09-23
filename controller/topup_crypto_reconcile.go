@@ -23,11 +23,12 @@ import (
 )
 
 const (
-	cryptoReconcileInterval        = 15 * time.Second
-	cryptoVerificationRetrySeconds = int64(60)
-	cryptoReconcileBatchSize       = 100
-	cryptoEVMScanBatchBlocks       = int64(40)
-	cryptoEVMConfirmations         = int64(12)
+	cryptoReconcileInterval                   = 15 * time.Second
+	cryptoVerificationPendingRetrySeconds     = int64(15)
+	cryptoVerificationUnavailableRetrySeconds = int64(5 * 60)
+	cryptoReconcileBatchSize                  = 100
+	cryptoEVMScanBatchBlocks                  = int64(40)
+	cryptoEVMConfirmations                    = int64(12)
 )
 
 var (

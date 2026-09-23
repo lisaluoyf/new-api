@@ -102,8 +102,16 @@ export function CryptoDepositModal({
   const [paymentMode, setPaymentMode] = useState('wallet')
   const [hostedCheckoutLoading, setHostedCheckoutLoading] = useState(false)
 
-  const { step, error, txHash, usdAdded, walletAddress, startPayment, reset } =
-    useCryptoPayment()
+  const {
+    step,
+    error,
+    txHash,
+    usdAdded,
+    walletAddress,
+    startPayment,
+    reset,
+    detach,
+  } = useCryptoPayment()
   const [displayPrice, setDisplayPrice] = useState(0)
 
   useEffect(() => {
@@ -189,6 +197,10 @@ export function CryptoDepositModal({
 
   function handleClose() {
     if (isProcessing) {
+      detach()
+      setWalletOptions([])
+      setSelectedWalletId(null)
+      setWalletDiscoveryReady(false)
       onOpenChange(false)
       return
     }

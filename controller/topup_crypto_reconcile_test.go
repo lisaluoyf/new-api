@@ -46,6 +46,16 @@ func TestVerifyExpectedCryptoBaseUnits(t *testing.T) {
 	require.ErrorAs(t, err, &retryable)
 }
 
+func TestCryptoRetryDelaysDifferentiatePendingConfirmationFromRPCFailure(t *testing.T) {
+	var pending *cryptoRetryableError
+	require.ErrorAs(t, pendingCryptoRetryableError("transaction confirmations are not sufficient"), &pending)
+	require.Equal(t, cryptoVerificationPendingRetrySeconds, pending.retryAfterSeconds)
+
+	var unavailable *cryptoRetryableError
+	require.ErrorAs(t, retryableCryptoError("latest block unavailable"), &unavailable)
+	require.Equal(t, cryptoVerificationUnavailableRetrySeconds, unavailable.retryAfterSeconds)
+}
+
 func TestFindUniqueCryptoRecoveryCandidateRejectsAmbiguity(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
