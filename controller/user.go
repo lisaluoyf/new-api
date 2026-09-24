@@ -31,6 +31,10 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+type RevokeSessionsRequest struct {
+	Username string `json:"username" binding:"required"`
+}
+
 var errOriginalPasswordInvalid = errors.New("original password invalid")
 
 func Login(c *gin.Context) {
@@ -137,6 +141,25 @@ func InternalLogin(c *gin.Context) {
 	setupLogin(&user, c)
 }
 
+// RevokeInternalSessions invalidates all browser sessions for one mirrored
+// APIMaster account without changing its stable derived password.
+func RevokeInternalSessions(c *gin.Context) {
+	var request RevokeSessionsRequest
+	if err := c.ShouldBindJSON(&request); err != nil || strings.TrimSpace(request.Username) == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	updated, err := model.IncrementUserSessionVersion(strings.TrimSpace(request.Username))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    map[string]any{"revoked": updated},
+	})
+}
+
 // setup session & cookies and then return user info
 func setupLogin(user *model.User, c *gin.Context) {
 	model.UpdateUserLastLoginAt(user.Id)
@@ -147,6 +170,7 @@ func setupLogin(user *model.User, c *gin.Context) {
 	session.Set("role", user.Role)
 	session.Set("status", user.Status)
 	session.Set("group", user.Group)
+	session.Set("session_version", user.SessionVersion)
 	err := session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)

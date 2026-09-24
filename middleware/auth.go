@@ -105,6 +105,19 @@ func authHelper(c *gin.Context, minRole int) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn)})
 			return
 		}
+		sessionVersion := int64(0)
+		switch value := session.Get("session_version").(type) {
+		case int:
+			sessionVersion = int64(value)
+		case int64:
+			sessionVersion = value
+		case float64:
+			sessionVersion = int64(value)
+		}
+		if sessionVersion != current.SessionVersion {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn)})
+			return
+		}
 		status = current.Status
 		role = current.Role
 	}
@@ -158,6 +171,27 @@ func TryUserAuth() func(c *gin.Context) {
 		session := sessions.Default(c)
 		if id, ok := session.Get("id").(int); ok {
 			if user, err := model.GetUserById(id, false); err == nil && user.Status == common.UserStatusEnabled {
+				sessionVersion := int64(0)
+				switch value := session.Get("session_version").(type) {
+				case int:
+					sessionVersion = int64(value)
+				case int32:
+					sessionVersion = int64(value)
+				case int64:
+					sessionVersion = value
+				case uint:
+					sessionVersion = int64(value)
+				case uint32:
+					sessionVersion = int64(value)
+				case uint64:
+					sessionVersion = int64(value)
+				case float64:
+					sessionVersion = int64(value)
+				}
+				if sessionVersion != user.SessionVersion {
+					c.Next()
+					return
+				}
 				c.Set("id", id)
 			}
 		}

@@ -60,6 +60,7 @@ type User struct {
 	LastLoginAt      int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	Country          string         `json:"country,omitempty" gorm:"type:varchar(10);default:''"`
 	Language         string         `json:"language,omitempty" gorm:"type:varchar(10);default:''"`
+	SessionVersion   int64          `json:"-" gorm:"not null;default:0"`
 	TopupForbidden   bool           `json:"topup_forbidden" gorm:"-:all"`
 	TotalTopupUSD    float64        `json:"total_topup_usd,omitempty" gorm:"-:all"`
 
@@ -79,6 +80,16 @@ type User struct {
 	GPTSubscriptionPlanId    int    `json:"gpt_subscription_plan_id,omitempty" gorm:"-:all"`
 	GPTSubscriptionPlanTitle string `json:"gpt_subscription_plan_title,omitempty" gorm:"-:all"`
 	GPTSubscriptionEndTime   int64  `json:"gpt_subscription_end_time,omitempty" gorm:"-:all"`
+}
+
+func IncrementUserSessionVersion(username string) (bool, error) {
+	result := DB.Model(&User{}).
+		Where("username = ? AND status = ?", username, common.UserStatusEnabled).
+		UpdateColumn("session_version", gorm.Expr("session_version + ?", 1))
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
 func (user *User) ToBaseUser() *UserBase {
