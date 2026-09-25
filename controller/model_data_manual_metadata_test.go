@@ -23,3 +23,17 @@ func TestManualDisableMetadataUsesLatestTransitionAndModel(t *testing.T) {
 	require.Empty(t, modelDataManualDisableEvents(nil, []string{"gpt-5.6-luna"}))
 	require.Empty(t, modelDataManualDisableEvents([]int{170}, nil))
 }
+
+func TestManualDisableActorNamesPreferDisplayNameAndHandleMissingUsers(t *testing.T) {
+	db := setupModelDataToggleTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.Create(&model.User{Id: 14, Username: "opaque-user", AffCode: "actor14", DisplayName: "lisa.luoyf"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 19, Username: "operator", AffCode: "actor19", DisplayName: " "}).Error)
+	events := map[int]model.ChannelModelEvent{170: {ActorID: 14}, 171: {ActorID: 19}, 172: {ActorID: 999}, 173: {ActorID: 0}}
+	got := modelDataManualActorNames(events)
+	require.Equal(t, "lisa.luoyf", got[14])
+	require.Equal(t, "operator", got[19])
+	require.NotContains(t, got, 999)
+	require.NotContains(t, got, 0)
+	require.Empty(t, modelDataManualActorNames(nil))
+}

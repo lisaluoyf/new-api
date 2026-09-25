@@ -90,6 +90,8 @@ type ModelDataItem struct {
 	ModelEnabled               bool                       `json:"model_enabled"`                // abilities.enabled for this (channel, model) — false = disabled for this model only
 	StatusReason               string                     `json:"status_reason"`                // recorded disable reason, including manual model events
 	StatusSource               string                     `json:"status_source"`
+	StatusActorID              int                        `json:"status_actor_id"`
+	StatusActorName            string                     `json:"status_actor_name"`
 	StatusTime                 int64                      `json:"status_time"` // unix ts of disable event; 0 if unknown
 	BaseURL                    string                     `json:"base_url"`    // channel base URL, used for analysis lookup
 	FreeModelConfig            *FreeModelMemberConfigView `json:"free_model_config,omitempty"`
@@ -506,6 +508,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 	deepSeekTimedPrice, isDeepSeekTimedPrice := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
 
 	manualEvents := modelDataManualDisableEvents(channelIDs, candidates)
+	manualActorNames := modelDataManualActorNames(manualEvents)
 
 	items := make([]ModelDataItem, 0, len(rows))
 	for _, r := range rows {
@@ -699,9 +702,11 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 
 		statusReason, statusTime, recoveryPassCount := modelDataStatusMetadata(r.Status, r.ModelEnabled, r.OtherInfo, modelName, r.ConsecutiveFingerprintPass)
 		statusSource := modelDataStatusSource(r.Status, r.ModelEnabled, r.OtherInfo, modelName)
+		statusActorID, statusActorName := 0, ""
 		if statusSource == "manual" {
 			if event, ok := manualEvents[r.ChannelID]; ok {
 				statusReason, statusTime = event.Reason, event.CreatedAt
+				statusActorID, statusActorName = event.ActorID, manualActorNames[event.ActorID]
 			}
 		}
 		if statusReason == "" {
@@ -779,6 +784,8 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			StatusReason:               statusReason,
 			StatusSource:               statusSource,
 			StatusTime:                 statusTime,
+			StatusActorID:              statusActorID,
+			StatusActorName:            statusActorName,
 			BaseURL: func() string {
 				if r.BaseURL != nil {
 					return *r.BaseURL
@@ -944,6 +951,37 @@ func modelDataManualDisableEvents(channelIDs []int, candidates []string) map[int
 		}
 	}
 	return result
+}
+
+// Only fetch public account labels for the actors referenced by these events.
+func modelDataManualActorNames(events map[int]model.ChannelModelEvent) map[int]string {
+	names := make(map[int]string)
+	ids := make([]int, 0, len(events))
+	for _, event := range events {
+		if event.ActorID > 0 {
+			ids = append(ids, event.ActorID)
+		}
+	}
+	if len(ids) == 0 {
+		return names
+	}
+	var users []struct {
+		Id          int
+		Username    string
+		DisplayName string
+	}
+	if err := model.DB.Table("users").Select("id, username, display_name").Where("id IN ?", ids).Find(&users).Error; err != nil {
+		common.SysError("failed to load disable actor names: " + err.Error())
+		return names
+	}
+	for _, user := range users {
+		name := strings.TrimSpace(user.DisplayName)
+		if name == "" {
+			name = user.Username
+		}
+		names[user.Id] = name
+	}
+	return names
 }
 
 func modelDataStatusMetadata(channelStatus int, modelEnabled bool, otherInfo *string, modelName string, fallbackPassCount int) (string, int64, int) {
