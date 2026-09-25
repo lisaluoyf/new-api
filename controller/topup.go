@@ -920,6 +920,17 @@ func AdminCompleteTopUp(c *gin.Context) {
 		return
 	}
 
+	// Keep legacy admin completion on the same cross-instance settlement guard.
+	// Failed Clink orders require /topup/clink/reconcile and upstream evidence.
+	if topUp := model.GetTopUpByTradeNo(req.TradeNo); topUp != nil && topUp.PaymentProvider == model.PaymentProviderClink {
+		if err := model.RechargeClink(req.TradeNo, c.ClientIP()); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ApiSuccess(c, nil)
+		return
+	}
+
 	if err := model.ManualCompleteTopUp(req.TradeNo, c.ClientIP()); err != nil {
 		common.ApiError(c, err)
 		return

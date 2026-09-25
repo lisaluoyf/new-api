@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type TopUp struct {
@@ -400,8 +402,14 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 			return ErrTopUpStatusInvalid
 		}
 
-		topUp.Status = targetStatus
-		return tx.Save(topUp).Error
+		result := tx.Model(&TopUp{}).Where("id = ? AND status = ?", topUp.Id, common.TopUpStatusPending).Update("status", targetStatus)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrTopUpStatusInvalid
+		}
+		return nil
 	})
 }
 
@@ -514,54 +522,78 @@ func RechargePayPal(referenceId string, callerIp string, captures ...PayPalCaptu
 	return nil
 }
 
-func RechargeClink(referenceId string, callerIp string) (err error) {
+// RechargeClink accepts a signed success callback for a still-pending order.
+func RechargeClink(referenceId string, callerIp string) error {
+	return rechargeClink(referenceId, callerIp, nil)
+}
+
+// RechargeClinkVerified also recovers legacy failed attempts. Callers must first
+// query Clink and validate the paid session's reference, currency and amount.
+func RechargeClinkVerified(referenceId string, callerIp string, paidAmount float64) error {
+	return rechargeClink(referenceId, callerIp, &paidAmount)
+}
+
+func rechargeClink(referenceId string, callerIp string, verifiedAmount *float64) error {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
-
 	var quota float64
 	topUp := &TopUp{}
-
-	refCol := "`trade_no`"
-	if common.UsingPostgreSQL {
-		refCol = `"trade_no"`
-	}
-
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error
-		if err != nil {
-			return errors.New("充值订单不存在")
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("trade_no = ?", referenceId).First(topUp).Error; err != nil {
+			return err
 		}
-
 		if topUp.PaymentProvider != PaymentProviderClink {
 			return ErrPaymentMethodMismatch
 		}
 		if topUp.Status == common.TopUpStatusSuccess {
 			return nil
 		}
-		if topUp.Status != common.TopUpStatusPending {
-			return errors.New("充值订单状态错误")
+		if topUp.Status != common.TopUpStatusPending &&
+			!(topUp.Status == common.TopUpStatusFailed && verifiedAmount != nil) {
+			return ErrTopUpStatusInvalid
 		}
-
-		MarkTopUpSuccess(topUp)
-		if err := tx.Save(topUp).Error; err != nil {
-			return err
+		if topUp.CompleteTime != 0 || topUp.RefundedAmount != 0 || topUp.RefundFrozenAmount != 0 ||
+			topUp.RefundedQuota != 0 || topUp.RefundFrozenQuota != 0 {
+			return ErrTopUpStatusInvalid
 		}
-
-		quota = topUpCreditQuota(topUp)
-		return tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quota)).Error
+		if verifiedAmount != nil && (topUp.Money <= 0 || *verifiedAmount <= 0 ||
+			math.IsNaN(*verifiedAmount) || math.IsInf(*verifiedAmount, 0) || math.Abs(topUp.Money-*verifiedAmount) > 0.05) {
+			return errors.New("clink paid amount mismatch")
+		}
+		credit := topUpCreditQuota(topUp)
+		if credit <= 0 {
+			return errors.New("invalid clink credit amount")
+		}
+		// Compare-and-swap is the cross-process guard (LockOrder is process-local).
+		// Only the transaction that changes the order may increase the balance.
+		result := tx.Model(&TopUp{}).Where("id = ? AND status = ? AND complete_time = ? AND money = ?", topUp.Id, topUp.Status, 0, topUp.Money).
+			Where("refunded_amount = 0 AND refund_frozen_amount = 0 AND refunded_quota = 0 AND refund_frozen_quota = 0").
+			Updates(map[string]interface{}{"status": common.TopUpStatusSuccess, "complete_time": common.GetTimestamp(), "credited_amount": credit / common.QuotaPerUnit})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errors.New("clink order changed concurrently; retry confirmation")
+		}
+		result = tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", credit))
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("clink user not found")
+		}
+		quota = credit
+		return nil
 	})
-
 	if err != nil {
-		common.SysError("clink topup failed: " + err.Error())
-		return errors.New("充值失败，请稍后重试")
+		common.SysError(fmt.Sprintf("clink topup failed trade_no=%s: %v", referenceId, err))
+		return err
 	}
-
 	if quota > 0 {
-		RecordTopupLog(topUp.UserId, fmt.Sprintf("Clink top-up successful, credited amount: %v, amount paid: %.2f", logger.FormatQuota(int(quota)), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodClink)
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("Clink top-up successful, order: %s, credited amount: %v, amount paid: %.2f", referenceId, logger.FormatQuota(int(quota)), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodClink)
 		OnTopupSucceeded(topUp.UserId, int(quota), PaymentMethodClink, topUp.TradeNo)
 	}
-
 	return nil
 }
 

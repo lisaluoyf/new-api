@@ -192,6 +192,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/topup/export", controller.ExportAllTopUps)
 				adminRoute.GET("/topup/:id/invoice", controller.AdminDownloadTopupInvoice)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
+				adminRoute.POST("/topup/clink/reconcile", controller.AdminReconcileClinkTopUp)
 				adminRoute.GET("/platega/orders", controller.AdminListPlategaOrders)
 				adminRoute.POST("/platega/query-status", controller.AdminQueryPlategaStatus)
 				adminRoute.POST("/platega/retry-callback", controller.AdminRetryPlategaCallback)
