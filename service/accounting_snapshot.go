@@ -10,25 +10,28 @@ import (
 )
 
 type ConsumeAccountingInput struct {
-	UserId                   int
-	ChannelId                int
-	ModelName                string
-	InputTokens              int
-	InputTokensIncludeCache  bool
-	CacheTokenSemanticSource string
-	OutputTokens             int
-	CacheReadTokens          int
-	CacheWriteTokens         int
-	BillingMode              string
-	ImageCount               int
-	ImageBaseUnits           float64
-	ImagePriceVariant        string
-	DurationSeconds          int
-	GroupRatio               float64
-	Quota                    int
-	ZeroUserCharge           bool
-	UseQuotaForUserAmounts   bool
-	BillingAt                time.Time
+	UserId                    int
+	ChannelId                 int
+	ModelName                 string
+	InputTokens               int
+	InputTokensIncludeCache   bool
+	CacheTokenSemanticSource  string
+	OutputTokens              int
+	CacheReadTokens           int
+	CacheWriteTokens          int
+	CacheWriteTokens5m        int
+	CacheWriteTokens1h        int
+	CacheWritePriceMultiplier *float64
+	BillingMode               string
+	ImageCount                int
+	ImageBaseUnits            float64
+	ImagePriceVariant         string
+	DurationSeconds           int
+	GroupRatio                float64
+	Quota                     int
+	ZeroUserCharge            bool
+	UseQuotaForUserAmounts    bool
+	BillingAt                 time.Time
 }
 
 type accountingPriceTuple struct {
@@ -115,6 +118,12 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		},
 		Prices:     map[string]any{},
 		AmountsUSD: map[string]float64{},
+	}
+	if input.CacheWritePriceMultiplier != nil {
+		snap.AccountingAmountVersion = "mixed_billing_v2_cache_ttl"
+		snap.Tokens["cache_write_5m"] = input.CacheWriteTokens5m
+		snap.Tokens["cache_write_1h"] = input.CacheWriteTokens1h
+		snap.Prices["cache_write_price_multiplier"] = *input.CacheWritePriceMultiplier
 	}
 	if units := accountingUnits(input); len(units) > 0 {
 		snap.Units = units
@@ -296,10 +305,14 @@ func amountUSD(prices accountingPriceTuple, input ConsumeAccountingInput) float6
 			inputTokens = 0
 		}
 	}
+	cacheWriteAmount := prices.CacheCreationPrice * float64(input.CacheWriteTokens)
+	if input.CacheWritePriceMultiplier != nil {
+		cacheWriteAmount *= *input.CacheWritePriceMultiplier
+	}
 	return (prices.InputPrice*float64(inputTokens) +
 		prices.OutputPrice*float64(input.OutputTokens) +
 		prices.CachePrice*float64(input.CacheReadTokens) +
-		prices.CacheCreationPrice*float64(input.CacheWriteTokens)) / 1000000.0
+		cacheWriteAmount) / 1000000.0
 }
 
 func userAmountsUSD(prices accountingPriceTuple, input ConsumeAccountingInput) (userPriceAmountUSD float64, userFinalAmountUSD float64) {

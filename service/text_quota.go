@@ -59,6 +59,23 @@ type textQuotaSummary struct {
 	CacheTokenSemanticSource string
 }
 
+// Price catalogs expose the base cache-write price. Carry the same TTL weighting
+// used by settlement into procurement, user and reseller accounting snapshots.
+func cacheWriteAccountingMultiplier(summary textQuotaSummary) *float64 {
+	if summary.InputTokensIncludeCache || summary.CacheCreationTokens1h <= 0 || summary.CacheCreationRatio <= 0 {
+		return nil
+	}
+	total := cacheWriteTokensTotal(summary)
+	if total <= 0 {
+		return nil
+	}
+	remaining := max(0, total-summary.CacheCreationTokens5m-summary.CacheCreationTokens1h)
+	weighted := float64(remaining)*summary.CacheCreationRatio +
+		float64(summary.CacheCreationTokens5m)*summary.CacheCreationRatio5m +
+		float64(summary.CacheCreationTokens1h)*summary.CacheCreationRatio1h
+	return common.GetPointer(weighted / (float64(total) * summary.CacheCreationRatio))
+}
+
 func applyFreeModelSettlement(summary *textQuotaSummary, tieredApplied *bool, tieredResult **billingexpr.TieredResult) {
 	if summary == nil {
 		return
@@ -609,18 +626,21 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		other["request_data"] = requestData
 	}
 	accountingInput := ConsumeAccountingInput{
-		UserId:                   relayInfo.UserId,
-		ChannelId:                relayInfo.ChannelId,
-		ModelName:                summary.ModelName,
-		InputTokens:              summary.PromptTokens,
-		InputTokensIncludeCache:  summary.InputTokensIncludeCache,
-		CacheTokenSemanticSource: summary.CacheTokenSemanticSource,
-		OutputTokens:             summary.CompletionTokens,
-		CacheReadTokens:          summary.CacheTokens,
-		CacheWriteTokens:         cacheWriteTokens,
-		GroupRatio:               summary.GroupRatio,
-		Quota:                    summary.Quota,
-		ZeroUserCharge:           IsFreeModel(relayInfo.OriginModelName),
+		UserId:                    relayInfo.UserId,
+		ChannelId:                 relayInfo.ChannelId,
+		ModelName:                 summary.ModelName,
+		InputTokens:               summary.PromptTokens,
+		InputTokensIncludeCache:   summary.InputTokensIncludeCache,
+		CacheTokenSemanticSource:  summary.CacheTokenSemanticSource,
+		OutputTokens:              summary.CompletionTokens,
+		CacheReadTokens:           summary.CacheTokens,
+		CacheWriteTokens:          cacheWriteTokens,
+		CacheWriteTokens5m:        summary.CacheCreationTokens5m,
+		CacheWriteTokens1h:        summary.CacheCreationTokens1h,
+		CacheWritePriceMultiplier: cacheWriteAccountingMultiplier(summary),
+		GroupRatio:                summary.GroupRatio,
+		Quota:                     summary.Quota,
+		ZeroUserCharge:            IsFreeModel(relayInfo.OriginModelName),
 		UseQuotaForUserAmounts: (tieredBillingApplied && relayInfo.PriceDataSource == "wallet") ||
 			relayInfo.SubscriptionPlanType == model.SubscriptionPlanTypeCodingPlan,
 		BillingAt: relayInfo.StartTime,
