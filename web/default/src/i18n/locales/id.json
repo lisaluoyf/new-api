@@ -33,6 +33,8 @@
     "Health probe": "Probe kesehatan",
     "Recovery probe": "Probe pemulihan",
     "Fingerprint recovery": "Pemulihan sidik jari",
+    "Disable time not recorded": "Waktu penonaktifan tidak tercatat",
+    "No specific reason recorded": "Alasan khusus tidak dicatat",
     "Manually disabled": "Dinonaktifkan secara manual",
     "Manually enabled": "Diaktifkan secara manual",
     "Recovery probe passed": "Probe pemulihan berhasil",

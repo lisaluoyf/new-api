@@ -39,6 +39,8 @@
     "Health probe": "Sonde de disponibilité",
     "Recovery probe": "Sonde de récupération",
     "Fingerprint recovery": "Récupération par empreinte",
+    "Disable time not recorded": "Date de désactivation non enregistrée",
+    "No specific reason recorded": "Aucune raison précise renseignée",
     "Manually disabled": "Désactivé manuellement",
     "Manually enabled": "Activé manuellement",
     "Recovery probe passed": "Sonde de récupération réussie",

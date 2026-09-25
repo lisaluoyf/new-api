@@ -113,7 +113,7 @@ interface ModelDataItem {
   model_enabled: boolean // abilities.enabled for this (channel, model) pair
   status_source?: string
   pricing_source: string // "api" | "manual" | ""
-  status_reason?: string // why auto-disabled; empty when status !== 3
+  status_reason?: string // recorded disable reason
   status_time?: number // unix ts of disable event; 0 if unknown
   base_url?: string
   free_model_config?: FreeModelMemberConfig
@@ -1989,9 +1989,28 @@ export function ChannelDataPage() {
                               </Tooltip>
                             </TooltipProvider>
                           )}
-                          {!isModelEnabled && !isModelAutoDisabled && (
+                          {!isEffectivelyEnabled && !showAutoDisabledBadge && (
                             <span
-                              title={t(item.status_reason || 'Disabled')}
+                              title={[
+                                item.status_source === 'unknown'
+                                  ? t('Disable reason missing')
+                                  : t('Manually disabled'),
+                                t('Time: {{time}}', {
+                                  time: item.status_time
+                                    ? fmtTime(item.status_time)
+                                    : t('Disable time not recorded'),
+                                }),
+                                t('Reason: {{reason}}', {
+                                  reason:
+                                    item.status_reason &&
+                                    item.status_reason !==
+                                      'Manually disabled' &&
+                                    item.status_reason !==
+                                      'Historical disable reason missing'
+                                      ? t(item.status_reason)
+                                      : t('No specific reason recorded'),
+                                }),
+                              ].join('\n')}
                               className='rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500'
                             >
                               {item.status_source === 'unknown'

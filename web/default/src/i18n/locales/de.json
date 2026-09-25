@@ -33,6 +33,8 @@
     "Health probe": "Zustandsprüfung",
     "Recovery probe": "Wiederherstellungsprüfung",
     "Fingerprint recovery": "Fingerprint-Wiederherstellung",
+    "Disable time not recorded": "Deaktivierungszeit nicht erfasst",
+    "No specific reason recorded": "Kein konkreter Grund angegeben",
     "Manually disabled": "Manuell deaktiviert",
     "Manually enabled": "Manuell aktiviert",
     "Recovery probe passed": "Wiederherstellungsprüfung bestanden",

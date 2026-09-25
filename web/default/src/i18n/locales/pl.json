@@ -33,6 +33,8 @@
     "Health probe": "Test dostępności",
     "Recovery probe": "Test przywracania",
     "Fingerprint recovery": "Przywracanie przez odcisk",
+    "Disable time not recorded": "Nie zapisano czasu wyłączenia",
+    "No specific reason recorded": "Nie podano konkretnego powodu",
     "Manually disabled": "Wyłączono ręcznie",
     "Manually enabled": "Włączono ręcznie",
     "Recovery probe passed": "Test przywracania zakończony pomyślnie",

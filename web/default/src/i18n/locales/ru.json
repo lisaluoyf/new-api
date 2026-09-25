@@ -39,6 +39,8 @@
     "Health probe": "Проверка доступности",
     "Recovery probe": "Проверка восстановления",
     "Fingerprint recovery": "Восстановление по отпечатку",
+    "Disable time not recorded": "Время отключения не записано",
+    "No specific reason recorded": "Конкретная причина не указана",
     "Manually disabled": "Отключено вручную",
     "Manually enabled": "Включено вручную",
     "Recovery probe passed": "Проверка восстановления пройдена",

@@ -88,7 +88,7 @@ type ModelDataItem struct {
 	Status                     int                        `json:"status"`                       // 1 enabled / 2 manual-disabled / 3 auto-disabled (routing algorithm 0.1)
 	ConsecutiveFingerprintPass int                        `json:"consecutive_fingerprint_pass"` // recovery counter; only meaningful when status=3
 	ModelEnabled               bool                       `json:"model_enabled"`                // abilities.enabled for this (channel, model) — false = disabled for this model only
-	StatusReason               string                     `json:"status_reason"`                // why auto-disabled; empty when status != 3
+	StatusReason               string                     `json:"status_reason"`                // recorded disable reason, including manual model events
 	StatusSource               string                     `json:"status_source"`
 	StatusTime                 int64                      `json:"status_time"` // unix ts of disable event; 0 if unknown
 	BaseURL                    string                     `json:"base_url"`    // channel base URL, used for analysis lookup
@@ -505,6 +505,8 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 	officialIn, officialOut, _, _, officialOK := service.GlobalModelPricingUSD(modelName)
 	deepSeekTimedPrice, isDeepSeekTimedPrice := service.DeepSeekV4OfficialPricingAt(modelName, time.Now())
 
+	manualEvents := modelDataManualDisableEvents(channelIDs, candidates)
+
 	items := make([]ModelDataItem, 0, len(rows))
 	for _, r := range rows {
 		rechargeRate := 1.0
@@ -697,6 +699,11 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 
 		statusReason, statusTime, recoveryPassCount := modelDataStatusMetadata(r.Status, r.ModelEnabled, r.OtherInfo, modelName, r.ConsecutiveFingerprintPass)
 		statusSource := modelDataStatusSource(r.Status, r.ModelEnabled, r.OtherInfo, modelName)
+		if statusSource == "manual" {
+			if event, ok := manualEvents[r.ChannelID]; ok {
+				statusReason, statusTime = event.Reason, event.CreatedAt
+			}
+		}
 		if statusReason == "" {
 			switch statusSource {
 			case "manual", "channel_manual":
@@ -914,6 +921,29 @@ func filterImagePricingViewForChannel(view *VideoMediaPricingView, modelName str
 
 func modelDataExtractClientExclusive(setting *string) string {
 	return string(service.ExtractClientExclusive(setting))
+}
+
+// Read the latest transition, rather than the latest disable, so an old disable
+// cannot be presented as the reason for a newer state. Batch across channels.
+func modelDataManualDisableEvents(channelIDs []int, candidates []string) map[int]model.ChannelModelEvent {
+	result := make(map[int]model.ChannelModelEvent)
+	if len(channelIDs) == 0 || len(candidates) == 0 {
+		return result
+	}
+	latest := model.DB.Model(&model.ChannelModelEvent{}).
+		Select("MAX(id)").Where("channel_id IN ? AND model IN ?", channelIDs, candidates).
+		Group("channel_id")
+	var events []model.ChannelModelEvent
+	if err := model.DB.Where("id IN (?)", latest).Find(&events).Error; err != nil {
+		common.SysError("failed to load manual disable metadata: " + err.Error())
+		return result
+	}
+	for _, event := range events {
+		if event.Source == "manual" && event.Action == "disable" {
+			result[event.ChannelID] = event
+		}
+	}
+	return result
 }
 
 func modelDataStatusMetadata(channelStatus int, modelEnabled bool, otherInfo *string, modelName string, fallbackPassCount int) (string, int64, int) {

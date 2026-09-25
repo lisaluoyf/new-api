@@ -52,6 +52,8 @@ func TestModelDataAliasToggleRoundTrip(t *testing.T) {
 				require.Equal(t, common.ChannelStatusEnabled, items[0].Status)
 				if !enabled {
 					require.Equal(t, "manual", items[0].StatusSource)
+					require.Positive(t, items[0].StatusTime)
+					require.Equal(t, "Manually disabled", items[0].StatusReason)
 				}
 			}
 			check(true)

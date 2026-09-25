@@ -39,6 +39,8 @@
     "Health probe": "正常性プローブ",
     "Recovery probe": "復旧プローブ",
     "Fingerprint recovery": "フィンガープリントによる復旧",
+    "Disable time not recorded": "無効化日時の記録なし",
+    "No specific reason recorded": "具体的な理由の記録なし",
     "Manually disabled": "手動で無効化",
     "Manually enabled": "手動で有効化",
     "Recovery probe passed": "復旧プローブに合格",

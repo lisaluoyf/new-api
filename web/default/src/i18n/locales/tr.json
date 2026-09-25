@@ -33,6 +33,8 @@
     "Health probe": "Sağlık kontrolü",
     "Recovery probe": "Kurtarma kontrolü",
     "Fingerprint recovery": "Parmak iziyle kurtarma",
+    "Disable time not recorded": "Devre dışı bırakma zamanı kaydedilmedi",
+    "No specific reason recorded": "Belirli bir neden belirtilmedi",
     "Manually disabled": "Manuel devre dışı bırakıldı",
     "Manually enabled": "Manuel etkinleştirildi",
     "Recovery probe passed": "Kurtarma kontrolü başarılı",

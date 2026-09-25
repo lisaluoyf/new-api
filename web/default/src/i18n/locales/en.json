@@ -37,6 +37,8 @@
     "Health probe": "Health probe",
     "Recovery probe": "Recovery probe",
     "Fingerprint recovery": "Fingerprint recovery",
+    "Disable time not recorded": "Disable time not recorded",
+    "No specific reason recorded": "No specific reason recorded",
     "Manually disabled": "Manually disabled",
     "Manually enabled": "Manually enabled",
     "Recovery probe passed": "Recovery probe passed",

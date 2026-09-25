@@ -33,6 +33,8 @@
     "Health probe": "健康探針",
     "Recovery probe": "恢復探針",
     "Fingerprint recovery": "指紋檢測恢復",
+    "Disable time not recorded": "未記錄停用時間",
+    "No specific reason recorded": "未填寫具體原因",
     "Manually disabled": "手動停用",
     "Manually enabled": "手動啟用",
     "Recovery probe passed": "恢復探針通過",
