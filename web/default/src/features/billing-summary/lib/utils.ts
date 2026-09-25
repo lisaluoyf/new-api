@@ -18,11 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import dayjs from '@/lib/dayjs'
 
-// Default view: last 7 days, matching the page's "最近7天" quick preset.
+// Default view: last 30 days, including today.
 export function getDefaultBillingTimeRange(): { start: Date; end: Date } {
   const now = dayjs()
   return {
-    start: now.subtract(6, 'day').startOf('day').toDate(),
+    start: now.subtract(29, 'day').startOf('day').toDate(),
     end: now.endOf('day').toDate(),
   }
 }
