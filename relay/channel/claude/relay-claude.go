@@ -410,8 +410,9 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 									return nil, fmt.Errorf("decode text file %q failed: %w", file.FileName, decodeErr)
 								}
 								claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{
-									Type: "text",
-									Text: common.GetPointer(string(decoded)),
+									Type:         "text",
+									Text:         common.GetPointer(string(decoded)),
+									CacheControl: mediaMessage.CacheControl,
 								})
 								continue
 							}
@@ -428,6 +429,7 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 							return nil, fmt.Errorf("get file data failed: %s", err.Error())
 						}
 						claudeMediaMessage := dto.ClaudeMediaMessage{
+							CacheControl: mediaMessage.CacheControl,
 							Source: &dto.ClaudeMessageSource{
 								Type: "base64",
 							},

@@ -558,6 +558,7 @@ func (m *Message) ParseContent() []MediaContent {
 			continue
 		}
 
+		contentStart := len(contentList)
 		switch contentType {
 		case ContentTypeText:
 			if text, ok := contentItem["text"].(string); ok {
@@ -637,6 +638,14 @@ func (m *Message) ParseContent() []MediaContent {
 						Url: videoUrl,
 					},
 				})
+			}
+		}
+		// HTTP JSON content is decoded into maps, unlike internally constructed
+		// MediaContent values. Preserve cache markers on every parsed block so
+		// provider conversion does not silently turn cache writes into input.
+		if marker := contentItem["cache_control"]; marker != nil && len(contentList) > contentStart {
+			if encoded, err := common.Marshal(marker); err == nil {
+				contentList[contentStart].CacheControl = encoded
 			}
 		}
 	}
