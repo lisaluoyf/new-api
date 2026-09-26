@@ -28,6 +28,9 @@ func BuildTieredTokenParams(usage *dto.Usage, inputTokensIncludeCache bool, used
 	if usage.UsageSemantic == "anthropic" {
 		cc1h = float64(usage.ClaudeCacheCreation1hTokens)
 		cc5m = float64(usage.ClaudeCacheCreation5mTokens)
+		if remaining := float64(usage.PromptTokensDetails.CachedCreationTokens) - cc5m - cc1h; remaining > 0 {
+			cc5m += remaining
+		}
 	}
 
 	img := float64(usage.PromptTokensDetails.ImageTokens)
@@ -44,6 +47,23 @@ func BuildTieredTokenParams(usage *dto.Usage, inputTokensIncludeCache bool, used
 		inputLen = p + cr + cc5m + cc1h
 	}
 
+	// An expression with only cc prices all cache writes; one with cc1h
+	// explicitly separates the 1-hour bucket.
+	if !usedVars["cc1h"] {
+		cc5m += cc1h
+		cc1h = 0
+	}
+	if !inputTokensIncludeCache {
+		if !usedVars["cr"] {
+			p += cr
+		}
+		if !usedVars["cc"] {
+			p += cc5m
+		}
+		if !usedVars["cc1h"] {
+			p += cc1h
+		}
+	}
 	if inputTokensIncludeCache {
 		if usedVars["cr"] {
 			p -= cr

@@ -160,11 +160,12 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	usage *dto.RealtimeUsage, extraContent string) {
 
 	var tieredResult *billingexpr.TieredResult
-	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, billingexpr.TokenParams{
-		P:   float64(usage.InputTokens),
-		C:   float64(usage.OutputTokens),
-		Len: float64(usage.InputTokens),
-	})
+	tokenUsage := &dto.Usage{PromptTokens: usage.InputTokens, CompletionTokens: usage.OutputTokens, PromptTokensDetails: usage.InputTokenDetails, CompletionTokenDetails: usage.OutputTokenDetails}
+	var vars map[string]bool
+	if relayInfo.TieredBillingSnapshot != nil {
+		vars = billingexpr.UsedVars(relayInfo.TieredBillingSnapshot.ExprString)
+	}
+	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(tokenUsage, true, vars))
 	if tieredOk {
 		tieredResult = tieredRes
 	}
@@ -241,7 +242,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	if tieredResult != nil {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
-	accounting := BuildConsumeAccountingFields(ConsumeAccountingInput{
+	accountingInput := ConsumeAccountingInput{
 		UserId:                 relayInfo.UserId,
 		ChannelId:              relayInfo.ChannelId,
 		ModelName:              modelName,
@@ -251,7 +252,10 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		Quota:                  quota,
 		UseQuotaForUserAmounts: tieredOk && relayInfo.PriceDataSource == "wallet",
 		BillingAt:              relayInfo.StartTime,
-	})
+	}
+	applyTieredAccountingContext(&accountingInput, relayInfo, tokenUsage)
+	accountingInput.InputTokensIncludeCache = true
+	accounting := BuildConsumeAccountingFields(accountingInput)
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     usage.InputTokens,
@@ -374,7 +378,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	if tieredResult != nil {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
-	accounting := BuildConsumeAccountingFields(ConsumeAccountingInput{
+	accountingInput := ConsumeAccountingInput{
 		UserId:                 relayInfo.UserId,
 		ChannelId:              relayInfo.ChannelId,
 		ModelName:              relayInfo.OriginModelName,
@@ -386,7 +390,10 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		Quota:                  quota,
 		UseQuotaForUserAmounts: tieredOk && relayInfo.PriceDataSource == "wallet",
 		BillingAt:              relayInfo.StartTime,
-	})
+	}
+	applyTieredAccountingContext(&accountingInput, relayInfo, usage)
+	accountingInput.InputTokensIncludeCache = true
+	accounting := BuildConsumeAccountingFields(accountingInput)
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     usage.PromptTokens,

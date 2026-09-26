@@ -64,6 +64,8 @@ func appendUniqueStrings(base []string, extra ...string) []string {
 
 // ChannelPricingLookupRow is a single channel_model_pricings match.
 type ChannelPricingLookupRow struct {
+	BillingMode        string
+	BillingExpr        string
 	InputPrice         float64
 	OutputPrice        float64
 	CachePrice         float64
@@ -78,6 +80,8 @@ func LookupChannelPricingRow(channelID int, candidates []string) (*ChannelPricin
 		return nil, false
 	}
 	var row struct {
+		BillingMode        string
+		BillingExpr        string
 		InputPrice         float64
 		OutputPrice        float64
 		CachePrice         float64
@@ -86,7 +90,7 @@ func LookupChannelPricingRow(channelID int, candidates []string) (*ChannelPricin
 		PricingSource      *string
 	}
 	err := model.DB.Table("channel_model_pricings").
-		Select("input_price, output_price, cache_price, cache_creation_price, group_ratio, pricing_source").
+		Select("*").
 		Where("channel_id = ? AND model_name IN ?", channelID, candidates).
 		Where("input_price > 0").
 		Order("input_price ASC").
@@ -104,6 +108,8 @@ func LookupChannelPricingRow(channelID int, candidates []string) (*ChannelPricin
 		src = *row.PricingSource
 	}
 	return &ChannelPricingLookupRow{
+		BillingMode:        row.BillingMode,
+		BillingExpr:        row.BillingExpr,
 		InputPrice:         row.InputPrice,
 		OutputPrice:        row.OutputPrice,
 		CachePrice:         row.CachePrice,

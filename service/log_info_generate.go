@@ -461,13 +461,18 @@ func InjectTieredBillingInfo(other map[string]interface{}, relayInfo *relaycommo
 	other["billing_mode"] = "tiered_expr"
 	other["expr_b64"] = base64.StdEncoding.EncodeToString([]byte(snap.ExprString))
 	other["tiered_price_source"] = relayInfo.PriceDataSource
+	other["tiered_rule_source"] = snap.Source
+	other["tiered_billing_at_unix"] = snap.EvaluatedAtUnix
+	if snap.AmountMultiplier != nil {
+		other["tiered_amount_multiplier"] = *snap.AmountMultiplier
+	}
 	if snap.PricingChannelID > 0 {
 		other["pricing_channel_id"] = snap.PricingChannelID
-		other["tiered_price_scale"] = map[string]float64{
-			"input":       snap.PriceScale.Input,
-			"output":      snap.PriceScale.Output,
-			"cache_read":  snap.PriceScale.CacheRead,
-			"cache_write": snap.PriceScale.CacheWrite,
+		if snap.PriceScale.Enabled {
+			other["tiered_price_scale"] = map[string]float64{"input": snap.PriceScale.Input, "output": snap.PriceScale.Output, "cache_read": snap.PriceScale.CacheRead, "cache_write": snap.PriceScale.CacheWrite}
+		} else if snap.AmountMultiplier != nil {
+			m := *snap.AmountMultiplier
+			other["tiered_price_scale"] = map[string]float64{"input": m, "output": m, "cache_read": m, "cache_write": m}
 		}
 	}
 	if result != nil {

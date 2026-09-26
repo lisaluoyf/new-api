@@ -484,7 +484,7 @@ func TestRefreshModelPriceForRetryKeepsCodingPlanPricingForTieredModel(t *testin
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
-	require.NoError(t, db.AutoMigrate(&model.SubscriptionPlan{}, &model.UserSubscription{}))
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionPlan{}, &model.UserSubscription{}, &model.Channel{}, &model.ChannelModelPricing{}))
 
 	now := time.Now().Unix()
 	plan := model.SubscriptionPlan{
@@ -791,4 +791,41 @@ func TestGrokImageReserveUsesReferencesAndAllCoefficients(t *testing.T) {
 		actual := info.PriceData.ModelPrice * info.PriceData.OtherRatios["grok_images"] * price.GroupRatioInfo.GroupRatio
 		require.InDelta(t, (tc.price+.01)*.8*.5*2*price.GroupRatioInfo.GroupRatio, actual, 1e-10)
 	}
+}
+
+func TestChannelOnlyTieredWalletProcurementAndFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ratio_setting.InitRatioSettings()
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.ChannelModelPricing{}))
+	recharge, markup := .5, 2.0
+	require.NoError(t, db.Create(&model.Channel{Id: 901, RechargeRate: &recharge, ApimasterPriceRatio: &markup}).Error)
+	require.NoError(t, db.Create(&model.Channel{Id: 902, RechargeRate: &recharge, ApimasterPriceRatio: &markup}).Error)
+	expression := `len <= 100 ? tier("short",p*2+c*4) : tier("long",p*4+c*8)`
+	require.NoError(t, db.Create(&model.ChannelModelPricing{ChannelId: 901, ModelName: "audit-channel-only", InputPrice: 1, OutputPrice: 2, GroupRatio: .5, BillingMode: "tiered_expr", BillingExpr: expression}).Error)
+	require.NoError(t, db.Create(&model.ChannelModelPricing{ChannelId: 902, ModelName: "audit-channel-only", InputPrice: 2, OutputPrice: 4, GroupRatio: 1, BillingMode: "tiered_expr", BillingExpr: expression}).Error)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("channel_id", 901)
+	info := &relaycommon.RelayInfo{OriginModelName: "audit-channel-only", UserGroup: "default", UsingGroup: "default", StartTime: time.Now()}
+	_, err = ModelPriceHelper(ctx, info, 100, &types.TokenCountMeta{MaxTokens: 10})
+	require.NoError(t, err)
+	require.NotNil(t, info.WalletTieredBillingSnapshot)
+	require.NotNil(t, info.ProcurementTieredBillingSnapshot)
+	params := billingexpr.TokenParams{P: 101, C: 10, Len: 101}
+	result, err := billingexpr.ComputeTieredQuota(info.WalletTieredBillingSnapshot, params)
+	require.NoError(t, err)
+	require.Equal(t, "long", result.MatchedTier)
+	require.InDelta(t, (101.0*4+10*8)*.5/1e6*common.QuotaPerUnit, result.ActualQuotaBeforeGroup, 1e-8)
+	ctx.Set("channel_id", 902)
+	_, err = RefreshModelPriceForRetry(ctx, info, 100, &types.TokenCountMeta{MaxTokens: 10})
+	require.NoError(t, err)
+	require.Equal(t, 902, info.WalletTieredBillingSnapshot.PricingChannelID)
+	require.Equal(t, 902, info.ProcurementTieredBillingSnapshot.PricingChannelID)
+	next, err := billingexpr.ComputeTieredQuota(info.WalletTieredBillingSnapshot, params)
+	require.NoError(t, err)
+	require.InDelta(t, result.ActualQuotaBeforeGroup*2, next.ActualQuotaBeforeGroup, 1e-8)
 }

@@ -116,10 +116,20 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 		}
 	}
 
-	// Check if this model uses tiered_expr billing
-	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
+	// Resolve the selected channel's full schedule even when no global mode exists.
+	if !useTrialPricing && !usePrice {
+		snapshot, err := service.ResolveTokenBillingExpression(selectedPricingChannelID(c, info), info.OriginModelName, false, info.StartTime)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		if snapshot != nil {
+			return modelPriceHelperResolvedTiered(c, info, promptTokens, meta, groupRatioInfo, snapshot)
+		}
+	}
+	if _, ok := service.GlobalTokenBillingExpression(info.OriginModelName); ok {
 		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo, !useTrialPricing)
 	}
+	info.TieredBillingSnapshot = nil
 
 	var preConsumedQuota int
 	var modelRatio float64
@@ -267,6 +277,14 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 }
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
+	// Freeze procurement independently of trial/subscription retail pricing.
+	if info != nil && !service.IsFreeModel(info.OriginModelName) {
+		snap, err := service.ResolveTokenBillingExpression(selectedPricingChannelID(c, info), info.OriginModelName, true, info.StartTime)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		info.ProcurementTieredBillingSnapshot = snap
+	}
 	priceData, err := resolveModelPriceData(c, info, promptTokens, meta, priceResolutionModeWallet)
 	if err != nil {
 		return types.PriceData{}, err
@@ -359,6 +377,11 @@ func BuildCodingPlanPriceData(_ *gin.Context, info *relaycommon.RelayInfo, promp
 // fallback selects a different channel. A tiered snapshot stays frozen within
 // one attempt, but wallet price scales must be rebuilt for the new channel.
 func RefreshModelPriceForRetry(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
+	procurement, err := service.ResolveTokenBillingExpression(selectedPricingChannelID(c, info), info.OriginModelName, true, info.StartTime)
+	if err != nil {
+		return types.PriceData{}, err
+	}
+	info.ProcurementTieredBillingSnapshot = procurement
 	// Coding Plan pricing is independent from the selected upstream channel.
 	// Restore it before the wallet tiered-pricing refresh can replace the active
 	// snapshot during fallback.
@@ -371,7 +394,7 @@ func RefreshModelPriceForRetry(c *gin.Context, info *relaycommon.RelayInfo, prom
 		info.ActivateCodingPriceData()
 		return priceData, nil
 	}
-	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
+	if info.WalletTieredBillingSnapshot != nil || billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
 		channelID := selectedPricingChannelID(c, info)
 		if info.WalletTieredBillingSnapshot != nil && info.WalletTieredBillingSnapshot.PricingChannelID == channelID {
 			return info.PriceData, nil
@@ -517,83 +540,50 @@ func HasModelBillingConfig(modelName string) bool {
 }
 
 func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo, useChannelUserPrice bool) (types.PriceData, error) {
-	exprStr, ok := billing_setting.GetBillingExpr(info.OriginModelName)
+	expression, ok := service.GlobalTokenBillingExpression(info.OriginModelName)
 	if !ok {
-		return types.PriceData{}, fmt.Errorf("model %s is configured as tiered_expr but has no billing expression", info.OriginModelName)
+		return types.PriceData{}, fmt.Errorf("model %s has no billing expression", info.OriginModelName)
 	}
-
-	estimatedCompletionTokens := 0
-	if meta.MaxTokens != 0 {
-		estimatedCompletionTokens = meta.MaxTokens
+	at := info.StartTime
+	if at.IsZero() {
+		at = time.Now()
 	}
+	snapshot := &billingexpr.BillingSnapshot{BillingMode: billing_setting.BillingModeTieredExpr, ModelName: info.OriginModelName, ExprString: expression, ExprHash: billingexpr.ExprHashString(expression), ExprVersion: billingexpr.ExprVersion(expression), QuotaPerUnit: common.QuotaPerUnit, EvaluatedAtUnix: at.Unix(), Source: "global_expression"}
+	if useChannelUserPrice {
+		snapshot.PriceScale = resolveTieredWalletPriceScale(c, info)
+		snapshot.PricingChannelID = selectedPricingChannelID(c, info)
+	}
+	return modelPriceHelperResolvedTiered(c, info, promptTokens, meta, groupRatioInfo, snapshot)
+}
 
-	requestInput, err := ResolveIncomingBillingExprRequestInput(c, info)
+func modelPriceHelperResolvedTiered(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, group types.GroupRatioInfo, snapshot *billingexpr.BillingSnapshot) (types.PriceData, error) {
+	completion := 0
+	if meta != nil {
+		completion = meta.MaxTokens
+	}
+	request, err := ResolveIncomingBillingExprRequestInput(c, info)
 	if err != nil {
 		return types.PriceData{}, err
 	}
-
-	priceScale := billingexpr.TokenPriceScale{}
-	if useChannelUserPrice {
-		priceScale = resolveTieredWalletPriceScale(c, info)
-	}
-	estimatedParams := billingexpr.ApplyTokenPriceScale(billingexpr.TokenParams{
-		P:   float64(promptTokens),
-		C:   float64(estimatedCompletionTokens),
-		Len: float64(promptTokens),
-	}, priceScale)
-	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, estimatedParams, requestInput)
+	snapshot.GroupRatio = group.GroupRatio
+	result, err := billingexpr.ComputeTieredQuotaWithRequest(snapshot, billingexpr.TokenParams{P: float64(promptTokens), C: float64(completion), Len: float64(promptTokens)}, request)
 	if err != nil {
-		return types.PriceData{}, fmt.Errorf("model %s tiered expr run failed: %w", info.OriginModelName, err)
+		return types.PriceData{}, fmt.Errorf("model %s tiered estimate: %w", info.OriginModelName, err)
 	}
-
-	// Expression coefficients are $/1M tokens prices; convert to quota the same way per-call billing does.
-	quotaBeforeGroup := rawCost / 1_000_000 * common.QuotaPerUnit
-	preConsumedQuota := billingexpr.QuotaRound(quotaBeforeGroup * groupRatioInfo.GroupRatio)
-
-	freeModel := false
-	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
-		if groupRatioInfo.GroupRatio == 0 {
-			preConsumedQuota = 0
-			freeModel = true
-		}
-	}
-
-	exprHash := billingexpr.ExprHashString(exprStr)
-	pricingChannelID := 0
-	if useChannelUserPrice {
-		pricingChannelID = selectedPricingChannelID(c, info)
-	}
-	snapshot := &billingexpr.BillingSnapshot{
-		BillingMode:               billing_setting.BillingModeTieredExpr,
-		ModelName:                 info.OriginModelName,
-		ExprString:                exprStr,
-		ExprHash:                  exprHash,
-		GroupRatio:                groupRatioInfo.GroupRatio,
-		EstimatedPromptTokens:     promptTokens,
-		EstimatedCompletionTokens: estimatedCompletionTokens,
-		EstimatedQuotaBeforeGroup: quotaBeforeGroup,
-		EstimatedQuotaAfterGroup:  preConsumedQuota,
-		EstimatedTier:             trace.MatchedTier,
-		QuotaPerUnit:              common.QuotaPerUnit,
-		ExprVersion:               billingexpr.ExprVersion(exprStr),
-		PricingChannelID:          pricingChannelID,
-		PriceScale:                priceScale,
-	}
+	snapshot.EstimatedPromptTokens = promptTokens
+	snapshot.EstimatedCompletionTokens = completion
+	snapshot.EstimatedQuotaBeforeGroup = result.ActualQuotaBeforeGroup
+	snapshot.EstimatedQuotaAfterGroup = result.ActualQuotaAfterGroup
+	snapshot.EstimatedTier = result.MatchedTier
 	info.TieredBillingSnapshot = snapshot
-	info.BillingRequestInput = &requestInput
-
-	priceData := types.PriceData{
-		FreeModel:         freeModel,
-		GroupRatioInfo:    groupRatioInfo,
-		QuotaToPreConsume: preConsumedQuota,
+	info.BillingRequestInput = &request
+	price := types.PriceData{GroupRatioInfo: group, QuotaToPreConsume: result.ActualQuotaAfterGroup}
+	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume && group.GroupRatio == 0 {
+		price.FreeModel = true
+		price.QuotaToPreConsume = 0
 	}
-
-	if common.DebugEnabled {
-		println(fmt.Sprintf("model_price_helper_tiered result: model=%s preConsume=%d quotaBeforeGroup=%.2f groupRatio=%.2f tier=%s", info.OriginModelName, preConsumedQuota, quotaBeforeGroup, groupRatioInfo.GroupRatio, trace.MatchedTier))
-	}
-
-	info.PriceData = priceData
-	return priceData, nil
+	info.PriceData = price
+	return price, nil
 }
 
 func resolveTieredWalletPriceScale(c *gin.Context, info *relaycommon.RelayInfo) billingexpr.TokenPriceScale {

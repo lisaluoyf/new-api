@@ -250,3 +250,11 @@ This enables future evolution without breaking existing expressions.
 | Frontend display | `web/src/helpers/render.jsx`, `web/src/helpers/utils.jsx` |
 | Model detail | `web/src/components/table/model-pricing/modal/components/DynamicPricingBreakdown.jsx` |
 | Log display | `web/src/hooks/usage-logs/useUsageLogsData.jsx`, `web/src/components/table/usage-logs/UsageLogsColumnDefs.jsx` |
+
+## Channel schedules and accounting (2026-09-26)
+
+Token expressions imported with a channel pricing row are now executed as complete schedules for wallet settlement and procurement. The raw expression is multiplied once by the effective upstream group ratio and recharge rate, and additionally by the model/user price ratio for retail. The multiplier is applied to the resulting amount, never to the variables used in tier conditions. If the channel only has a base price tuple, the configured global schedule is scaled per token class. Trial/subscription retail policy stays separate from the selected channel's procurement snapshot. Media/task pricing continues through its dedicated per-call/unit paths.
+
+The request freezes expression, multiplier, selected channel, and evaluation time. Fallback refreshes the channel snapshots. Actual usage drives settlement and exact procurement accounting; static base tuples are retained only as metadata. Audit logs include the rule, matched tier, and amount. Cache-exclusive usage includes unpriced cache categories in p, aggregate cache writes without TTL details remain accounted for, and an expression with cc but no cc1h prices all writes through cc.
+
+No historical supplier multiplier migration or retroactive customer debit is performed by this release.

@@ -5,11 +5,17 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 type ConsumeAccountingInput struct {
+	ProcurementTieredSnapshot *billingexpr.BillingSnapshot
+	WalletTieredSnapshot      *billingexpr.BillingSnapshot
+	TieredRequestInput        *billingexpr.RequestInput
+	TieredUsage               *dto.Usage
 	UserId                    int
 	ChannelId                 int
 	ModelName                 string
@@ -261,6 +267,10 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		}
 	}
 
+	if err := applyTieredAccountingFields(input, &fields, &snap); err != nil {
+		status = "partial"
+		errorText = appendAccountingError(errorText, "tiered_accounting_failed: "+err.Error())
+	}
 	fields.GroupRatio = input.GroupRatio
 	fields.Status = status
 	if errorText != "" {

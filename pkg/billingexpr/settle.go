@@ -1,5 +1,11 @@
 package billingexpr
 
+import (
+	"fmt"
+	"math"
+	"time"
+)
+
 // quotaConversion converts raw expression output to quota based on the
 // expression version. This is the central dispatch point for future versions
 // that may use a different conversion formula.
@@ -18,11 +24,21 @@ func ComputeTieredQuota(snap *BillingSnapshot, params TokenParams) (TieredResult
 
 func ComputeTieredQuotaWithRequest(snap *BillingSnapshot, params TokenParams, request RequestInput) (TieredResult, error) {
 	params = ApplyTokenPriceScale(params, snap.PriceScale)
-	cost, trace, err := RunExprByHashWithRequest(snap.ExprString, snap.ExprHash, params, request)
+	at := time.Time{}
+	if snap.EvaluatedAtUnix > 0 {
+		at = time.Unix(snap.EvaluatedAtUnix, 0)
+	}
+	cost, trace, err := RunExprByHashWithRequestAt(snap.ExprString, snap.ExprHash, params, request, at)
 	if err != nil {
 		return TieredResult{}, err
 	}
 
+	if snap.AmountMultiplier != nil {
+		cost *= *snap.AmountMultiplier
+	}
+	if cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
+		return TieredResult{}, fmt.Errorf("invalid expression cost")
+	}
 	quotaBeforeGroup := quotaConversion(cost, snap)
 	afterGroup := QuotaRound(quotaBeforeGroup * snap.GroupRatio)
 	crossed := trace.MatchedTier != snap.EstimatedTier

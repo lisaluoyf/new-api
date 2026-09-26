@@ -668,6 +668,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			accountingInput.ImageBaseUnits, _ = details["base_units"].(float64)
 		}
 	}
+	applyTieredAccountingContext(&accountingInput, relayInfo, usage)
 	accounting := BuildConsumeAccountingFields(accountingInput)
 	if summary.TotalTokens == 0 {
 		// A zero-quota billing diagnostic is an internal audit event, not a user

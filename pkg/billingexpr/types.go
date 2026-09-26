@@ -49,6 +49,9 @@ type BillingSnapshot struct {
 	EstimatedTier             string          `json:"estimated_tier"`
 	QuotaPerUnit              float64         `json:"quota_per_unit"`
 	ExprVersion               int             `json:"expr_version"`
+	EvaluatedAtUnix           int64           `json:"evaluated_at_unix,omitempty"`
+	AmountMultiplier          *float64        `json:"amount_multiplier,omitempty"`
+	Source                    string          `json:"source,omitempty"`
 	PricingChannelID          int             `json:"pricing_channel_id,omitempty"`
 	PriceScale                TokenPriceScale `json:"price_scale,omitempty"`
 }
