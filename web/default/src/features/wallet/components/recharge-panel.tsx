@@ -404,7 +404,7 @@ export function RechargePanel({
                       </span>
                     )}
                     {!isPromo && hasAmountDiscount && (
-                      <span className='absolute -top-2 -right-1.5 flex items-center rounded-md bg-orange-600 px-1.5 py-0.5 text-[10px] leading-tight font-extrabold text-white shadow'>
+                      <span className='absolute -top-2 -right-1.5 flex items-center rounded-md bg-emerald-500 px-1.5 py-0.5 text-[10px] leading-tight font-extrabold text-white shadow'>
                         {amountDiscountLabel}
                       </span>
                     )}
@@ -418,13 +418,13 @@ export function RechargePanel({
                       </div>
                     )}
                     {!isPromo && hasAmountDiscount && (
-                      <div className='mt-0.5 text-[10px] font-medium text-orange-600'>
+                      <div className='mt-0.5 text-[10px] font-medium text-emerald-600'>
                         {t('pay ${{pay}} → get ${{amount}}', {
                           pay: (amount * amountDiscountRate).toFixed(2),
                           amount,
                         })}
                         {amountDiscountEndDate && (
-                          <div className='mt-0.5 text-[9px] text-orange-600'>
+                          <div className='mt-0.5 text-[9px] text-emerald-500/90'>
                             {t('Valid before {{date}}', {
                               date: amountDiscountEndDate,
                             })}
