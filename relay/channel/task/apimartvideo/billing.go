@@ -45,8 +45,16 @@ func extractBillableSecondsFromApimart(body []byte) int {
 }
 
 func extractBillableSecondsFromApimartWithMode(body []byte, mode string) int {
-	if seconds := extractExplicitBillableSecondsFromApimart(body); seconds > 0 {
-		return seconds
+	// Generic duration/output_duration fields describe generated media and must
+	// never determine Motion Control settlement. Only explicit billing fields
+	// or the provider's actual cost are authoritative here.
+	for _, path := range []string{
+		"data.billable_seconds", "data.billable_duration",
+		"data.result.billable_seconds", "data.result.billable_duration",
+	} {
+		if seconds := gjson.GetBytes(body, path).Float(); seconds > 0 {
+			return int(math.Ceil(seconds))
+		}
 	}
 	if cost := gjson.GetBytes(body, "data.cost").Float(); cost > 0 {
 		rate := StdUSDPerSecond
@@ -141,25 +149,21 @@ func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *rela
 		return 0
 	}
 
-	actualSeconds := taskResult.BillableSeconds
-	if actualSeconds <= 0 {
-		actualSeconds = extractBillableSecondsFromApimartWithMode(task.Data, motionModeFromTask(task))
-	}
-	if actualSeconds <= 0 && strings.TrimSpace(taskResult.Url) != "" {
-		if probeURL := motionOutputVideoURL(task, taskResult.Url); probeURL != "" {
-			if secs, err := service.ProbeRemoteVideoDurationSeconds(context.Background(), probeURL); err == nil && secs > 0 {
-				actualSeconds = secs
-			}
-		}
-	}
+	return adjustMotionControlQuota(task, service.ProbeRemoteVideoDurationSecondsRound)
+}
+
+func adjustMotionControlQuota(task *model.Task, probeReference func(context.Context, string) (int, error)) int {
+	actualSeconds := extractBillableSecondsFromApimartWithMode(task.Data, motionModeFromTask(task))
 	if actualSeconds <= 0 {
 		if videoURL := motionVideoURLFromTask(task); videoURL != "" {
-			if secs, err := service.ProbeRemoteVideoDurationSeconds(context.Background(), videoURL); err == nil && secs > 0 {
+			if secs, err := probeReference(context.Background(), videoURL); err == nil && secs > 0 {
 				actualSeconds = secs
 			}
 		}
 	}
 	if actualSeconds <= 0 {
+		// Keep the pre-deduction when reference probing and provider billing
+		// data are both unavailable; never substitute generated-video length.
 		return 0
 	}
 	return recalcMotionControlQuota(task, actualSeconds)
@@ -225,14 +229,4 @@ func motionModeFromTask(task *model.Task) string {
 		}
 	}
 	return "std"
-}
-
-func motionOutputVideoURL(task *model.Task, parsedURL string) string {
-	if u := strings.TrimSpace(parsedURL); u != "" && !strings.Contains(u, "/v1/videos/") {
-		return u
-	}
-	if task != nil && strings.TrimSpace(task.PrivateData.UpstreamVideoURL) != "" {
-		return strings.TrimSpace(task.PrivateData.UpstreamVideoURL)
-	}
-	return strings.TrimSpace(parsedURL)
 }
