@@ -207,6 +207,16 @@
     "accent": "#22d3ee"
   },
   {
+    "model_id": "gpt-image-2.5-sunburst-fd",
+    "label": "Image 2.5 Sunburst FD",
+    "accent": "#22d3ee"
+  },
+  {
+    "model_id": "gpt-image-2.5-flare-fd",
+    "label": "Image 2.5 Flare FD",
+    "accent": "#22d3ee"
+  },
+  {
     "model_id": "kling-v3-omni",
     "label": "Kling V3 Omni",
     "accent": "#f97316"

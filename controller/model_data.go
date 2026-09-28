@@ -176,6 +176,20 @@ func isHiddenChannelDataModel(modelName string) bool {
 	}
 }
 
+// These models remain available to administrators in Channel Data, but are not
+// advertised through the public marketplace. Routing is unaffected.
+func isHiddenMarketplaceModel(modelName string) bool {
+	if service.IsFreeModel(modelName) || isHiddenChannelDataModel(modelName) {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(modelName)) {
+	case "gpt-image-2.5-sunburst-fd", "gpt-image-2.5-flare-fd":
+		return true
+	default:
+		return false
+	}
+}
+
 // GetModelData returns channel pricing and detection stats for a given model.
 // GET /api/admin/model-data?model=<model_name>
 func GetModelData(c *gin.Context) {
@@ -1413,7 +1427,7 @@ func sortPublicMarketplaceItems(items []PublicMarketplaceItem) {
 // GET /api/public/marketplace?model=<model_name>
 func GetPublicMarketplace(c *gin.Context) {
 	modelName := c.DefaultQuery("model", "claude-sonnet-4-6")
-	if service.IsFreeModel(modelName) || isHiddenChannelDataModel(modelName) {
+	if isHiddenMarketplaceModel(modelName) {
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": []any{}})
 		return
 	}
