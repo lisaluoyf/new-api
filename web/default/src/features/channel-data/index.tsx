@@ -384,8 +384,6 @@ const NON_LLM_MODEL_IDS = new Set([
   'gpt-image-2.5-sunburst',
   'gpt-image-2.5-flare',
   'gpt-image-2-fd',
-  'sora-2',
-  'sora-2-pro',
   'seedance-2.0',
   'doubao-seedance-2.0',
   'seedance-2.5',
@@ -394,8 +392,6 @@ const NON_LLM_MODEL_IDS = new Set([
 ])
 
 const VIDEO_MODEL_IDS = new Set([
-  'sora-2',
-  'sora-2-pro',
   'seedance-2.0',
   'doubao-seedance-2.0',
   'seedance-2.5',

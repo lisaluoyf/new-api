@@ -50,6 +50,16 @@ type ChannelDataAuditBatchSummary struct {
 // final procurement prices for a single model.
 func GetChannelDataAudit(c *gin.Context) {
 	modelName := c.DefaultQuery("model", "claude-sonnet-4-6")
+	if isHiddenChannelDataModel(modelName) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"model":   modelName,
+			"data":    []ChannelDataAuditItem{},
+			"summary": ChannelDataAuditSummary{},
+			"groups":  map[string][]ChannelDataAuditGroupMember{},
+		})
+		return
+	}
 	items, _, _, _ := getModelDataItems(c.Request.Context(), modelName)
 	auditItems, summary, groups := buildChannelDataAudit(modelName, items)
 	c.JSON(http.StatusOK, gin.H{

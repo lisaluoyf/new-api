@@ -24,4 +24,9 @@ func TestIsHiddenChannelDataModel(t *testing.T) {
 	if isHiddenChannelDataModel("gemini-3.6-flash") {
 		t.Fatal("gemini-3.6-flash should remain visible")
 	}
+	for _, name := range []string{" sora-2 ", " SORA-2-PRO "} {
+		if !isHiddenChannelDataModel(name) {
+			t.Fatalf("%q should be hidden from channel data and marketplace", name)
+		}
+	}
 }
