@@ -85,3 +85,10 @@ func GetNowPaymentsPaymentByOrder(invoiceID, tradeNo string) *NowPaymentsPayment
 func (payment *NowPaymentsPayment) Insert() error { return DB.Create(payment).Error }
 
 func (payment *NowPaymentsPayment) Update() error { return DB.Save(payment).Error }
+
+func ListRecentNowPaymentsPayments(since int64) ([]NowPaymentsPayment, error) {
+	var payments []NowPaymentsPayment
+	err := DB.Where("created_at >= ? AND payment_id <> '' AND payment_id NOT LIKE ?", since, "invoice:%").
+		Order("created_at asc, id asc").Find(&payments).Error
+	return payments, err
+}

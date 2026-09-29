@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -62,21 +63,22 @@ type NowPaymentsInvoiceResponse struct {
 }
 
 type NowPaymentsPaymentResponse struct {
-	PaymentID              dto.StringValue  `json:"payment_id"`
-	ParentPaymentID        dto.StringValue  `json:"parent_payment_id"`
-	InvoiceID              dto.StringValue  `json:"invoice_id"`
-	PaymentStatus          string           `json:"payment_status"`
-	PayAddress             string           `json:"pay_address"`
-	PayinExtraID           string           `json:"payin_extra_id"`
-	PriceAmount            dto.Float64Value `json:"price_amount"`
-	PriceCurrency          string           `json:"price_currency"`
-	PayAmount              dto.Float64Value `json:"pay_amount"`
-	PayCurrency            string           `json:"pay_currency"`
-	ActuallyPaid           dto.Float64Value `json:"actually_paid"`
-	PayinHash              string           `json:"payin_hash"`
-	OrderID                string           `json:"order_id"`
-	Network                string           `json:"network"`
-	ExpirationEstimateDate string           `json:"expiration_estimate_date"`
+	PaymentID              dto.StringValue   `json:"payment_id"`
+	ParentPaymentID        dto.StringValue   `json:"parent_payment_id"`
+	InvoiceID              dto.StringValue   `json:"invoice_id"`
+	PaymentStatus          string            `json:"payment_status"`
+	PayAddress             string            `json:"pay_address"`
+	PayinExtraID           string            `json:"payin_extra_id"`
+	PriceAmount            dto.Float64Value  `json:"price_amount"`
+	PriceCurrency          string            `json:"price_currency"`
+	PayAmount              dto.Float64Value  `json:"pay_amount"`
+	PayCurrency            string            `json:"pay_currency"`
+	ActuallyPaid           dto.Float64Value  `json:"actually_paid"`
+	PayinHash              string            `json:"payin_hash"`
+	OrderID                string            `json:"order_id"`
+	PaymentExtraIDs        []dto.StringValue `json:"payment_extra_ids"`
+	Network                string            `json:"network"`
+	ExpirationEstimateDate string            `json:"expiration_estimate_date"`
 }
 
 func CreateNowPaymentsInvoice(ctx context.Context, params *NowPaymentsCreateInvoiceRequest) (*NowPaymentsInvoiceResponse, error) {
@@ -102,7 +104,7 @@ func GetNowPaymentsPayment(ctx context.Context, paymentID string) (*NowPaymentsP
 		return nil, fmt.Errorf("missing NOWPayments payment id")
 	}
 	var result NowPaymentsPaymentResponse
-	if err := requestNowPayments(ctx, http.MethodGet, "/payment/"+paymentID, nil, &result); err != nil {
+	if err := requestNowPayments(ctx, http.MethodGet, "/payment/"+url.PathEscape(strings.TrimSpace(paymentID)), nil, &result); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(string(result.PaymentID)) == "" {

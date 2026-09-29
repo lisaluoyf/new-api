@@ -157,6 +157,7 @@ func main() {
 	service.StartBillingSummaryTask()
 	service.StartDailyStatsTask()
 	controller.StartCryptoDepositReconcileTask()
+	controller.StartNowPaymentsRecoveryTask()
 
 	// Bound replay snapshot storage and remove expired request bodies in small batches.
 	service.StartFailedRequestSnapshotCleanupTask()

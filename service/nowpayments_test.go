@@ -50,6 +50,27 @@ func TestGetNowPaymentsPaymentAcceptsNumericPaymentID(t *testing.T) {
 	require.Equal(t, "12345", string(payment.PaymentID))
 }
 
+func TestGetNowPaymentsPaymentParsesExtraIDsWithoutJWT(t *testing.T) {
+	originalBaseURL := nowPaymentsAPIBaseURL
+	originalAPIKey := setting.NowPaymentsAPIKey
+	t.Cleanup(func() {
+		nowPaymentsAPIBaseURL = originalBaseURL
+		setting.NowPaymentsAPIKey = originalAPIKey
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		require.Equal(t, "/payment/12345", request.URL.Path)
+		require.Equal(t, "test-key", request.Header.Get("x-api-key"))
+		require.Empty(t, request.Header.Get("Authorization"))
+		_, _ = writer.Write([]byte(`{"payment_id":12345,"payment_status":"finished","payment_extra_ids":[12346,"12347"]}`))
+	}))
+	defer server.Close()
+	nowPaymentsAPIBaseURL = server.URL
+	setting.NowPaymentsAPIKey = "test-key"
+	result, err := GetNowPaymentsPayment(context.Background(), "12345")
+	require.NoError(t, err)
+	require.Equal(t, []string{"12346", "12347"}, []string{string(result.PaymentExtraIDs[0]), string(result.PaymentExtraIDs[1])})
+}
+
 func TestCreateNowPaymentsInvoiceUsesHostedCheckoutWithoutPayCurrency(t *testing.T) {
 	originalBaseURL := nowPaymentsAPIBaseURL
 	originalAPIKey := setting.NowPaymentsAPIKey

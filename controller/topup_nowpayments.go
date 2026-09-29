@@ -22,10 +22,13 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/thanhpk/randstr"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var errNowPaymentsVerification = errors.New("NOWPayments payment verification failed")
 var getNowPaymentsPayment = service.GetNowPaymentsPayment
+var sendNowPaymentsDuplicateAlert = common.SendFeishuCard
+var onNowPaymentsTopupSucceeded = model.OnTopupSucceeded
 
 func nowPaymentsPaymentCoversAmount(payAmount, actuallyPaid float64) bool {
 	expected := decimal.NewFromFloat(payAmount)
@@ -121,16 +124,33 @@ func RequestNowPaymentsPay(c *gin.Context) {
 }
 
 func settleNowPaymentsPayment(local *model.NowPaymentsPayment, paymentID, callerIP string) error {
+	return settleNowPaymentsPaymentWithContext(context.Background(), local, paymentID, callerIP)
+}
+
+func settleNowPaymentsPaymentWithContext(ctx context.Context, local *model.NowPaymentsPayment, paymentID, callerIP string) error {
 	if local == nil || strings.TrimSpace(paymentID) == "" {
 		return fmt.Errorf("%w: payment not found", errNowPaymentsVerification)
 	}
-	remote, err := getNowPaymentsPayment(context.Background(), paymentID)
+	remote, err := getNowPaymentsPayment(ctx, paymentID)
 	if err != nil {
 		return err
 	}
+	if remote == nil {
+		return fmt.Errorf("%w: empty provider response", errNowPaymentsVerification)
+	}
+	return settleNowPaymentsPaymentResponse(local, remote, paymentID, callerIP)
+}
+
+func settleNowPaymentsPaymentResponse(local *model.NowPaymentsPayment, remote *service.NowPaymentsPaymentResponse, paymentID, callerIP string) error {
+	if local == nil || remote == nil || strings.TrimSpace(paymentID) == "" {
+		return fmt.Errorf("%w: payment not found", errNowPaymentsVerification)
+	}
 	remotePaymentID := strings.TrimSpace(string(remote.PaymentID))
 	remoteInvoiceID := strings.TrimSpace(string(remote.InvoiceID))
-	if remotePaymentID != strings.TrimSpace(paymentID) || string(remote.ParentPaymentID) != "" || remote.OrderID != local.TopUpTradeNo || !strings.EqualFold(remote.PriceCurrency, "usd") {
+	remoteOrderID := strings.TrimSpace(remote.OrderID)
+	parentPaymentID := strings.TrimSpace(string(remote.ParentPaymentID))
+	localPaymentID := strings.TrimSpace(local.PaymentID)
+	if remotePaymentID != strings.TrimSpace(paymentID) || !strings.EqualFold(remote.PriceCurrency, "usd") || (remoteOrderID != local.TopUpTradeNo && remotePaymentID != localPaymentID && (remoteOrderID != "" || parentPaymentID == "" || parentPaymentID != localPaymentID)) {
 		return fmt.Errorf("%w: payment details mismatch", errNowPaymentsVerification)
 	}
 	if local.InvoiceID != "" && remoteInvoiceID != local.InvoiceID {
@@ -139,7 +159,7 @@ func settleNowPaymentsPayment(local *model.NowPaymentsPayment, paymentID, caller
 	if local.InvoiceID == "" && (remoteInvoiceID != "" || remote.PayAddress != local.PayAddress || !strings.EqualFold(remote.PayCurrency, local.PayCurrency)) {
 		return fmt.Errorf("%w: legacy payment details mismatch", errNowPaymentsVerification)
 	}
-	if local.PaymentID != "invoice:"+local.InvoiceID && local.PaymentID != remotePaymentID {
+	if local.InvoiceID == "" && local.PaymentID != remotePaymentID {
 		return fmt.Errorf("%w: payment id mismatch", errNowPaymentsVerification)
 	}
 	topUp := model.GetTopUpByTradeNo(local.TopUpTradeNo)
@@ -150,29 +170,9 @@ func settleNowPaymentsPayment(local *model.NowPaymentsPayment, paymentID, caller
 		return fmt.Errorf("%w: payment amount mismatch", errNowPaymentsVerification)
 	}
 	legacyPayAmount := local.PayAmount
-	local.PaymentID = remotePaymentID
-	local.PayAddress = remote.PayAddress
-	local.PayinExtraID = remote.PayinExtraID
-	local.PayCurrency = remote.PayCurrency
-	local.PayAmount = strconv.FormatFloat(float64(remote.PayAmount), 'f', -1, 64)
-	local.ActuallyPaid = strconv.FormatFloat(float64(remote.ActuallyPaid), 'f', -1, 64)
-	local.Network = remote.Network
-	local.PaymentStatus = strings.ToLower(strings.TrimSpace(remote.PaymentStatus))
-	local.PayinHash = remote.PayinHash
-	local.ProviderPayload = "verified"
-	local.ExpiresAt = service.ParseNowPaymentsExpiry(remote.ExpirationEstimateDate)
-	if err := local.Update(); err != nil {
-		return err
-	}
-	remoteStatus := local.PaymentStatus
-	if remoteStatus == "failed" || remoteStatus == "expired" || remoteStatus == "refunded" {
-		if err := model.UpdatePendingTopUpStatus(local.TopUpTradeNo, model.PaymentProviderNowPayments, common.TopUpStatusFailed); err != nil && !errors.Is(err, model.ErrTopUpStatusInvalid) {
-			return err
-		}
-		return nil
-	}
+	remoteStatus := strings.ToLower(strings.TrimSpace(remote.PaymentStatus))
 	if remoteStatus != "finished" && remoteStatus != "partially_paid" {
-		return nil
+		return recordNowPaymentsAttempt(local, remote, remotePaymentID, callerIP, false)
 	}
 	expectedCryptoAmount := decimal.NewFromFloat(float64(remote.PayAmount))
 	if local.InvoiceID == "" {
@@ -182,38 +182,176 @@ func settleNowPaymentsPayment(local *model.NowPaymentsPayment, paymentID, caller
 		}
 	}
 	if !nowPaymentsPaymentCoversAmount(float64(remote.PayAmount), float64(remote.ActuallyPaid)) {
-		return fmt.Errorf("%w: cryptocurrency amount underpaid", errNowPaymentsVerification)
+		return recordNowPaymentsAttempt(local, remote, remotePaymentID, callerIP, false)
+	}
+	return recordNowPaymentsAttempt(local, remote, remotePaymentID, callerIP, true)
+}
+
+func recordNowPaymentsAttempt(local *model.NowPaymentsPayment, remote *service.NowPaymentsPaymentResponse, paymentID, callerIP string, successful bool) error {
+	if local == nil || remote == nil {
+		return fmt.Errorf("%w: payment not found", errNowPaymentsVerification)
 	}
 	var quota int
-	err = model.DB.Transaction(func(tx *gorm.DB) error {
+	var userID int
+	var tradeNo string
+	var duplicateAttemptID int
+	var paidAmount float64
+	var paymentMethod string
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		locked := &model.TopUp{}
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("trade_no = ?", local.TopUpTradeNo).First(locked).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("trade_no = ?", local.TopUpTradeNo).First(locked).Error; err != nil {
 			return err
 		}
-		if locked.Status == common.TopUpStatusSuccess {
+		if locked.PaymentProvider != model.PaymentProviderNowPayments || decimal.NewFromFloat(float64(remote.PriceAmount)).Sub(decimal.NewFromFloat(locked.Money)).Abs().GreaterThan(decimal.NewFromFloat(0.005)) {
+			return fmt.Errorf("%w: order changed during verification", errNowPaymentsVerification)
+		}
+		currentPayment := &model.NowPaymentsPayment{}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", local.Id).First(currentPayment).Error; err != nil {
+			return err
+		}
+		if currentPayment.TopUpTradeNo != locked.TradeNo || (currentPayment.InvoiceID != "" && strings.TrimSpace(string(remote.InvoiceID)) != currentPayment.InvoiceID) {
+			return fmt.Errorf("%w: invoice changed during verification", errNowPaymentsVerification)
+		}
+		failedOrderCanRetry := locked.Status == common.TopUpStatusFailed && currentPayment.InvoiceID != "" && currentPayment.ProviderPayload == "verified" && (currentPayment.PaymentStatus == "failed" || currentPayment.PaymentStatus == "expired" || currentPayment.PaymentStatus == "refunded")
+		parentPaymentID := strings.TrimSpace(string(remote.ParentPaymentID))
+		if parentPaymentID != "" && (locked.Status != common.TopUpStatusSuccess || currentPayment.PaymentID != parentPaymentID) {
+			return fmt.Errorf("%w: repeated payment parent mismatch", errNowPaymentsVerification)
+		}
+		attempt := &model.NowPaymentsAttempt{}
+		lookup := tx.Where("payment_id = ?", paymentID).Limit(1).Find(attempt)
+		if lookup.Error != nil {
+			return lookup.Error
+		}
+		if lookup.RowsAffected == 0 {
+			attempt = &model.NowPaymentsAttempt{PaymentID: paymentID}
+		}
+		if attempt.Id != 0 && attempt.TopUpTradeNo != locked.TradeNo {
+			return fmt.Errorf("%w: payment belongs to another order", errNowPaymentsVerification)
+		}
+		attempt.TopUpTradeNo = locked.TradeNo
+		attempt.InvoiceID = currentPayment.InvoiceID
+		attempt.PayAddress = remote.PayAddress
+		attempt.PayinExtraID = remote.PayinExtraID
+		attempt.PayCurrency = remote.PayCurrency
+		attempt.PayAmount = strconv.FormatFloat(float64(remote.PayAmount), 'f', -1, 64)
+		attempt.ActuallyPaid = strconv.FormatFloat(float64(remote.ActuallyPaid), 'f', -1, 64)
+		attempt.Network = remote.Network
+		attempt.PaymentStatus = strings.ToLower(strings.TrimSpace(remote.PaymentStatus))
+		attempt.Underpaid = !successful && (attempt.PaymentStatus == "finished" || attempt.PaymentStatus == "partially_paid")
+		attempt.PayinHash = remote.PayinHash
+		attempt.Normalize()
+		if err := tx.Save(attempt).Error; err != nil {
+			return err
+		}
+		if locked.Status != common.TopUpStatusSuccess || currentPayment.PaymentID == paymentID {
+			currentPayment.PaymentID = paymentID
+			currentPayment.PayAddress = remote.PayAddress
+			currentPayment.PayinExtraID = remote.PayinExtraID
+			currentPayment.PayCurrency = remote.PayCurrency
+			currentPayment.PayAmount = attempt.PayAmount
+			currentPayment.ActuallyPaid = attempt.ActuallyPaid
+			currentPayment.Network = remote.Network
+			currentPayment.PaymentStatus = attempt.PaymentStatus
+			currentPayment.PayinHash = remote.PayinHash
+			currentPayment.ProviderPayload = "verified"
+			currentPayment.ExpiresAt = service.ParseNowPaymentsExpiry(remote.ExpirationEstimateDate)
+			if err := tx.Save(currentPayment).Error; err != nil {
+				return err
+			}
+		}
+
+		if successful && locked.Status == common.TopUpStatusSuccess {
+			if currentPayment.PaymentID != paymentID {
+				if !attempt.DuplicatePayment {
+					attempt.DuplicatePayment = true
+					if err := tx.Save(attempt).Error; err != nil {
+						return err
+					}
+				}
+				duplicateAttemptID = attempt.Id
+			}
 			return nil
 		}
-		if locked.Status != common.TopUpStatusPending {
-			return fmt.Errorf("topup status invalid")
+		if successful {
+			if locked.Status != common.TopUpStatusPending && locked.Status != common.TopUpStatusFailed {
+				return fmt.Errorf("topup status invalid")
+			}
+			if locked.Status == common.TopUpStatusFailed && !failedOrderCanRetry {
+				return fmt.Errorf("%w: failed order requires manual review", errNowPaymentsVerification)
+			}
+			quota = int(decimal.NewFromInt(locked.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
+			if quota <= 0 {
+				return fmt.Errorf("invalid quota")
+			}
+			model.MarkTopUpSuccess(locked)
+			if err := tx.Save(locked).Error; err != nil {
+				return err
+			}
 		}
-		quota = int(decimal.NewFromInt(locked.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
-		if quota <= 0 {
-			return fmt.Errorf("invalid quota")
+		if quota > 0 {
+			userID = locked.UserId
+			tradeNo = locked.TradeNo
+			paidAmount = locked.Money
+			paymentMethod = locked.PaymentMethod
+			return tx.Model(&model.User{}).Where("id = ?", locked.UserId).Update("quota", gorm.Expr("quota + ?", quota)).Error
 		}
-		model.MarkTopUpSuccess(locked)
-		if err := tx.Save(locked).Error; err != nil {
-			return err
-		}
-		return tx.Model(&model.User{}).Where("id = ?", locked.UserId).Update("quota", gorm.Expr("quota + ?", quota)).Error
+		return nil
 	})
 	if err != nil {
 		return err
 	}
 	if quota > 0 {
-		model.RecordTopupLog(topUp.UserId, fmt.Sprintf("NOWPayments top-up successful, credited amount: %v, amount paid: %.2f", logger.FormatQuota(quota), topUp.Money), callerIP, topUp.PaymentMethod, model.PaymentMethodNowPayments)
-		model.OnTopupSucceeded(topUp.UserId, quota, model.PaymentMethodNowPayments, topUp.TradeNo)
+		model.RecordTopupLog(userID, fmt.Sprintf("NOWPayments top-up successful, credited amount: %v, amount paid: %.2f", logger.FormatQuota(quota), paidAmount), callerIP, paymentMethod, model.PaymentMethodNowPayments)
+		onNowPaymentsTopupSucceeded(userID, quota, model.PaymentMethodNowPayments, tradeNo)
+	}
+	if duplicateAttemptID != 0 {
+		return deliverNowPaymentsAlert(duplicateAttemptID)
 	}
 	return nil
+}
+
+func deliverNowPaymentsAlert(attemptID int) error {
+	leaseUntil := common.GetTimestamp() + 120
+	claimed, err := model.ClaimNowPaymentsAlert(attemptID, leaseUntil)
+	if err != nil || !claimed {
+		return err
+	}
+	attempt := model.GetNowPaymentsAttemptByIDFromPK(attemptID)
+	if attempt == nil {
+		return model.CompleteNowPaymentsAlert(attemptID, leaseUntil, false)
+	}
+	local := model.GetNowPaymentsPaymentByTradeNo(attempt.TopUpTradeNo)
+	if local == nil || common.FeishuOpsChatID() == "" || common.FeishuAppID() == "" || common.FeishuAppSecret() == "" {
+		_ = model.CompleteNowPaymentsAlert(attemptID, leaseUntil, false)
+		return fmt.Errorf("NOWPayments duplicate payment alert is not configured or order is missing: %s", attempt.PaymentID)
+	}
+	err = notifyDuplicateNowPaymentsPayment(local, local.PaymentID, attempt)
+	if completeErr := model.CompleteNowPaymentsAlert(attemptID, leaseUntil, err == nil); completeErr != nil {
+		return completeErr
+	}
+	return err
+}
+
+func notifyDuplicateNowPaymentsPayment(local *model.NowPaymentsPayment, winningPaymentID string, attempt *model.NowPaymentsAttempt) error {
+	if local == nil || attempt == nil {
+		return nil
+	}
+	lines := []string{
+		"内部订单号：" + local.TopUpTradeNo,
+		"Invoice ID：" + local.InvoiceID,
+		"已入账 Payment ID：" + winningPaymentID,
+		"重复成功 Payment ID：" + attempt.PaymentID,
+		"重复付款币种：" + strings.ToUpper(attempt.PayCurrency),
+		"重复付款金额：" + attempt.ActuallyPaid,
+		"重复付款状态：" + attempt.PaymentStatus,
+	}
+	if attempt.Network != "" {
+		lines = append(lines, "网络："+attempt.Network)
+	}
+	if attempt.PayinHash != "" {
+		lines = append(lines, "交易哈希："+attempt.PayinHash)
+	}
+	return sendNowPaymentsDuplicateAlert(common.FeishuOpsChatID(), common.FeishuNotificationTitle("NOWPayments 同一订单重复付款告警"), lines)
 }
 
 func NowPaymentsWebhook(c *gin.Context) {
@@ -223,23 +361,19 @@ func NowPaymentsWebhook(c *gin.Context) {
 		return
 	}
 	var payload struct {
-		PaymentID     dto.StringValue `json:"payment_id"`
-		InvoiceID     dto.StringValue `json:"invoice_id"`
-		OrderID       string          `json:"order_id"`
-		PaymentStatus string          `json:"payment_status"`
+		PaymentID       dto.StringValue `json:"payment_id"`
+		ParentPaymentID dto.StringValue `json:"parent_payment_id"`
+		OrderID         string          `json:"order_id"`
 	}
-	if err := common.Unmarshal(body, &payload); err != nil || strings.TrimSpace(string(payload.PaymentID)) == "" || strings.TrimSpace(payload.OrderID) == "" {
+	if err := common.Unmarshal(body, &payload); err != nil || strings.TrimSpace(string(payload.PaymentID)) == "" {
 		c.Status(http.StatusBadRequest)
 		return
 	}
 	var local *model.NowPaymentsPayment
-	if strings.TrimSpace(string(payload.InvoiceID)) != "" {
-		local = model.GetNowPaymentsPaymentByOrder(string(payload.InvoiceID), payload.OrderID)
-	} else {
-		local = model.GetNowPaymentsPaymentByID(string(payload.PaymentID))
-		if local != nil && (local.InvoiceID != "" || local.TopUpTradeNo != strings.TrimSpace(payload.OrderID)) {
-			local = nil
-		}
+	if strings.TrimSpace(payload.OrderID) != "" {
+		local = model.GetNowPaymentsPaymentByTradeNo(payload.OrderID)
+	} else if strings.TrimSpace(string(payload.ParentPaymentID)) != "" {
+		local = model.GetNowPaymentsPaymentByID(string(payload.ParentPaymentID))
 	}
 	if local == nil {
 		c.Status(http.StatusBadRequest)
