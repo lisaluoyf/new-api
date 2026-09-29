@@ -30,7 +30,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { Copy, Database } from 'lucide-react'
+import { Copy, Database, Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatQuota } from '@/lib/format'
@@ -43,6 +43,14 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   DISABLED_ROW_DESKTOP,
@@ -331,10 +339,8 @@ export function ApiKeysTable() {
   )
 }
 
-// ApiBaseUrlBadge — shows the OpenAI-compatible base URL the user should send
-// requests to (with their token), plus a one-click copy button. Source is the
-// same `status.server_address` localStorage value used elsewhere (e.g.
-// data-table-row-actions.tsx), with window.location.origin as fallback.
+// ApiBaseUrlBadge shows protocol-specific endpoints. OpenAI-compatible clients
+// and Codex need /v1, while Claude Code uses the site root and adds /v1/messages.
 function ApiBaseUrlBadge() {
   const { t } = useTranslation()
   // Resolve the public-facing API origin. Priority:
@@ -354,30 +360,128 @@ function ApiBaseUrlBadge() {
       /* empty */
     }
     const { protocol, hostname, port } = window.location
-    if ((hostname === 'localhost' || hostname === '127.0.0.1') && port === '3000') {
+    if (
+      (hostname === 'localhost' || hostname === '127.0.0.1') &&
+      port === '3000'
+    ) {
       return `${protocol}//${hostname}:3001`
     }
     return window.location.origin
   })()
-  const url = baseURL.replace(/\/+$/, '')
+  const url = baseURL.replace(/\/+$/, '').replace(/\/v1$/i, '')
+  const openAIUrl = `${url}/v1`
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(url).then(
+  const handleCopy = (value: string) => {
+    navigator.clipboard.writeText(value).then(
       () => toast.success(t('Copied to clipboard')),
       () => toast.error(t('Failed to copy'))
     )
   }
 
   return (
+    <div className='flex flex-wrap items-center gap-1.5'>
+      <EndpointCopyButton
+        label={t('OpenAI / Codex')}
+        url={openAIUrl}
+        onCopy={() => handleCopy(openAIUrl)}
+      />
+      <EndpointCopyButton
+        label={t('Anthropic / Claude Code')}
+        url={url}
+        onCopy={() => handleCopy(url)}
+      />
+      <Popover>
+        <PopoverTrigger
+          render={
+            <button
+              type='button'
+              className='inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 text-xs text-gray-600 transition-colors hover:bg-gray-100'
+            />
+          }
+        >
+          <Info className='h-3.5 w-3.5' aria-hidden='true' />
+          <span>{t('Which URL should I use?')}</span>
+        </PopoverTrigger>
+        <PopoverContent align='end' className='w-[min(92vw,27rem)] p-3'>
+          <PopoverHeader>
+            <PopoverTitle>{t('Coding agent connection guide')}</PopoverTitle>
+            <PopoverDescription>
+              {t(
+                'Use /v1 for OpenAI-compatible clients and Codex. Claude Code uses the site root and adds /v1/messages itself.'
+              )}
+            </PopoverDescription>
+          </PopoverHeader>
+          <div className='mt-2 space-y-2 text-xs'>
+            <AgentEndpointRow
+              protocol={t('OpenAI Responses')}
+              agents={t('Codex CLI, Codex Desktop')}
+              url={openAIUrl}
+            />
+            <AgentEndpointRow
+              protocol={t('Anthropic Messages')}
+              agents={t('Claude Code')}
+              url={url}
+            />
+            <AgentEndpointRow
+              protocol={t('OpenAI Chat Completions')}
+              agents={t(
+                'Cursor, Cline, Kilo Code, OpenCode, Roo Code, Goose, Aider, Continue, Pi, Qwen Code, Trae'
+              )}
+              url={openAIUrl}
+            />
+            <AgentEndpointRow
+              protocol={t('Gemini API')}
+              agents={t('Gemini CLI (only for Gemini-compatible models)')}
+              url={url}
+            />
+          </div>
+          <p className='text-muted-foreground mt-2 border-t pt-2 text-[11px] leading-4'>
+            {t('More agent setup guides are available in AI Agents and Docs.')}
+          </p>
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
+
+function EndpointCopyButton({
+  label,
+  url,
+  onCopy,
+}: {
+  label: string
+  url: string
+  onCopy: () => void
+}) {
+  return (
     <button
       type='button'
-      onClick={handleCopy}
-      title={t('Click to copy the API base URL')}
-      className='inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs hover:bg-gray-100 transition-colors'
+      onClick={onCopy}
+      title={`${label}: ${url}`}
+      aria-label={`${label}: ${url}`}
+      className='inline-flex h-8 max-w-[18rem] min-w-0 items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2 text-xs transition-colors hover:bg-gray-100'
     >
-      <span className='text-gray-400'>{t('API Base URL')}:</span>
-      <span className='font-mono text-gray-700 max-w-[260px] truncate'>{url}</span>
-      <Copy className='h-3.5 w-3.5 text-gray-400' />
+      <span className='shrink-0 text-gray-500'>{label}:</span>
+      <span className='truncate font-mono text-gray-700'>{url}</span>
+      <Copy className='h-3.5 w-3.5 shrink-0 text-gray-400' aria-hidden='true' />
     </button>
+  )
+}
+
+function AgentEndpointRow({
+  protocol,
+  agents,
+  url,
+}: {
+  protocol: string
+  agents: string
+  url: string
+}) {
+  return (
+    <div className='rounded-md border border-gray-200 bg-gray-50 px-2.5 py-2'>
+      <div className='font-medium text-gray-800'>{protocol}</div>
+      <div className='mt-0.5 text-gray-600'>{agents}</div>
+      <div className='mt-1 font-mono break-all text-gray-500'>{url}</div>
+    </div>
   )
 }
