@@ -64,7 +64,7 @@ func TestOpus55SuffixAndLegacyModel(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "claude-opus-5-5", out.Model)
 	require.Equal(t, "xhigh", gjson.GetBytes(out.OutputConfig, "effort").String())
-	for _, model := range []string{"claude-opus-5", "claude-sonnet-4-5", "claude-opus-5-50"} {
+	for _, model := range []string{"claude-opus-4-6", "claude-sonnet-4-5", "claude-opus-5-50"} {
 		out, err := RequestOpenAI2ClaudeMessage(nil, dto.GeneralOpenAIRequest{Model: model, ReasoningEffort: "low"})
 		require.NoError(t, err)
 		require.Equal(t, "enabled", out.Thinking.Type)

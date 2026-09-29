@@ -19,6 +19,9 @@ type ClaudeSettings struct {
 	DefaultMaxTokens                      map[string]int                 `json:"default_max_tokens"`
 	ThinkingAdapterEnabled                bool                           `json:"thinking_adapter_enabled"`
 	ThinkingAdapterBudgetTokensPercentage float64                        `json:"thinking_adapter_budget_tokens_percentage"`
+	// Exact model IDs mapped to a documented thinking profile. Unknown models
+	// are never assigned capabilities based on a version-number comparison.
+	ThinkingModelProfiles map[string]string `json:"thinking_model_profiles"`
 }
 
 // 默认配置
