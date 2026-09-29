@@ -18,7 +18,7 @@
   { "model_id": "claude-fable-5", "label": "Fable 5", "accent": "#a855f7" },
   { "model_id": "claude-sonnet-5", "label": "Sonnet 5", "accent": "#a855f7" },
   {
-    "model_id": "claude-sonnet-5.5",
+    "model_id": "claude-sonnet-5-5",
     "label": "Sonnet 5.5",
     "accent": "#a855f7"
   },
