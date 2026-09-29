@@ -244,7 +244,7 @@ func MaskSensitiveInfo(str string) string {
 		// Known API field paths are not hostnames. Keep this exact allowlist
 		// narrow: URLs and hosts containing these names must still be masked.
 		switch domain {
-		case "thinking.type", "thinking.type.adaptive", "thinking.type.enabled", "thinking.type.disabled", "thinking.display":
+		case "thinking.type", "thinking.type.adaptive", "thinking.type.enabled", "thinking.type.disabled", "thinking.display", "reasoning.enabled", "reasoning.exclude":
 			return domain
 		}
 		return maskHostForPlainDomain(domain)
