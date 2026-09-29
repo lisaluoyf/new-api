@@ -757,6 +757,14 @@ func setMessageDeltaUsageInt(data string, path string, localValue int) string {
 	return patchedData
 }
 
+// Thinking tokens are already included in output_tokens. Copy the breakdown only;
+// an omitted streaming field must not erase a previously reported count.
+func copyClaudeThinkingUsage(dst *dto.Usage, src *dto.ClaudeUsage) {
+	if src != nil && src.OutputTokensDetails != nil && src.OutputTokensDetails.ThinkingTokens != nil {
+		dst.CompletionTokenDetails.ReasoningTokens = *src.OutputTokensDetails.ThinkingTokens
+	}
+}
+
 func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *dto.ChatCompletionsStreamResponse, claudeInfo *ClaudeResponseInfo) bool {
 	if claudeInfo == nil {
 		return false
@@ -779,6 +787,7 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 			claudeInfo.Usage.ClaudeCacheCreation5mTokens = claudeResponse.Message.Usage.GetCacheCreation5mTokens()
 			claudeInfo.Usage.ClaudeCacheCreation1hTokens = claudeResponse.Message.Usage.GetCacheCreation1hTokens()
 			claudeInfo.Usage.CompletionTokens = claudeResponse.Message.Usage.OutputTokens
+			copyClaudeThinkingUsage(claudeInfo.Usage, claudeResponse.Message.Usage)
 		}
 	} else if claudeResponse.Type == "content_block_delta" {
 		if claudeResponse.Delta != nil {
@@ -792,6 +801,7 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 	} else if claudeResponse.Type == "message_delta" {
 		// 最终的usage获取
 		if claudeResponse.Usage != nil {
+			copyClaudeThinkingUsage(claudeInfo.Usage, claudeResponse.Usage)
 			claudeInfo.Usage.UsageSemantic = "anthropic"
 			if claudeResponse.Usage.InputTokens > 0 {
 				// 不叠加，只取最新的
@@ -970,6 +980,7 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		claudeInfo.Usage = &dto.Usage{}
 	}
 	if claudeResponse.Usage != nil {
+		copyClaudeThinkingUsage(claudeInfo.Usage, claudeResponse.Usage)
 		claudeInfo.Usage.PromptTokens = claudeResponse.Usage.InputTokens
 		claudeInfo.Usage.CompletionTokens = claudeResponse.Usage.OutputTokens
 		claudeInfo.Usage.TotalTokens = claudeResponse.Usage.InputTokens + claudeResponse.Usage.OutputTokens
