@@ -96,7 +96,57 @@ func (a *H3TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *H3TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	if strings.HasPrefix(c.GetHeader("Content-Type"), "multipart/form-data") {
+		return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	}
+	var req relaycommon.TaskSubmitReq
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	// The shared DTO intentionally exposes the generic video contract only.
+	// Read H3's official V2 fields separately so top-level multimodal content
+	// cannot be silently discarded by that DTO's JSON decoder.
+	var fields map[string]interface{}
+	if err := common.UnmarshalBodyReusable(c, &fields); err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	if req.Metadata == nil {
+		req.Metadata = make(map[string]interface{})
+	}
+	for _, key := range []string{"content", "resolution", "ratio", "callback_url", "aigc_watermark"} {
+		if value, exists := fields[key]; exists {
+			req.Metadata[key] = value
+		}
+	}
+	if resolution, ok := fields["resolution"].(string); ok {
+		req.Size = resolution
+	}
+	if callback, ok := fields["callback_url"].(string); ok {
+		req.Webhook = callback
+	}
+	if len(req.Images) == 0 && strings.TrimSpace(req.Image) != "" {
+		req.Images = []string{req.Image}
+	}
+	info.Action = constant.TaskActionGenerate
+	c.Set("task_request", req)
+	reader, err := a.BuildRequestBody(c, info)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	// Keep the stored prompt consistent with the actual content sent upstream.
+	var payload h3CreateRequest
+	if err := common.DecodeJson(reader, &payload); err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	var text []string
+	for _, item := range payload.Content {
+		if item.Type == "text" {
+			text = append(text, item.Text)
+		}
+	}
+	req.Prompt = strings.Join(text, "\n")
+	c.Set("task_request", req)
+	return nil
 }
 
 // EstimateBilling applies the official H3 per-second price to the requested
@@ -157,9 +207,6 @@ func (a *H3TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.Relay
 	if !ok {
 		return nil, fmt.Errorf("invalid request type in context")
 	}
-	if strings.TrimSpace(req.Prompt) == "" {
-		return nil, fmt.Errorf("prompt is required for MiniMax-H3")
-	}
 
 	payload := h3CreateRequest{
 		Model:      h3Model,
@@ -185,7 +232,7 @@ func (a *H3TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.Relay
 			return nil, errors.Wrap(err, "unmarshal H3 metadata")
 		}
 	}
-	// Metadata must not be able to change the routed model or omit the prompt.
+	// Metadata must not be able to change the routed model.
 	payload.Model = h3Model
 	// Preserve the generic API's explicit fields over metadata aliases.
 	if req.Duration >= 4 && req.Duration <= 15 {
@@ -197,9 +244,6 @@ func (a *H3TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.Relay
 	}
 	if strings.TrimSpace(req.Webhook) != "" {
 		payload.CallbackURL = strings.TrimSpace(req.Webhook)
-	}
-	if len(payload.Content) == 0 {
-		payload.Content = []h3Content{{Type: "text", Text: req.Prompt}}
 	}
 	// A generic input_reference/images request is converted to the official
 	// content form when the caller did not provide metadata.content. Explicit
