@@ -253,6 +253,13 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		}
 	}
 
+	// Adaptive-only models must never receive the legacy budget generated above.
+	if isOpus55(textRequest.Model) {
+		if err := configureOpus55Thinking(&claudeRequest, textRequest); err != nil {
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+	}
+
 	if textRequest.Stop != nil {
 		// stop maybe string/array string, convert to array string
 		switch textRequest.Stop.(type) {
@@ -506,6 +513,9 @@ func StreamResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.ChatCo
 			if claudeResponse.ContentBlock.Type == "text" && claudeResponse.ContentBlock.Text != nil {
 				choice.Delta.SetContentString(*claudeResponse.ContentBlock.Text)
 			}
+			if claudeResponse.ContentBlock.Type == "thinking" {
+				choice.Delta.ReasoningContent = claudeResponse.ContentBlock.Thinking
+			}
 			if claudeResponse.ContentBlock.Type == "tool_use" {
 				tools = append(tools, dto.ToolCallResponse{
 					Index: common.GetPointer(fcIdx),
@@ -570,13 +580,6 @@ func ResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.OpenAITextRe
 		Created: common.GetTimestamp(),
 	}
 	var responseText string
-	var responseThinking string
-	if len(claudeResponse.Content) > 0 {
-		responseText = claudeResponse.Content[0].GetText()
-		if claudeResponse.Content[0].Thinking != nil {
-			responseThinking = *claudeResponse.Content[0].Thinking
-		}
-	}
 	tools := make([]dto.ToolCallResponse, 0)
 	thinkingContent := ""
 
@@ -596,10 +599,10 @@ func ResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.OpenAITextRe
 		case "thinking":
 			// 加密的不管， 只输出明文的推理过程
 			if message.Thinking != nil {
-				thinkingContent = *message.Thinking
+				thinkingContent += *message.Thinking
 			}
 		case "text":
-			responseText = message.GetText()
+			responseText += message.GetText()
 		}
 	}
 	choice := dto.OpenAITextResponseChoice{
@@ -610,8 +613,8 @@ func ResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.OpenAITextRe
 		FinishReason: stopReasonClaude2OpenAI(claudeResponse.StopReason),
 	}
 	choice.SetStringContent(responseText)
-	if len(responseThinking) > 0 {
-		choice.ReasoningContent = &responseThinking
+	if thinkingContent != "" {
+		choice.ReasoningContent = &thinkingContent
 	}
 	if len(tools) > 0 {
 		choice.Message.SetToolCalls(tools)
