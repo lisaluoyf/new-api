@@ -179,15 +179,7 @@ func isHiddenChannelDataModel(modelName string) bool {
 // These models remain available to administrators in Channel Data, but are not
 // advertised through the public marketplace. Routing is unaffected.
 func isHiddenMarketplaceModel(modelName string) bool {
-	if service.IsFreeModel(modelName) || isHiddenChannelDataModel(modelName) {
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(modelName)) {
-	case "gpt-image-2.5-sunburst-fd", "gpt-image-2.5-flare-fd":
-		return true
-	default:
-		return false
-	}
+	return service.IsFreeModel(modelName) || isHiddenChannelDataModel(modelName)
 }
 
 // GetModelData returns channel pricing and detection stats for a given model.
