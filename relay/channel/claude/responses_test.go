@@ -46,12 +46,12 @@ func TestClaudeResponsesRequest(t *testing.T) {
 func TestClaudeResponsesRejectedRequests(t *testing.T) {
 	cases := []string{
 		`"previous_response_id":"resp_1"`, `"conversation":"conv_1"`, `"store":true`, `"background":true`,
-		`"tools":[{"type":"web_search"}]`,
+		`"tools":[{"type":"file_search"}]`,
 		`"text":{"format":{"type":"json_schema"}}`, `"max_output_tokens":0`, `"reasoning":{"effort":"bogus"}`,
 		`"input":[{"type":"function_call_output","call_id":"missing","output":"hello"}]`,
 		`"input":[{"type":"function_call","call_id":"call_1","name":"f","arguments":"bad"}]`,
 		`"input":[{"role":"user","content":[{"type":"input_file","file_id":"file_1"}]}]`,
-		`"include":["web_search_call.action.sources"]`, `"truncation":"auto"`, `"top_logprobs":0`,
+		`"include":["file_search_call.results"]`, `"truncation":"auto"`, `"top_logprobs":0`,
 		`"tool_choice":{"type":"function","name":"unknown"}`, `"tools":[{"type":"function","name":"f"}],"tool_choice":"required"`, `"reasoning_effort":"low"`,
 	}
 	for _, v := range cases {

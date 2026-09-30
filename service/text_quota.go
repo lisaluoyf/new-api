@@ -231,6 +231,11 @@ func calculateTextToolCallSurcharge(ctx *gin.Context, relayInfo *relaycommon.Rel
 	summary.ClaudeWebSearchCallCount = ctx.GetInt("claude_web_search_requests")
 	if summary.ClaudeWebSearchCallCount > 0 {
 		summary.ClaudeWebSearchPrice = operation_setting.GetToolPrice("web_search")
+		if v, exists := ctx.Get("claude_web_search_price_per_thousand"); exists {
+			if frozen, ok := v.(float64); ok {
+				summary.ClaudeWebSearchPrice = frozen
+			}
+		}
 		surcharge = surcharge.Add(decimal.NewFromFloat(summary.ClaudeWebSearchPrice).
 			Div(decimal.NewFromInt(1000)).
 			Mul(dGroupRatio).
@@ -667,6 +672,10 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			accountingInput.ImageCount, _ = details["generated_images"].(int)
 			accountingInput.ImageBaseUnits, _ = details["base_units"].(float64)
 		}
+	}
+	if summary.ClaudeWebSearchCallCount > 0 && !summary.ToolCallSurchargeQuota.IsZero() && !IsFreeModel(relayInfo.OriginModelName) {
+		accountingInput.UnpricedToolSurchargeUSD = summary.ToolCallSurchargeQuota.Div(decimal.NewFromFloat(common.QuotaPerUnit)).InexactFloat64()
+		accountingInput.UseQuotaForUserAmounts = true
 	}
 	applyTieredAccountingContext(&accountingInput, relayInfo, usage)
 	accounting := BuildConsumeAccountingFields(accountingInput)

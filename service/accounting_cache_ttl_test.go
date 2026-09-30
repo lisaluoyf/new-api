@@ -71,3 +71,22 @@ func TestCacheTTLAccountingKeepsQuotaAndInclusiveSemantics(t *testing.T) {
 	require.InDelta(t, float64(input.Quota)/common.QuotaPerUnit, final, 1e-12)
 	require.InDelta(t, final/1.05, base, 1e-12)
 }
+
+func TestClaudeToolSurchargeMatchesDebitWithoutInventingProcurementPrice(t *testing.T) {
+	// This helper follows the same DB fixture pattern as other accounting tests.
+	old := model.DB
+	t.Cleanup(func() { model.DB = old })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.ChannelModelPricing{}, &model.User{}))
+	require.NoError(t, db.Create(&model.User{Id: 1, Username: "tool-audit"}).Error)
+	one := 1.0
+	require.NoError(t, db.Create(&model.Channel{Id: 1, RechargeRate: &one, ApimasterPriceRatio: &one}).Error)
+	require.NoError(t, db.Create(&model.ChannelModelPricing{ChannelId: 1, ModelName: "tool-audit-model", InputPrice: 2, OutputPrice: 10, CachePrice: .2, CacheCreationPrice: 2.5, GroupRatio: 1}).Error)
+	got := BuildConsumeAccountingFields(ConsumeAccountingInput{UserId: 1, ChannelId: 1, ModelName: "tool-audit-model", InputTokens: 100, OutputTokens: 40, GroupRatio: 1, Quota: 10300, UseQuotaForUserAmounts: true, UnpricedToolSurchargeUSD: .02})
+	require.InDelta(t, .0206, got.UserFinalAmountUSD, 1e-12)
+	require.Contains(t, got.Snapshot, "tool_procurement_price_unconfigured")
+	require.Equal(t, "partial", got.Status)
+	require.InDelta(t, .0006, got.ChannelCostAmountUSD, 1e-12)
+}

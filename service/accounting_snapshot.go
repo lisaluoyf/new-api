@@ -38,6 +38,7 @@ type ConsumeAccountingInput struct {
 	Quota                     int
 	ZeroUserCharge            bool
 	UseQuotaForUserAmounts    bool
+	UnpricedToolSurchargeUSD  float64
 	BillingAt                 time.Time
 }
 
@@ -274,6 +275,23 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 	if err := applyTieredAccountingFields(input, &fields, &snap); err != nil {
 		status = "partial"
 		errorText = appendAccountingError(errorText, "tiered_accounting_failed: "+err.Error())
+	}
+	if input.UnpricedToolSurchargeUSD > 0 {
+		// Token procurement prices do not define the supplier's tool-call fee.
+		// Keep the known token subtotal and explicitly mark that missing cost;
+		// never report it as a verified zero or silently omit the user charge.
+		if status == "ok" {
+			status = "partial"
+		}
+		errorText = appendAccountingError(errorText, "tool_procurement_price_unconfigured")
+		snap.Prices["tool_surcharge"] = map[string]any{"charged_usd": input.UnpricedToolSurchargeUSD, "procurement_status": "unconfigured", "channel_cost_includes_tool_fee": false}
+		if !input.ZeroUserCharge {
+			fields.UserFinalAmountUSD = quotaAmountUSD(input.Quota)
+			fields.UserPriceAmountUSD = fields.UserFinalAmountUSD / input.GroupRatio
+			snap.AmountsUSD["user_final"] = fields.UserFinalAmountUSD
+			snap.AmountsUSD["user_price"] = fields.UserPriceAmountUSD
+			snap.Prices["user_amount_source"] = "settled_quota"
+		}
 	}
 	fields.GroupRatio = input.GroupRatio
 	fields.Status = status

@@ -640,3 +640,28 @@ func TestCalculateTextQuotaSummaryCacheSemantics(t *testing.T) {
 		require.Equal(t, 39, summary.Quota)
 	})
 }
+
+func TestClaudeResponsesSearchFeeChargedOnceFromProviderUsage(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("claude_web_search_requests", 2)
+	info := &relaycommon.RelayInfo{RelayFormat: types.RelayFormatOpenAIResponses, FinalRequestRelayFormat: types.RelayFormatClaude, OriginModelName: "claude-opus-5-5", StartTime: time.Now(), ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{BuiltInTools: map[string]*relaycommon.BuildInToolInfo{dto.BuildInToolWebSearchPreview: {CallCount: 0}}}, PriceData: types.PriceData{ModelRatio: 1, CompletionRatio: 5, CacheRatio: .1, CacheCreationRatio: 1.25, CacheCreation5mRatio: 1.25, CacheCreation1hRatio: 2, GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1}}}
+	usage := &dto.Usage{UsageSemantic: "anthropic", PromptTokens: 100, CompletionTokens: 40, PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 200, CachedCreationTokens: 30}, ClaudeCacheCreation5mTokens: 10, ClaudeCacheCreation1hTokens: 20}
+	summary := calculateTextQuotaSummary(ctx, info, usage)
+	require.Equal(t, 2, summary.ClaudeWebSearchCallCount)
+	require.Zero(t, summary.WebSearchCallCount)
+	expected := 373 + int(summary.ClaudeWebSearchPrice/1000*2*500000)
+	require.Equal(t, expected, summary.Quota)
+}
+
+func TestClaudeSearchFeeUsesFrozenPriceIncludingZero(t *testing.T) {
+	for _, price := range []float64{0, 7.5} {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Set("claude_web_search_requests", 2)
+		ctx.Set("claude_web_search_price_per_thousand", price)
+		info := &relaycommon.RelayInfo{OriginModelName: "claude-opus-5-5", PriceData: types.PriceData{GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1}}}
+		summary := textQuotaSummary{ModelName: info.OriginModelName, GroupRatio: 1}
+		got := calculateTextToolCallSurcharge(ctx, info, &summary)
+		require.Equal(t, price, summary.ClaudeWebSearchPrice)
+		require.InDelta(t, price/1000*2*500000, got.InexactFloat64(), 1e-8)
+	}
+}

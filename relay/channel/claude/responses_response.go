@@ -43,6 +43,8 @@ type claudeResponsesState struct {
 	sequence                               int
 	started, delta, done, hasUsage, usable bool
 	stopReason                             string
+	hasSearch                              bool
+	searchRequests                         int
 }
 
 func newClaudeResponsesState(info *relaycommon.RelayInfo) *claudeResponsesState {
@@ -103,6 +105,17 @@ func (s *claudeResponsesState) startBlock(c *gin.Context, index int, b dto.Claud
 		item["name"] = b.Name
 		item["arguments"] = ""
 		item["status"] = "in_progress"
+	case "server_tool_use":
+		if b.Id == "" || b.Name != "web_search" {
+			return fmt.Errorf("unsupported Claude server tool")
+		}
+		s.hasSearch = true
+		item["type"] = "web_search_call"
+		item["status"] = "in_progress"
+		item["action"] = map[string]any{"type": "search", "query": ""}
+	case "web_search_tool_result":
+		item["type"] = "reasoning"
+		item["summary"] = []any{}
 	case "thinking", "redacted_thinking":
 		item["type"] = "reasoning"
 		item["summary"] = []any{}
@@ -115,6 +128,9 @@ func (s *claudeResponsesState) startBlock(c *gin.Context, index int, b dto.Claud
 		f := s.fields(i)
 		f["item"] = item
 		_ = s.emit(c, "response.output_item.added", f)
+		if b.Type == "server_tool_use" {
+			_ = s.emit(c, "response.web_search_call.in_progress", s.fields(i))
+		}
 		f = s.fields(i)
 		switch b.Type {
 		case "text":
@@ -137,7 +153,7 @@ func (s *claudeResponsesState) startBlock(c *gin.Context, index int, b dto.Claud
 			return err
 		}
 	}
-	if b.Type == "tool_use" && b.Input != nil {
+	if (b.Type == "tool_use" || b.Type == "server_tool_use") && b.Input != nil {
 		encoded, err := common.Marshal(b.Input)
 		if err != nil {
 			return err
@@ -176,12 +192,33 @@ func (s *claudeResponsesState) addDelta(c *gin.Context, index int, d dto.ClaudeM
 		f["summary_index"] = 0
 		typ = "response.reasoning_summary_text.delta"
 	case "input_json_delta":
-		if b.item["type"] != "function_call" || d.PartialJson == nil {
+		if (b.item["type"] != "function_call" && b.item["type"] != "web_search_call") || d.PartialJson == nil {
 			return fmt.Errorf("invalid Claude tool delta")
 		}
 		value = *d.PartialJson
 		b.arguments.WriteString(value)
 		typ = "response.function_call_arguments.delta"
+		if b.item["type"] == "web_search_call" {
+			typ = ""
+		}
+	case "citations_delta":
+		if b.item["type"] != "message" || len(d.Citation) == 0 {
+			return fmt.Errorf("invalid Claude citation delta")
+		}
+		var citations []json.RawMessage
+		_ = common.Unmarshal(b.native.Citations, &citations)
+		citations = append(citations, d.Citation)
+		b.native.Citations, _ = common.Marshal(citations)
+		if stream {
+			annotations := s.annotations(b)
+			if len(annotations) > 0 {
+				f["content_index"] = 0
+				f["annotation_index"] = len(annotations) - 1
+				f["annotation"] = annotations[len(annotations)-1]
+				_ = s.emit(c, "response.output_text.annotation.added", f)
+			}
+		}
+		return nil
 	case "signature_delta":
 		if b.item["type"] != "reasoning" {
 			return fmt.Errorf("signature outside reasoning block")
@@ -194,7 +231,7 @@ func (s *claudeResponsesState) addDelta(c *gin.Context, index int, d dto.ClaudeM
 	if value != "" {
 		s.usable = true
 	}
-	if stream {
+	if stream && typ != "" {
 		f["delta"] = value
 		_ = s.emit(c, typ, f)
 	}
@@ -210,7 +247,9 @@ func (s *claudeResponsesState) stopBlock(c *gin.Context, index int, stream bool)
 	f := s.fields(i)
 	switch b.item["type"] {
 	case "message":
-		part := map[string]any{"type": "output_text", "text": b.text.String(), "annotations": []any{}}
+		text := b.text.String()
+		b.native.Text = &text
+		part := map[string]any{"type": "output_text", "text": b.text.String(), "annotations": s.annotations(b)}
 		b.item["content"] = []any{part}
 		b.item["status"] = "completed"
 		if stream {
@@ -222,6 +261,24 @@ func (s *claudeResponsesState) stopBlock(c *gin.Context, index int, stream bool)
 			f["part"] = part
 			_ = s.emit(c, "response.content_part.done", f)
 		}
+	case "web_search_call":
+		args := b.arguments.String()
+		if args == "" {
+			args = "{}"
+		}
+		var input struct {
+			Query string `json:"query"`
+		}
+		if err := common.UnmarshalJsonStr(args, &input); err != nil || input.Query == "" {
+			return fmt.Errorf("invalid Claude search query")
+		}
+		b.native.Input = json.RawMessage(args)
+		b.item["action"].(map[string]any)["query"] = input.Query
+		b.item["status"] = "searching"
+		if stream {
+			_ = s.emit(c, "response.web_search_call.searching", s.fields(i))
+		}
+		return nil
 	case "function_call":
 		args := b.arguments.String()
 		if args == "" {
@@ -232,6 +289,7 @@ func (s *claudeResponsesState) stopBlock(c *gin.Context, index int, stream bool)
 			return fmt.Errorf("Claude returned invalid function arguments")
 		}
 		b.item["arguments"] = args
+		b.native.Input = json.RawMessage(args)
 		b.item["status"] = "completed"
 		s.usable = true
 		if stream {
@@ -240,6 +298,11 @@ func (s *claudeResponsesState) stopBlock(c *gin.Context, index int, stream bool)
 			_ = s.emit(c, "response.function_call_arguments.done", f)
 		}
 	case "reasoning":
+		if b.native.Type == "web_search_tool_result" {
+			if err := s.searchResults(c, b, stream); err != nil {
+				return err
+			}
+		}
 		if b.native.Type == "thinking" {
 			thinking := b.text.String()
 			b.native.Thinking = &thinking
@@ -272,12 +335,12 @@ func (s *claudeResponsesState) stopBlock(c *gin.Context, index int, stream bool)
 	}
 	return nil
 }
-func (s *claudeResponsesState) finish() error {
+func (s *claudeResponsesState) finish(c *gin.Context, stream bool) error {
 	if !s.hasUsage {
 		return fmt.Errorf("Claude response is missing terminal usage")
 	}
 	for _, b := range s.blocks {
-		if !b.stopped {
+		if !b.stopped || b.item["status"] == "searching" {
 			return fmt.Errorf("Claude response has unfinished content blocks")
 		}
 	}
@@ -306,9 +369,21 @@ func (s *claudeResponsesState) finish() error {
 		u.PromptTokensDetails.CachedCreationTokens = split
 	}
 	s.usage.Usage.TotalTokens = s.usage.Usage.PromptTokens + s.usage.Usage.CompletionTokens
+	var err error
+	output, err = s.appendSearchTurn(c, stream, output)
+	if err != nil {
+		return err
+	}
+	if s.searchRequests > 0 {
+		c.Set("claude_web_search_requests", s.searchRequests)
+	}
 	s.response["status"] = status
 	s.response["output"] = output
-	s.response["usage"] = claudeResponsesUsage(s.usage.Usage)
+	wireUsage := claudeResponsesUsage(s.usage.Usage)
+	if s.hasSearch || s.searchRequests > 0 {
+		wireUsage["server_tool_use"] = map[string]any{"web_search_requests": s.searchRequests}
+	}
+	s.response["usage"] = wireUsage
 	s.done = true
 	return nil
 }
@@ -337,10 +412,16 @@ func ClaudeResponsesHandler(c *gin.Context, resp *http.Response, info *relaycomm
 		FormatClaudeResponseInfo(&dto.ClaudeResponse{Type: "message_start", Message: &dto.ClaudeMediaMessage{Usage: r.Usage}}, nil, s.usage)
 		s.hasUsage = r.Usage != nil && gjson.GetBytes(data, "usage.input_tokens").Exists() && gjson.GetBytes(data, "usage.output_tokens").Exists()
 		s.stopReason = r.StopReason
+		if r.Usage != nil && r.Usage.ServerToolUse != nil {
+			s.searchRequests = r.Usage.ServerToolUse.WebSearchRequests
+		}
 		maybeMarkClaudeRefusal(c, r.StopReason)
 		for i, b := range r.Content {
-			if b.Type == "tool_use" {
+			if b.Type == "tool_use" || b.Type == "server_tool_use" {
 				b.Input = json.RawMessage(gjson.GetBytes(data, fmt.Sprintf("content.%d.input", i)).Raw)
+			}
+			if b.Type == "web_search_tool_result" {
+				b.Content = json.RawMessage(gjson.GetBytes(data, fmt.Sprintf("content.%d.content", i)).Raw)
 			}
 			if err := s.startBlock(c, i, b, false); err != nil {
 				return nil, claudeResponsesUpstreamError(err)
@@ -349,7 +430,7 @@ func ClaudeResponsesHandler(c *gin.Context, resp *http.Response, info *relaycomm
 				return nil, claudeResponsesUpstreamError(err)
 			}
 		}
-		if err := s.finish(); err != nil {
+		if err := s.finish(c, false); err != nil {
 			return nil, claudeResponsesUpstreamError(err)
 		}
 		encoded, err := common.Marshal(s.response)
@@ -373,6 +454,13 @@ func ClaudeResponsesHandler(c *gin.Context, resp *http.Response, info *relaycomm
 			return
 		}
 		FormatClaudeResponseInfo(&r, nil, s.usage)
+		reported := r.Usage
+		if r.Type == "message_start" && r.Message != nil {
+			reported = r.Message.Usage
+		}
+		if reported != nil && reported.ServerToolUse != nil && reported.ServerToolUse.WebSearchRequests > s.searchRequests {
+			s.searchRequests = reported.ServerToolUse.WebSearchRequests
+		}
 		switch r.Type {
 		case "ping":
 			return
@@ -390,8 +478,11 @@ func ClaudeResponsesHandler(c *gin.Context, resp *http.Response, info *relaycomm
 				fail(fmt.Errorf("invalid Claude content_block_start"))
 				return
 			}
-			if r.ContentBlock.Type == "tool_use" {
+			if r.ContentBlock.Type == "tool_use" || r.ContentBlock.Type == "server_tool_use" {
 				r.ContentBlock.Input = json.RawMessage(gjson.Get(data, "content_block.input").Raw)
+			}
+			if r.ContentBlock.Type == "web_search_tool_result" {
+				r.ContentBlock.Content = json.RawMessage(gjson.Get(data, "content_block.content").Raw)
 			}
 			if err := s.startBlock(c, *r.Index, *r.ContentBlock, true); err != nil {
 				fail(err)
@@ -429,7 +520,7 @@ func ClaudeResponsesHandler(c *gin.Context, resp *http.Response, info *relaycomm
 				fail(fmt.Errorf("Claude message_stop without message_delta"))
 				return
 			}
-			if err := s.finish(); err != nil {
+			if err := s.finish(c, true); err != nil {
 				fail(err)
 				return
 			}

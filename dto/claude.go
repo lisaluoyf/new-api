@@ -27,6 +27,8 @@ type ClaudeMediaMessage struct {
 	Thinking     *string              `json:"thinking,omitempty"`
 	Signature    string               `json:"signature,omitempty"`
 	Data         json.RawMessage      `json:"data,omitempty"`
+	Citations    json.RawMessage      `json:"citations,omitempty"`
+	Citation     json.RawMessage      `json:"citation,omitempty"`
 	Delta        string               `json:"delta,omitempty"`
 	CacheControl json.RawMessage      `json:"cache_control,omitempty"`
 	// tool_calls

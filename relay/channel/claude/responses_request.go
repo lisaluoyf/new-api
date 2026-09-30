@@ -59,7 +59,7 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 	if r.PreviousResponseID != "" {
 		return nil, responsesBadRequest("Claude Responses does not support previous_response_id; send the full input history")
 	}
-	for k, v := range map[string]json.RawMessage{"conversation": r.Conversation, "context_management": r.ContextManagement, "prompt": r.Prompt, "prompt_cache_key": r.PromptCacheKey, "prompt_cache_retention": r.PromptCacheRetention, "enable_thinking": r.EnableThinking, "preset": r.Preset} {
+	for k, v := range map[string]json.RawMessage{"conversation": r.Conversation, "context_management": r.ContextManagement, "prompt": r.Prompt, "prompt_cache_retention": r.PromptCacheRetention, "enable_thinking": r.EnableThinking, "preset": r.Preset} {
 		if len(v) > 0 && string(v) != "null" {
 			return nil, responsesBadRequest("Claude Responses does not support %s", k)
 		}
@@ -70,7 +70,7 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 			return nil, responsesBadRequest("include must be an array")
 		}
 		for _, v := range include {
-			if v != "reasoning.encrypted_content" {
+			if v != "reasoning.encrypted_content" && v != "web_search_call.action.sources" {
 				return nil, responsesBadRequest("unsupported Claude Responses include %s", v)
 			}
 		}
@@ -104,16 +104,41 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 	nativeTools := make([]map[string]any, 0)
 	if len(r.Tools) > 0 && string(r.Tools) != "null" {
 		var tools []struct {
-			Type        string         `json:"type"`
-			Name        string         `json:"name"`
-			Description string         `json:"description"`
-			Parameters  map[string]any `json:"parameters"`
-			Strict      *bool          `json:"strict"`
+			Type              string          `json:"type"`
+			Name              string          `json:"name"`
+			Description       string          `json:"description"`
+			Parameters        map[string]any  `json:"parameters"`
+			Strict            *bool           `json:"strict"`
+			SearchContextSize string          `json:"search_context_size"`
+			UserLocation      json.RawMessage `json:"user_location"`
+			Filters           struct {
+				AllowedDomains []string `json:"allowed_domains"`
+			} `json:"filters"`
+			ExternalWebAccess *bool `json:"external_web_access"`
 		}
 		if err := common.Unmarshal(r.Tools, &tools); err != nil {
 			return nil, responsesBadRequest("tools must be an array of functions")
 		}
 		for i, t := range tools {
+			if t.Type == "web_search" || t.Type == "web_search_preview" {
+				if t.ExternalWebAccess != nil && !*t.ExternalWebAccess {
+					return nil, responsesBadRequest("Claude web search requires external_web_access=true")
+				}
+				switch t.SearchContextSize {
+				case "", "low", "medium", "high":
+				default:
+					return nil, responsesBadRequest("invalid search_context_size")
+				}
+				tool := map[string]any{"type": "web_search_20250305", "name": "web_search"}
+				if len(t.UserLocation) > 0 && string(t.UserLocation) != "null" {
+					tool["user_location"] = t.UserLocation
+				}
+				if len(t.Filters.AllowedDomains) > 0 {
+					tool["allowed_domains"] = t.Filters.AllowedDomains
+				}
+				nativeTools = append(nativeTools, tool)
+				continue
+			}
 			if t.Type != "function" || t.Name == "" {
 				return nil, responsesBadRequest("Claude Responses supports named function tools only")
 			}
@@ -190,9 +215,12 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 		default:
 			return nil, responsesBadRequest("unsupported text.format.type")
 		}
-		if textOptions.Verbosity != "" {
-			return nil, responsesBadRequest("Claude Responses does not support text.verbosity")
+		switch textOptions.Verbosity {
+		case "", "low", "medium", "high":
+		default:
+			return nil, responsesBadRequest("unsupported text.verbosity")
 		}
+
 	}
 	if in.ToolChoice == "required" && len(in.Tools) == 0 {
 		return nil, responsesBadRequest("required tool_choice needs function tools")
@@ -208,6 +236,15 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 	out, err := RequestOpenAI2ClaudeMessage(c, in)
 	if err != nil {
 		return nil, responsesBadRequest("%v", err)
+	}
+	if len(r.PromptCacheKey) > 0 && string(r.PromptCacheKey) != "null" {
+		var key string
+		if err := common.Unmarshal(r.PromptCacheKey, &key); err != nil {
+			return nil, responsesBadRequest("prompt_cache_key must be a string")
+		}
+		if key != "" {
+			out.CacheControl = json.RawMessage(`{"type":"ephemeral"}`)
+		}
 	}
 	if len(nativeTools) > 0 {
 		out.Tools = nativeTools
@@ -234,6 +271,17 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 			out.System = []dto.ClaudeMediaMessage{{Type: "text", Text: &s}}
 		}
 	}
+	if textOptions.Verbosity == "low" || textOptions.Verbosity == "high" {
+		style := "Keep the final user-facing answer concise."
+		if textOptions.Verbosity == "high" {
+			style = "Give a detailed final user-facing answer when the task calls for it."
+		}
+		var system []dto.ClaudeMediaMessage
+		if out.System != nil {
+			system = out.System.([]dto.ClaudeMediaMessage)
+		}
+		out.System = append(system, dto.ClaudeMediaMessage{Type: "text", Text: &style})
+	}
 	var input any
 	if err := common.Unmarshal(r.Input, &input); err != nil {
 		return nil, responsesBadRequest("input must be a string or array")
@@ -247,6 +295,7 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 	}
 	// Keep adjacent tool calls/results in a single Claude turn, preserving IDs.
 	calls := map[string]bool{}
+	searchReplayPending := false
 	appendBlocks := func(role string, blocks []dto.ClaudeMediaMessage) {
 		n := len(out.Messages)
 		if n > 0 && out.Messages[n-1].Role == role {
@@ -269,6 +318,9 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 			}
 			if role != "user" && role != "assistant" && role != "system" && role != "developer" {
 				return nil, responsesBadRequest("unsupported input role %q", role)
+			}
+			if role == "user" && searchReplayPending {
+				return nil, responsesBadRequest("preserve complete output including encrypted reasoning after web search")
 			}
 			blocks, err := responsesContentToClaude(item["content"])
 			if err != nil {
@@ -301,7 +353,14 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 			}
 			calls[id] = true
 			appendBlocks("assistant", []dto.ClaudeMediaMessage{{Type: "tool_use", Id: id, Name: name, Input: json.RawMessage(args)}})
+		case "web_search_call":
+			// Its exact provider state follows in the standard reasoning item.
+			searchReplayPending = true
+			appendBlocks("assistant", []dto.ClaudeMediaMessage{})
 		case "function_call_output":
+			if searchReplayPending {
+				return nil, responsesBadRequest("preserve complete output including encrypted reasoning after web search")
+			}
 			id, _ := item["call_id"].(string)
 			if !calls[id] {
 				return nil, responsesBadRequest("function_call_output requires its function_call in input")
@@ -318,7 +377,17 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 			appendBlocks("user", []dto.ClaudeMediaMessage{{Type: "tool_result", ToolUseId: id, Content: content}})
 		case "reasoning":
 			encrypted, _ := item["encrypted_content"].(string)
-			if encrypted != "" {
+			if strings.HasPrefix(encrypted, "anthropic_turn_v1:") {
+				content, err := decodeClaudeResponsesTurn(encrypted)
+				if err != nil {
+					return nil, err
+				}
+				if len(out.Messages) == 0 || out.Messages[len(out.Messages)-1].Role != "assistant" {
+					return nil, responsesBadRequest("Claude turn envelope must follow assistant output")
+				}
+				out.Messages[len(out.Messages)-1].Content = content
+				searchReplayPending = false
+			} else if encrypted != "" {
 				if !strings.HasPrefix(encrypted, "anthropic_v1:") {
 					return nil, responsesBadRequest("reasoning was not produced by Claude Responses")
 				}
@@ -346,6 +415,9 @@ func responsesRequestToClaude(c *gin.Context, r dto.OpenAIResponsesRequest) (*dt
 		default:
 			return nil, responsesBadRequest("unsupported Responses input item %q", typ)
 		}
+	}
+	if searchReplayPending {
+		return nil, responsesBadRequest("missing encrypted web search turn state")
 	}
 	if len(calls) > 0 {
 		return nil, responsesBadRequest("function calls in input require matching outputs")
