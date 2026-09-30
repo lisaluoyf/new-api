@@ -110,6 +110,12 @@ func (a *H3TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relayc
 	if err := common.UnmarshalBodyReusable(c, &fields); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
+	requested := map[string]interface{}{}
+	for _, key := range []string{"resolution", "size", "ratio", "aspect_ratio", "duration", "seconds"} {
+		if value, ok := fields[key]; ok {
+			requested[key] = value
+		}
+	}
 	if req.Metadata == nil {
 		req.Metadata = make(map[string]interface{})
 	}
@@ -170,12 +176,6 @@ func (a *H3TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relayc
 		}
 	}
 	req.Prompt = strings.Join(text, "\n")
-	requested := map[string]interface{}{}
-	for _, key := range []string{"resolution", "size", "ratio", "aspect_ratio", "duration", "seconds"} {
-		if value, ok := fields[key]; ok {
-			requested[key] = value
-		}
-	}
 	req.Duration = payload.Duration
 	req.Metadata["requested_spec"] = requested
 	req.Metadata["resolution"] = payload.Resolution

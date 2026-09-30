@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -71,4 +72,28 @@ func TestDurationAccountingFreezesActualSelectedUnitPrice(t *testing.T) {
 		require.InDelta(t, float64(got.UserFinalAmountUSD), float64(snap.AmountsUSD["user_final"]), 1e-12)
 		require.InDelta(t, price*5*1.05, got.UserFinalAmountUSD, .0000021)
 	}
+}
+
+func TestMediaWebhookCompletionBackfillsActualVideoDimensions(t *testing.T) {
+	old := model.LOG_DB
+	t.Cleanup(func() { model.LOG_DB = old })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.LOG_DB = db
+	require.NoError(t, db.AutoMigrate(&model.Log{}))
+	task := &model.Task{TaskID: "task_webhook_video_dimensions", UserId: 501, Status: model.TaskStatusSuccess, SubmitTime: 10, FinishTime: 30, Properties: model.Properties{OriginModelName: "seedance-2.5"}}
+	task.SetData(map[string]interface{}{"width": 480, "height": 854})
+	task.PrivateData.ResultURL = "https://apimaster.ai/video/result.mp4"
+	require.NoError(t, db.Create(&model.Log{UserId: task.UserId, Type: model.LogTypeConsume, Quota: 221944, Other: common.MapToJsonStr(map[string]interface{}{"task_id": task.TaskID})}).Error)
+	backfillMediaTaskWebhookLog(context.Background(), task)
+	var log model.Log
+	require.NoError(t, db.First(&log).Error)
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	require.Equal(t, "verified", other["output_spec_status"])
+	require.Equal(t, float64(480), other["output_spec"].(map[string]interface{})["width"])
+	require.Equal(t, float64(854), other["output_spec"].(map[string]interface{})["height"])
+	require.Equal(t, 221944, log.Quota)
+	require.Equal(t, 20, log.UseTime)
+	require.Equal(t, task.PrivateData.ResultURL, other["result_url"])
 }

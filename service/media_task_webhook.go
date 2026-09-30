@@ -224,6 +224,7 @@ func backfillMediaTaskWebhookLog(ctx context.Context, task *model.Task) {
 	if err := model.UpdateLogResultByTaskID(task.UserId, task.TaskID, elapsed, other); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("media task webhook log backfill failed task_id=%s error=%v", task.TaskID, err))
 	}
+	backfillVideoOutputSpec(task, nil)
 }
 
 func isPublicWebhookBase(raw string) bool {
