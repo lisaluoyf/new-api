@@ -126,6 +126,12 @@ func (a *H3TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relayc
 		}
 		fields["ratio"] = ratio
 	}
+	if value, provided := fields["resolution"]; provided {
+		resolution, valid := value.(string)
+		if !valid || (!strings.EqualFold(resolution, "768P") && !strings.EqualFold(resolution, "2K")) {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("resolution must be 768P or 2K"), "invalid_request", http.StatusBadRequest)
+		}
+	}
 	if resolution, ok := fields["resolution"].(string); ok && req.Size != "" && !strings.EqualFold(req.Size, resolution) {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("size and resolution conflict"), "invalid_request", http.StatusBadRequest)
 	}
