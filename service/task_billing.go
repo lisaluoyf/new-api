@@ -400,6 +400,11 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	taskAdjustTokenQuota(ctx, task, quotaDelta)
 
 	task.Quota = actualQuota
+	if task.ID > 0 {
+		if err := model.DB.Model(&model.Task{}).Where("id = ?", task.ID).Update("quota", actualQuota).Error; err != nil {
+			logger.LogError(ctx, fmt.Sprintf("persist settled task quota failed task %s: %v", task.TaskID, err))
+		}
+	}
 
 	var logType int
 	var logQuota int

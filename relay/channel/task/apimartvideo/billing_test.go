@@ -161,3 +161,19 @@ func TestMotionControlUnavailableReferenceKeepsPreDeduction(t *testing.T) {
 	task.PrivateData.RequestData = ""
 	require.Zero(t, (&TaskAdaptor{}).AdjustBillingOnComplete(task, &relaycommon.TaskInfo{BillableSeconds: 3, Url: "https://output.example/3s.mp4"}))
 }
+
+func TestSeedanceSettlementUsesFrozenUserPriceMultiplier(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		cost, base float64
+		quota      int
+	}{
+		{ModelSeedance20, .264, .1562, 152460}, {ModelSeedance25, .38432, .2376, 221944},
+	} {
+		task := &model.Task{Quota: tc.quota, Data: []byte(fmt.Sprintf(`{"cost":%g}`, tc.cost)), PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{OriginModelName: tc.name, ModelPrice: tc.base, GroupRatio: 1.05, ProviderCostMultiplier: 1.1}}}
+		require.Equal(t, tc.quota, (&TaskAdaptor{}).AdjustBillingOnComplete(task, &relaycommon.TaskInfo{}))
+		// Measured reference-media work still changes the charge, with the same frozen multiplier.
+		task.Data = []byte(fmt.Sprintf(`{"cost":%g}`, 2*tc.cost))
+		require.Equal(t, int(math.Round(2*tc.cost*1.1*1.05*common.QuotaPerUnit)), (&TaskAdaptor{}).AdjustBillingOnComplete(task, &relaycommon.TaskInfo{}))
+	}
+}

@@ -190,7 +190,15 @@ func seedanceActualQuota(task *model.Task) int {
 	if groupRatio <= 0 {
 		groupRatio = 1
 	}
-	return int(math.Round(cost * common.QuotaPerUnit * groupRatio))
+	multiplier := task.PrivateData.BillingContext.ProviderCostMultiplier
+	if multiplier <= 0 {
+		multiplier = 1
+	} // Historical tasks keep their original settlement policy.
+	quota := int(math.Round(cost * common.QuotaPerUnit * groupRatio * multiplier))
+	if task.PrivateData.BillingContext.ProviderCostMultiplier > 0 && task.Quota > 0 && math.Abs(float64(quota-task.Quota)) <= 1 {
+		return task.Quota // Preserve the submit-time truncation for equal billable work.
+	}
+	return quota
 }
 
 func taskDataPositiveNumber(data []byte, field string) float64 {

@@ -132,7 +132,13 @@ func ProcessMediaTaskWebhook(ctx context.Context, body []byte) error {
 			RefundTaskQuota(ctx, task, task.FailReason)
 		}
 	} else if task.Platform != constant.TaskPlatformOpenAIImage {
-		SettleTaskBillingOnComplete(ctx, taskcommon.BaseBilling{}, task, &relaycommon.TaskInfo{
+		billingAdaptor := TaskBillingAdaptor(taskcommon.BaseBilling{})
+		if task.Platform == constant.TaskPlatformApimartVideo && task.PrivateData.BillingContext != nil && task.PrivateData.BillingContext.ProviderCostMultiplier > 0 && GetTaskAdaptorFunc != nil {
+			if adaptor := GetTaskAdaptorFunc(task.Platform); adaptor != nil {
+				billingAdaptor = adaptor
+			}
+		}
+		SettleTaskBillingOnComplete(ctx, billingAdaptor, task, &relaycommon.TaskInfo{
 			Status: string(model.TaskStatusSuccess),
 			Url:    task.GetResultURL(),
 		})

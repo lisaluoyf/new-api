@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -661,6 +662,7 @@ func TestCASGuardedSettle_Win(t *testing.T) {
 	var reloaded model.Task
 	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
 	assert.EqualValues(t, model.TaskStatusSuccess, reloaded.Status)
+	assert.Equal(t, actualQuota, reloaded.Quota)
 
 	// Settlement should refund the over-charge (5000 - 3000 = 2000 back to user)
 	assert.Equal(t, initQuota+(preConsumed-actualQuota), getUserQuota(t, userID))
@@ -804,4 +806,37 @@ func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestSeedanceWebhookUsesSameSettlementAndDuplicateCannotChargeAgain(t *testing.T) {
+	truncate(t)
+	const uid, tid, cid = 151, 151, 151
+	seedUser(t, uid, 10000)
+	seedToken(t, tid, uid, "sk-webhook-settlement-test", 8000)
+	seedChannel(t, cid)
+	task := makeTask(uid, cid, 5000, tid, BillingSourceWallet, 0)
+	task.Platform = constant.TaskPlatformApimartVideo
+	task.Properties.OriginModelName = "seedance-2.5"
+	task.PrivateData.BillingContext.ProviderCostMultiplier = 1.1
+	task.PrivateData.BillingContext.OriginModelName = "seedance-2.5"
+	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: uid, Type: model.LogTypeConsume, Quota: 5000, Other: common.MapToJsonStr(map[string]interface{}{"task_id": task.TaskID})}).Error)
+	old := GetTaskAdaptorFunc
+	t.Cleanup(func() { GetTaskAdaptorFunc = old })
+	GetTaskAdaptorFunc = func(platform constant.TaskPlatform) TaskPollingAdaptor {
+		require.Equal(t, constant.TaskPlatformApimartVideo, string(platform))
+		return &mockAdaptor{adjustReturn: 7000}
+	}
+	payload := []byte(common.MapToJsonStr(map[string]interface{}{"id": task.TaskID, "status": "completed", "width": 480, "height": 854}))
+	require.NoError(t, ProcessMediaTaskWebhook(context.Background(), payload))
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	require.Equal(t, 7000, reloaded.Quota)
+	require.Equal(t, 8000, getUserQuota(t, uid))
+	require.Equal(t, 6000, getTokenRemainQuota(t, tid))
+	require.Equal(t, int64(2), countLogs(t))
+	require.NoError(t, ProcessMediaTaskWebhook(context.Background(), payload))
+	require.Equal(t, 8000, getUserQuota(t, uid))
+	require.Equal(t, 6000, getTokenRemainQuota(t, tid))
+	require.Equal(t, int64(2), countLogs(t))
 }

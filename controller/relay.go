@@ -27,6 +27,7 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	model_setting "github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -1734,6 +1735,14 @@ func RelayTask(c *gin.Context) {
 			OtherRatios:     relayInfo.PriceData.OtherRatios,
 			OriginModelName: relayInfo.OriginModelName,
 			PerCallBilling:  service.IsTaskPerCallBilling(relayInfo.OriginModelName, relayInfo.PriceData),
+		}
+		if task.Platform == constant.TaskPlatformApimartVideo {
+			name := strings.ToLower(relayInfo.OriginModelName)
+			if name == "seedance-2.0" || name == "doubao-seedance-2.0" || name == "seedance-2.5" {
+				if base, ok := ratio_setting.GetVideoModelBasePrice(name); ok && base > 0 && relayInfo.PriceData.ModelPrice > 0 {
+					task.PrivateData.BillingContext.ProviderCostMultiplier = relayInfo.PriceData.ModelPrice / base
+				}
+			}
 		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData
