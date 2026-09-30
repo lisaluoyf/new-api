@@ -6,6 +6,18 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 )
 
+func TestResponsesCapabilityDoesNotExpandToBedrock(t *testing.T) {
+	if !endpointTypeContains(GetEndpointTypesByChannelType(constant.ChannelTypeAnthropic, "claude-opus-5-5"), constant.EndpointTypeOpenAIResponse) {
+		t.Fatal("native Claude must advertise the implemented Responses bridge")
+	}
+	if endpointTypeContains(GetEndpointTypesByChannelType(constant.ChannelTypeAws, "claude-opus-5-5"), constant.EndpointTypeOpenAIResponse) {
+		t.Fatal("Bedrock shares Messages capability, but does not implement Responses")
+	}
+	if endpointTypeContains(GetEndpointTypesByChannelType(constant.ChannelTypeAnthropic, "claude-opus-5-5"), constant.EndpointTypeOpenAIResponseCompact) {
+		t.Fatal("the stateless bridge does not implement Responses compact")
+	}
+}
+
 func TestIsImageGenerationModel_gptImage2(t *testing.T) {
 	cases := map[string]bool{
 		"gpt-image-2":                    true,
