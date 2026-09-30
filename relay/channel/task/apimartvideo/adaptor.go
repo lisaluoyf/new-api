@@ -98,7 +98,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
-	if strings.Contains(c.Request.URL.Path, "/videos/generations") {
+	if isGenerationJSON(c) {
 		return a.validateApimartJSON(c, info)
 	}
 	if taskErr := relaycommon.ValidateMultipartDirect(c, info); taskErr != nil {
@@ -123,13 +123,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 }
 
 func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
-	storage, err := common.GetBodyStorage(c)
+	raw, err := normalizedGenerationJSON(c)
 	if err != nil {
-		return service.TaskErrorWrapperLocal(err, "invalid_json", http.StatusBadRequest)
-	}
-	raw, err := storage.Bytes()
-	if err != nil {
-		return service.TaskErrorWrapperLocal(err, "invalid_json", http.StatusBadRequest)
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
 
 	var modelProbe struct {
@@ -213,6 +209,13 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 			"aspect_ratio":  body.AspectRatio,
 			"auto_duration": body.Model == ModelSeedance25 && body.Duration == -1,
 		},
+	}
+	if requested, ok := c.Get("video_requested_spec"); ok {
+		store.Metadata["requested_spec"] = requested
+	}
+	store.Metadata["billing_variant"] = body.Resolution
+	if store.Metadata["has_video"] == true {
+		store.Metadata["billing_variant"] = body.Resolution + "-input"
 	}
 	c.Set("task_request", store)
 	info.Action = action
@@ -353,15 +356,12 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 }
 
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
-	if strings.Contains(c.Request.URL.Path, "/videos/generations") {
-		storage, err := common.GetBodyStorage(c)
+	if isGenerationJSON(c) {
+		raw, err := normalizedGenerationJSON(c)
 		if err != nil {
 			return nil, err
 		}
-		raw, err := storage.Bytes()
-		if err != nil {
-			return nil, err
-		}
+
 		var modelProbe struct {
 			Model string `json:"model"`
 		}

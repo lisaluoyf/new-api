@@ -113,6 +113,25 @@ func (a *H3TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relayc
 	if req.Metadata == nil {
 		req.Metadata = make(map[string]interface{})
 	}
+	if _, provided := fields["duration"]; provided && (req.Duration < 4 || req.Duration > 15) {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("duration must be between 4 and 15 seconds"), "invalid_request", http.StatusBadRequest)
+	}
+	if raw, ok := fields["aspect_ratio"]; ok {
+		ratio, valid := raw.(string)
+		if !valid || strings.TrimSpace(ratio) == "" {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("aspect_ratio must be a non-empty string"), "invalid_request", http.StatusBadRequest)
+		}
+		if existing, exists := fields["ratio"]; exists && existing != ratio {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("ratio and aspect_ratio conflict"), "invalid_request", http.StatusBadRequest)
+		}
+		fields["ratio"] = ratio
+	}
+	if resolution, ok := fields["resolution"].(string); ok && req.Size != "" && !strings.EqualFold(req.Size, resolution) {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("size and resolution conflict"), "invalid_request", http.StatusBadRequest)
+	}
+	if req.Size != "" && !strings.EqualFold(req.Size, "768P") && !strings.EqualFold(req.Size, "2K") {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("size must be 768P or 2K"), "invalid_request", http.StatusBadRequest)
+	}
 	for _, key := range []string{"content", "resolution", "ratio", "callback_url", "aigc_watermark"} {
 		if value, exists := fields[key]; exists {
 			req.Metadata[key] = value
@@ -145,6 +164,18 @@ func (a *H3TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relayc
 		}
 	}
 	req.Prompt = strings.Join(text, "\n")
+	requested := map[string]interface{}{}
+	for _, key := range []string{"resolution", "size", "ratio", "aspect_ratio", "duration", "seconds"} {
+		if value, ok := fields[key]; ok {
+			requested[key] = value
+		}
+	}
+	req.Duration = payload.Duration
+	req.Metadata["requested_spec"] = requested
+	req.Metadata["resolution"] = payload.Resolution
+	req.Metadata["ratio"] = payload.Ratio
+	req.Metadata["duration"] = payload.Duration
+	req.Metadata["billing_variant"] = payload.Resolution
 	c.Set("task_request", req)
 	return nil
 }

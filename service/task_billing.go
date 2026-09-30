@@ -118,6 +118,9 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 			accountingInput.DurationSeconds = int(math.Ceil(seconds))
 		}
 	}
+	if TaskUsesDurationBasedBilling(info.PriceData) {
+		accountingInput.DurationUnitPrice = logModelPrice
+	}
 	accounting := BuildConsumeAccountingFields(accountingInput)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId:  info.ChannelId,
@@ -180,6 +183,7 @@ func BackfillTaskLogOnComplete(ctx context.Context, task *model.Task, taskResult
 			logger.LogWarn(ctx, fmt.Sprintf("failed to backfill channel cost for task %s: %v", task.TaskID, err))
 		}
 	}
+	backfillVideoOutputSpec(task, taskResult)
 }
 
 func taskActualChannelCostUSD(task *model.Task) float64 {

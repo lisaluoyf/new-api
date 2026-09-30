@@ -60,6 +60,29 @@ func BuildVideoRequestDataForLog(req *relaycommon.TaskSubmitReq) map[string]inte
 		}
 	}
 	appendVideoDerivedFields(data, size)
+	if req.Metadata != nil {
+		if requested, ok := req.Metadata["requested_spec"]; ok {
+			data["requested_spec"] = requested
+		}
+		if value, ok := req.Metadata["resolution"].(string); ok && value != "" {
+			data["resolution"] = value
+			data["effective_resolution"] = strings.ToUpper(value)
+		}
+		if value, ok := req.Metadata["aspect_ratio"].(string); ok && value != "" {
+			data["aspect_ratio"] = value
+		}
+		if value, ok := req.Metadata["ratio"].(string); ok && value != "" {
+			data["aspect_ratio"] = value
+		}
+		for _, key := range []string{"billing_variant", "has_video", "audio"} {
+			if value, ok := req.Metadata[key]; ok {
+				data[key] = value
+			}
+		}
+	}
+	if resolution, ok := data["resolution"]; ok {
+		data["submitted_spec"] = map[string]interface{}{"resolution": resolution, "aspect_ratio": data["aspect_ratio"], "duration": duration}
+	}
 	data["actual_image_count"] = videoActualImageCount(req)
 
 	if len(data) == 0 {

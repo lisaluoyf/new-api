@@ -32,6 +32,7 @@ type ConsumeAccountingInput struct {
 	ImageCount                int
 	ImageBaseUnits            float64
 	ImagePriceVariant         string
+	DurationUnitPrice         float64
 	DurationSeconds           int
 	GroupRatio                float64
 	Quota                     int
@@ -171,7 +172,10 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 	}
 
 	var userPrice *model.ChannelActualPrices
-	if useImagePricing {
+	if input.DurationUnitPrice > 0 && normalizedAccountingBillingMode(input) == accountingBillingModeDurationSeconds {
+		userPrice = &model.ChannelActualPrices{InputPrice: input.DurationUnitPrice}
+		err = nil
+	} else if useImagePricing {
 		price, lookupErr := ChannelBaseUserPriceResolved(input.ChannelId, input.ModelName, imagePricing.BasePrice)
 		err = lookupErr
 		if err == nil {
