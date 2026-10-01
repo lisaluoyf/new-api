@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Daily reconciliation schedule and provider scope": "每天北京时间 08:30 对账。链上支付和 NOWPayments 仅核验后台成功订单；其他渠道还核对上游全部成功支付，发现后台失败或缺失的订单。对账不会修改余额或订阅。",
+    "Reconciliation provider coverage notice": "链上支付和 NOWPayments 按单向口径核验：后台成功订单全部核验一致即完成，没有后台成功订单时显示无支付订单。其他渠道仍需取得完整上游账单双向核对。查单失败或支付差异仍会提示；金额按币种汇总。",
+    "Local successful orders verification only": "仅核验后台成功订单",
     "Matched / Checked Orders": "成功对账 / 核查订单数",
     "reconciliation.problem.official_statement_query_conflict": "上游成功账单与查单结果冲突，需向支付渠道核查。",
     "Start date (Beijing time)": "开始日期（北京时间）",

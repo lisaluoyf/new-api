@@ -97,6 +97,11 @@ func PaymentReconciliationProviderEnabled(provider string) bool {
 	return false
 }
 
+// These channels currently require verification of local successes only.
+func PaymentReconciliationLocalOnly(provider string) bool {
+	return provider == "crypto" || provider == "nowpayments"
+}
+
 func QueuePaymentReconciliation(day, provider string, actor int, force bool) error {
 	if !PaymentReconciliationProviderEnabled(provider) {
 		return errors.New("payment reconciliation provider is disabled")
@@ -168,6 +173,9 @@ func HeartbeatPaymentReconciliation(j *PaymentReconciliationJob, now int64) erro
 }
 func FinishPaymentReconciliation(j *PaymentReconciliationJob, items []PaymentReconciliationItem, runError bool) error {
 	r := SummarizePaymentReconciliation(items)
+	if PaymentReconciliationLocalOnly(j.Provider) {
+		r.Coverage = "local_successful_orders_only"
+	}
 	r.ID = j.RunID
 	r.FinishedAt = time.Now().Unix()
 	if runError {

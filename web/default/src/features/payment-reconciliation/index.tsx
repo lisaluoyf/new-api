@@ -94,11 +94,11 @@ export function PaymentReconciliationPage() {
         {t('Daily Reconciliation')}
       </SectionPageLayout.Title>
       <SectionPageLayout.Description>
-        {t('Daily reconciliation schedule and scope')}
+        {t('Daily reconciliation schedule and provider scope')}
       </SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <p className='text-muted-foreground mb-4 text-sm'>
-          {t('Daily reconciliation schedule and scope')}
+          {t('Daily reconciliation schedule and provider scope')}
         </p>
         <div className='mb-5 flex flex-wrap items-end gap-3'>
           <label className='space-y-1 text-sm'>
@@ -168,7 +168,7 @@ export function PaymentReconciliationPage() {
         </div>
         <Alert className='mb-4'>
           <AlertDescription>
-            {t('Reconciliation coverage notice')}
+            {t('Reconciliation provider coverage notice')}
           </AlertDescription>
         </Alert>
         {query.isError && (
@@ -278,9 +278,11 @@ export function PaymentReconciliationPage() {
                     </Badge>
                     <p className='text-muted-foreground mt-1 text-xs'>
                       {t(
-                        run.coverage === 'bidirectional_official_statement'
-                          ? 'Bidirectional statement checked'
-                          : 'Bidirectional statement incomplete'
+                        run.coverage === 'local_successful_orders_only'
+                          ? 'Local successful orders verification only'
+                          : run.coverage === 'bidirectional_official_statement'
+                            ? 'Bidirectional statement checked'
+                            : 'Bidirectional statement incomplete'
                       )}
                       <br />
                       {t('Payment Differences')}: {run.difference_count} ·{' '}

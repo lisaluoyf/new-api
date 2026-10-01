@@ -138,7 +138,14 @@ func GetPaymentReconciliation(c *gin.Context) {
 		_ = common.UnmarshalJsonStr(runs[i].TotalsJSON, &runs[i].Totals)
 		sort.Slice(runs[i].Totals, func(a, b int) bool { return runs[i].Totals[a].Currency < runs[i].Totals[b].Currency })
 	}
-	c.JSON(200, gin.H{"success": true, "jobs": jobs, "runs": runs, "items": items, "items_truncated": truncated, "items_total": itemsTotal, "page": page, "timezone": "UTC+8", "schedule": "08:30", "scope": "local_successful_payments_and_all_upstream_successful_payments", "coverage": "bidirectional_when_official_statement_available"})
+	modes := map[string]string{}
+	for _, provider := range providers {
+		modes[provider] = "bidirectional_official_statement"
+		if model.PaymentReconciliationLocalOnly(provider) {
+			modes[provider] = "local_successful_orders_only"
+		}
+	}
+	c.JSON(200, gin.H{"success": true, "provider_modes": modes, "jobs": jobs, "runs": runs, "items": items, "items_truncated": truncated, "items_total": itemsTotal, "page": page, "timezone": "UTC+8", "schedule": "08:30", "scope": "provider_specific_successful_payment_reconciliation", "coverage": "provider_specific"})
 }
 func QueuePaymentReconciliation(c *gin.Context) {
 	var req struct {
@@ -232,6 +239,9 @@ func reconcilePaymentDay(j *model.PaymentReconciliationJob) ([]model.PaymentReco
 		cancel()
 		items = append(items, classifyReconciliationOrder(row, proof))
 		time.Sleep(500 * time.Millisecond)
+	}
+	if model.PaymentReconciliationLocalOnly(j.Provider) {
+		return items, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	upstream, statementErr := service.ListReconciliationPayments(ctx, j.Provider, day, day.AddDate(0, 0, 1))

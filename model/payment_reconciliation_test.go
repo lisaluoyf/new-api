@@ -149,3 +149,28 @@ func TestPaymentReconciliationCoverageDoesNotCountAsAnOrder(t *testing.T) {
 	require.Equal(t, 2, result.UnverifiedCount)
 	require.Equal(t, "incomplete", result.Status)
 }
+
+func TestLocalOnlyReconciliationPreservesOrderFailures(t *testing.T) {
+	for _, provider := range []string{"crypto", "nowpayments"} {
+		for _, result := range []string{"matched", "difference", "unverified"} {
+			t.Run(provider+"/"+result, func(t *testing.T) {
+				setupPaymentReconciliationTest(t)
+				require.NoError(t, QueuePaymentReconciliation("2026-09-30", provider, 1, true))
+				job, err := ClaimPaymentReconciliationJob(time.Now().Unix())
+				require.NoError(t, err)
+				require.NoError(t, FinishPaymentReconciliation(job, []PaymentReconciliationItem{{Purpose: "wallet", Result: result}}, false))
+				var run PaymentReconciliationRun
+				require.NoError(t, DB.First(&run, job.RunID).Error)
+				require.Equal(t, "local_successful_orders_only", run.Coverage)
+				expected := result
+				if result == "unverified" {
+					expected = "incomplete"
+				}
+				require.Equal(t, expected, run.Status)
+				require.Equal(t, 1, run.CheckedCount)
+			})
+		}
+	}
+	require.False(t, PaymentReconciliationLocalOnly("paypal"))
+	require.False(t, PaymentReconciliationLocalOnly("epay"))
+}

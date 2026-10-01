@@ -228,14 +228,35 @@ func TestReconciliationHistoricalMatchedCountExcludesCoverageAndPagination(t *te
 	GetPaymentReconciliation(ctx)
 	require.Equal(t, 200, recorder.Code)
 	var response struct {
-		Success bool
-		Runs    []model.PaymentReconciliationRun
-		Items   []model.PaymentReconciliationItem
+		Success       bool
+		ProviderModes map[string]string `json:"provider_modes"`
+		Runs          []model.PaymentReconciliationRun
+		Items         []model.PaymentReconciliationItem
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
+	require.Equal(t, "local_successful_orders_only", response.ProviderModes["crypto"])
+	require.Equal(t, "local_successful_orders_only", response.ProviderModes["nowpayments"])
+	require.Equal(t, "bidirectional_official_statement", response.ProviderModes["paypal"])
 	require.Len(t, response.Runs, 1)
 	require.Equal(t, 2, response.Runs[0].MatchedCount)
 	require.Equal(t, 3, response.Runs[0].CheckedCount)
 	require.Empty(t, response.Items)
+}
+
+func TestLocalOnlyEmptyReconciliationDoesNotRequireStatement(t *testing.T) {
+	db := setupCryptoPersistenceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}, &model.PaymentQueryReference{}))
+	for _, provider := range []string{"crypto", "nowpayments"} {
+		items, err := reconcilePaymentDay(&model.PaymentReconciliationJob{Day: "2026-09-30", Provider: provider})
+		require.NoError(t, err)
+		require.Empty(t, items)
+		require.Equal(t, "matched", model.SummarizePaymentReconciliation(items).Status)
+	}
+	t.Setenv("EPAY_QUERY_BASE_URL", "")
+	items, err := reconcilePaymentDay(&model.PaymentReconciliationJob{Day: "2026-09-30", Provider: "epay"})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, "official_statement_unavailable", items[0].Problem)
+	require.Equal(t, "incomplete", model.SummarizePaymentReconciliation(items).Status)
 }

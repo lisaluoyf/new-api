@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Daily reconciliation schedule and provider scope": "Runs daily at 08:30 UTC+8. On-chain payments and NOWPayments verify locally successful orders only; other channels also check all upstream successful payments. Reconciliation never changes balances or subscriptions.",
+    "Reconciliation provider coverage notice": "On-chain payments and NOWPayments finish when all local successful orders are verified; no local successful orders means no orders to check. Other channels require a complete upstream statement for bidirectional reconciliation. Query failures and payment differences remain visible. Amounts are separated by currency.",
+    "Local successful orders verification only": "Local successful orders verification only",
     "Matched / Checked Orders": "Matched / Checked Orders",
     "reconciliation.problem.official_statement_query_conflict": "The successful statement conflicts with the order query; verify with the provider.",
     "Start date (Beijing time)": "Start date (Beijing time)",
