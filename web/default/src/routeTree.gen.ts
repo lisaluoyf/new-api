@@ -45,6 +45,7 @@ import { Route as AuthenticatedRegistrationChannelsIndexRouteImport } from './ro
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
+import { Route as AuthenticatedPaymentReconciliationIndexRouteImport } from './routes/_authenticated/payment-reconciliation/index'
 import { Route as AuthenticatedMySubscriptionIndexRouteImport } from './routes/_authenticated/my-subscription/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelDataIndexRouteImport } from './routes/_authenticated/model-data/index'
@@ -262,6 +263,12 @@ const AuthenticatedPlaygroundIndexRoute =
   AuthenticatedPlaygroundIndexRouteImport.update({
     id: '/playground/',
     path: '/playground/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedPaymentReconciliationIndexRoute =
+  AuthenticatedPaymentReconciliationIndexRouteImport.update({
+    id: '/payment-reconciliation/',
+    path: '/payment-reconciliation/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedMySubscriptionIndexRoute =
@@ -490,6 +497,7 @@ export interface FileRoutesByFullPath {
   '/model-data/': typeof AuthenticatedModelDataIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/my-subscription/': typeof AuthenticatedMySubscriptionIndexRoute
+  '/payment-reconciliation/': typeof AuthenticatedPaymentReconciliationIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -556,6 +564,7 @@ export interface FileRoutesByTo {
   '/model-data': typeof AuthenticatedModelDataIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/my-subscription': typeof AuthenticatedMySubscriptionIndexRoute
+  '/payment-reconciliation': typeof AuthenticatedPaymentReconciliationIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -626,6 +635,7 @@ export interface FileRoutesById {
   '/_authenticated/model-data/': typeof AuthenticatedModelDataIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/my-subscription/': typeof AuthenticatedMySubscriptionIndexRoute
+  '/_authenticated/payment-reconciliation/': typeof AuthenticatedPaymentReconciliationIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -695,6 +705,7 @@ export interface FileRouteTypes {
     | '/model-data/'
     | '/models/'
     | '/my-subscription/'
+    | '/payment-reconciliation/'
     | '/playground/'
     | '/profile/'
     | '/redemption-codes/'
@@ -761,6 +772,7 @@ export interface FileRouteTypes {
     | '/model-data'
     | '/models'
     | '/my-subscription'
+    | '/payment-reconciliation'
     | '/playground'
     | '/profile'
     | '/redemption-codes'
@@ -830,6 +842,7 @@ export interface FileRouteTypes {
     | '/_authenticated/model-data/'
     | '/_authenticated/models/'
     | '/_authenticated/my-subscription/'
+    | '/_authenticated/payment-reconciliation/'
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
@@ -1130,6 +1143,13 @@ declare module '@tanstack/react-router' {
       path: '/playground'
       fullPath: '/playground/'
       preLoaderRoute: typeof AuthenticatedPlaygroundIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/payment-reconciliation/': {
+      id: '/_authenticated/payment-reconciliation/'
+      path: '/payment-reconciliation'
+      fullPath: '/payment-reconciliation/'
+      preLoaderRoute: typeof AuthenticatedPaymentReconciliationIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/my-subscription/': {
@@ -1452,6 +1472,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedModelDataIndexRoute: typeof AuthenticatedModelDataIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedMySubscriptionIndexRoute: typeof AuthenticatedMySubscriptionIndexRoute
+  AuthenticatedPaymentReconciliationIndexRoute: typeof AuthenticatedPaymentReconciliationIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
@@ -1482,6 +1503,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedModelDataIndexRoute: AuthenticatedModelDataIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedMySubscriptionIndexRoute: AuthenticatedMySubscriptionIndexRoute,
+  AuthenticatedPaymentReconciliationIndexRoute:
+    AuthenticatedPaymentReconciliationIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:

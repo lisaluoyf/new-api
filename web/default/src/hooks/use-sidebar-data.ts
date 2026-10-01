@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard,
   Activity,
@@ -41,11 +42,35 @@ import {
   Megaphone,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
 import { type SidebarData } from '@/components/layout/types'
+import {
+  getReconciliation,
+  yesterdayBeijing,
+} from '@/features/payment-reconciliation/api'
 
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const role = useAuthStore((state) => state.auth.user?.role)
+  const yesterday = yesterdayBeijing()
+  const reconciliation = useQuery({
+    queryKey: ['reconciliation-sidebar', yesterday],
+    queryFn: () =>
+      getReconciliation({
+        start_date: yesterday,
+        end_date: yesterday,
+        provider: 'all',
+      }),
+    enabled: role === ROLE.SUPER_ADMIN,
+    staleTime: 60_000,
+    refetchInterval: 300_000,
+  })
+  const issueCount = (reconciliation.data?.runs ?? []).reduce(
+    (sum, run) => sum + run.difference_count + run.unverified_count,
+    0
+  )
 
   return {
     workspaces: [
@@ -145,6 +170,12 @@ export function useSidebarData(): SidebarData {
           {
             title: t('Daily Stats'),
             url: '/daily-stats',
+            icon: BarChart2,
+          },
+          {
+            title: t('Daily Reconciliation'),
+            url: '/payment-reconciliation',
+            badge: issueCount > 0 ? String(issueCount) : undefined,
             icon: BarChart2,
           },
           {

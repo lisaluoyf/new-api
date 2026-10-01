@@ -1,11 +1,13 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -71,20 +73,43 @@ func QueryPayPalCapture(ctx context.Context, id string) (json.RawMessage, error)
 }
 
 type EpayVerifiedOrder struct {
-	Code          int             `json:"code"`
-	PID           dto.StringValue `json:"pid"`
-	TradeNo       string          `json:"trade_no"`
-	MerchantOrder string          `json:"out_trade_no"`
-	Money         dto.StringValue `json:"money"`
-	Status        dto.StringValue `json:"status"`
-	Type          string          `json:"type"`
+	Currency       string          `json:"currency"`
+	ProviderStatus string          `json:"provider_status"`
+	VerifiedVia    string          `json:"verified_via"`
+	Code           int             `json:"code"`
+	PID            dto.StringValue `json:"pid"`
+	TradeNo        string          `json:"trade_no"`
+	MerchantOrder  string          `json:"out_trade_no"`
+	Money          dto.StringValue `json:"money"`
+	Status         dto.StringValue `json:"status"`
+	Type           string          `json:"type"`
 }
 
 func QueryEpayOrder(ctx context.Context, trade string) (*EpayVerifiedOrder, error) {
+	r, err := QueryEpayOrderState(ctx, trade)
+	if err != nil {
+		return nil, err
+	}
+	if string(r.Status) != "1" {
+		return nil, errors.New("Epay official order is not verified paid")
+	}
+	return r, nil
+}
+
+func QueryEpayOrderState(ctx context.Context, trade string) (*EpayVerifiedOrder, error) {
 	if trade == "" || operation_setting.EpayId == "" || operation_setting.EpayKey == "" {
 		return nil, errors.New("missing Epay configuration or order")
 	}
-	u, err := url.Parse(strings.TrimRight(operation_setting.PayAddress, "/") + "/api.php")
+	base := strings.TrimSpace(os.Getenv("EPAY_QUERY_BASE_URL"))
+	custom := base != ""
+	if !custom {
+		base = operation_setting.PayAddress
+	}
+	path := "/api.php"
+	if custom {
+		path = "/api/order/query"
+	}
+	u, err := url.Parse(strings.TrimRight(base, "/") + path)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return nil, errors.New("Epay query requires HTTPS")
 	}
@@ -94,12 +119,25 @@ func QueryEpayOrder(ctx context.Context, trade string) (*EpayVerifiedOrder, erro
 	if err != nil {
 		return nil, errors.New("invalid Epay query configuration")
 	}
+	if custom {
+		payload, _ := common.Marshal(map[string]string{"pid": operation_setting.EpayId, "out_trade_no": trade})
+		u.RawQuery = ""
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(payload))
+		if err != nil {
+			return nil, errors.New("invalid Epay query request")
+		}
+		req.Header.Set("Authorization", "Bearer "+operation_setting.EpayKey)
+		req.Header.Set("Content-Type", "application/json")
+	}
 	var result EpayVerifiedOrder
 	if err := verifiedPaymentJSON(req, &result); err != nil {
 		return nil, err
 	}
-	if result.Code != 1 || string(result.PID) != operation_setting.EpayId || result.MerchantOrder != trade || result.TradeNo == "" || string(result.Status) != "1" {
+	if result.Code != 1 || string(result.PID) != operation_setting.EpayId || result.MerchantOrder != trade || result.TradeNo == "" {
 		return nil, errors.New("Epay official order is not verified paid")
+	}
+	if custom && (result.VerifiedVia != "official_provider_api" || result.Currency != "CNY") {
+		return nil, errors.New("Epay verified query provenance or currency mismatch")
 	}
 	return &result, nil
 }
@@ -127,4 +165,22 @@ func GetClinkOrder(ctx context.Context, id string) (*ClinkOrderWebhookData, erro
 		return nil, errors.New("Clink official order identity or status mismatch")
 	}
 	return &order, nil
+}
+
+func QueryPayPalOrder(ctx context.Context, id string) (json.RawMessage, error) {
+	if id == "" {
+		return nil, errors.New("missing PayPal order")
+	}
+	token, err := getPayPalAccessToken()
+	if err != nil {
+		return nil, errors.New("PayPal authentication unavailable")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, payPalBaseURL()+"/v2/checkout/orders/"+url.PathEscape(id), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	var result json.RawMessage
+	err = verifiedPaymentJSON(req, &result)
+	return result, err
 }

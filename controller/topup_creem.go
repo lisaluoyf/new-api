@@ -461,5 +461,8 @@ func genCreemLink(ctx context.Context, referenceId string, product *CreemProduct
 	}
 
 	logger.LogInfo(ctx, fmt.Sprintf("Creem 支付链接创建成功 trade_no=%s response_id=%s checkout_url=%q", referenceId, checkoutResp.Id, checkoutResp.CheckoutUrl))
+	if err := model.SavePaymentQueryReference(referenceId, model.PaymentProviderCreem, checkoutResp.Id, "USD"); err != nil {
+		return "", err
+	}
 	return checkoutResp.CheckoutUrl, nil
 }

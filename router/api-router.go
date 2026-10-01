@@ -311,6 +311,10 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			billingSummaryRoute.GET("/", controller.GetBillingSummary)
 		}
+		reconciliationRoute := apiRouter.Group("/payment-reconciliation")
+		reconciliationRoute.Use(middleware.RootAuth())
+		reconciliationRoute.GET("/", controller.GetPaymentReconciliation)
+		reconciliationRoute.POST("/run", middleware.CriticalRateLimit(), controller.QueuePaymentReconciliation)
 		dailyStatsRoute := apiRouter.Group("/daily-stats")
 		dailyStatsRoute.Use(middleware.RootAuth())
 		{

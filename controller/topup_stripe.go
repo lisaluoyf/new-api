@@ -505,6 +505,9 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 		return "", err
 	}
 
+	if err := model.SavePaymentQueryReference(referenceId, model.PaymentProviderStripe, result.ID, "USD"); err != nil {
+		return "", err
+	}
 	return result.URL, nil
 }
 

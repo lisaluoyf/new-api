@@ -43,3 +43,28 @@ func VerifyWaffoPancakePaidOrder(ctx context.Context, event *waffoPancakeWebhook
 	}
 	return amount, payment.Snapshot.Currency, nil
 }
+
+// QueryWaffoReconciliationPayment is read-only and never binds or settles an order.
+type WaffoReconciliationPayment struct{ ID, Status, Currency, Amount string }
+
+func QueryWaffoReconciliationPayment(ctx context.Context, orderID, trade string) (*WaffoReconciliationPayment, error) {
+	var result struct {
+		Payments []waffoRefundPayment `json:"payments"`
+	}
+	err := waffoRefundQuery(ctx, `query($id:String!){payments(filter:{orderId:{eq:$id}},limit:2){id orderId status testMode orderMerchantExternalId snapshotAmountDetails{currency subtotal total} onetimeOrder{id storeId metadata}}}`, map[string]any{"id": orderID}, &result)
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Payments) != 1 {
+		return nil, errors.New("Waffo payment not uniquely identified")
+	}
+	p := result.Payments[0]
+	if p.OrderID != orderID || p.TestMode != setting.WaffoPancakeSandbox || p.OnetimeOrder == nil || p.OnetimeOrder.ID != orderID || p.OnetimeOrder.StoreID != setting.WaffoPancakeStoreID {
+		return nil, errors.New("Waffo identity mismatch")
+	}
+	reference, err := resolveVerifiedWaffoTradeNo(ctx, p, false)
+	if err != nil || reference != trade {
+		return nil, errors.New("Waffo merchant order mismatch")
+	}
+	return &WaffoReconciliationPayment{ID: p.ID, Status: p.Status, Currency: p.Snapshot.Currency, Amount: p.Snapshot.Subtotal}, nil
+}

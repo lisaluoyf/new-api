@@ -206,6 +206,10 @@ func RequestClinkPay(c *gin.Context) {
 		return
 	}
 
+	if err := model.SavePaymentQueryReference(tradeNo, model.PaymentProviderClink, session.SessionID, currency); err != nil {
+		common.ApiErrorMsg(c, "Could not persist payment query identifier")
+		return
+	}
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Clink 充值订单创建成功 user_id=%d trade_no=%s session_id=%s amount=%.2f %s", id, tradeNo, session.SessionID, chargedMoney, currency))
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",

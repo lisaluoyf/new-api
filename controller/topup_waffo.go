@@ -272,6 +272,10 @@ func RequestWaffoPay(c *gin.Context) {
 		SuccessRedirectURL: returnUrl,
 		FailedRedirectURL:  returnUrl,
 	}
+	if err := model.SavePaymentQueryReference(merchantOrderId, model.PaymentProviderWaffo, paymentRequestId, currency); err != nil {
+		common.ApiErrorMsg(c, "Could not persist payment query identifier")
+		return
+	}
 	resp, err := sdk.Order().Create(c.Request.Context(), createParams, nil)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo 创建订单失败 user_id=%d trade_no=%s error=%q", id, merchantOrderId, err.Error()))

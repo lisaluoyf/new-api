@@ -258,6 +258,12 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Failed to start payment"})
 		return
 	}
+	if session.OrderID != "" {
+		if err := model.SavePaymentQueryReference(tradeNo, model.PaymentProviderWaffoPancake, session.OrderID, strings.ToUpper(strings.TrimSpace(setting.WaffoPancakeCurrency))); err != nil {
+			common.ApiErrorMsg(c, "Could not persist payment query identifier")
+			return
+		}
+	}
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo Pancake 支付订单创建成功 user_id=%d trade_no=%s session_id=%s plan_id=%d amount=%d money=%.2f", id, tradeNo, session.SessionID, req.PlanId, req.Amount, payMoney))
 
 	c.JSON(http.StatusOK, gin.H{

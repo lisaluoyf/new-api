@@ -238,6 +238,10 @@ func RequestPayPalPay(c *gin.Context) {
 		}
 	}
 
+	if err := model.SavePaymentQueryReference(referenceID, model.PaymentProviderPayPal, "order:"+orderID, "USD"); err != nil {
+		common.ApiErrorMsg(c, "Could not persist payment query identifier")
+		return
+	}
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("PayPal 支付订单创建成功 user_id=%d trade_no=%s order_id=%s plan_id=%d amount=%d money=%.2f", id, referenceID, orderID, req.PlanId, req.Amount, chargedMoney))
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
@@ -337,6 +341,9 @@ func handlePayPalCaptureCompleted(ctx context.Context, resource json.RawMessage,
 		return err
 	}
 	if err := validateVerifiedPaymentPrice(verified.CustomID, model.PaymentProviderPayPal, verified.Amount.CurrencyCode, paid); err != nil {
+		return err
+	}
+	if err := model.SavePaymentQueryReference(capture.CustomID, model.PaymentProviderPayPal, capture.ID, capture.Amount.CurrencyCode); err != nil {
 		return err
 	}
 	capture = verified.payPalCaptureResource
