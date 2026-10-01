@@ -58,6 +58,8 @@ export function isLogMediaVideoModel(modelName: string): boolean {
     model === 'sora-2-pro' ||
     model.startsWith('sora-2-') ||
     model === 'seedance-2.0' ||
+    model === 'seedance-2.0-fast' ||
+    model === 'seedance-2.0-mini' ||
     model === 'doubao-seedance-2.0' ||
     model === 'seedance-2.5' ||
     model === 'kling-v3-motion-control' ||

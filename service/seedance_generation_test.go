@@ -111,3 +111,26 @@ func TestSeedanceApprovedVideoUsesRecordedDuration(t *testing.T) {
 	require.ErrorContains(t, ValidateSeedanceVideoInputs(seedanceContext(1), fields), "4 to 30")
 	require.Error(t, ValidateSeedanceVideoInputs(seedanceContext(2), fields))
 }
+
+func TestSeedance20VariantsValidateCachedReferenceDurations(t *testing.T) {
+	db := seedanceTestDB(t)
+	for _, asset := range []model.SeedanceResource{
+		{ID: "asset_video8", Kind: "asset", UserID: 1, AssetType: "Video", Status: "Active", UpstreamID: "private8", DurationSeconds: 8},
+		{ID: "asset_video7", Kind: "asset", UserID: 1, AssetType: "Video", Status: "Active", UpstreamID: "private7", DurationSeconds: 7},
+	} {
+		require.NoError(t, db.Create(&asset).Error)
+	}
+	for _, name := range []string{"seedance-2.0-fast", "seedance-2.0-mini"} {
+		require.True(t, IsSeedanceLibraryModel(name))
+		c := seedanceContext(1)
+		f := map[string]any{"model": name, "prompt": "scene", "video_urls": []any{"asset://asset_video8", "asset://asset_video7"}}
+		require.NoError(t, ValidateSeedanceVideoInputs(c, f))
+		require.Equal(t, 15, c.GetInt("seedance_video_input_seconds"))
+		f["video_urls"] = []any{"asset://asset_video8", "asset://asset_video8"}
+		require.ErrorContains(t, ValidateSeedanceVideoInputs(c, f), "15 seconds")
+		f["video_urls"] = []any{"x", "x", "x", "x"}
+		require.ErrorContains(t, ValidateSeedanceVideoInputs(c, f), "3 videos")
+		f["video_urls"] = []any{"asset://asset_video8"}
+		require.Error(t, ValidateSeedanceVideoInputs(seedanceContext(2), f))
+	}
+}

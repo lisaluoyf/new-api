@@ -79,3 +79,21 @@ func TestVariantSettlementUsesFrozenTariffAndMeasuredInput(t *testing.T) {
 		require.Equal(t, int(13*.11*.3*1.05*common.QuotaPerUnit+.5), (&TaskAdaptor{}).AdjustBillingOnComplete(task, &relaycommon.TaskInfo{}))
 	}
 }
+
+func TestSeedanceVariantsRejectConflictingMaterialsBeforeBilling(t *testing.T) {
+	for _, name := range []string{ModelSeedance20Fast, ModelSeedance20Mini} {
+		for _, extra := range []string{
+			`"audio_urls":["https://example.com/ref.mp3"]`,
+			`"image_urls":[],"image_with_roles":[]`,
+			`"image_with_roles":[{"url":"https://example.com/a.png","role":"last_frame"}]`,
+			`"image_with_roles":[{"url":"https://example.com/a.png","role":"first_frame"}],"aspect_ratio":"16:9"`,
+			`"aspect_ratio":"adaptive","image_with_roles":[{"url":"https://example.com/a.png","role":"first_frame"}],"video_urls":["https://example.com/a.mp4"]`,
+			`"audio":false,"generate_audio":true`,
+		} {
+			c := generationContext("/v1/videos/generations", fmt.Sprintf(`{"model":%q,"prompt":"scene",%s}`, name, extra))
+			e := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}})
+			require.NotNil(t, e, extra)
+			require.Equal(t, 400, e.StatusCode)
+		}
+	}
+}
