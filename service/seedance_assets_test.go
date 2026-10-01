@@ -175,7 +175,7 @@ func TestSeedanceProviderErrorsAndRedirectsDoNotExposeCredentials(t *testing.T) 
 	r := &model.SeedanceResource{ChannelID: 7, KeyFingerprint: SeedanceKeyFingerprint(key), UpstreamID: "provider-id"}
 	_, err := seedanceProviderRequest(seedanceContext(1).Request.Context(), r, http.MethodPost, "/error", map[string]any{"group_id": "provider-group-id"})
 	require.ErrorContains(t, err, "Invalid media ratio")
-	for _, secret := range []string{key, "provider.example", "provider-id"} {
+	for _, secret := range []string{key, "provider.example", "provider-id", "provider-group-id"} {
 		require.NotContains(t, err.Error(), secret)
 	}
 	_, err = seedanceProviderRequest(seedanceContext(1).Request.Context(), r, http.MethodGet, "/redirect", nil)
@@ -199,4 +199,18 @@ func TestUploadedImageStaysOnAPIMasterAndRejectsNonImages(t *testing.T) {
 	require.Error(t, err)
 	_, err = StoreUploadedMediaImage(encoded.Bytes(), "application/pdf")
 	require.Error(t, err)
+}
+
+func TestSeedanceVideoFailureRedactsDeletedPrivateAssets(t *testing.T) {
+	db := seedanceTestDB(t)
+	asset := model.SeedanceResource{ID: "asset_public", UserID: 1, Kind: "asset", UpstreamID: "private-asset-identifier"}
+	require.NoError(t, db.Create(&asset).Error)
+	require.NoError(t, db.Delete(&asset).Error)
+	task := model.Task{UserId: 1, Status: model.TaskStatusFailure, FailReason: "Reference private-asset-identifier is unavailable; asset://private-reference; group_id=private-group", PrivateData: model.TaskPrivateData{RequestData: `{"image_urls":["asset://asset_public"]}`}}
+	reason := PublicTaskFailure(&task)
+	require.Contains(t, reason, "unavailable")
+	for _, secret := range []string{"private-asset-identifier", "private-reference", "private-group"} {
+		require.NotContains(t, reason, secret)
+	}
+	require.Contains(t, task.FailReason, "private-asset-identifier")
 }

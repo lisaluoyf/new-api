@@ -12,10 +12,10 @@ import (
 var taskErrorCredential = regexp.MustCompile(`(?i)(?:authorization|proxy-authorization|x-api-key|api[_-]?key|key|x-secret|token|session|signature|access[_-]?token|refresh[_-]?token|password|secret|cookie|set-cookie)["']?\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\r\n,;]+)`)
 var taskErrorBearer = regexp.MustCompile(`(?i)\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+`)
 var taskErrorKey = regexp.MustCompile(`\b(?:sk-[A-Za-z0-9_-]+|AIza[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b`)
-var taskErrorURL = regexp.MustCompile(`(?i)(?:https?|wss?|s3|gs)://[^\s<>"']+`)
+var taskErrorURL = regexp.MustCompile(`(?i)(?:https?|wss?|s3|gs|asset)://[^\s<>"']+`)
 var taskErrorIPv6 = regexp.MustCompile(`(?i)(?:\[[0-9a-f:]+\]|(?:[0-9a-f]{1,4}:){2,}[0-9a-f:]+)`)
 var taskErrorEmail = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
-var taskErrorDiagnostic = regexp.MustCompile(`(?i)(?:\b(?:request|transaction|trace|channel|merchant|account)[_-]?id\b["']?\s*[:=]\s*[^\s,;]+|(?:/var/|/opt/|/home/|/root/|/app/)[^\s"']+)`)
+var taskErrorDiagnostic = regexp.MustCompile(`(?i)(?:\b(?:request|transaction|trace|channel|merchant|account|asset|group)[_-]?id\b["']?\s*[:=]\s*[^\s,;]+|(?:/var/|/opt/|/home/|/root/|/app/)[^\s"']+)`)
 
 // PublicTaskFailure preserves useful errors while removing provider credentials,
 // routing and identifiers. Original task/audit records are never modified.
@@ -37,6 +37,22 @@ func PublicTaskFailure(task *model.Task) string {
 			}
 			for _, key := range strings.Split(channel.Key, "\n") {
 				sensitive = append(sensitive, strings.TrimSpace(key))
+			}
+		}
+	}
+	if model.DB != nil && strings.Contains(task.PrivateData.RequestData, "asset://") {
+		var fields map[string]any
+		if common.UnmarshalJsonStr(task.PrivateData.RequestData, &fields) == nil {
+			ids := []string{}
+			_, _ = visitSeedanceAssetURLs(fields, func(id string) (string, error) { ids = append(ids, id); return id, nil })
+			if len(ids) > 0 {
+				var assets []model.SeedanceResource
+				// Keep historical failures safe even after a material is deleted.
+				if model.DB.Unscoped().Where("user_id = ? AND kind = ? AND id IN ?", task.UserId, "asset", ids).Find(&assets).Error == nil {
+					for _, asset := range assets {
+						sensitive = append(sensitive, asset.UpstreamID)
+					}
+				}
 			}
 		}
 	}
