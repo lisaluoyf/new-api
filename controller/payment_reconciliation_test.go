@@ -189,3 +189,18 @@ func TestReconciliationUpstreamSuccessRemainsInScopeWhenSecondQueryUnavailable(t
 	require.Equal(t, "missing_official_transaction_id", items[0].Problem)
 	require.Equal(t, 1, model.SummarizePaymentReconciliation(items).OfficialPaidCount)
 }
+
+func TestReconciliationEnabledProvidersAndHistoricalMethods(t *testing.T) {
+	providers, err := reconciliationProviders("all")
+	require.NoError(t, err)
+	require.Contains(t, providers, "waffo_pancake")
+	for _, provider := range []string{"waffo", "unknown", "stripe", "creem"} {
+		require.NotContains(t, providers, provider)
+		_, err := reconciliationProviders(provider)
+		require.Error(t, err)
+	}
+	for _, method := range []string{"waffo", "stripe", "creem"} {
+		require.Equal(t, method, normalizeReconciliationProvider("", method))
+	}
+	require.Equal(t, "unknown", normalizeReconciliationProvider("", "unrecognized-test-method"))
+}

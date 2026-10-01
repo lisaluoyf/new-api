@@ -60,9 +60,9 @@ func reconciliationRange(start, end string) (time.Time, time.Time, error) {
 }
 func reconciliationProviders(provider string) ([]string, error) {
 	if provider == "" || provider == "all" {
-		return append(append([]string{}, model.PaymentReconciliationProviders...), "unknown"), nil
+		return append([]string{}, model.PaymentReconciliationProviders...), nil
 	}
-	for _, p := range append(append([]string{}, model.PaymentReconciliationProviders...), "unknown") {
+	for _, p := range append([]string{}, model.PaymentReconciliationProviders...) {
 		if p == provider {
 			return []string{p}, nil
 		}
@@ -173,7 +173,7 @@ func runPaymentReconciliationCycle() {
 	now := time.Now().In(reconciliationTimezone)
 	if now.Hour() > 8 || (now.Hour() == 8 && now.Minute() >= 30) {
 		day := now.AddDate(0, 0, -1).Format("2006-01-02")
-		for _, p := range append(append([]string{}, model.PaymentReconciliationProviders...), "unknown") {
+		for _, p := range append([]string{}, model.PaymentReconciliationProviders...) {
 			if err := model.QueuePaymentReconciliation(day, p, 0, false); err != nil {
 				common.SysError("daily payment reconciliation scheduling failed")
 			}
@@ -393,7 +393,8 @@ func normalizeReconciliationProvider(provider, method string) string {
 	if method == "alipay" || method == "wxpay" {
 		return "epay"
 	}
-	for _, p := range model.PaymentReconciliationProviders {
+	// Recognized historical methods remain identifiable even when disabled for reconciliation.
+	for _, p := range []string{"epay", "platega", "stripe", "paypal", "creem", "clink", "waffo", "waffo_pancake", "nowpayments", "crypto"} {
 		if p == method {
 			return p
 		}

@@ -58,7 +58,6 @@ export function PaymentReconciliationPage() {
   const label = (provider: string) => {
     if (provider === 'epay') return t('Epay (Alipay / WeChat Pay)')
     if (provider === 'crypto') return t('On-chain payments')
-    if (provider === 'unknown') return t('Unknown payment provider')
     return provider.replace('waffo_pancake', 'Waffo Pancake')
   }
   const status = (value: string) => t(`reconciliation.status.${value}`)
@@ -250,7 +249,12 @@ export function PaymentReconciliationPage() {
                         : status(run.status)}
                     </Badge>
                     <p className='text-muted-foreground mt-1 text-xs'>
-                      {t(run.coverage === 'bidirectional_official_statement' ? 'Bidirectional statement checked' : 'Bidirectional statement incomplete')}<br />
+                      {t(
+                        run.coverage === 'bidirectional_official_statement'
+                          ? 'Bidirectional statement checked'
+                          : 'Bidirectional statement incomplete'
+                      )}
+                      <br />
                       {t('Payment Differences')}: {run.difference_count} ·{' '}
                       {t('Awaiting Verification')}: {run.unverified_count}
                     </p>

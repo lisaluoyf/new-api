@@ -84,9 +84,22 @@ type PaymentReconciliationItem struct {
 	CheckedAt        int64  `json:"checked_at"`
 }
 
-var PaymentReconciliationProviders = []string{"epay", "platega", "stripe", "paypal", "creem", "clink", "waffo", "waffo_pancake", "nowpayments", "crypto"}
+// Only currently enabled channels participate in reconciliation and its summaries.
+var PaymentReconciliationProviders = []string{"epay", "platega", "paypal", "clink", "waffo_pancake", "nowpayments", "crypto"}
+
+func PaymentReconciliationProviderEnabled(provider string) bool {
+	for _, p := range PaymentReconciliationProviders {
+		if p == provider {
+			return true
+		}
+	}
+	return false
+}
 
 func QueuePaymentReconciliation(day, provider string, actor int, force bool) error {
+	if !PaymentReconciliationProviderEnabled(provider) {
+		return errors.New("payment reconciliation provider is disabled")
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		job := PaymentReconciliationJob{Day: day, Provider: provider, Status: "queued", ActorID: actor}
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&job).Error; err != nil {
@@ -110,7 +123,7 @@ func ClaimPaymentReconciliationJob(now int64) (*PaymentReconciliationJob, error)
 	var claimed *PaymentReconciliationJob
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var j PaymentReconciliationJob
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("(status = ? AND next_attempt <= ?) OR (status = ? AND lease_until <= ?)", "queued", now, "running", now).Order("day DESC, id ASC").First(&j).Error
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("provider IN ?", PaymentReconciliationProviders).Where("(status = ? AND next_attempt <= ?) OR (status = ? AND lease_until <= ?)", "queued", now, "running", now).Order("day DESC, id ASC").First(&j).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil
 		}

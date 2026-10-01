@@ -65,15 +65,11 @@ export type ReconciliationResponse = {
 export const providers = [
   'epay',
   'platega',
-  'stripe',
   'paypal',
-  'creem',
   'clink',
-  'waffo',
   'waffo_pancake',
   'nowpayments',
   'crypto',
-  'unknown',
 ]
 export function yesterdayBeijing(): string {
   return new Date(Date.now() + 8 * 3600_000 - 86400_000)

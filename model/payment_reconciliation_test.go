@@ -116,3 +116,22 @@ func TestPaymentReconciliationConcurrentClaims(t *testing.T) {
 	}
 	require.Len(t, ch, 1)
 }
+
+func TestPaymentReconciliationSkipsDisabledHistoricalJobs(t *testing.T) {
+	setupPaymentReconciliationTest(t)
+	for _, provider := range []string{"waffo", "unknown", "stripe", "creem"} {
+		require.NoError(t, DB.Create(&PaymentReconciliationJob{Day: "2026-10-01", Provider: provider, Status: "queued"}).Error)
+		require.Error(t, QueuePaymentReconciliation("2026-09-30", provider, 1, true))
+	}
+	require.NoError(t, QueuePaymentReconciliation("2026-09-30", "waffo_pancake", 1, true))
+	job, err := ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.Equal(t, "waffo_pancake", job.Provider)
+	next, err := ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	require.Nil(t, next)
+	var count int64
+	require.NoError(t, DB.Model(&PaymentReconciliationJob{}).Where("provider IN ? AND status = ? AND attempts = 0", []string{"waffo", "unknown", "stripe", "creem"}, "queued").Count(&count).Error)
+	require.EqualValues(t, 4, count)
+}
