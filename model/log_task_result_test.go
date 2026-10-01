@@ -24,3 +24,21 @@ func TestTaskUsageBackfillDoesNotMatchReferencedDraft(t *testing.T) {
 		require.NotContains(t, log.Other, `"usage"`)
 	}
 }
+
+func TestTaskResultBackfillPrefersOriginalChargeOverAdjustment(t *testing.T) {
+	setupUserLogVisibilityTestDB(t)
+	original := Log{UserId: 1, Type: LogTypeConsume, Quota: 1000, Other: `{"is_task":true,"task_id":"task_public"}`}
+	adjustment := Log{UserId: 1, Type: LogTypeConsume, Quota: 2, Other: `{"task_id":"task_public","pre_consumed_quota":1000,"actual_quota":1002}`}
+	require.NoError(t, LOG_DB.Create(&original).Error)
+	require.NoError(t, LOG_DB.Create(&adjustment).Error)
+	row, err := FindConsumeLogRowForTask(1, "task_public")
+	require.NoError(t, err)
+	require.Equal(t, original.Id, row.Id)
+	require.NoError(t, UpdateLogResultByTaskID(1, "task_public", 42, map[string]any{"result_url": "/v1/videos/task_public/content"}))
+	require.NoError(t, LOG_DB.First(&original, original.Id).Error)
+	require.NoError(t, LOG_DB.First(&adjustment, adjustment.Id).Error)
+	require.Equal(t, 42, original.UseTime)
+	require.Equal(t, 0, adjustment.UseTime)
+	require.Contains(t, original.Other, "result_url")
+	require.NotContains(t, adjustment.Other, "result_url")
+}

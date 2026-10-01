@@ -126,6 +126,7 @@ func findConsumeLogRowForTask(userID int, taskID string) (*Log, error) {
 	// Match the log's own top-level task_id, never an arbitrary substring.
 	query := LOG_DB.Model(&Log{}).
 		Where("user_id = ? AND type = ? AND other LIKE ?", userID, LogTypeConsume, "%"+taskID+"%")
+	var fallback *Log
 	for lastID := 0; ; {
 		var rows []Log
 		page := query.Session(&gorm.Session{}).Order("id DESC").Limit(100)
@@ -138,13 +139,24 @@ func findConsumeLogRowForTask(userID int, taskID string) (*Log, error) {
 		for i := range rows {
 			other, _ := common.StrToMap(rows[i].Other)
 			if id, ok := other["task_id"].(string); ok && id == taskID {
-				return &rows[i], nil
+				// Settlement adjustments share the public task ID. Attach results and
+				// channel costs to the original charge, not a later adjustment entry.
+				if other["is_task"] == true {
+					return &rows[i], nil
+				}
+				if fallback == nil {
+					row := rows[i]
+					fallback = &row
+				}
 			}
 		}
 		if len(rows) < 100 {
 			break
 		}
 		lastID = rows[len(rows)-1].Id
+	}
+	if fallback != nil {
+		return fallback, nil
 	}
 	// Legacy rows: video tasks logged before task_id was stored in other.
 	task, exist, taskErr := GetByTaskId(userID, taskID)

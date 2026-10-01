@@ -253,6 +253,9 @@ func seedanceVariantQuota(task *model.Task, result *relaycommon.TaskInfo) int {
 	if seconds <= 0 {
 		return 0
 	}
+	if task.Quota > 0 && bc.OtherRatios["seconds"] == float64(seconds) {
+		return task.Quota
+	}
 	price := bc.ModelPrice
 	for key, ratio := range bc.OtherRatios {
 		if key != "seconds" && ratio > 0 {

@@ -545,7 +545,7 @@ func sanitizeOpenAIVideoTaskFailure(task *model.Task, body []byte) ([]byte, erro
 // buildSafeVideoTaskResponse returns the stable compatibility response without
 // serializing provider payloads, identifiers, URLs, routing or billing data.
 func buildSafeVideoTaskResponse(task *model.Task, rawBody []byte) []byte {
-	if task.Properties.OriginModelName == "seedance-2.5" {
+	if task.Properties.OriginModelName == "seedance-2.5" || service.IsSeedance20Variant(task.Properties.OriginModelName) {
 		data, _ := common.Marshal(service.SeedanceCompatibleTaskResponse(task))
 		return data
 	}
