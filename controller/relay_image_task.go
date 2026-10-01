@@ -22,6 +22,10 @@ import (
 // Optional query: ?model=gpt-image-2 (defaults to gpt-image-2 for channel selection).
 func RelayImageTask(c *gin.Context) {
 	taskID := strings.TrimSpace(c.Param("task_id"))
+	if strings.HasPrefix(taskID, "asset_task_") {
+		FetchSeedanceAssetTask(c)
+		return
+	}
 	if strings.HasPrefix(taskID, "imagine_") {
 		RelayImagineTask(c)
 		return
@@ -34,6 +38,15 @@ func RelayImageTask(c *gin.Context) {
 				"code":    "missing_task_id",
 			},
 		})
+		return
+	}
+	// The legacy image-task proxy must not bypass private-library ownership or
+	// expose an underlying review task by its provider identifier.
+	if private, err := model.IsSeedancePrivateReviewTask(taskID); err != nil {
+		c.JSON(503, gin.H{"error": gin.H{"message": "Task lookup is temporarily unavailable"}})
+		return
+	} else if private {
+		c.JSON(404, gin.H{"error": gin.H{"message": "Task not found"}})
 		return
 	}
 
@@ -114,6 +127,17 @@ func RelayImageTask(c *gin.Context) {
 	}
 
 	contentType := resp.Header.Get("Content-Type")
+	var envelope map[string]any
+	if common.Unmarshal(body, &envelope) == nil {
+		data, _ := envelope["data"].(map[string]any)
+		result, _ := data["result"].(map[string]any)
+		_, assets := result["assets"]
+		object, _ := data["object"].(string)
+		if assets || object == "seedance.avatar.asset.task" {
+			c.JSON(404, gin.H{"error": gin.H{"message": "Task not found"}})
+			return
+		}
+	}
 	if contentType == "" {
 		contentType = "application/json"
 	}

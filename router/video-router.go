@@ -8,6 +8,23 @@ import (
 )
 
 func SetVideoRouter(router *gin.Engine) {
+	mediaLibrary := router.Group("/v1")
+	mediaLibrary.Use(middleware.RouteTag("relay"), middleware.TokenAuth(), middleware.ModelRequestRateLimit())
+	mediaLibrary.POST("/uploads/images", middleware.UploadRateLimit(), controller.UploadMediaImage)
+	library := mediaLibrary.Group("/seedance2/private-avatar")
+	library.POST("", middleware.UploadRateLimit(), controller.SubmitSeedanceAssets)
+	library.POST("/assets", middleware.UploadRateLimit(), controller.SubmitSeedanceAssets)
+	for _, kind := range []string{"asset", "group"} {
+		resourceKind := kind
+		resources := library.Group("/"+kind+"s", func(c *gin.Context) { c.Set("seedance_resource_kind", resourceKind); c.Next() })
+		if kind == "group" {
+			resources.POST("", middleware.UploadRateLimit(), controller.CreateSeedanceAssetGroup)
+		}
+		resources.GET("", controller.ListSeedanceResources)
+		resources.GET("/:resource_id", controller.GetSeedanceResource)
+		resources.PATCH("/:resource_id", controller.UpdateSeedanceResource)
+		resources.DELETE("/:resource_id", controller.DeleteSeedanceResource)
+	}
 	// Video proxy: accepts either session auth (dashboard) or token auth (API clients)
 	videoProxyRouter := router.Group("/v1")
 	videoProxyRouter.Use(middleware.RouteTag("relay"))
@@ -18,7 +35,7 @@ func SetVideoRouter(router *gin.Engine) {
 
 	videoV1Router := router.Group("/v1")
 	videoV1Router.Use(middleware.RouteTag("relay"))
-	videoV1Router.Use(middleware.TokenAuth(), middleware.Distribute())
+	videoV1Router.Use(middleware.TokenAuth(), middleware.PrepareSeedanceAssetGeneration(), middleware.Distribute(), middleware.ApplySeedanceAssetKey())
 	{
 		videoV1Router.POST("/video/generations", controller.RelayTask)
 		videoV1Router.GET("/video/generations/:task_id", controller.RelayTaskFetch)

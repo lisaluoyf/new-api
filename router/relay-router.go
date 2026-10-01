@@ -77,6 +77,7 @@ func SetRelayRouter(router *gin.Engine) {
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
 	relayV1Router.Use(middleware.TokenAuth())
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
+	relayV1Router.GET("/tasks/:task_id", middleware.DistributeUnlessSeedanceAssetTask(), controller.RelayImageTask)
 	{
 		// WebSocket 路由（统一到 Relay）
 		wsRouter := relayV1Router.Group("")
@@ -139,7 +140,6 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.POST("/images/edits/async", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIImage)
 		})
-		httpRouter.GET("/tasks/:task_id", controller.RelayImageTask)
 		httpRouter.POST("/midjourney/generations", controller.RelayImagine)
 		httpRouter.POST("/midjourney/generations/imagine", controller.RelayImagine)
 

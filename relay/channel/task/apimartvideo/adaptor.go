@@ -434,6 +434,10 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			if err := common.Unmarshal(raw, &passthrough); err != nil {
 				return nil, err
 			}
+			passthrough, err = service.ResolveSeedanceAssetReferences(c, passthrough, info.ChannelId, a.apiKey)
+			if err != nil {
+				return nil, err
+			}
 			passthrough["model"] = body.Model
 			passthrough["duration"] = body.Duration
 			if body.Resolution == "" {

@@ -115,6 +115,11 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 	pickFilter := ChannelPickFilter(param.Ctx, param.ModelName)
+	if param.Ctx.GetString("seedance_asset_key_fingerprint") != "" {
+		// Provider libraries are account scoped. Never fall back to a different
+		// account, or duplicate an ambiguously accepted billable submission.
+		return nil, selectGroup, errors.New("Media library generation cannot be retried automatically; check task history before submitting again")
+	}
 
 	// FreeModel owns a stable request-level plan. This branch is deliberately
 	// before all normal selectors so a virtual request can never enter a paid
