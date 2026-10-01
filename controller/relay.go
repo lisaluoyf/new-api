@@ -1776,5 +1776,16 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
+	if common.GetContextKeyString(c, constant.ContextKeyOriginalModel) == "seedance-2.5" {
+		// Transport and request-building failures can also contain private URLs.
+		taskErr.Message = service.PublicTaskFailure(&model.Task{
+			Status: model.TaskStatusFailure, FailReason: taskErr.Message,
+			ChannelId:   common.GetContextKeyInt(c, constant.ContextKeyChannelId),
+			PrivateData: model.TaskPrivateData{Key: common.GetContextKeyString(c, constant.ContextKeyChannelKey)},
+		})
+		if taskErr.StatusCode == http.StatusTooManyRequests {
+			taskErr.Message = "Request rate limit reached; retry later"
+		}
+	}
 	c.JSON(taskErr.StatusCode, taskErr)
 }
