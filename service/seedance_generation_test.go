@@ -98,3 +98,16 @@ func TestSeedanceResultAllowlistAndSubmitErrors(t *testing.T) {
 	require.NotContains(t, err.Message, "sk-secret")
 	require.Equal(t, 400, err.StatusCode)
 }
+
+func TestSeedanceApprovedVideoUsesRecordedDuration(t *testing.T) {
+	db := seedanceTestDB(t)
+	asset := model.SeedanceResource{ID: "asset_video", Kind: "asset", UserID: 1, Status: "Active", AssetType: "Video", UpstreamID: "private-video", SourceURL: "https://unavailable.example/video.mp4", DurationSeconds: 4}
+	require.NoError(t, db.Create(&asset).Error)
+	c := seedanceContext(1)
+	fields := map[string]any{"prompt": "Edit the colors", "omni_reference_task_type": "edit", "video_urls": []any{"asset://asset_video"}}
+	require.NoError(t, ValidateSeedanceVideoInputs(c, fields))
+	require.Equal(t, 4, c.GetInt("seedance_video_input_seconds"))
+	require.NoError(t, db.Model(&asset).Update("duration_seconds", 3).Error)
+	require.ErrorContains(t, ValidateSeedanceVideoInputs(seedanceContext(1), fields), "4 to 30")
+	require.Error(t, ValidateSeedanceVideoInputs(seedanceContext(2), fields))
+}

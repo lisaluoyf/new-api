@@ -610,6 +610,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	upstreamID := env.Data[0].TaskID
 
 	if strings.Contains(c.Request.URL.Path, "/videos/generations") {
+		env.Data = env.Data[:1]
 		env.Data[0].TaskID = info.PublicTaskID
 		out, err := common.Marshal(env)
 		if err != nil {

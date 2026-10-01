@@ -299,7 +299,7 @@ func NormalizeSeedance25Generation(c *gin.Context, input map[string]any) (map[st
 			return nil, fmt.Errorf("edit duration must be -1")
 		}
 	}
-	if roles, ok := f["image_with_roles"].([]any); ok {
+	if roles, ok := f["image_with_roles"].([]any); ok && seedanceInputCount(f["video_urls"]) == 0 && seedanceInputCount(f["audio_urls"]) == 0 {
 		for _, v := range roles {
 			if r, ok := v.(map[string]any); ok && (r["role"] == "first_frame" || r["role"] == "last_frame") && aspect != "adaptive" {
 				return nil, fmt.Errorf("first/last frame aspect_ratio must be adaptive")
@@ -366,6 +366,8 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 		if !ok || u == "" {
 			return fmt.Errorf("video_urls[%d] must be a non-empty string", i)
 		}
+		seconds := 0
+		var libraryAsset *model.SeedanceResource
 		if strings.HasPrefix(u, "asset://") {
 			asset, e := seedanceOwnedAsset(c, strings.TrimPrefix(u, "asset://"))
 			if e != nil {
@@ -374,15 +376,24 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 			if asset.AssetType != "Video" {
 				return fmt.Errorf("video_urls[%d] must reference a video asset", i)
 			}
+			libraryAsset = asset
+			seconds = asset.DurationSeconds
 			u = asset.SourceURL
 		}
-		setting := system_setting.GetFetchSetting()
-		if common.ValidateURLWithFetchSetting(u, setting.EnableSSRFProtection, setting.AllowPrivateIp, setting.DomainFilterMode, setting.IpFilterMode, setting.DomainList, setting.IpList, setting.AllowedPorts, setting.ApplyIPFilterForDomain) != nil {
-			return fmt.Errorf("video_urls[%d] is not an accessible video URL", i)
-		}
-		seconds, e := ProbeRemoteVideoDurationSeconds(c.Request.Context(), u)
-		if e != nil {
-			return fmt.Errorf("Unable to verify video_urls[%d] duration; provide an accessible MP4 or MOV video", i)
+		if seconds <= 0 {
+			setting := system_setting.GetFetchSetting()
+			if common.ValidateURLWithFetchSetting(u, setting.EnableSSRFProtection, setting.AllowPrivateIp, setting.DomainFilterMode, setting.IpFilterMode, setting.DomainList, setting.IpList, setting.AllowedPorts, setting.ApplyIPFilterForDomain) != nil {
+				return fmt.Errorf("video_urls[%d] is not an accessible video URL", i)
+			}
+			var e error
+			seconds, e = ProbeRemoteVideoDurationSeconds(c.Request.Context(), u)
+			if e != nil {
+				return fmt.Errorf("Unable to verify video_urls[%d] duration; provide an accessible MP4 or MOV video", i)
+			}
+
+			if libraryAsset != nil {
+				_ = model.DB.Model(libraryAsset).Update("duration_seconds", seconds).Error
+			}
 		}
 		minimum := 2
 		if fields["omni_reference_task_type"] == "edit" {

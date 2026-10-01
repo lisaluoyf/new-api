@@ -131,6 +131,23 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 	if err := ValidateSeedanceModelAccess(c, input.Model); err != nil {
 		return nil, err
 	}
+	durations := make([]int, len(input.Assets))
+	if input.AssetType == "Video" {
+		for i, item := range input.Assets {
+			seconds, err := ProbeRemoteVideoDurationSeconds(c.Request.Context(), item.URL)
+			if err != nil {
+				return nil, seedanceError(400, fmt.Sprintf("invalid_asset_material: assets[%d] video duration could not be verified", i))
+			}
+			maximum := 30
+			if input.Model != "seedance-2.5" {
+				maximum = 15
+			}
+			if seconds < 2 || seconds > maximum {
+				return nil, seedanceError(400, fmt.Sprintf("invalid_asset_material: assets[%d] video duration must be from 2 to %d seconds", i, maximum))
+			}
+			durations[i] = seconds
+		}
+	}
 	var group *model.SeedanceResource
 	var err error
 	if input.GroupID != "" {
@@ -158,8 +175,8 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 	task := &model.SeedanceResource{ID: seedanceID("asset_task"), Kind: "task", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, Model: input.Model, GroupID: group.ID, Status: "processing"}
 	assetIDs := make([]string, 0, len(input.Assets))
 	assets := make([]model.SeedanceResource, 0, len(input.Assets))
-	for _, item := range input.Assets {
-		asset := model.SeedanceResource{ID: seedanceID("asset"), Kind: "asset", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, Model: input.Model, GroupID: group.ID, Name: item.Name, SourceURL: item.URL, AssetType: input.AssetType, Status: "Pending"}
+	for i, item := range input.Assets {
+		asset := model.SeedanceResource{ID: seedanceID("asset"), Kind: "asset", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, Model: input.Model, GroupID: group.ID, Name: item.Name, SourceURL: item.URL, AssetType: input.AssetType, Status: "Pending", DurationSeconds: durations[i]}
 		assetIDs = append(assetIDs, asset.ID)
 		assets = append(assets, asset)
 	}
