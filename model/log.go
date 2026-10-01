@@ -122,16 +122,29 @@ func findConsumeLogRowForTask(userID int, taskID string) (*Log, error) {
 	if userID <= 0 || strings.TrimSpace(taskID) == "" {
 		return nil, gorm.ErrRecordNotFound
 	}
-	var row Log
-	err := LOG_DB.Model(&Log{}).
-		Where("user_id = ? AND type = ? AND other LIKE ?", userID, LogTypeConsume, "%"+taskID+"%").
-		Order("id DESC").
-		First(&row).Error
-	if err == nil {
-		return &row, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
+	// A referenced preview ID also appears in an upgrade's request_data.
+	// Match the log's own top-level task_id, never an arbitrary substring.
+	query := LOG_DB.Model(&Log{}).
+		Where("user_id = ? AND type = ? AND other LIKE ?", userID, LogTypeConsume, "%"+taskID+"%")
+	for lastID := 0; ; {
+		var rows []Log
+		page := query.Session(&gorm.Session{}).Order("id DESC").Limit(100)
+		if lastID > 0 {
+			page = page.Where("id < ?", lastID)
+		}
+		if err := page.Find(&rows).Error; err != nil {
+			return nil, err
+		}
+		for i := range rows {
+			other, _ := common.StrToMap(rows[i].Other)
+			if id, ok := other["task_id"].(string); ok && id == taskID {
+				return &rows[i], nil
+			}
+		}
+		if len(rows) < 100 {
+			break
+		}
+		lastID = rows[len(rows)-1].Id
 	}
 	// Legacy rows: video tasks logged before task_id was stored in other.
 	task, exist, taskErr := GetByTaskId(userID, taskID)
@@ -147,15 +160,22 @@ func findConsumeLogRowForTask(userID int, taskID string) (*Log, error) {
 	if windowStart < 0 {
 		windowStart = 0
 	}
-	err = LOG_DB.Model(&Log{}).
+	var rows []Log
+	err := LOG_DB.Model(&Log{}).
 		Where("user_id = ? AND type = ? AND model_name = ? AND channel_id = ? AND created_at >= ? AND created_at <= ? AND other LIKE ?",
 			userID, LogTypeConsume, modelName, task.ChannelId, windowStart, windowEnd, "%\"is_task\":true%").
 		Order("id DESC").
-		First(&row).Error
+		Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-	return &row, nil
+	for i := range rows {
+		other, _ := common.StrToMap(rows[i].Other)
+		if id, ok := other["task_id"].(string); !ok || id == "" {
+			return &rows[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
 }
 
 // FindConsumeLogRowForTask locates the consume log row associated with a public task_id.
