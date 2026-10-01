@@ -54,6 +54,8 @@ func seedanceOwnedAsset(c *gin.Context, id string) (*model.SeedanceResource, err
 
 func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.SeedanceResource, error) {
 	var pinned *model.SeedanceResource
+	publicURLs := []string{}
+	seen := map[string]bool{}
 	_, err := visitSeedanceAssetURLs(fields, func(id string) (string, error) {
 		asset, err := seedanceOwnedAsset(c, id)
 		if err != nil {
@@ -63,6 +65,10 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 			return "", seedanceError(400, "All referenced assets must belong to the same media library")
 		}
 		pinned = asset
+		if !seen[id] {
+			publicURLs = append(publicURLs, "asset://"+id)
+			seen[id] = true
+		}
 		return "asset://" + id, nil
 	})
 	if err != nil || pinned == nil {
@@ -79,6 +85,7 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 	if _, _, err := SeedanceResourceKey(ch, pinned.KeyFingerprint); err != nil {
 		return nil, err
 	}
+	c.Set("seedance_public_asset_urls", publicURLs)
 	return pinned, nil
 }
 

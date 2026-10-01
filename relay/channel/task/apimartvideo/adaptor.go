@@ -210,6 +210,9 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 			"auto_duration": body.Model == ModelSeedance25 && body.Duration == -1,
 		},
 	}
+	if refs, ok := c.Get("seedance_public_asset_urls"); ok {
+		store.Metadata["asset_urls"] = refs
+	}
 	if requested, ok := c.Get("video_requested_spec"); ok {
 		store.Metadata["requested_spec"] = requested
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -213,4 +214,13 @@ func TestSeedanceVideoFailureRedactsDeletedPrivateAssets(t *testing.T) {
 		require.NotContains(t, reason, secret)
 	}
 	require.Contains(t, task.FailReason, "private-asset-identifier")
+}
+
+func TestSeedanceAssetReferencesRemainPublicInVideoLogs(t *testing.T) {
+	req := &relaycommon.TaskSubmitReq{Model: "seedance-2.5", Metadata: map[string]interface{}{"asset_urls": []string{"asset://asset_public", "https://private-provider.example/media", "asset://private-provider-id"}}}
+	logged := BuildVideoRequestDataForLog(req)
+	require.Equal(t, []string{"asset://asset_public"}, logged["asset_urls"])
+	raw, err := common.Marshal(logged)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "private-provider")
 }

@@ -74,6 +74,17 @@ func BuildVideoRequestDataForLog(req *relaycommon.TaskSubmitReq) map[string]inte
 		if value, ok := req.Metadata["ratio"].(string); ok && value != "" {
 			data["aspect_ratio"] = value
 		}
+		if refs, ok := req.Metadata["asset_urls"].([]string); ok {
+			public := []string{}
+			for _, ref := range refs {
+				if strings.HasPrefix(ref, "asset://asset_") {
+					public = append(public, ref)
+				}
+			}
+			if len(public) > 0 {
+				data["asset_urls"] = public
+			}
+		}
 		for _, key := range []string{"billing_variant", "has_video", "audio"} {
 			if value, ok := req.Metadata[key]; ok {
 				data[key] = value
