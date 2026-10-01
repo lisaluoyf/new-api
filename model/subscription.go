@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/cachex"
 	"github.com/samber/hot"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Subscription duration units
@@ -794,6 +795,10 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 // expectedPaymentProvider guards against cross-gateway callback attacks (empty skips the check).
 // actualPaymentMethod updates the order's PaymentMethod to reflect the real payment type used (empty skips update).
 func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string) error {
+	return completeSubscriptionOrderWithDB(DB, tradeNo, providerPayload, expectedPaymentProvider, actualPaymentMethod, true)
+}
+
+func completeSubscriptionOrderWithDB(db *gorm.DB, tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string, notify bool) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
@@ -806,9 +811,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	var logMoney float64
 	var logPaymentMethod string
 	var upgradeGroup string
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := db.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
@@ -833,7 +838,11 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		} else if IsCodingPlan(plan) {
 			_, err = completeCodingPlanOrderTx(tx, &order, plan)
 		} else {
-			_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+			var entitlement *UserSubscription
+			entitlement, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+			if err == nil {
+				err = tx.Model(entitlement).Update("current_cycle_id", order.Id).Error
+			}
 		}
 		if err != nil {
 			return err
@@ -871,10 +880,10 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	if err != nil {
 		return err
 	}
-	if upgradeGroup != "" && logUserId > 0 {
+	if notify && upgradeGroup != "" && logUserId > 0 {
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
 	}
-	if logUserId > 0 {
+	if notify && logUserId > 0 {
 		msg := fmt.Sprintf("Subscription purchase successful, plan: %s, amount paid: %.2f, payment method: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeTopup, msg)
 		paidQuota := int(math.Round(logMoney * common.QuotaPerUnit))
@@ -965,7 +974,7 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
@@ -986,15 +995,19 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 // ReverseSubscriptionOrder records a provider refund or chargeback and, for a
 // full reversal, restores the entitlement state that existed before the order.
 func ReverseSubscriptionOrder(tradeNo string, amount float64, reversalType string, providerPayload string) error {
+	return reverseSubscriptionOrderWithDB(DB, tradeNo, amount, reversalType, providerPayload)
+}
+
+func reverseSubscriptionOrderWithDB(db *gorm.DB, tradeNo string, amount float64, reversalType string, providerPayload string) error {
 	if strings.TrimSpace(tradeNo) == "" || amount <= 0 {
 		return errors.New("invalid subscription reversal")
 	}
 	if reversalType != "refund" && reversalType != "chargeback" {
 		return errors.New("invalid subscription reversal type")
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if order.Status != common.TopUpStatusSuccess && order.Status != "refunded" && order.Status != "chargeback" {
@@ -1017,7 +1030,7 @@ func ReverseSubscriptionOrder(tradeNo string, amount float64, reversalType strin
 
 		now := GetDBTimestampTx(tx)
 		var current UserSubscription
-		currentQuery := tx.Set("gorm:query_option", "FOR UPDATE").
+		currentQuery := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("user_id = ? AND current_cycle_id = ?", order.UserId, order.Id).
 			Order("id desc").Limit(1).Find(&current)
 		if currentQuery.Error != nil {
@@ -1094,7 +1107,7 @@ func ReinstateSubscriptionOrder(tradeNo string, amount float64, providerPayload 
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if order.Status != common.TopUpStatusSuccess && order.Status != "refunded" && order.Status != "chargeback" {
@@ -1123,7 +1136,7 @@ func ReinstateSubscriptionOrder(tradeNo string, amount float64, providerPayload 
 		now := GetDBTimestampTx(tx)
 		if order.ProductType == SubscriptionPlanTypeCodingPlan {
 			var entitlement UserSubscription
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("user_id = ? AND current_cycle_id = ?", order.UserId, order.Id).
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND current_cycle_id = ?", order.UserId, order.Id).
 				Order("id desc").First(&entitlement).Error; err != nil {
 				return err
 			}
@@ -1173,7 +1186,7 @@ func ReinstateSubscriptionOrder(tradeNo string, amount float64, providerPayload 
 
 			if order.PreviousSubscriptionId > 0 {
 				var previous UserSubscription
-				if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&previous).Error; err != nil {
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&previous).Error; err != nil {
 					return err
 				}
 				if previous.CurrentCycleId != order.PreviousCycleId {
@@ -1198,14 +1211,14 @@ func ReinstateSubscriptionOrder(tradeNo string, amount float64, providerPayload 
 
 		var entitlement UserSubscription
 		if order.OrderType == "renewal" {
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&entitlement).Error; err != nil {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&entitlement).Error; err != nil {
 				return err
 			}
 			if entitlement.CurrentCycleId != order.PreviousCycleId {
 				return errors.New("GPT subscription changed after chargeback; manual reinstatement required")
 			}
 		} else {
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("user_id = ? AND current_cycle_id = ?", order.UserId, order.Id).
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND current_cycle_id = ?", order.UserId, order.Id).
 				Order("id desc").First(&entitlement).Error; err != nil {
 				return err
 			}
@@ -1507,7 +1520,7 @@ func adminInvalidateUserSubscriptionTx(tx *gorm.DB, userSubscriptionId int, now 
 		return 0, "", errors.New("invalid userSubscriptionId")
 	}
 	var sub UserSubscription
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 		return 0, "", err
 	}
@@ -1566,7 +1579,7 @@ func AdminInvalidateCurrentGPTSubscription(userId int) (string, error) {
 	invalidated := false
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var subs []UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
 			Order("end_time desc, id desc").
 			Find(&subs).Error; err != nil {
@@ -1615,7 +1628,7 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
@@ -1897,7 +1910,7 @@ func preConsumeUserSubscription(
 		}
 
 		var subs []UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
 			Order("end_time asc, id asc").
 			Find(&subs).Error; err != nil {
@@ -2013,7 +2026,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var record SubscriptionPreConsumeRecord
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("request_id = ?", requestId).First(&record).Error; err != nil {
 			return err
 		}
@@ -2025,7 +2038,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 			return tx.Save(&record).Error
 		}
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", record.UserSubscriptionId).First(&sub).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", record.UserSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
 		sub.AmountUsed -= record.PreConsumed
@@ -2048,7 +2061,7 @@ func PostConsumeSubscriptionRequestDelta(requestId string, userSubscriptionId in
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
 		newUsed := sub.AmountUsed + delta
@@ -2066,7 +2079,7 @@ func PostConsumeSubscriptionRequestDelta(requestId string, userSubscriptionId in
 			return nil
 		}
 		var record SubscriptionPreConsumeRecord
-		query := tx.Set("gorm:query_option", "FOR UPDATE").Where("request_id = ?", requestId).First(&record)
+		query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("request_id = ?", requestId).First(&record)
 		if query.Error != nil {
 			return query.Error
 		}
@@ -2103,7 +2116,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 		}
 		err = DB.Transaction(func(tx *gorm.DB) error {
 			var locked UserSubscription
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 				Where("id = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, now).
 				First(&locked).Error; err != nil {
 				return nil
@@ -2172,7 +2185,7 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", userSubscriptionId).
 			First(&sub).Error; err != nil {
 			return err

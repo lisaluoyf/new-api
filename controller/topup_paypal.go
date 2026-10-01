@@ -280,7 +280,10 @@ func PayPalWebhook(c *gin.Context) {
 	case "CHECKOUT.ORDER.APPROVED":
 		handlePayPalOrderApproved(ctx, event.Resource, c.ClientIP())
 	case "PAYMENT.CAPTURE.COMPLETED":
-		handlePayPalCaptureCompleted(ctx, event.Resource, c.ClientIP())
+		if err := handlePayPalCaptureCompleted(ctx, event.Resource, c.ClientIP()); err != nil {
+			c.AbortWithStatus(http.StatusServiceUnavailable)
+			return
+		}
 	case "PAYMENT.CAPTURE.REFUNDED", "PAYMENT.CAPTURE.REVERSED":
 		handlePayPalRefund(ctx, event.Resource, c.ClientIP())
 	case "CHECKOUT.ORDER.CANCELLED", "CHECKOUT.ORDER.VOIDED":
@@ -309,17 +312,39 @@ func handlePayPalOrderApproved(ctx context.Context, resource json.RawMessage, ca
 	logger.LogInfo(ctx, fmt.Sprintf("PayPal capture 成功 order_id=%s client_ip=%s", order.ID, callerIP))
 }
 
-func handlePayPalCaptureCompleted(ctx context.Context, resource json.RawMessage, callerIP string) {
+func handlePayPalCaptureCompleted(ctx context.Context, resource json.RawMessage, callerIP string) error {
 	var capture payPalCaptureResource
 	if err := common.Unmarshal(resource, &capture); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("PayPal capture.completed 解析失败 client_ip=%s error=%q", callerIP, err.Error()))
-		return
+		return err
 	}
+	trusted, err := service.QueryPayPalCapture(ctx, capture.ID)
+	if err != nil {
+		return err
+	}
+	var verified struct {
+		payPalCaptureResource
+		Status string `json:"status"`
+	}
+	if err := common.Unmarshal(trusted, &verified); err != nil {
+		return err
+	}
+	if verified.ID != capture.ID || verified.CustomID != capture.CustomID || verified.Status != "COMPLETED" || verified.Amount != capture.Amount {
+		return fmt.Errorf("PayPal official capture identity or status mismatch")
+	}
+	paid, err := strconv.ParseFloat(verified.Amount.Value, 64)
+	if err != nil {
+		return err
+	}
+	if err := validateVerifiedPaymentPrice(verified.CustomID, model.PaymentProviderPayPal, verified.Amount.CurrencyCode, paid); err != nil {
+		return err
+	}
+	capture = verified.payPalCaptureResource
 
 	referenceID := capture.CustomID
 	if referenceID == "" {
 		logger.LogWarn(ctx, fmt.Sprintf("PayPal capture.completed 缺少 custom_id client_ip=%s", callerIP))
-		return
+		return fmt.Errorf("missing PayPal merchant reference")
 	}
 
 	LockOrder(referenceID)
@@ -329,23 +354,27 @@ func handlePayPalCaptureCompleted(ctx context.Context, resource json.RawMessage,
 		paidAmount, parseErr := strconv.ParseFloat(capture.Amount.Value, 64)
 		if parseErr != nil || !strings.EqualFold(strings.TrimSpace(capture.Amount.CurrencyCode), "USD") || math.Abs(paidAmount-order.Money) > 0.005 {
 			logger.LogError(ctx, fmt.Sprintf("PayPal 订阅金额校验失败 trade_no=%s expected=%.2f actual=%q currency=%q client_ip=%s", referenceID, order.Money, capture.Amount.Value, capture.Amount.CurrencyCode, callerIP))
-			return
+			return fmt.Errorf("PayPal subscription money mismatch")
 		}
 	}
 	if handled, err := tryCompleteSubscriptionPayment(referenceID, common.GetJsonString(capture), model.PaymentProviderPayPal, model.PaymentMethodPayPal); handled {
 		if err != nil {
 			logger.LogError(ctx, fmt.Sprintf("PayPal 订阅入账失败 trade_no=%s client_ip=%s error=%q", referenceID, callerIP, err.Error()))
-			return
+			return err
 		}
 		logger.LogInfo(ctx, fmt.Sprintf("PayPal 订阅支付成功 trade_no=%s amount=%s %s client_ip=%s", referenceID, capture.Amount.Value, capture.Amount.CurrencyCode, callerIP))
-		return
+		return nil
+	}
+	if top := model.GetTopUpByTradeNo(referenceID); top != nil && top.Status == common.TopUpStatusSuccess {
+		return nil
 	}
 
 	if err := model.RechargePayPal(referenceID, callerIP, capture.PayPalCaptureMetadata); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("PayPal 充值处理失败 trade_no=%s client_ip=%s error=%q", referenceID, callerIP, err.Error()))
-		return
+		return err
 	}
 	logger.LogInfo(ctx, fmt.Sprintf("PayPal 充值成功 trade_no=%s amount=%s %s client_ip=%s", referenceID, capture.Amount.Value, capture.Amount.CurrencyCode, callerIP))
+	return nil
 }
 
 // handlePayPalRefund reverses a top-up on PayPal refund/reversal. Full refunds

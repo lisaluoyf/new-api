@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type CodingPlanState struct {
@@ -185,7 +186,7 @@ func completeCodingPlanOrderTx(tx *gorm.DB, order *SubscriptionOrder, plan *Subs
 	}
 	if order.OrderType == "renewal" || order.OrderType == "upgrade" {
 		var current UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&current).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&current).Error; err != nil {
 			return nil, err
 		}
 		if current.Status != "active" || current.EndTime <= now {

@@ -196,6 +196,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/platega/orders", controller.AdminListPlategaOrders)
 				adminRoute.POST("/platega/query-status", controller.AdminQueryPlategaStatus)
 				adminRoute.POST("/platega/retry-callback", controller.AdminRetryPlategaCallback)
+				adminRoute.POST("/platega/refund-evidence", middleware.RootAuth(), controller.AdminApplyPlategaRefundEvidence)
 				adminRoute.GET("/search", controller.SearchUsers)
 				adminRoute.GET("/resellers/search", controller.SearchResellerUsers)
 				adminRoute.GET("/:id/reseller-downlines", controller.GetResellerDownlines)

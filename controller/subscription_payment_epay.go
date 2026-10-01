@@ -254,6 +254,10 @@ func SubscriptionEpayNotify(c *gin.Context) {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
+	if err := verifyEpayPaidOrder(c.Request.Context(), verifyInfo); err != nil {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
 
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
@@ -312,6 +316,10 @@ func SubscriptionEpayReturn(c *gin.Context) {
 		return
 	}
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
+		if err := verifyEpayPaidOrder(c.Request.Context(), verifyInfo); err != nil {
+			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/freemodel?payment=fail")
+			return
+		}
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
 		order, err := verifySubscriptionEpayCallbackAmount(verifyInfo.ServiceTradeNo, verifyInfo.Money)

@@ -319,7 +319,13 @@ func WaffoPancakeWebhook(c *gin.Context) {
 	tradeNo, err := service.ResolveWaffoPancakeTradeNo(event)
 	if err != nil {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 订单号映射失败 event_id=%s order_id=%s error=%q", event.ID, event.Data.OrderID, err.Error()))
-		c.String(http.StatusOK, "OK")
+		c.String(http.StatusServiceUnavailable, "retry")
+		return
+	}
+	verifiedAmount, verifiedCurrency, err := service.VerifyWaffoPancakePaidOrder(c.Request.Context(), event, tradeNo)
+	if err != nil || validateVerifiedPaymentPrice(tradeNo, model.PaymentProviderWaffoPancake, verifiedCurrency, verifiedAmount) != nil {
+		logger.LogWarn(c.Request.Context(), "Waffo official payment verification failed")
+		c.String(http.StatusServiceUnavailable, "retry")
 		return
 	}
 

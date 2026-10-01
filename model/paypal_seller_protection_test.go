@@ -97,7 +97,7 @@ func TestPayPalRechargePersistsProtectionBeforeSuccessHook(t *testing.T) {
 	require.Equal(t, common.TopUpStatusSuccess, restored.Status)
 	require.Equal(t, capture.SellerProtection, restored.PayPalSellerProtection)
 	require.Contains(t, restored.PayPalProtectionNotificationLine(), "✅ 符合资格")
-	require.Error(t, RechargePayPal(topup.TradeNo, "", capture))
+	require.NoError(t, RechargePayPal(topup.TradeNo, "", capture))
 	require.NoError(t, DB.First(&user, user.Id).Error)
 	require.Equal(t, int(10*common.QuotaPerUnit), user.Quota, "duplicate webhook must not credit twice")
 }

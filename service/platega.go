@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/common"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 	plategaHTTPTimeout        = 30 * time.Second
 )
 
-var plategaHTTPClient = &http.Client{Timeout: plategaHTTPTimeout}
+var plategaHTTPClient = &http.Client{Timeout: plategaHTTPTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return fmt.Errorf("Platega redirect rejected") }}
 
 type PlategaPaymentDetails struct {
 	Amount   float64 `json:"amount"`
@@ -39,28 +39,37 @@ type PlategaCreateTransactionRequest struct {
 }
 
 type PlategaCreateTransactionResponse struct {
-	PaymentMethod string `json:"paymentMethod"`
-	TransactionId string `json:"transactionId"`
-	Redirect      string `json:"redirect"`
-	Return        string `json:"return"`
-	PaymentDetails string `json:"paymentDetails"`
-	Status        string `json:"status"`
-	ExpiresIn     string `json:"expiresIn"`
-	MerchantId    string `json:"merchantId"`
-	UsdtRate      float64 `json:"usdtRate"`
-	CryptoAmount  float64 `json:"cryptoAmount"`
+	ID             string  `json:"id,omitempty"`
+	PaymentMethod  string  `json:"paymentMethod"`
+	TransactionId  string  `json:"transactionId"`
+	Redirect       string  `json:"redirect"`
+	Return         string  `json:"return"`
+	PaymentDetails string  `json:"paymentDetails"`
+	Status         string  `json:"status"`
+	ExpiresIn      string  `json:"expiresIn"`
+	MerchantId     string  `json:"merchantId"`
+	UsdtRate       float64 `json:"usdtRate"`
+	CryptoAmount   float64 `json:"cryptoAmount"`
 }
 
 type PlategaTransactionStatusResponse struct {
-	TransactionId string  `json:"transactionId"`
-	Status        string  `json:"status"`
-	Payload       string  `json:"payload"`
-	Amount        float64 `json:"amount"`
-	Currency      string  `json:"currency"`
-	PaymentMethod string  `json:"paymentMethod"`
+	ID                   string                `json:"id"`
+	TransactionId        string                `json:"transactionId"`
+	Status               string                `json:"status"`
+	Payload              string                `json:"payload"`
+	Amount               float64               `json:"amount"`
+	Currency             string                `json:"currency"`
+	PaymentMethod        string                `json:"paymentMethod"`
+	MerchantID           string                `json:"merchantId"`
+	HistoricalMerchantID string                `json:"mechantId"`
+	PaymentDetails       PlategaPaymentDetails `json:"paymentDetails"`
+	Commission           *float64              `json:"comission"`
+	RefundStatus         *string               `json:"refundStatus"`
+	RawJSON              string                `json:"-"`
 }
 
 type PlategaCallbackPayload struct {
+	ID             string          `json:"id,omitempty"`
 	TransactionId  string          `json:"transactionId"`
 	Status         string          `json:"status"`
 	Payload        string          `json:"payload"`
@@ -97,7 +106,7 @@ func CreatePlategaTransaction(ctx context.Context, req *PlategaCreateTransaction
 		req.Description = "APIMaster.ai balance top-up"
 	}
 
-	body, err := json.Marshal(req)
+	body, err := common.Marshal(req)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -121,15 +130,22 @@ func CreatePlategaTransaction(ctx context.Context, req *PlategaCreateTransaction
 		return nil, body, err
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
-		return nil, body, fmt.Errorf("platega create error (%d): %s", resp.StatusCode, string(respBody))
+		return nil, body, fmt.Errorf("platega create error (%d)", resp.StatusCode)
 	}
 
 	var result PlategaCreateTransactionResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
+	if err := common.Unmarshal(respBody, &result); err != nil {
 		return nil, body, fmt.Errorf("decode platega create response: %w", err)
 	}
 	if strings.TrimSpace(result.TransactionId) == "" || strings.TrimSpace(result.Redirect) == "" {
-		return nil, body, fmt.Errorf("platega returned incomplete transaction response")
+		id, idErr := ResolvePlategaID(result.ID, result.TransactionId)
+		if idErr != nil || strings.TrimSpace(result.Redirect) == "" {
+			return nil, body, fmt.Errorf("platega returned incomplete transaction response")
+		}
+		result.TransactionId = id
+	}
+	if _, err := ResolvePlategaID(result.ID, result.TransactionId); err != nil {
+		return nil, body, err
 	}
 	return &result, body, nil
 }
@@ -139,8 +155,8 @@ func GetPlategaTransactionStatus(ctx context.Context, transactionId string) (*Pl
 		return nil, fmt.Errorf("platega credentials not configured")
 	}
 	transactionId = strings.TrimSpace(transactionId)
-	if transactionId == "" {
-		return nil, fmt.Errorf("missing transaction id")
+	if _, err := ResolvePlategaID(transactionId, ""); err != nil {
+		return nil, err
 	}
 
 	url := fmt.Sprintf("%s/transaction/%s", plategaBaseURL, transactionId)
@@ -163,12 +179,16 @@ func GetPlategaTransactionStatus(ctx context.Context, transactionId string) (*Pl
 		return nil, err
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
-		return nil, fmt.Errorf("platega status error (%d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("platega status error (%d)", resp.StatusCode)
 	}
 
 	var result PlategaTransactionStatusResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
+	if err := common.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("decode platega status response: %w", err)
+	}
+	result.RawJSON = string(respBody)
+	if err := NormalizePlategaStatusResponse(&result, transactionId); err != nil {
+		return nil, err
 	}
 	return &result, nil
 }
@@ -177,30 +197,9 @@ func ParsePlategaCallbackAmount(raw json.RawMessage) (float64, error) {
 	if len(raw) == 0 {
 		return 0, fmt.Errorf("missing amount")
 	}
-	var f float64
-	if err := json.Unmarshal(raw, &f); err == nil {
-		return f, nil
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		s = strings.ReplaceAll(strings.TrimSpace(s), ",", ".")
-		var parsed float64
-		if _, err := fmt.Sscanf(s, "%f", &parsed); err == nil {
-			return parsed, nil
-		}
-	}
-	return 0, fmt.Errorf("invalid platega amount: %s", string(raw))
+	return parsePlategaMoney(raw)
 }
 
 func PlategaAmountsMatch(expected, actual float64) bool {
-	if math.Abs(expected-actual) < 0.011 {
-		return true
-	}
-	// Platega SBP QR callbacks bill base amount + merchant fee (e.g. 1.00 → 1.09 RUB).
-	fee := setting.PlategaFeePercent
-	if fee <= 0 {
-		fee = 8.5
-	}
-	maxWithFee := expected * (1 + fee/100.0)
-	return actual+0.011 >= expected && actual <= maxWithFee+0.02
+	return expected > 0 && actual > 0 && !math.IsNaN(expected) && !math.IsNaN(actual) && !math.IsInf(expected, 0) && !math.IsInf(actual, 0) && math.Abs(expected-actual) < 0.000001
 }

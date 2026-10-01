@@ -111,6 +111,11 @@ func TestClinkConfirmationRejectsUnverifiedRecovery(t *testing.T) {
 }
 
 func TestClinkPendingOrderSuccessAfterFailedAttempt(t *testing.T) {
+	oldQuery := queryClinkPaidOrder
+	t.Cleanup(func() { queryClinkPaidOrder = oldQuery })
+	queryClinkPaidOrder = func(context.Context, string) (*service.ClinkOrderWebhookData, error) {
+		return &service.ClinkOrderWebhookData{OrderID: "test-order-id", MerchantReferenceID: "CLINK-test", Status: "success", OriginalCurrency: "USD", PaymentCurrency: "VND", AmountSubtotal: 1, AmountTotal: 26989}, nil
+	}
 	db := setupCryptoPersistenceTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}))
 	require.NoError(t, db.Create(&model.User{Id: 12833, Username: "clink-order"}).Error)
@@ -121,7 +126,7 @@ func TestClinkPendingOrderSuccessAfterFailedAttempt(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest("POST", "/", nil)
 	failed := []byte(`{"type":"order.failed","data":{"merchantReferenceId":"CLINK-test"}}`)
-	paid := []byte(`{"type":"order.succeeded","data":{"merchantReferenceId":"CLINK-test","status":"success","originalCurrency":"USD","paymentCurrency":"VND","amountSubtotal":1,"amountTotal":26989}}`)
+	paid := []byte(`{"type":"order.succeeded","data":{"orderId":"test-order-id","merchantReferenceId":"CLINK-test","status":"success","originalCurrency":"USD","paymentCurrency":"VND","amountSubtotal":1,"amountTotal":26989}}`)
 	require.NoError(t, handleClinkWebhook(c, failed))
 	require.NoError(t, handleClinkWebhook(c, paid))
 	require.NoError(t, handleClinkWebhook(c, failed))

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,9 +22,9 @@ func TestPlategaCallbackPayloadAcceptsNumericPaymentMethod(t *testing.T) {
 	require.Equal(t, "CONFIRMED", payload.Status)
 }
 
-func TestPlategaAmountsMatchIncludesSBPQRFee(t *testing.T) {
-	setting.PlategaFeePercent = 8.5
-	require.True(t, PlategaAmountsMatch(1.0, 1.09))
-	require.True(t, PlategaAmountsMatch(90.0, 97.65))
+func TestPlategaAmountsMatchDoesNotInventFee(t *testing.T) {
+	require.False(t, PlategaAmountsMatch(1.0, 1.09))
+	require.False(t, PlategaAmountsMatch(90.0, 97.65))
+	require.True(t, PlategaAmountsMatch(97.65, 97.65))
 	require.False(t, PlategaAmountsMatch(90.0, 50.0))
 }

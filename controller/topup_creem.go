@@ -36,11 +36,7 @@ func generateCreemSignature(payload string, secret string) string {
 // 验证Creem webhook签名
 func verifyCreemSignature(payload string, signature string, secret string) bool {
 	if secret == "" {
-		logger.LogWarn(context.Background(), fmt.Sprintf("Creem webhook secret 未配置 test_mode=%t signature=%q body=%q", setting.CreemTestMode, signature, payload))
-		if setting.CreemTestMode {
-			logger.LogInfo(context.Background(), fmt.Sprintf("Creem webhook 验签已跳过 reason=test_mode signature=%q body=%q", signature, payload))
-			return true
-		}
+		logger.LogWarn(context.Background(), "Creem webhook secret 未配置，拒绝回调")
 		return false
 	}
 
@@ -282,6 +278,11 @@ func CreemWebhook(c *gin.Context) {
 	// 根据事件类型处理不同的webhook
 	switch webhookEvent.EventType {
 	case "checkout.completed":
+		if err := verifyCreemPaidCheckout(c.Request.Context(), &webhookEvent); err != nil {
+			logger.LogWarn(c.Request.Context(), "Creem official payment verification failed")
+			c.AbortWithStatus(http.StatusServiceUnavailable)
+			return
+		}
 		handleCheckoutCompleted(c, &webhookEvent)
 	default:
 		logger.LogInfo(c.Request.Context(), fmt.Sprintf("Creem webhook 忽略事件 event_type=%s event_id=%s", webhookEvent.EventType, webhookEvent.Id))

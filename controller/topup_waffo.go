@@ -396,6 +396,26 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 	}
 
 	merchantOrderId := result.MerchantOrderID
+	sdk, err := getWaffoSDK()
+	if err != nil {
+		sendWaffoWebhookResponse(c, wh, false, "official verification unavailable")
+		return
+	}
+	resp, err := sdk.Order().Inquiry(c.Request.Context(), &order.InquiryOrderParams{PaymentRequestID: result.PaymentRequestID, AcquiringOrderID: result.AcquiringOrderID}, nil)
+	if err != nil || resp == nil || !resp.IsSuccess() || resp.Data == nil {
+		sendWaffoWebhookResponse(c, wh, false, "official verification failed")
+		return
+	}
+	verified := resp.Data
+	if verified.MerchantOrderID != merchantOrderId || verified.OrderStatus != "PAY_SUCCESS" || verified.PaymentRequestID != result.PaymentRequestID || verified.AcquiringOrderID != result.AcquiringOrderID || verified.OrderAmount != result.OrderAmount || verified.OrderCurrency != result.OrderCurrency {
+		sendWaffoWebhookResponse(c, wh, false, "official payment identity or money mismatch")
+		return
+	}
+	paid, err := strconv.ParseFloat(verified.OrderAmount, 64)
+	if err != nil || validateVerifiedPaymentPrice(merchantOrderId, model.PaymentProviderWaffo, verified.OrderCurrency, paid) != nil {
+		sendWaffoWebhookResponse(c, wh, false, "verified local price mismatch")
+		return
+	}
 
 	LockOrder(merchantOrderId)
 	defer UnlockOrder(merchantOrderId)

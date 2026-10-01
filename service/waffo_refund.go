@@ -90,7 +90,11 @@ func waffoRefundRequest(ctx context.Context, path string, payload any, out any) 
 	req.Header.Set("X-Merchant-Id", setting.WaffoPancakeMerchantID)
 	req.Header.Set("X-Timestamp", timestamp)
 	req.Header.Set("X-Signature", signature)
-	req.Header.Set("X-Environment", "prod")
+	environment := "prod"
+	if setting.WaffoPancakeSandbox {
+		environment = "test"
+	}
+	req.Header.Set("X-Environment", environment)
 	resp, err := waffoRefundHTTPClient.Do(req)
 	if err != nil {
 		return err
@@ -260,6 +264,10 @@ func makeWaffoRefundEntry(ticket waffoRefundTicket, payment waffoRefundPayment, 
 }
 
 func resolveWaffoRefundTradeNo(ctx context.Context, payment waffoRefundPayment) (string, error) {
+	return resolveVerifiedWaffoTradeNo(ctx, payment, true)
+}
+
+func resolveVerifiedWaffoTradeNo(ctx context.Context, payment waffoRefundPayment, bind bool) (string, error) {
 	var local model.TopUp
 	if err := model.DB.Where("waffo_payment_id = ? AND waffo_order_id = ? AND payment_provider = ?", payment.ID, payment.OrderID, model.PaymentProviderWaffoPancake).First(&local).Error; err == nil {
 		return local.TradeNo, nil
@@ -292,7 +300,11 @@ func resolveWaffoRefundTradeNo(ctx context.Context, payment waffoRefundPayment) 
 			if err := common.UnmarshalJsonStr(delivery.Payload, &event); err != nil {
 				return "", err
 			}
-			if event.Data.OrderID != payment.OrderID || event.StoreID != setting.WaffoPancakeStoreID || event.Mode != "prod" || (event.ID != payment.ID && event.EventID != payment.ID) {
+			expectedMode := "prod"
+			if payment.TestMode {
+				expectedMode = "test"
+			}
+			if event.Data.OrderID != payment.OrderID || event.StoreID != setting.WaffoPancakeStoreID || event.Mode != expectedMode || (event.ID != payment.ID && event.EventID != payment.ID) {
 				continue
 			}
 			candidate, err := ResolveWaffoPancakeTradeNo(&event)
@@ -310,11 +322,23 @@ func resolveWaffoRefundTradeNo(ctx context.Context, payment waffoRefundPayment) 
 	}
 	topUp := model.GetTopUpByTradeNo(tradeNo)
 	subtotal, err := strconv.ParseFloat(payment.Snapshot.Subtotal, 64)
-	if err != nil || math.IsNaN(subtotal) || math.IsInf(subtotal, 0) || topUp == nil || math.Abs(topUp.Money-subtotal) > 0.005 {
+	if err != nil || math.IsNaN(subtotal) || math.IsInf(subtotal, 0) || subtotal <= 0 {
+		return "", errors.New("invalid upstream payment amount")
+	}
+	if topUp == nil && !bind {
+		order := model.GetSubscriptionOrderByTradeNo(tradeNo)
+		if order == nil || order.PaymentProvider != model.PaymentProviderWaffoPancake || math.Abs(order.Money-subtotal) > 0.000001 {
+			return "", errors.New("subscription differs from upstream payment")
+		}
+		return tradeNo, nil
+	}
+	if topUp == nil || topUp.PaymentProvider != model.PaymentProviderWaffoPancake || math.Abs(topUp.Money-subtotal) > 0.005 {
 		return "", errors.New("local order amount differs from upstream payment")
 	}
-	if err := model.BindWaffoPayment(tradeNo, payment.ID, payment.OrderID); err != nil {
-		return "", err
+	if bind {
+		if err := model.BindWaffoPayment(tradeNo, payment.ID, payment.OrderID); err != nil {
+			return "", err
+		}
 	}
 	return tradeNo, nil
 }

@@ -186,14 +186,27 @@ func StripeWebhook(c *gin.Context) {
 	}
 
 	callerIp := c.ClientIP()
+	if (event.Type == stripe.EventTypeCheckoutSessionCompleted && event.GetObjectValue("payment_status") == "paid") || event.Type == stripe.EventTypeCheckoutSessionAsyncPaymentSucceeded {
+		if err := verifyStripePaidSession(ctx, event); err != nil {
+			logger.LogWarn(ctx, "Stripe official payment verification failed")
+			c.AbortWithStatus(http.StatusServiceUnavailable)
+			return
+		}
+	}
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 验签成功 event_type=%s client_ip=%s path=%q", string(event.Type), callerIp, c.Request.RequestURI))
 	switch event.Type {
 	case stripe.EventTypeCheckoutSessionCompleted:
-		sessionCompleted(ctx, event, callerIp)
+		if err := sessionCompleted(ctx, event, callerIp); err != nil {
+			c.AbortWithStatus(http.StatusServiceUnavailable)
+			return
+		}
 	case stripe.EventTypeCheckoutSessionExpired:
 		sessionExpired(ctx, event)
 	case stripe.EventTypeCheckoutSessionAsyncPaymentSucceeded:
-		sessionAsyncPaymentSucceeded(ctx, event, callerIp)
+		if err := sessionAsyncPaymentSucceeded(ctx, event, callerIp); err != nil {
+			c.AbortWithStatus(http.StatusServiceUnavailable)
+			return
+		}
 	case stripe.EventTypeCheckoutSessionAsyncPaymentFailed:
 		sessionAsyncPaymentFailed(ctx, event, callerIp)
 	case stripe.EventTypeChargeRefunded:
@@ -275,32 +288,32 @@ func handleSubscriptionStripeReinstatement(ctx context.Context, event stripe.Eve
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe subscription reinstatement completed trade_no=%s amount=%.2f", referenceID, amountCents/100))
 }
 
-func sessionCompleted(ctx context.Context, event stripe.Event, callerIp string) {
+func sessionCompleted(ctx context.Context, event stripe.Event, callerIp string) error {
 	customerId := event.GetObjectValue("customer")
 	referenceId := event.GetObjectValue("client_reference_id")
 	status := event.GetObjectValue("status")
 	if "complete" != status {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe checkout.completed 状态异常，忽略处理 trade_no=%s status=%s client_ip=%s", referenceId, status, callerIp))
-		return
+		return nil
 	}
 
 	paymentStatus := event.GetObjectValue("payment_status")
 	if paymentStatus != "paid" {
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe Checkout 支付未完成，等待异步结果 trade_no=%s payment_status=%s client_ip=%s", referenceId, paymentStatus, callerIp))
-		return
+		return nil
 	}
 
-	fulfillOrder(ctx, event, referenceId, customerId, callerIp)
+	return fulfillOrder(ctx, event, referenceId, customerId, callerIp)
 }
 
 // sessionAsyncPaymentSucceeded handles delayed payment methods (bank transfer, SEPA, etc.)
 // that confirm payment after the checkout session completes.
-func sessionAsyncPaymentSucceeded(ctx context.Context, event stripe.Event, callerIp string) {
+func sessionAsyncPaymentSucceeded(ctx context.Context, event stripe.Event, callerIp string) error {
 	customerId := event.GetObjectValue("customer")
 	referenceId := event.GetObjectValue("client_reference_id")
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe 异步支付成功 trade_no=%s client_ip=%s", referenceId, callerIp))
 
-	fulfillOrder(ctx, event, referenceId, customerId, callerIp)
+	return fulfillOrder(ctx, event, referenceId, customerId, callerIp)
 }
 
 // sessionAsyncPaymentFailed marks orders as failed when delayed payment methods
@@ -342,10 +355,10 @@ func sessionAsyncPaymentFailed(ctx context.Context, event stripe.Event, callerIp
 }
 
 // fulfillOrder is the shared logic for crediting quota after payment is confirmed.
-func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, customerId string, callerIp string) {
+func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, customerId string, callerIp string) error {
 	if len(referenceId) == 0 {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe 完成订单时缺少订单号 client_ip=%s", callerIp))
-		return
+		return errors.New("Stripe settlement failed")
 	}
 
 	LockOrder(referenceId)
@@ -360,7 +373,7 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		plan, planErr := model.GetSubscriptionPlanById(order.PlanId)
 		if planErr != nil {
 			logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单套餐查询失败 trade_no=%s plan_id=%d event_type=%s client_ip=%s error=%q", referenceId, order.PlanId, string(event.Type), callerIp, planErr.Error()))
-			return
+			return errors.New("Stripe subscription settlement failed")
 		}
 		if model.IsGPTPaidSubscriptionPlan(plan) && order.Status != common.TopUpStatusSuccess {
 			if err := verifySubscriptionStripePaymentSnapshot(
@@ -369,16 +382,16 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 				event.GetObjectValue("currency"),
 			); err != nil {
 				logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单金额或币种校验失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
-				return
+				return errors.New("Stripe subscription verification failed")
 			}
 		}
 		completionPayload := buildSubscriptionStripeCompletionPayload(order.ProviderPayload, payload)
 		if err := model.CompleteSubscriptionOrder(referenceId, completionPayload, model.PaymentProviderStripe, ""); err != nil {
 			logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
-			return
+			return errors.New("Stripe subscription settlement failed")
 		}
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe 订阅订单处理成功 trade_no=%s event_type=%s client_ip=%s", referenceId, string(event.Type), callerIp))
-		return
+		return nil
 	}
 	paidTotal, parseErr := strconv.ParseFloat(event.GetObjectValue("amount_total"), 64)
 	currency := strings.ToUpper(event.GetObjectValue("currency"))
@@ -391,11 +404,12 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 	err := model.Recharge(referenceId, customerId, callerIp)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("Stripe 充值处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
-		return
+		return errors.New("Stripe settlement failed")
 	}
 
 	total := paidTotal
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe 充值成功 trade_no=%s amount_total=%.2f currency=%s event_type=%s client_ip=%s", referenceId, total/100, currency, string(event.Type), callerIp))
+	return nil
 }
 
 func sessionExpired(ctx context.Context, event stripe.Event) {

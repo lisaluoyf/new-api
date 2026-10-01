@@ -497,34 +497,19 @@ func completeWalletEpayTopup(c *gin.Context, verifyInfo *epay.VerifyRes) error {
 		return nil
 	}
 
-	LockOrder(verifyInfo.ServiceTradeNo)
-	defer UnlockOrder(verifyInfo.ServiceTradeNo)
-
-	topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo)
-	if topUp == nil {
-		return fmt.Errorf("topup not found: %s", verifyInfo.ServiceTradeNo)
+	if err := verifyEpayPaidOrder(c.Request.Context(), verifyInfo); err != nil {
+		return err
 	}
-	if topUp.PaymentProvider != model.PaymentProviderEpay {
-		return fmt.Errorf("topup provider mismatch: %s", topUp.PaymentProvider)
+	paid, err := strconv.ParseFloat(verifyInfo.Money, 64)
+	if err != nil {
+		return err
 	}
-	if topUp.Status != common.TopUpStatusPending {
+	topUp, quotaToAdd, err := model.RechargeEpayVerified(verifyInfo.ServiceTradeNo, verifyInfo.Type, paid)
+	if err != nil {
+		return err
+	}
+	if quotaToAdd == 0 {
 		return nil
-	}
-
-	if topUp.PaymentMethod != verifyInfo.Type {
-		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 实际支付方式与订单不同 trade_no=%s order_payment_method=%s actual_type=%s client_ip=%s", verifyInfo.ServiceTradeNo, topUp.PaymentMethod, verifyInfo.Type, c.ClientIP()))
-		topUp.PaymentMethod = verifyInfo.Type
-	}
-	model.MarkTopUpSuccess(topUp)
-	if err := topUp.Update(); err != nil {
-		return fmt.Errorf("update topup failed: %w", err)
-	}
-
-	dAmount := decimal.NewFromInt(int64(topUp.Amount))
-	dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-	quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
-	if err := model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true); err != nil {
-		return fmt.Errorf("increase user quota failed: %w", err)
 	}
 
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值成功 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d money=%.2f topup=%q", topUp.TradeNo, topUp.UserId, c.ClientIP(), quotaToAdd, topUp.Money, common.GetJsonString(topUp)))
@@ -698,10 +683,7 @@ func EpayNotify(c *gin.Context) {
 	verifyInfo, err := client.Verify(params)
 	if err == nil && verifyInfo.VerifyStatus {
 		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 验签成功 trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))
-		_, err := c.Writer.Write([]byte("success"))
-		if err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 webhook 响应写入失败 trade_no=%s client_ip=%s error=%q", verifyInfo.ServiceTradeNo, c.ClientIP(), err.Error()))
-		}
+
 	} else {
 		_, err := c.Writer.Write([]byte("fail"))
 		if err != nil {
@@ -718,10 +700,13 @@ func EpayNotify(c *gin.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		if err := completeWalletEpayTopup(c, verifyInfo); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 处理充值成功回调失败 trade_no=%s callback_type=%s client_ip=%s error=%q verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP(), err.Error(), common.GetJsonString(verifyInfo)))
+			c.String(http.StatusInternalServerError, "fail")
+			return
 		}
 	} else {
 		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 忽略事件 trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))
 	}
+	c.String(http.StatusOK, "success")
 }
 
 func EpayReturn(c *gin.Context) {
@@ -908,10 +893,18 @@ func AdminCompleteTopUp(c *gin.Context) {
 	}
 
 	// 订单级互斥，防止并发补单
+	if order := model.GetPlategaOrderByTradeNo(req.TradeNo); order != nil {
+		reconcileAdminPlategaOrder(c, order)
+		return
+	}
 	LockOrder(req.TradeNo)
 	defer UnlockOrder(req.TradeNo)
 
 	if order := model.GetSubscriptionOrderByTradeNo(req.TradeNo); order != nil {
+		if order.PaymentProvider == model.PaymentProviderPlatega {
+			common.ApiErrorMsg(c, "Platega invoice missing; official verification required")
+			return
+		}
 		if err := model.CompleteSubscriptionOrder(req.TradeNo, "", order.PaymentProvider, order.PaymentMethod); err != nil {
 			common.ApiError(c, err)
 			return

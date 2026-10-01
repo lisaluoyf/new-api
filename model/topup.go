@@ -392,7 +392,7 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 
 	return DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return ErrTopUpNotFound
 		}
 		if expectedPaymentProvider != "" && topUp.PaymentProvider != expectedPaymentProvider {
@@ -427,7 +427,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	}
 
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", referenceId).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
 		}
@@ -436,6 +436,9 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return ErrPaymentMethodMismatch
 		}
 
+		if topUp.Status == common.TopUpStatusSuccess {
+			return nil
+		}
 		if topUp.Status != common.TopUpStatusPending {
 			return errors.New("充值订单状态错误")
 		}
@@ -460,6 +463,9 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		return errors.New("充值失败，请稍后重试")
 	}
 
+	if quota == 0 {
+		return nil
+	}
 	RecordTopupLog(topUp.UserId, fmt.Sprintf("Online top-up successful, credited amount: %v, amount paid: %d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
 	OnTopupSucceeded(topUp.UserId, int(quota), PaymentMethodStripe, topUp.TradeNo)
 
@@ -480,7 +486,7 @@ func RechargePayPal(referenceId string, callerIp string, captures ...PayPalCaptu
 	}
 
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", referenceId).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
 		}
@@ -489,6 +495,9 @@ func RechargePayPal(referenceId string, callerIp string, captures ...PayPalCaptu
 			return ErrPaymentMethodMismatch
 		}
 
+		if topUp.Status == common.TopUpStatusSuccess {
+			return nil
+		}
 		if topUp.Status != common.TopUpStatusPending {
 			return errors.New("充值订单状态错误")
 		}
@@ -516,6 +525,9 @@ func RechargePayPal(referenceId string, callerIp string, captures ...PayPalCaptu
 		return errors.New("充值失败，请稍后重试")
 	}
 
+	if quota == 0 {
+		return nil
+	}
 	RecordTopupLog(topUp.UserId, fmt.Sprintf("PayPal top-up successful, credited amount: %v, amount paid: %.2f", logger.FormatQuota(int(quota)), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodPayPal)
 	OnTopupSucceeded(topUp.UserId, int(quota), PaymentMethodPayPal, topUp.TradeNo)
 
@@ -872,13 +884,16 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
 		// 行级锁，避免并发补单
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return errors.New("充值订单不存在")
 		}
 
 		// 幂等处理：已成功直接返回
 		if topUp.Status == common.TopUpStatusSuccess {
 			return nil
+		}
+		if topUp.PaymentProvider == PaymentProviderPlatega {
+			return errors.New("Platega completion requires authenticated official reconciliation")
 		}
 
 		if topUp.Status != common.TopUpStatusPending {
@@ -941,7 +956,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 	}
 
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", referenceId).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
 		}
@@ -1016,7 +1031,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 	}
 
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", tradeNo).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
 		}
@@ -1079,7 +1094,7 @@ func RechargeWaffoPancake(tradeNo string, callerIp string) (err error) {
 	}
 
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", tradeNo).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
 		}
@@ -1790,7 +1805,7 @@ func refundTopUpByReference(referenceId, provider, auditNote string) (reversedQu
 	topUp := &TopUp{}
 	var quota float64
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		if e := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error; e != nil {
+		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(refCol+" = ?", referenceId).First(topUp).Error; e != nil {
 			return errors.New("充值订单不存在")
 		}
 		if topUp.PaymentProvider != provider {
@@ -1830,8 +1845,6 @@ func RefundClinkTopUp(referenceId string, refundUSD float64, refundId string) (r
 	return refundTopUpByReference(referenceId, PaymentProviderClink, note)
 }
 
-// RefundPlategaTopUp reverses a Platega top-up on a chargeback. A chargeback
-// reverses the whole payment, so the full credited quota is clawed back.
 func RefundPlategaTopUp(tradeNo, transactionId string) (reversedQuota int, userId int, err error) {
 	note := fmt.Sprintf("Platega 拒付回收额度（订单 %s，transaction_id %s，chargeback 已在 Platega 发生）", tradeNo, transactionId)
 	return refundTopUpByReference(tradeNo, PaymentProviderPlatega, note)

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting"
 )
 
 func TestVerifyClinkWebhookSignature(t *testing.T) {
@@ -19,6 +20,18 @@ func TestVerifyClinkWebhookSignature(t *testing.T) {
 	}
 	if VerifyClinkWebhookSignature(ts, "bad-signature", body) {
 		t.Fatalf("expected invalid clink webhook signature to fail")
+	}
+}
+
+func TestClinkMissingSecretNeverBypassesAuthentication(t *testing.T) {
+	t.Setenv("CLINK_WEBHOOK_SECRET", "")
+	old := setting.ClinkSandbox
+	t.Cleanup(func() { setting.ClinkSandbox = old })
+	for _, sandbox := range []bool{false, true} {
+		setting.ClinkSandbox = sandbox
+		if VerifyClinkWebhookSignature("", "", `{"type":"order.succeeded"}`) {
+			t.Fatal("missing credentials must reject in every environment")
+		}
 	}
 }
 

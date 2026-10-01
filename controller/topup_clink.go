@@ -288,6 +288,8 @@ func ClinkWebhook(c *gin.Context) {
 	c.String(http.StatusOK, "OK")
 }
 
+var queryClinkPaidOrder = service.GetClinkOrder
+
 func handleClinkWebhook(c *gin.Context, bodyBytes []byte) error {
 	var event service.ClinkWebhookEvent
 	if err := common.Unmarshal(bodyBytes, &event); err != nil {
@@ -303,6 +305,14 @@ func handleClinkWebhook(c *gin.Context, bodyBytes []byte) error {
 		if strings.ToLower(strings.TrimSpace(order.Status)) != "success" {
 			return nil
 		}
+		official, err := queryClinkPaidOrder(c.Request.Context(), order.OrderID)
+		if err != nil {
+			return err
+		}
+		if official.MerchantReferenceID != order.MerchantReferenceID || official.OriginalCurrency != order.OriginalCurrency || !service.ClinkAmountsMatch(official.AmountSubtotal, order.AmountSubtotal) {
+			return fmt.Errorf("Clink callback conflicts with official payment")
+		}
+		order = *official
 		if err := validateClinkCurrency(order.OriginalCurrency); err != nil {
 			return err
 		}

@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -247,7 +245,7 @@ func RequestPlategaPay(c *gin.Context) {
 		return
 	}
 
-	respJSON, _ := json.Marshal(resp)
+	respJSON, _ := common.Marshal(resp)
 	plategaOrder := &model.PlategaOrder{
 		TradeNo:   tradeNo,
 		UserId:    id,
@@ -288,119 +286,57 @@ func RequestPlategaPay(c *gin.Context) {
 
 func PlategaCallback(c *gin.Context) {
 	if !isPlategaWebhookEnabled() {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Platega callback rejected reason=disabled client_ip=%s", c.ClientIP()))
 		c.String(http.StatusForbidden, "webhook disabled")
 		return
 	}
-
-	bodyBytes, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Platega callback read body failed client_ip=%s error=%q", c.ClientIP(), err.Error()))
-		c.String(http.StatusBadRequest, "bad request")
+	if err := service.AuthenticatePlategaCallback(c.Request.Header); err != nil {
+		logger.LogWarn(c.Request.Context(), "Platega callback rejected: authentication failed")
+		c.String(http.StatusUnauthorized, "unauthorized")
 		return
 	}
-
-	headersJSON, _ := json.Marshal(c.Request.Header)
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Platega callback received client_ip=%s headers=%s body=%s", c.ClientIP(), string(headersJSON), string(bodyBytes)))
-
-	if err := handlePlategaCallback(c, bodyBytes, string(headersJSON)); err != nil {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Platega callback handling issue client_ip=%s error=%q body=%s", c.ClientIP(), err.Error(), string(bodyBytes)))
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64*1024)
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.String(http.StatusBadRequest, "invalid body")
+		return
+	}
+	var payload service.PlategaCallbackPayload
+	if err := common.Unmarshal(body, &payload); err != nil {
+		c.String(http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	id, err := service.ResolvePlategaID(payload.ID, payload.TransactionId)
+	if err != nil {
+		c.String(http.StatusBadRequest, "invalid transaction identity")
+		return
+	}
+	order := model.GetPlategaOrderByTransactionId(id)
+	if order == nil {
+		c.String(http.StatusBadRequest, "unknown transaction")
+		return
+	}
+	if err := service.ValidatePlategaCallbackOrder(&payload, order); err != nil {
+		c.String(http.StatusBadRequest, "invalid payment identity or money")
+		return
+	}
+	payload.ID = id
+	payload.TransactionId = ""
+	canonical, err := common.Marshal(payload)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "serialization failed")
+		return
+	}
+	event, err := model.SavePlategaEvent(order.TradeNo, id, "callback", c.ClientIP(), string(canonical), payload.Status, 0)
+	if err != nil {
+		c.String(http.StatusServiceUnavailable, "event persistence failed")
+		return
+	}
+	if err := processPlategaEvent(c.Request.Context(), event); err != nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Platega event %d retained for retry", event.Id))
+		c.String(http.StatusServiceUnavailable, "retry scheduled")
+		return
 	}
 	c.String(http.StatusOK, "OK")
-}
-
-func handlePlategaCallback(c *gin.Context, bodyBytes []byte, headersJSON string) error {
-	var payload service.PlategaCallbackPayload
-	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
-		return fmt.Errorf("invalid callback json: %w", err)
-	}
-
-	order := resolvePlategaOrderFromCallback(&payload)
-	if order == nil {
-		return fmt.Errorf("platega order not found transactionId=%s payload=%s", payload.TransactionId, payload.Payload)
-	}
-
-	order.CallbackJSON = string(bodyBytes)
-	order.CallbackHeadersJSON = headersJSON
-	order.UpdateTime = common.GetTimestamp()
-	if err := order.Save(); err != nil {
-		return err
-	}
-
-	if amount, err := service.ParsePlategaCallbackAmount(payload.Amount); err == nil && amount > 0 {
-		if !service.PlategaAmountsMatch(order.RubAmount, amount) {
-			return fmt.Errorf("amount mismatch expected=%.2f actual=%.2f trade_no=%s", order.RubAmount, amount, order.TradeNo)
-		}
-	}
-
-	normalized := model.NormalizePlategaAPIStatus(payload.Status)
-	switch normalized {
-	case model.PlategaStatusConfirmed:
-		LockOrder(order.TradeNo)
-		defer UnlockOrder(order.TradeNo)
-		if order.PlategaStatus != model.PlategaStatusConfirmed {
-			if err := order.ApplyPlategaStatus(payload.Status); err != nil {
-				return err
-			}
-		}
-		if handled, err := tryCompleteSubscriptionPayment(order.TradeNo, string(bodyBytes), model.PaymentProviderPlatega, model.PaymentMethodPlatega); handled {
-			return err
-		}
-		return model.RechargePlatega(order.TradeNo, c.ClientIP())
-	case model.PlategaStatusCanceled:
-		LockOrder(order.TradeNo)
-		defer UnlockOrder(order.TradeNo)
-		if err := order.ApplyPlategaStatus(payload.Status); err != nil {
-			return err
-		}
-		if handled, err := tryExpireSubscriptionPayment(order.TradeNo, model.PaymentProviderPlatega); handled {
-			return err
-		}
-		return model.MarkTopUpCanceledForPlatega(order.TradeNo)
-	case model.PlategaStatusChargeback:
-		LockOrder(order.TradeNo)
-		defer UnlockOrder(order.TradeNo)
-		if err := order.ApplyPlategaStatus(payload.Status); err != nil {
-			return err
-		}
-		if subscriptionOrder := model.GetSubscriptionOrderByTradeNo(order.TradeNo); subscriptionOrder != nil {
-			if handled, err := tryReverseSubscriptionPayment(order.TradeNo, subscriptionOrder.Money, "chargeback", string(bodyBytes)); handled {
-				return err
-			}
-		}
-		// Chargeback = money reversed by Platega. Claw back the credited quota.
-		reversed, userID, err := model.RefundPlategaTopUp(order.TradeNo, order.PlategaTransactionId)
-		if err != nil {
-			if errors.Is(err, model.ErrTopUpStatusInvalid) {
-				// Order was never success (still pending/failed/already refunded) —
-				// nothing credited to reverse. Record and move on.
-				logger.LogWarn(c.Request.Context(), fmt.Sprintf("Platega chargeback 订单非 success 无需回收 trade_no=%s transaction_id=%s", order.TradeNo, order.PlategaTransactionId))
-				return nil
-			}
-			logger.LogError(c.Request.Context(), fmt.Sprintf("Platega chargeback 回收额度失败 trade_no=%s transaction_id=%s error=%q — 需人工处理", order.TradeNo, order.PlategaTransactionId, err.Error()))
-			return err
-		}
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Platega chargeback 已回收额度 trade_no=%s transaction_id=%s user_id=%d 回收额度=%d", order.TradeNo, order.PlategaTransactionId, userID, reversed))
-		return nil
-	default:
-		return nil
-	}
-}
-
-func resolvePlategaOrderFromCallback(payload *service.PlategaCallbackPayload) *model.PlategaOrder {
-	if payload == nil {
-		return nil
-	}
-	if order := model.GetPlategaOrderByTransactionId(payload.TransactionId); order != nil {
-		return order
-	}
-	if order := model.GetPlategaOrderByPayload(payload.Payload); order != nil {
-		return order
-	}
-	if order := model.GetPlategaOrderByTradeNo(payload.Payload); order != nil {
-		return order
-	}
-	return nil
 }
 
 func AdminListPlategaOrders(c *gin.Context) {
@@ -416,6 +352,10 @@ func AdminListPlategaOrders(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
+	}
+	// Legacy rows may contain secret headers. Never expose these through admin UI.
+	for _, order := range orders {
+		order.CallbackHeadersJSON = `{"legacy_headers":"redacted"}`
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": orders, "total": total, "page": page, "page_size": pageSize}})
 }
@@ -439,9 +379,17 @@ func AdminQueryPlategaStatus(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "order not found"})
 		return
 	}
+	if (req.TradeNo != "" && req.TradeNo != order.TradeNo) || (req.TransactionId != "" && req.TransactionId != order.PlategaTransactionId) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "order identity conflict"})
+		return
+	}
 	status, err := service.GetPlategaTransactionStatus(c.Request.Context(), order.PlategaTransactionId)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if err := service.ValidatePlategaAPIOrder(status, order); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "API payment verification failed"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": status})
@@ -450,39 +398,36 @@ func AdminQueryPlategaStatus(c *gin.Context) {
 func AdminRetryPlategaCallback(c *gin.Context) {
 	var req plategaAdminActionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "invalid params"})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid params"})
 		return
 	}
 	order := model.GetPlategaOrderByTradeNo(req.TradeNo)
-	if order == nil {
+	if order == nil && req.TradeNo == "" {
 		order = model.GetPlategaOrderByTransactionId(req.TransactionId)
 	}
-	if order == nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "order not found"})
+	if order == nil || (req.TransactionId != "" && req.TransactionId != order.PlategaTransactionId) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "order identity conflict"})
 		return
 	}
+	reconcileAdminPlategaOrder(c, order)
+}
 
-	status, err := service.GetPlategaTransactionStatus(c.Request.Context(), order.PlategaTransactionId)
+func reconcileAdminPlategaOrder(c *gin.Context, order *model.PlategaOrder) {
+	// Admin reconciliation is an authenticated API query, never a fabricated
+	// callback populated with locally guessed amount/currency/status.
+	payload, _ := common.Marshal(map[string]any{"trade_no": order.TradeNo, "transaction_id": order.PlategaTransactionId, "requested_at": common.GetTimestamp()})
+	event, err := model.SavePlategaEvent(order.TradeNo, order.PlategaTransactionId, "admin-query", c.ClientIP(), string(payload), "", c.GetInt("id"))
+	if err == nil {
+		err = processPlategaEvent(c.Request.Context(), event)
+	}
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "verification failed; event retained for retry"})
 		return
 	}
-
-	payload := service.PlategaCallbackPayload{
-		TransactionId: order.PlategaTransactionId,
-		Status:        status.Status,
-		Payload:       order.Payload,
-		Currency:      "RUB",
-		PaymentMethod: json.RawMessage(`"` + model.PlategaPaymentMethodSBPQR + `"`),
-	}
-	if status.Amount > 0 {
-		amountBytes, _ := json.Marshal(status.Amount)
-		payload.Amount = amountBytes
-	}
-	bodyBytes, _ := json.Marshal(payload)
-	if err := handlePlategaCallback(c, bodyBytes, `{"source":"admin-retry"}`); err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+	var saved model.PlategaEvent
+	if err := model.DB.First(&saved, event.Id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "processed"})
+	c.JSON(http.StatusOK, gin.H{"success": saved.Status == "done" && model.NormalizePlategaAPIStatus(saved.APIStatus) == model.PlategaStatusConfirmed, "message": saved.Status, "data": saved})
 }

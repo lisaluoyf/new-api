@@ -282,9 +282,6 @@ func applyClinkAuthHeaders(req *http.Request) error {
 func VerifyClinkWebhookSignature(timestamp, signature, payload string) bool {
 	secret := ClinkWebhookSecret()
 	if secret == "" {
-		if setting.ClinkSandbox {
-			return true
-		}
 		return false
 	}
 	if strings.TrimSpace(timestamp) == "" || strings.TrimSpace(signature) == "" {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -323,7 +324,7 @@ func completeGPTSubscriptionOrderWithSourceTx(tx *gorm.DB, order *SubscriptionOr
 	switch order.OrderType {
 	case "renewal":
 		var current UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&current).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&current).Error; err != nil {
 			return nil, err
 		}
 		base := now
@@ -352,7 +353,7 @@ func completeGPTSubscriptionOrderWithSourceTx(tx *gorm.DB, order *SubscriptionOr
 		return &current, nil
 	case "upgrade":
 		var current UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&current).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", order.PreviousSubscriptionId, order.UserId).First(&current).Error; err != nil {
 			return nil, err
 		}
 		if current.Status != "active" || current.EndTime <= now {
