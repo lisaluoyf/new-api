@@ -2,6 +2,9 @@ package controller
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/common"
+	"github.com/gin-gonic/gin"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -203,4 +206,36 @@ func TestReconciliationEnabledProvidersAndHistoricalMethods(t *testing.T) {
 		require.Equal(t, method, normalizeReconciliationProvider("", method))
 	}
 	require.Equal(t, "unknown", normalizeReconciliationProvider("", "unrecognized-test-method"))
+}
+
+func TestReconciliationHistoricalMatchedCountExcludesCoverageAndPagination(t *testing.T) {
+	db := setupCryptoPersistenceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.PaymentReconciliationRun{}, &model.PaymentReconciliationJob{}, &model.PaymentReconciliationItem{}))
+	run := model.PaymentReconciliationRun{Day: "2026-09-30", Provider: "epay", CheckedCount: 3, UnverifiedCount: 2, Status: "incomplete"}
+	require.NoError(t, db.Create(&run).Error)
+	require.NoError(t, db.Create(&model.PaymentReconciliationJob{Day: run.Day, Provider: run.Provider, RunID: run.ID, Status: "done"}).Error)
+	for _, item := range []model.PaymentReconciliationItem{
+		{RunID: run.ID, Result: "matched", Purpose: "wallet"},
+		{RunID: run.ID, Result: "matched", Purpose: "wallet"},
+		{RunID: run.ID, Result: "unverified", Purpose: "wallet"},
+		{RunID: run.ID, Result: "unverified", Purpose: "coverage"},
+	} {
+		require.NoError(t, db.Create(&item).Error)
+	}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest("GET", "/api/payment-reconciliation/?start_date=2026-09-30&end_date=2026-09-30&provider=all&page=2", nil)
+	GetPaymentReconciliation(ctx)
+	require.Equal(t, 200, recorder.Code)
+	var response struct {
+		Success bool
+		Runs    []model.PaymentReconciliationRun
+		Items   []model.PaymentReconciliationItem
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Len(t, response.Runs, 1)
+	require.Equal(t, 2, response.Runs[0].MatchedCount)
+	require.Equal(t, 3, response.Runs[0].CheckedCount)
+	require.Empty(t, response.Items)
 }

@@ -22,6 +22,7 @@ func TestPaymentReconciliationExactCurrencyTotals(t *testing.T) {
 	}
 	r := SummarizePaymentReconciliation(rows)
 	require.Equal(t, "incomplete", r.Status)
+	require.Equal(t, 2, r.MatchedCount)
 	require.Equal(t, 4, r.LocalPaidCount)
 	require.Equal(t, 2, r.OfficialPaidCount)
 	require.Equal(t, 1, r.DifferenceCount)
@@ -134,4 +135,17 @@ func TestPaymentReconciliationSkipsDisabledHistoricalJobs(t *testing.T) {
 	var count int64
 	require.NoError(t, DB.Model(&PaymentReconciliationJob{}).Where("provider IN ? AND status = ? AND attempts = 0", []string{"waffo", "unknown", "stripe", "creem"}, "queued").Count(&count).Error)
 	require.EqualValues(t, 4, count)
+}
+
+func TestPaymentReconciliationCoverageDoesNotCountAsAnOrder(t *testing.T) {
+	result := SummarizePaymentReconciliation([]PaymentReconciliationItem{
+		{Purpose: "wallet", Result: "matched"},
+		{Purpose: "wallet", Result: "matched"},
+		{Purpose: "wallet", Result: "unverified"},
+		{Purpose: "coverage", Result: "unverified"},
+	})
+	require.Equal(t, 2, result.MatchedCount)
+	require.Equal(t, 3, result.CheckedCount)
+	require.Equal(t, 2, result.UnverifiedCount)
+	require.Equal(t, "incomplete", result.Status)
 }

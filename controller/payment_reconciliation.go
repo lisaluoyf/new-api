@@ -116,8 +116,24 @@ func GetPaymentReconciliation(c *gin.Context) {
 			return
 		}
 	}
+	// Count successful matches from immutable audit items, including historical runs.
+	matchedCounts := map[int]int{}
+	if len(ids) > 0 {
+		var counts []struct {
+			RunID        int
+			MatchedCount int
+		}
+		if model.DB.Model(&model.PaymentReconciliationItem{}).Select("run_id, COUNT(*) AS matched_count").Where("run_id IN ? AND result = ? AND purpose <> ?", ids, "matched", "coverage").Group("run_id").Scan(&counts).Error != nil {
+			common.ApiErrorMsg(c, "Could not count reconciled orders")
+			return
+		}
+		for _, count := range counts {
+			matchedCounts[count.RunID] = count.MatchedCount
+		}
+	}
 	truncated := int64(page*100) < itemsTotal
 	for i := range runs {
+		runs[i].MatchedCount = matchedCounts[runs[i].ID]
 		runs[i].Totals = []model.PaymentReconciliationTotal{}
 		_ = common.UnmarshalJsonStr(runs[i].TotalsJSON, &runs[i].Totals)
 		sort.Slice(runs[i].Totals, func(a, b int) bool { return runs[i].Totals[a].Currency < runs[i].Totals[b].Currency })

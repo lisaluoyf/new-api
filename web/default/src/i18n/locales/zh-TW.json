@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Matched / Checked Orders": "成功對帳 / 核查訂單數",
     "reconciliation.problem.official_statement_query_conflict": "上游成功帳單與查單結果衝突，需向支付渠道核查。",
     "Start date (Beijing time)": "開始日期（北京時間）",
     "End date (Beijing time)": "結束日期（北京時間）",

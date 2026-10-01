@@ -73,6 +73,21 @@ export function PaymentReconciliationPage() {
   const running = jobs.some(
     (j) => j.status === 'running' || j.status === 'queued'
   )
+  const checked = runs.reduce((sum, r) => sum + r.checked_count, 0)
+  const matched = runs.reduce((sum, r) => sum + r.matched_count, 0)
+  const allMatched =
+    !query.isError &&
+    !query.isLoading &&
+    !running &&
+    jobs.length > 0 &&
+    runs.length === jobs.length &&
+    runs.every((r) => r.status === 'matched') &&
+    matched === checked &&
+    differences === 0 &&
+    unchecked === 0
+  const progressClass = allMatched
+    ? 'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200'
+    : 'border-yellow-300 bg-yellow-50 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200'
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>
@@ -172,8 +187,9 @@ export function PaymentReconciliationPage() {
         <div className='mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4'>
           {[
             {
-              label: t('Orders Checked'),
-              value: runs.reduce((sum, r) => sum + r.checked_count, 0),
+              label: t('Matched / Checked Orders'),
+              value: `${matched}/${checked}`,
+              className: progressClass,
             },
             {
               label: t('Local Successful Payments'),
@@ -182,8 +198,15 @@ export function PaymentReconciliationPage() {
             { label: t('Payment Differences'), value: differences },
             { label: t('Awaiting Verification'), value: unchecked },
           ].map((card) => (
-            <div key={card.label} className='rounded-lg border p-4'>
-              <p className='text-muted-foreground text-sm'>{card.label}</p>
+            <div
+              key={card.label}
+              className={`rounded-lg border p-4 ${card.className ?? ''}`}
+            >
+              <p
+                className={`text-sm ${card.className ? '' : 'text-muted-foreground'}`}
+              >
+                {card.label}
+              </p>
               <p className='mt-2 text-2xl font-semibold tabular-nums'>
                 {card.value}
               </p>
@@ -207,7 +230,7 @@ export function PaymentReconciliationPage() {
                 {[
                   'Date',
                   'Payment Channel',
-                  'Orders Checked',
+                  'Matched / Checked Orders',
                   'Local Successful Payments',
                   'Official Successful Payments',
                   'Payment Amounts',
@@ -223,7 +246,9 @@ export function PaymentReconciliationPage() {
                 <TableRow key={run.id}>
                   <TableCell>{run.day}</TableCell>
                   <TableCell>{label(run.provider)}</TableCell>
-                  <TableCell>{run.checked_count}</TableCell>
+                  <TableCell className='font-medium tabular-nums'>
+                    {run.matched_count}/{run.checked_count}
+                  </TableCell>
                   <TableCell>{run.local_paid_count}</TableCell>
                   <TableCell>{run.official_paid_count}</TableCell>
                   <TableCell className='min-w-60'>
@@ -238,10 +263,13 @@ export function PaymentReconciliationPage() {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={
-                        run.difference_count || run.unverified_count
-                          ? 'destructive'
-                          : 'outline'
+                      variant={run.difference_count ? 'destructive' : 'outline'}
+                      className={
+                        run.status === 'matched'
+                          ? 'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200'
+                          : run.difference_count
+                            ? undefined
+                            : 'border-yellow-300 bg-yellow-50 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200'
                       }
                     >
                       {run.checked_count === 0 && run.status === 'matched'

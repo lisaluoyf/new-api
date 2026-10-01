@@ -49,6 +49,7 @@ type PaymentReconciliationRun struct {
 	ActorID           int                          `json:"actor_id"`
 	StartedAt         int64                        `json:"started_at"`
 	FinishedAt        int64                        `json:"finished_at"`
+	MatchedCount      int                          `gorm:"-" json:"matched_count"`
 	CheckedCount      int                          `json:"checked_count"`
 	LocalPaidCount    int                          `json:"local_paid_count"`
 	OfficialPaidCount int                          `json:"official_paid_count"`
@@ -228,6 +229,9 @@ func SummarizePaymentReconciliation(items []PaymentReconciliationItem) PaymentRe
 			if e == nil {
 				official[i.OfficialCurrency] = official[i.OfficialCurrency].Add(a)
 			}
+		}
+		if i.Result == "matched" && i.Purpose != "coverage" {
+			r.MatchedCount++
 		}
 		if i.Result == "difference" {
 			r.DifferenceCount++
