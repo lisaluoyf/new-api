@@ -362,6 +362,19 @@ func mergeReconciliationStatement(provider string, items []model.PaymentReconcil
 					}
 
 					i = classifyReconciliationOrder(row, proof)
+					// An independently enumerated successful statement remains
+					// in scope even when a second query fails or contradicts it.
+					if !i.OfficialPaid {
+						i.OfficialPaid = true
+						i.OfficialID = payment.ID
+						i.OfficialStatus = payment.Status
+						i.OfficialAmount = payment.Amount
+						i.OfficialCurrency = payment.Currency
+						if proof.known && !proof.paid && proof.problem == "" {
+							i.Result = "unverified"
+							i.Problem = "official_statement_query_conflict"
+						}
+					}
 					if i.Result == "matched" && i.LocalPaid {
 						i.Result = "difference"
 						i.Problem = "official_paid_local_date_mismatch"
@@ -390,11 +403,13 @@ func normalizeReconciliationProvider(provider, method string) string {
 func loadReconciliationCandidates(start, end int64, provider string) ([]reconciliationCandidate, error) {
 	var tops []model.TopUp
 	var subs []model.SubscriptionOrder
-	scope := "(create_time >= ? AND create_time < ?) OR (complete_time >= ? AND complete_time < ?)"
-	if err := model.DB.Where(scope, start, end, start, end).Find(&tops).Error; err != nil {
+	// Start with local successes only. Failed/pending/missing local orders
+	// enter independently through the provider's successful payment statement.
+	scope := "status = ? AND ((complete_time >= ? AND complete_time < ?) OR ((complete_time IS NULL OR complete_time <= 0) AND create_time >= ? AND create_time < ?))"
+	if err := model.DB.Where(scope, common.TopUpStatusSuccess, start, end, start, end).Find(&tops).Error; err != nil {
 		return nil, err
 	}
-	if err := model.DB.Where(scope, start, end, start, end).Find(&subs).Error; err != nil {
+	if err := model.DB.Where(scope, common.TopUpStatusSuccess, start, end, start, end).Find(&subs).Error; err != nil {
 		return nil, err
 	}
 	rows := map[string]reconciliationCandidate{}

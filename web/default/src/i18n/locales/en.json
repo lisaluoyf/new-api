@@ -1,5 +1,6 @@
 {
   "translation": {
+    "reconciliation.problem.official_statement_query_conflict": "The successful statement conflicts with the order query; verify with the provider.",
     "Start date (Beijing time)": "Start date (Beijing time)",
     "End date (Beijing time)": "End date (Beijing time)",
     "Clear dates": "Clear dates",
@@ -5043,7 +5044,7 @@
     "Key Rate": "Key Rate",
     "First Topup Clicks": "First Topup Clicks",
     "Daily Reconciliation": "Daily Reconciliation",
-    "Daily reconciliation schedule and scope": "Runs daily at 08:30 UTC+8. Checks payments completed that day and other orders created that day. Reconciliation never changes balances or subscriptions.",
+    "Daily reconciliation schedule and scope": "Runs daily at 08:30 UTC+8. Compares only locally successful payments with all upstream successful payments for the selected day, including upstream successes missing or unsuccessful locally. Reconciliation never changes balances or subscriptions.",
     "Reconciliation coverage notice": "Checks run in both directions when the official statement is available. Provider-paid orders missing locally are listed as issues. Failed or unavailable statement access means incomplete reconciliation. Amounts are separated by currency; missing local orders show the supplier amount.",
     "Epay (Alipay / WeChat Pay)": "Epay (Alipay / WeChat Pay)",
     "On-chain payments": "On-chain payments",

@@ -1,5 +1,6 @@
 {
   "translation": {
+    "reconciliation.problem.official_statement_query_conflict": "上游成功账单与查单结果冲突，需向支付渠道核查。",
     "Start date (Beijing time)": "开始日期（北京时间）",
     "End date (Beijing time)": "结束日期（北京时间）",
     "Clear dates": "清除时间",
@@ -5081,7 +5082,7 @@
     "Key Rate": "Key比例",
     "First Topup Clicks": "首充点",
     "Daily Reconciliation": "日对账",
-    "Daily reconciliation schedule and scope": "每天北京时间 08:30 核对昨日完成支付的订单，并检查昨日创建的其他订单。对账不会修改余额或订阅。",
+    "Daily reconciliation schedule and scope": "每天北京时间 08:30 双向核对昨日后台支付成功订单与上游全部支付成功订单，包括上游成功但后台失败或缺失的订单。双方均未成功的订单不参与对账，对账不会修改余额或订阅。",
     "Reconciliation coverage notice": "取得官方账单后双向核对：上游成功但后台失败或无订单也列为问题。账单获取失败或接口不可用时显示未完成双向核对，不能判为完全一致。金额按币种汇总；无本地订单显示上游账单金额。",
     "Epay (Alipay / WeChat Pay)": "易支付（支付宝 / 微信）",
     "On-chain payments": "链上支付",

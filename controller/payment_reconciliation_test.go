@@ -105,7 +105,8 @@ func TestReconciliationReadsWalletAndSubscriptionsWithoutDuplicateOrMutation(t *
 	require.NoError(t, db.Create(&model.PlategaOrder{TradeNo: "subscription", RubAmount: 6900}).Error)
 	rows, e := loadReconciliationCandidates(start, end, "epay")
 	require.NoError(t, e)
-	require.Len(t, rows, 2)
+	require.Len(t, rows, 1)
+	require.Equal(t, "wallet", rows[0].trade)
 	rows, e = loadReconciliationCandidates(start, end, "platega")
 	require.NoError(t, e)
 	require.Len(t, rows, 1)
@@ -137,4 +138,54 @@ func TestUpstreamSuccessFindsFailedOrderOutsideLocalDay(t *testing.T) {
 	require.NoError(t, e)
 	require.Len(t, items, 2)
 	require.Equal(t, "official_duplicate_payment_for_order", items[1].Problem)
+}
+
+func TestReconciliationSuccessUnionExcludesUnpaidButFindsUpstreamSuccess(t *testing.T) {
+	db := setupCryptoPersistenceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}, &model.PaymentQueryReference{}))
+	start := time.Date(2026, 9, 30, 0, 0, 0, 0, reconciliationTimezone).Unix()
+	end := start + 86400
+	for _, r := range []model.TopUp{
+		{TradeNo: "paid", Money: 10, Status: "success", PaymentProvider: "epay", CompleteTime: start, CreateTime: start - 86400},
+		{TradeNo: "pending", Money: 10, Status: "pending", PaymentProvider: "epay", CreateTime: start},
+		{TradeNo: "failed", Money: 10, Status: "failed", PaymentProvider: "epay", CreateTime: start},
+		{TradeNo: "canceled", Money: 10, Status: "canceled", PaymentProvider: "epay", CreateTime: start},
+		{TradeNo: "refunded", Money: 10, Status: "refunded", PaymentProvider: "epay", CompleteTime: start, CreateTime: start},
+		{TradeNo: "next-day", Money: 10, Status: "success", PaymentProvider: "epay", CompleteTime: end, CreateTime: start},
+	} {
+		require.NoError(t, db.Create(&r).Error)
+	}
+	rows, err := loadReconciliationCandidates(start, end, "epay")
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "paid", rows[0].trade)
+	items := []model.PaymentReconciliationItem{classifyReconciliationOrder(rows[0], reconciliationProof{id: "p1", status: "CLOSED", known: true})}
+	items, err = mergeReconciliationStatement("epay", items, []service.StatementPayment{
+		{ID: "p2", TradeNo: "pending", Status: "SUCCESS", Amount: "10", Currency: "CNY"},
+		{ID: "p3", TradeNo: "failed", Status: "SUCCESS", Amount: "10", Currency: "CNY"},
+		{ID: "p4", TradeNo: "missing", Status: "SUCCESS", Amount: "10", Currency: "CNY"},
+	})
+	require.NoError(t, err)
+	require.Len(t, items, 4)
+	summary := model.SummarizePaymentReconciliation(items)
+	require.Equal(t, 1, summary.LocalPaidCount)
+	require.Equal(t, 3, summary.OfficialPaidCount)
+	require.Equal(t, 4, summary.DifferenceCount)
+	for _, i := range items {
+		require.True(t, i.LocalPaid || i.OfficialPaid)
+	}
+}
+
+func TestReconciliationUpstreamSuccessRemainsInScopeWhenSecondQueryUnavailable(t *testing.T) {
+	db := setupCryptoPersistenceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}, &model.PaymentQueryReference{}, &model.PlategaOrder{}))
+	require.NoError(t, db.Create(&model.TopUp{TradeNo: "anonymous-missing-query-id", Status: "failed", PaymentProvider: "platega", Money: 5}).Error)
+	items, err := mergeReconciliationStatement("platega", nil, []service.StatementPayment{{ID: "anonymous-paid-id", TradeNo: "anonymous-missing-query-id", Status: "CONFIRMED", Amount: "453.26", Currency: "RUB"}})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.False(t, items[0].LocalPaid)
+	require.True(t, items[0].OfficialPaid)
+	require.Equal(t, "unverified", items[0].Result)
+	require.Equal(t, "missing_official_transaction_id", items[0].Problem)
+	require.Equal(t, 1, model.SummarizePaymentReconciliation(items).OfficialPaidCount)
 }
