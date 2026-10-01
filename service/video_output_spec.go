@@ -87,7 +87,7 @@ func backfillVideoOutputSpec(task *model.Task, result *relaycommon.TaskInfo) {
 		return
 	}
 	name := strings.ToLower(taskModelName(task))
-	if name != "seedance-2.0" && name != "doubao-seedance-2.0" && name != "seedance-2.5" && name != "minimax-h3" {
+	if !IsSeedance20Variant(name) && name != "seedance-2.0" && name != "doubao-seedance-2.0" && name != "seedance-2.5" && name != "minimax-h3" {
 		return
 	}
 	width, height := 0, 0

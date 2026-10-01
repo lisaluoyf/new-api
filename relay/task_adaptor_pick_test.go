@@ -11,7 +11,7 @@ import (
 )
 
 func TestSeedance20SelectsApimartBeforeModelMapping(t *testing.T) {
-	for _, name := range []string{"seedance-2.0", "doubao-seedance-2.0"} {
+	for _, name := range []string{"seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini", "doubao-seedance-2.0"} {
 		info := &relaycommon.RelayInfo{
 			OriginModelName: name,
 			ChannelMeta:     &relaycommon.ChannelMeta{ChannelBaseUrl: "https://api.apib.ai", ChannelType: constant.ChannelTypeOpenAI},

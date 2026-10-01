@@ -1738,7 +1738,7 @@ func RelayTask(c *gin.Context) {
 		}
 		if task.Platform == constant.TaskPlatformApimartVideo {
 			name := strings.ToLower(relayInfo.OriginModelName)
-			if name == "seedance-2.0" || name == "doubao-seedance-2.0" || name == "seedance-2.5" {
+			if service.IsSeedance20Variant(name) || name == "seedance-2.0" || name == "doubao-seedance-2.0" || name == "seedance-2.5" {
 				if base, ok := ratio_setting.GetVideoModelBasePrice(name); ok && base > 0 && relayInfo.PriceData.ModelPrice > 0 {
 					task.PrivateData.BillingContext.ProviderCostMultiplier = relayInfo.PriceData.ModelPrice / base
 				}
@@ -1747,6 +1747,10 @@ func RelayTask(c *gin.Context) {
 		if snapshot, ok := c.Get("seedance25_normalized_request"); ok {
 			task.PrivateData.SeedanceRequest = snapshot.(map[string]any)
 			task.PrivateData.Key = common.GetContextKeyString(c, constant.ContextKeyChannelKey)
+		}
+		if snapshot, ok := c.Get("seedance20_normalized_request"); ok {
+			task.PrivateData.SeedanceRequest = snapshot.(map[string]any)
+			task.PrivateData.SeedanceRequest["video_input_seconds"] = c.GetInt("seedance_video_input_seconds")
 		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData
@@ -1776,7 +1780,7 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
-	if common.GetContextKeyString(c, constant.ContextKeyOriginalModel) == "seedance-2.5" {
+	if name := common.GetContextKeyString(c, constant.ContextKeyOriginalModel); name == "seedance-2.5" || service.IsSeedance20Variant(name) {
 		// Transport and request-building failures can also contain private URLs.
 		taskErr.Message = service.PublicTaskFailure(&model.Task{
 			Status: model.TaskStatusFailure, FailReason: taskErr.Message,

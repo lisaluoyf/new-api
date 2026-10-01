@@ -142,6 +142,9 @@ func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *rela
 		return 0
 	}
 	modelName := motionControlModelName(task)
+	if isSeedance20Variant(modelName) {
+		return seedanceVariantQuota(task, taskResult)
+	}
 	if isSeedance20(modelName) || normalizeModel(modelName) == ModelSeedance25 {
 		return seedanceActualQuota(task)
 	}
@@ -237,4 +240,28 @@ func motionModeFromTask(task *model.Task) string {
 		}
 	}
 	return "std"
+}
+
+// Variant tariffs are frozen at submission. Provider procurement discounts
+// affect channel costs, never the configured customer tariff.
+func seedanceVariantQuota(task *model.Task, result *relaycommon.TaskInfo) int {
+	bc := task.PrivateData.BillingContext
+	if bc == nil || bc.ModelPrice <= 0 {
+		return 0
+	}
+	seconds := service.Seedance20VariantBillableSeconds(task)
+	if seconds <= 0 {
+		return 0
+	}
+	price := bc.ModelPrice
+	for key, ratio := range bc.OtherRatios {
+		if key != "seconds" && ratio > 0 {
+			price *= ratio
+		}
+	}
+	group := bc.GroupRatio
+	if group <= 0 {
+		group = 1
+	}
+	return int(math.Round(price * float64(seconds) * group * common.QuotaPerUnit))
 }

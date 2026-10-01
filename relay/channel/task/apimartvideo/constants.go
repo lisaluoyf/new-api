@@ -8,6 +8,8 @@ const (
 	ModelKlingV3MotionControl = "kling-v3-motion-control"
 	ModelDoubaoSeedance20     = "doubao-seedance-2.0"
 	ModelSeedance20           = "seedance-2.0"
+	ModelSeedance20Fast       = "seedance-2.0-fast"
+	ModelSeedance20Mini       = "seedance-2.0-mini"
 	ModelSeedance25           = "seedance-2.5"
 	ModelGrokImagineVideo15   = "grok-imagine-video-1.5"
 	ModelGrokVideo10s         = "grok-1.5-video-10s"
@@ -26,6 +28,7 @@ var ModelList = []string{
 	"sora-2-pro",
 	ModelDoubaoSeedance20,
 	ModelSeedance20,
+	ModelSeedance20Fast, ModelSeedance20Mini,
 	ModelSeedance25,
 	ModelGrokImagineVideo15,
 	ModelGrokVideo10s,
@@ -39,7 +42,7 @@ var ChannelName = "apimart-video"
 
 func IsVideoModel(model string) bool {
 	switch strings.TrimSpace(model) {
-	case "sora", "sora-2", "sora-2-pro", ModelSeedance20, ModelDoubaoSeedance20, ModelSeedance25,
+	case "sora", "sora-2", "sora-2-pro", ModelSeedance20, ModelSeedance20Fast, ModelSeedance20Mini, ModelDoubaoSeedance20, ModelSeedance25,
 		ModelGrokImagineVideo15, ModelGrokVideo10s, ModelGrokVideo15s, ModelGrokVideo6s,
 		ModelKlingV3Omni, ModelKlingV3MotionControl:
 		return true
@@ -55,7 +58,11 @@ func IsMotionControlModel(model string) bool {
 // The legacy name remains valid for upstream mappings and persisted tasks.
 func isSeedance20(model string) bool {
 	model = strings.TrimSpace(model)
-	return model == ModelSeedance20 || model == ModelDoubaoSeedance20
+	return model == ModelSeedance20 || model == ModelDoubaoSeedance20 || isSeedance20Variant(model)
+}
+
+func isSeedance20Variant(model string) bool {
+	return model == ModelSeedance20Fast || model == ModelSeedance20Mini
 }
 
 func IsChannel(baseURL string) bool {
@@ -72,6 +79,9 @@ func normalizeModel(model string) string {
 }
 
 func normalizeVideoDuration(model string, seconds int) int {
+	if isSeedance20Variant(model) && seconds == 0 {
+		return 5
+	}
 	if normalizeModel(model) == ModelSeedance25 {
 		if seconds == -1 {
 			return -1

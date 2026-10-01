@@ -111,6 +111,8 @@ func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {
 		switch strings.ToLower(size) {
 		case "480p", "720p", "1080p", "4k":
 			sizeResolution = strings.ToLower(size)
+		case "adaptive", "4:3", "1:1", "3:4", "21:9":
+			sizeAspect = size
 		case "16:9", "9:16", "portrait", "landscape":
 			_, sizeAspect = sizeToApimart(size)
 		case "1280x720", "720x1280", "1792x1024", "1024x1792":
@@ -149,6 +151,9 @@ func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {
 	model = normalizeModel(model)
 	if isSeedance20(model) || model == ModelSeedance25 {
 		valid := resolution == "480p" || resolution == "720p" || resolution == "1080p" || isSeedance20(model) && resolution == "4k"
+		if isSeedance20Variant(model) {
+			valid = resolution == "480p" || resolution == "720p"
+		}
 		if !valid {
 			return nil, fmt.Errorf("unsupported %s resolution %q", model, resolution)
 		}
@@ -188,7 +193,7 @@ func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if isSeedance20(model) && (n < 4 || n > 30) || model == ModelSeedance25 && n != -1 && (n < 4 || n > 30) {
+		if isSeedance20Variant(model) && (n < 4 || n > 15) || isSeedance20(model) && (n < 4 || n > 30) || model == ModelSeedance25 && n != -1 && (n < 4 || n > 30) {
 			return nil, fmt.Errorf("unsupported %s duration", model)
 		}
 		fields["duration"] = n
@@ -206,9 +211,28 @@ func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {
 			}
 		}
 	}
+	if isSeedance20Variant(model) {
+		if _, ok := fields["duration"]; !ok {
+			fields["duration"] = 5
+		}
+		if _, ok := fields["generate_audio"]; !ok && fields["audio"] == nil {
+			fields["generate_audio"] = true
+		}
+		for _, key := range []string{"generate_audio", "return_last_frame", "nsfw_check"} {
+			if v, ok := fields[key]; ok {
+				if _, ok := v.(bool); !ok {
+					return nil, fmt.Errorf("%s must be a boolean", key)
+				}
+			}
+		}
+		c.Set("seedance20_normalized_request", fields)
+	}
 	fields["resolution"], fields["aspect_ratio"] = resolution, aspect
 	delete(fields, "ratio")
 	delete(fields, "metadata")
+	if err := validateSeedanceVariantFields(fields); err != nil {
+		return nil, err
+	}
 	c.Set("video_requested_spec", requested)
 	c.Set("apimart_normalized_request", fields)
 	return common.Marshal(fields)

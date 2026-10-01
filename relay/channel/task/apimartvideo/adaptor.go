@@ -112,6 +112,16 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if seconds <= 0 {
 		seconds, _ = strconv.Atoi(req.Seconds)
 	}
+	if isSeedance20Variant(req.Model) {
+		if seconds != 0 && (seconds < 4 || seconds > 15) {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported %s duration", req.Model), "invalid_request", http.StatusBadRequest)
+		}
+		payload := openAIToApimart(req, req.Model)
+		if payload.Resolution != "480p" && payload.Resolution != "720p" {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported %s resolution", req.Model), "invalid_request", http.StatusBadRequest)
+		}
+		c.Set("seedance20_normalized_request", map[string]any{"model": req.Model, "duration": normalizeVideoDuration(req.Model, seconds), "resolution": payload.Resolution})
+	}
 	seconds = normalizeVideoDuration(req.Model, seconds)
 	if normalizeModel(req.Model) == ModelSeedance25 && seconds == -1 {
 		seconds = 30
@@ -210,7 +220,7 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 			"auto_duration": body.Model == ModelSeedance25 && body.Duration == -1,
 		},
 	}
-	if body.Model == ModelSeedance25 {
+	if body.Model == ModelSeedance25 || isSeedance20Variant(body.Model) {
 		var fields map[string]any
 		_ = common.Unmarshal(raw, &fields)
 		store.Metadata["audio"] = fields["generate_audio"]
@@ -731,9 +741,13 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 		out["url"] = taskcommon.BuildProxyURL(task.TaskID)
 	}
 	if task.Status == model.TaskStatusFailure {
+		message := "Video generation failed"
+		if service.IsSeedance20Variant(task.Properties.OriginModelName) {
+			message = service.PublicTaskFailure(task)
+		}
 		out["error"] = map[string]string{
 			"code":    "task_failed",
-			"message": "Video generation failed",
+			"message": message,
 		}
 	}
 	service.AddSeedanceResultFields(task, out)

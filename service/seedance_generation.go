@@ -412,8 +412,12 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 	if !ok {
 		return fmt.Errorf("video_urls must be an array of strings")
 	}
-	if len(urls) > 10 {
-		return fmt.Errorf("video_urls supports at most 10 videos")
+	maximum, count := 30, 10
+	if name, _ := fields["model"].(string); IsSeedance20Variant(name) {
+		maximum, count = 15, 3
+	}
+	if len(urls) > count {
+		return fmt.Errorf("video_urls supports at most %d videos", count)
 	}
 	total := 0
 	for i, v := range urls {
@@ -454,13 +458,13 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 		if fields["omni_reference_task_type"] == "edit" {
 			minimum = 4
 		}
-		if seconds < minimum || seconds > 30 {
-			return fmt.Errorf("video_urls[%d] duration must be from %d to 30 seconds", i, minimum)
+		if seconds < minimum || seconds > maximum {
+			return fmt.Errorf("video_urls[%d] duration must be from %d to %d seconds", i, minimum, maximum)
 		}
 		total += seconds
 	}
-	if total > 30 {
-		return fmt.Errorf("video_urls total duration must not exceed 30 seconds")
+	if total > maximum {
+		return fmt.Errorf("video_urls total duration must not exceed %d seconds", maximum)
 	}
 	c.Set("seedance_video_input_seconds", total)
 	return nil

@@ -56,6 +56,12 @@ func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 				common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, pin)
 			}
 		}
+		if name, _ := fields["model"].(string); service.IsSeedance20Variant(name) {
+			if err = service.ValidateSeedanceVideoInputs(c, fields); err != nil {
+				seedanceRoutingError(c, err)
+				return
+			}
+		}
 		asset, err := service.SeedanceAssetRouting(c, fields)
 		if err != nil {
 			seedanceRoutingError(c, err)

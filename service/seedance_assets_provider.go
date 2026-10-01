@@ -32,8 +32,12 @@ func seedanceError(status int, message string) error {
 	return &SeedanceAPIError{Status: status, Message: message}
 }
 
+func IsSeedance20Variant(name string) bool {
+	return name == "seedance-2.0-fast" || name == "seedance-2.0-mini"
+}
+
 func IsSeedanceLibraryModel(name string) bool {
-	return name == "seedance-2.5" || name == "seedance-2.0" || name == "doubao-seedance-2.0"
+	return IsSeedance20Variant(name) || name == "seedance-2.5" || name == "seedance-2.0" || name == "doubao-seedance-2.0"
 }
 
 func SeedanceKeyFingerprint(key string) string {
@@ -54,7 +58,7 @@ func SeedanceResourceKey(ch *model.Channel, fingerprint string) (string, int, er
 
 func ValidateSeedanceModelAccess(c *gin.Context, name string) error {
 	if !IsSeedanceLibraryModel(name) {
-		return seedanceError(400, "model must be seedance-2.0 or seedance-2.5")
+		return seedanceError(400, "model must be a supported Seedance model")
 	}
 	if IsFreeTrialGroup(common.GetContextKeyString(c, constant.ContextKeyTokenGroup)) {
 		return seedanceError(403, "This key cannot access the media library")

@@ -32,6 +32,8 @@ var (
 		"prefix:kling-",
 		"prefix:doubao-seedance-",
 		"exact:seedance-2.0",
+		"exact:seedance-2.0-fast",
+		"exact:seedance-2.0-mini",
 		"exact:seedance-2.5",
 		"prefix:grok-imagine-video",
 		"prefix:grok-1.5-video-",

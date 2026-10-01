@@ -50,7 +50,7 @@ func ValidateSeedanceAssetSubmission(input *SeedanceAssetSubmission) error {
 		input.Model = "seedance-2.0"
 	}
 	if !IsSeedanceLibraryModel(input.Model) {
-		return seedanceError(400, "model must be seedance-2.0 or seedance-2.5")
+		return seedanceError(400, "model must be a supported Seedance model")
 	}
 	if input.Group != nil && input.GroupID != "" {
 		return seedanceError(400, "group and group_id cannot be used together")

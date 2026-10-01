@@ -2,6 +2,8 @@ package service
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -9,7 +11,7 @@ import (
 )
 
 func SeedanceCompletionTokens(task *model.Task) (int64, bool) {
-	if task == nil || task.Properties.OriginModelName != "seedance-2.5" || task.Status != model.TaskStatusSuccess {
+	if task == nil || !IsSeedanceLibraryModel(task.Properties.OriginModelName) || task.Status != model.TaskStatusSuccess {
 		return 0, false
 	}
 	for _, p := range []string{"data.usage.completion_tokens", "usage.completion_tokens"} {
@@ -34,7 +36,7 @@ func SeedanceLastFrameSource(task *model.Task) string {
 }
 
 func AddSeedanceResultFields(task *model.Task, out map[string]any) {
-	if task == nil || task.Properties.OriginModelName != "seedance-2.5" || task.Status != model.TaskStatusSuccess {
+	if task == nil || !IsSeedanceLibraryModel(task.Properties.OriginModelName) || task.Status != model.TaskStatusSuccess {
 		return
 	}
 	if task.FinishTime >= task.SubmitTime && task.SubmitTime > 0 {
@@ -84,3 +86,26 @@ func SeedanceCompatibleTaskResponse(task *model.Task) map[string]any {
 	AddSeedanceResultFields(task, out)
 	return map[string]any{"code": "success", "message": "", "data": out}
 }
+
+// Reference duration is measured before charging; output duration is obtained
+// from the completed task, with the explicit request as a historical fallback.
+func Seedance20VariantBillableSeconds(task *model.Task) int {
+	if task == nil || !IsSeedance20Variant(task.Properties.OriginModelName) {
+		return 0
+	}
+	output := 0
+	for _, path := range []string{"data.output_duration", "output_duration", "data.duration", "duration", "data.result.videos.0.duration", "result.videos.0.duration"} {
+		if v := gjson.GetBytes(task.Data, path); v.Exists() && v.Float() > 0 {
+			output = int(math.Round(v.Float()))
+			break
+		}
+	}
+	if output <= 0 {
+		output = seedanceInt(task.PrivateData.SeedanceRequest["duration"])
+	}
+	if output <= 0 {
+		output = 5
+	}
+	return output + seedanceInt(task.PrivateData.SeedanceRequest["video_input_seconds"])
+}
+func seedanceInt(value any) int { n, _ := strconv.Atoi(fmt.Sprint(value)); return n }
