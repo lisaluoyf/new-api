@@ -13,7 +13,7 @@ var taskErrorCredential = regexp.MustCompile(`(?i)(?:authorization|proxy-authori
 var taskErrorBearer = regexp.MustCompile(`(?i)\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+`)
 var taskErrorKey = regexp.MustCompile(`\b(?:sk-[A-Za-z0-9_-]+|AIza[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b`)
 var taskErrorURL = regexp.MustCompile(`(?i)(?:https?|wss?|s3|gs|asset)://[^\s<>"']+`)
-var taskErrorIPv6 = regexp.MustCompile(`(?i)(?:\[[0-9a-f:]+\]|(?:[0-9a-f]{1,4}:){2,}[0-9a-f:]+)`)
+var taskErrorIPv6 = regexp.MustCompile(`(?i)(?:\[[0-9a-f]*:[0-9a-f:]+\]|(?:[0-9a-f]{1,4}:){2,}[0-9a-f:]+)`)
 var taskErrorEmail = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 var taskErrorDiagnostic = regexp.MustCompile(`(?i)(?:\b(?:request|transaction|trace|channel|merchant|account|asset|group)[_-]?id\b["']?\s*[:=]\s*[^\s,;]+|(?:/var/|/opt/|/home/|/root/|/app/)[^\s"']+)`)
 

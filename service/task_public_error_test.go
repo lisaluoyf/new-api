@@ -15,6 +15,7 @@ func TestSanitizeTaskFailureRetainsActionableErrors(t *testing.T) {
 		"The parameter ratio specified in the request is not valid. For first-frame or first-last-frame generation, the output ratio follows the first-frame image.",
 		"first_frame: image dimensions must each be 300-6000 pixels (got 200x640)",
 		"duration must be -1 or between 4 and 30 seconds",
+		"assets[0] audio duration 16.00s exceeds the limit of 15s",
 		"Your request was rejected by the safety system.",
 		"图片尺寸不符合要求，请提供宽高至少 300 像素的图片。",
 	} {
