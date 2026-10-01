@@ -121,6 +121,9 @@ func NormalizeSeedance25Generation(c *gin.Context, input map[string]any) (map[st
 		}
 		c.Set("seedance_draft_task", task)
 		c.Set("seedance_draft_key_fingerprint", fingerprint)
+		if audio, ok := task.PrivateData.SeedanceRequest["generate_audio"].(bool); ok {
+			f["generate_audio"] = audio
+		}
 		f["duration"] = task.PrivateData.SeedanceRequest["duration"]
 		if f["duration"] == nil {
 			f["duration"] = 5
@@ -299,13 +302,65 @@ func NormalizeSeedance25Generation(c *gin.Context, input map[string]any) (map[st
 			return nil, fmt.Errorf("edit duration must be -1")
 		}
 	}
-	if roles, ok := f["image_with_roles"].([]any); ok && seedanceInputCount(f["video_urls"]) == 0 && seedanceInputCount(f["audio_urls"]) == 0 {
-		for _, v := range roles {
-			if r, ok := v.(map[string]any); ok && (r["role"] == "first_frame" || r["role"] == "last_frame") && aspect != "adaptive" {
+	for _, slot := range []struct {
+		field   string
+		maximum int
+	}{{"image_urls", 30}, {"audio_urls", 10}, {"video_urls", 10}} {
+		if value, exists := f[slot.field]; exists {
+			items, ok := value.([]any)
+			if !ok {
+				return nil, fmt.Errorf("%s must be an array of strings", slot.field)
+			}
+			if len(items) > slot.maximum {
+				return nil, fmt.Errorf("%s supports at most %d entries", slot.field, slot.maximum)
+			}
+			for _, item := range items {
+				if u, ok := item.(string); !ok || strings.TrimSpace(u) == "" {
+					return nil, fmt.Errorf("%s must contain non-empty strings", slot.field)
+				}
+			}
+		}
+	}
+	if value, exists := f["image_with_roles"]; exists {
+		roles, ok := value.([]any)
+		if !ok {
+			return nil, fmt.Errorf("image_with_roles must be an array")
+		}
+		if len(roles)+seedanceInputCount(f["image_urls"]) > 30 {
+			return nil, fmt.Errorf("Image references must not exceed 30 entries")
+		}
+		first, last := 0, 0
+		for _, value := range roles {
+			role, ok := value.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("image_with_roles entries must be objects")
+			}
+			if u, ok := role["url"].(string); !ok || strings.TrimSpace(u) == "" {
+				return nil, fmt.Errorf("image_with_roles entries require a non-empty url")
+			}
+			switch role["role"] {
+			case "first_frame":
+				first++
+			case "last_frame":
+				last++
+			case "reference_image":
+			default:
+				return nil, fmt.Errorf("image_with_roles role must be first_frame, last_frame, or reference_image")
+			}
+		}
+		if first > 1 || last > 1 {
+			return nil, fmt.Errorf("Use at most one first_frame and one last_frame")
+		}
+		if seedanceInputCount(f["video_urls"]) == 0 && seedanceInputCount(f["audio_urls"]) == 0 {
+			if last > 0 && first == 0 {
+				return nil, fmt.Errorf("last_frame requires first_frame")
+			}
+			if (first > 0 || last > 0) && aspect != "adaptive" {
 				return nil, fmt.Errorf("first/last frame aspect_ratio must be adaptive")
 			}
 		}
 	}
+
 	if a, ok := f["audio"]; ok {
 		if g, exists := f["generate_audio"]; exists && g != a {
 			return nil, fmt.Errorf("audio and generate_audio conflict")
