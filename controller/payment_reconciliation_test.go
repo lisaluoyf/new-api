@@ -6,8 +6,27 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUpstreamSuccessWithoutAnyLocalOrderIsAnIssue(t *testing.T) {
+	db := setupCryptoPersistenceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}))
+	upstream := []service.StatementPayment{{ID: "anonymous-official", TradeNo: "anonymous-missing", Status: "SUCCESS", Amount: "12.34", Currency: "CNY"}, {ID: "anonymous-official", TradeNo: "anonymous-missing", Status: "SUCCESS", Amount: "12.34", Currency: "CNY"}}
+	items, e := mergeReconciliationStatement("epay", nil, upstream)
+	require.NoError(t, e)
+	require.Len(t, items, 1)
+	require.Equal(t, "official_paid_local_order_missing", items[0].Problem)
+	require.Equal(t, "missing", items[0].LocalStatus)
+	summary := model.SummarizePaymentReconciliation(items)
+	require.Equal(t, 1, summary.OfficialPaidCount)
+	require.Zero(t, summary.LocalPaidCount)
+	require.Equal(t, "-12.34", summary.Totals[0].Difference)
+	items, e = mergeReconciliationStatement("epay", items, upstream)
+	require.NoError(t, e)
+	require.Len(t, items, 1)
+}
 
 func TestPaymentReconciliationClassifiesMoneyAndStates(t *testing.T) {
 	base := reconciliationCandidate{trade: "anonymous-order", provider: "platega", status: "success", currency: "RUB", money: 100, user: 1}
@@ -101,4 +120,21 @@ func TestReconciliationUnidentifiedProviderIsNotMatched(t *testing.T) {
 	p := queryReconciliationOrder(context.Background(), reconciliationCandidate{provider: "unknown"})
 	require.False(t, p.known)
 	require.Equal(t, "unknown_payment_provider", p.problem)
+}
+
+func TestUpstreamSuccessFindsFailedOrderOutsideLocalDay(t *testing.T) {
+	db := setupCryptoPersistenceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}, &model.PaymentQueryReference{}))
+	require.NoError(t, db.Create(&model.TopUp{TradeNo: "anonymous-old-order", PaymentProvider: "epay", PaymentMethod: "wxpay", Status: "failed", Money: 10, UserId: 123, CreateTime: 1}).Error)
+	payments := []service.StatementPayment{{ID: "anonymous-fresh-paid", TradeNo: "anonymous-old-order", Status: "SUCCESS", Amount: "10", Currency: "CNY"}}
+	items, e := mergeReconciliationStatement("epay", nil, payments)
+	require.NoError(t, e)
+	require.Len(t, items, 1)
+	require.Equal(t, "official_paid_local_not_success", items[0].Problem)
+	require.Equal(t, 123, items[0].UserID)
+	payments = append(payments, service.StatementPayment{ID: "another-paid-id", TradeNo: "anonymous-old-order", Status: "SUCCESS", Amount: "10", Currency: "CNY"})
+	items, e = mergeReconciliationStatement("epay", nil, payments)
+	require.NoError(t, e)
+	require.Len(t, items, 2)
+	require.Equal(t, "official_duplicate_payment_for_order", items[1].Problem)
 }

@@ -250,6 +250,7 @@ export function PaymentReconciliationPage() {
                         : status(run.status)}
                     </Badge>
                     <p className='text-muted-foreground mt-1 text-xs'>
+                      {t(run.coverage === 'bidirectional_official_statement' ? 'Bidirectional statement checked' : 'Bidirectional statement incomplete')}<br />
                       {t('Payment Differences')}: {run.difference_count} ·{' '}
                       {t('Awaiting Verification')}: {run.unverified_count}
                     </p>

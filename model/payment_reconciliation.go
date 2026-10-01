@@ -181,7 +181,7 @@ func FinishPaymentReconciliation(j *PaymentReconciliationJob, items []PaymentRec
 				return err
 			}
 		}
-		if err := tx.Model(&PaymentReconciliationRun{}).Where("id = ?", j.RunID).Updates(map[string]any{"status": r.Status, "finished_at": r.FinishedAt, "checked_count": r.CheckedCount, "local_paid_count": r.LocalPaidCount, "official_paid_count": r.OfficialPaidCount, "difference_count": r.DifferenceCount, "unverified_count": r.UnverifiedCount, "totals_json": r.TotalsJSON}).Error; err != nil {
+		if err := tx.Model(&PaymentReconciliationRun{}).Where("id = ?", j.RunID).Updates(map[string]any{"status": r.Status, "finished_at": r.FinishedAt, "checked_count": r.CheckedCount, "local_paid_count": r.LocalPaidCount, "official_paid_count": r.OfficialPaidCount, "difference_count": r.DifferenceCount, "unverified_count": r.UnverifiedCount, "totals_json": r.TotalsJSON, "coverage": r.Coverage}).Error; err != nil {
 			return err
 		}
 		status := "done"
@@ -194,10 +194,14 @@ func FinishPaymentReconciliation(j *PaymentReconciliationJob, items []PaymentRec
 	})
 }
 func SummarizePaymentReconciliation(items []PaymentReconciliationItem) PaymentReconciliationRun {
-	r := PaymentReconciliationRun{CheckedCount: len(items), Status: "matched", Totals: []PaymentReconciliationTotal{}}
+	r := PaymentReconciliationRun{CheckedCount: len(items), Status: "matched", Coverage: "bidirectional_official_statement", Totals: []PaymentReconciliationTotal{}}
 	local := map[string]decimal.Decimal{}
 	official := map[string]decimal.Decimal{}
 	for _, i := range items {
+		if i.Purpose == "coverage" {
+			r.Coverage = "local_orders_only_statement_incomplete"
+			r.CheckedCount--
+		}
 		if i.LocalPaid {
 			r.LocalPaidCount++
 			a, e := decimal.NewFromString(i.LocalAmount)

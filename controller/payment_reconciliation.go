@@ -19,6 +19,7 @@ import (
 	"github.com/stripe/stripe-go/v81"
 	stripesession "github.com/stripe/stripe-go/v81/checkout/session"
 	waffoorder "github.com/waffo-com/waffo-go/types/order"
+	"gorm.io/gorm"
 )
 
 var reconciliationTimezone = time.FixedZone("UTC+8", 8*3600)
@@ -121,7 +122,7 @@ func GetPaymentReconciliation(c *gin.Context) {
 		_ = common.UnmarshalJsonStr(runs[i].TotalsJSON, &runs[i].Totals)
 		sort.Slice(runs[i].Totals, func(a, b int) bool { return runs[i].Totals[a].Currency < runs[i].Totals[b].Currency })
 	}
-	c.JSON(200, gin.H{"success": true, "jobs": jobs, "runs": runs, "items": items, "items_truncated": truncated, "items_total": itemsTotal, "page": page, "timezone": "UTC+8", "schedule": "08:30", "scope": "orders_created_or_completed_on_selected_day", "coverage": "local_orders_queried_against_provider"})
+	c.JSON(200, gin.H{"success": true, "jobs": jobs, "runs": runs, "items": items, "items_truncated": truncated, "items_total": itemsTotal, "page": page, "timezone": "UTC+8", "schedule": "08:30", "scope": "orders_created_or_completed_on_selected_day", "coverage": "bidirectional_when_official_statement_available"})
 }
 func QueuePaymentReconciliation(c *gin.Context) {
 	var req struct {
@@ -215,6 +216,160 @@ func reconcilePaymentDay(j *model.PaymentReconciliationJob) ([]model.PaymentReco
 		cancel()
 		items = append(items, classifyReconciliationOrder(row, proof))
 		time.Sleep(500 * time.Millisecond)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	upstream, statementErr := service.ListReconciliationPayments(ctx, j.Provider, day, day.AddDate(0, 0, 1))
+	cancel()
+	items, err = mergeReconciliationStatement(j.Provider, items, upstream)
+	if err != nil {
+		return items, err
+	}
+	if statementErr != nil {
+		items = append(items, model.PaymentReconciliationItem{Result: "unverified", Problem: "official_statement_unavailable", Purpose: "coverage", CheckedAt: time.Now().Unix()})
+	} else {
+		// Official day totals come from the independently enumerated statement,
+		// not the present status of an order paid outside the selected day.
+		for index, i := range items {
+			found := false
+			for _, p := range upstream {
+				if p.ID == i.OfficialID || (p.TradeNo != "" && p.TradeNo == i.TradeNo) {
+					found = true
+					break
+				}
+			}
+			if i.OfficialPaid && !found {
+				items[index].OfficialPaid = false
+				items[index].Result = "unverified"
+				items[index].Problem = "official_paid_absent_from_daily_statement"
+			}
+		}
+	}
+
+	return items, nil
+}
+
+// Look outside the day's local cohort: upstream payment can settle an older
+// failed order or have no local order at all. Never infer absence from a DB error.
+func mergeReconciliationStatement(provider string, items []model.PaymentReconciliationItem, payments []service.StatementPayment) ([]model.PaymentReconciliationItem, error) {
+	seen := map[string]bool{}
+	seenTrade := map[string]bool{}
+	for _, payment := range payments {
+		if seen[payment.ID] {
+			continue
+		}
+		seen[payment.ID] = true
+		trade := payment.TradeNo
+		if trade == "" && provider == "paypal" {
+			var t model.TopUp
+			e := model.DB.Where("paypal_capture_id = ?", payment.ID).First(&t).Error
+			if e == nil {
+				trade = t.TradeNo
+			} else if !errors.Is(e, gorm.ErrRecordNotFound) {
+				return items, e
+			}
+		}
+		if trade == "" && provider == "platega" {
+			var o model.PlategaOrder
+			err := model.DB.Where("platega_transaction_id = ?", payment.ID).First(&o).Error
+			if err == nil {
+				trade = o.TradeNo
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return items, err
+			}
+		}
+		if trade != "" && seenTrade[trade] {
+			items = append(items, model.PaymentReconciliationItem{TradeNo: trade, Purpose: "unknown", OfficialID: payment.ID, OfficialPaid: true, OfficialStatus: payment.Status, OfficialAmount: payment.Amount, OfficialCurrency: payment.Currency, Result: "difference", Problem: "official_duplicate_payment_for_order", CheckedAt: time.Now().Unix()})
+			continue
+		}
+		if trade != "" {
+			seenTrade[trade] = true
+		}
+		matched := false
+		for index, i := range items {
+			if (trade != "" && i.TradeNo == trade) || (i.OfficialID != "" && i.OfficialID == payment.ID) {
+				// A successful statement entry is independent evidence even when
+				// a legacy order cannot be queried by its saved identifier.
+				if i.Result == "unverified" && i.Purpose != "coverage" {
+					items[index].OfficialPaid = true
+					items[index].OfficialID = payment.ID
+					items[index].OfficialStatus = payment.Status
+					items[index].OfficialCurrency = payment.Currency
+					items[index].OfficialAmount = payment.Amount
+					if provider == "platega" {
+						items[index].OfficialAmount = ""
+					}
+					if !i.LocalPaid {
+						items[index].Result = "difference"
+						items[index].Problem = "official_paid_local_not_success"
+					}
+				}
+				matched = true
+				break
+			}
+		}
+		if matched {
+			continue
+		}
+		i := model.PaymentReconciliationItem{TradeNo: trade, Purpose: "unknown", LocalStatus: "missing", OfficialID: payment.ID, OfficialStatus: payment.Status, OfficialPaid: true, OfficialAmount: payment.Amount, OfficialCurrency: payment.Currency, Result: "difference", Problem: "official_paid_local_order_missing", CheckedAt: time.Now().Unix()}
+		if trade == "" {
+			i.Problem = "official_paid_local_reference_unresolved"
+			i.Result = "unverified"
+		}
+		if trade != "" {
+			var top model.TopUp
+			var sub model.SubscriptionOrder
+			a := model.DB.Where("trade_no = ?", trade).First(&top).Error
+			b := model.DB.Where("trade_no = ?", trade).First(&sub).Error
+			if a != nil && !errors.Is(a, gorm.ErrRecordNotFound) {
+				return items, a
+			}
+			if b != nil && !errors.Is(b, gorm.ErrRecordNotFound) {
+				return items, b
+			}
+			var row reconciliationCandidate
+			if a == nil {
+				row = reconciliationCandidate{trade: trade, provider: normalizeReconciliationProvider(top.PaymentProvider, top.PaymentMethod), method: top.PaymentMethod, purpose: "wallet", status: top.Status, user: top.UserId, money: top.Money, top: &top, currency: payment.Currency}
+			}
+			if b == nil {
+				row = reconciliationCandidate{trade: trade, provider: normalizeReconciliationProvider(sub.PaymentProvider, sub.PaymentMethod), method: sub.PaymentMethod, purpose: "subscription", status: sub.Status, user: sub.UserId, money: sub.Money, top: row.top, currency: payment.Currency, payload: sub.ProviderPayload}
+			}
+			if a == nil || b == nil {
+				if row.provider != provider {
+					i.Problem = "official_identity_mismatch"
+				} else {
+					row.queryID = payment.ID
+					if provider == "platega" {
+						if o := model.GetPlategaOrderByTradeNo(trade); o != nil {
+							row.money = o.RubAmount
+						}
+					}
+					proof := reconciliationProof{id: payment.ID, status: payment.Status, currency: payment.Currency, amount: payment.Amount, paid: true, known: true}
+					row.currency = "USD"
+					if provider == "epay" {
+						row.currency = "CNY"
+					}
+					if provider == "platega" {
+						row.currency = "RUB"
+					}
+					var ref model.PaymentQueryReference
+					if e := model.DB.Where("trade_no = ? AND provider = ?", trade, provider).First(&ref).Error; e == nil && ref.Currency != "" {
+						row.currency = ref.Currency
+					}
+					if provider == "platega" {
+						ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+						proof = queryReconciliationOrder(ctx, row)
+						cancel()
+					}
+
+					i = classifyReconciliationOrder(row, proof)
+					if i.Result == "matched" && i.LocalPaid {
+						i.Result = "difference"
+						i.Problem = "official_paid_local_date_mismatch"
+					}
+				}
+			}
+		}
+		items = append(items, i)
 	}
 	return items, nil
 }

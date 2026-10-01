@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -50,4 +51,23 @@ func TestEpayCustomQueryUsesSecretHeaderAndVerifiedOfficialFacts(t *testing.T) {
 	response = strings.Replace(response, `"currency":"CNY"`, `"currency":"USD"`, 1)
 	_, e = QueryEpayOrderState(context.Background(), "anonymous-order")
 	require.Error(t, e)
+}
+
+func TestPlategaStatementDiscoversIndependentSuccessfulOrders(t *testing.T) {
+	t.Setenv("PLATEGA_MERCHANT_ID", "anonymous-merchant")
+	t.Setenv("PLATEGA_X_SECRET", "anonymous-secret")
+	old := paymentVerificationClient
+	t.Cleanup(func() { paymentVerificationClient = old })
+	paymentVerificationClient = &http.Client{Transport: reconciliationRoundTripper(func(r *http.Request) (*http.Response, error) {
+		require.Equal(t, "/transaction/export/json", r.URL.Path)
+		require.Equal(t, "POST", r.Method)
+		require.Equal(t, "anonymous-merchant", r.Header.Get("X-MerchantId"))
+		require.Empty(t, r.URL.RawQuery)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[{"recordId":"missing-id","payload":"missing-local-order","status":"CONFIRMED","amount":108.5,"currencyCode":"RUB"},{"recordId":"cancelled-id","status":"CANCELED","amount":10,"currencyCode":"RUB"}]`))}, nil
+	})}
+	day := time.Date(2026, 9, 30, 0, 0, 0, 0, time.FixedZone("UTC+8", 28800))
+	rows, e := ListReconciliationPayments(context.Background(), "platega", day, day.AddDate(0, 0, 1))
+	require.NoError(t, e)
+	require.Len(t, rows, 1)
+	require.Equal(t, "missing-local-order", rows[0].TradeNo)
 }

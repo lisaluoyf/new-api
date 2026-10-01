@@ -18,6 +18,7 @@ export type ReconciliationRun = {
   status: string
   started_at: number
   finished_at: number
+  coverage: string
   checked_count: number
   local_paid_count: number
   official_paid_count: number

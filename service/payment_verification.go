@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,7 +23,37 @@ import (
 var paymentVerificationClient = &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("payment API redirect rejected") }}
 
 func verifiedPaymentJSON(req *http.Request, out any) error {
-	resp, err := paymentVerificationClient.Do(req)
+	return verifiedPaymentJSONWithClient(paymentVerificationClient, req, out)
+}
+
+// The optional pinned origin avoids a CDN IP block for merchant-to-merchant
+// traffic. TLS still verifies the original URL hostname and public certificate;
+// no secret is sent to a proxy, redirect, or an unverified TLS peer.
+func verifiedEpayJSON(req *http.Request, out any) error {
+	ip := strings.TrimSpace(os.Getenv("EPAY_QUERY_ORIGIN_IP"))
+	if ip == "" {
+		return verifiedPaymentJSON(req, out)
+	}
+	if net.ParseIP(ip) == nil || req.URL.Scheme != "https" {
+		return errors.New("invalid Epay origin configuration")
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		_, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, errors.New("invalid merchant endpoint")
+		}
+		return (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, network, net.JoinHostPort(ip, port))
+	}
+	defer transport.CloseIdleConnections()
+	client := *paymentVerificationClient
+	client.Transport = transport
+	return verifiedPaymentJSONWithClient(&client, req, out)
+}
+
+func verifiedPaymentJSONWithClient(client *http.Client, req *http.Request, out any) error {
+	resp, err := client.Do(req)
 	if err != nil {
 		return errors.New("payment API request failed")
 	}
@@ -130,7 +161,7 @@ func QueryEpayOrderState(ctx context.Context, trade string) (*EpayVerifiedOrder,
 		req.Header.Set("Content-Type", "application/json")
 	}
 	var result EpayVerifiedOrder
-	if err := verifiedPaymentJSON(req, &result); err != nil {
+	if err := verifiedEpayJSON(req, &result); err != nil {
 		return nil, err
 	}
 	if result.Code != 1 || string(result.PID) != operation_setting.EpayId || result.MerchantOrder != trade || result.TradeNo == "" {
