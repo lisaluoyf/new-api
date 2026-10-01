@@ -179,7 +179,13 @@ func seedanceProviderRequest(ctx context.Context, resource *model.SeedanceResour
 		if message == "" {
 			message = "Media library request failed"
 		}
-		message = sanitizeTaskFailure(message, key, ch.Key, ch.Name, resource.UpstreamID)
+		sensitive := []string{key, ch.Key, ch.Name, resource.UpstreamID}
+		if fields, ok := payload.(map[string]any); ok {
+			if groupID, ok := fields["group_id"].(string); ok {
+				sensitive = append(sensitive, groupID)
+			}
+		}
+		message = sanitizeTaskFailure(message, sensitive...)
 		return nil, seedanceError(status, message)
 	}
 	return envelope, nil

@@ -167,13 +167,13 @@ func TestSeedanceProviderErrorsAndRedirectsDoNotExposeCredentials(t *testing.T) 
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(400)
-		fmt.Fprintf(w, `{"error":{"message":"Invalid media ratio; api_key=%s; https://provider.example/private/provider-id"},"secret":%q}`, key, key)
+		fmt.Fprintf(w, `{"error":{"message":"Invalid media ratio; group=provider-group-id; api_key=%s; https://provider.example/private/provider-id"},"secret":%q}`, key, key)
 	}))
 	defer server.Close()
 	base := server.URL
 	require.NoError(t, db.Create(&model.Channel{Id: 7, Status: 1, Key: key, BaseURL: &base}).Error)
 	r := &model.SeedanceResource{ChannelID: 7, KeyFingerprint: SeedanceKeyFingerprint(key), UpstreamID: "provider-id"}
-	_, err := seedanceProviderRequest(seedanceContext(1).Request.Context(), r, http.MethodGet, "/error", nil)
+	_, err := seedanceProviderRequest(seedanceContext(1).Request.Context(), r, http.MethodPost, "/error", map[string]any{"group_id": "provider-group-id"})
 	require.ErrorContains(t, err, "Invalid media ratio")
 	for _, secret := range []string{key, "provider.example", "provider-id"} {
 		require.NotContains(t, err.Error(), secret)
