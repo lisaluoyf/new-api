@@ -361,6 +361,7 @@ export interface TopupRecord {
  * Billing history response
  */
 export interface BillingHistoryResponse {
+  summary?: { count: number; recharge_usd: string }
   items: TopupRecord[]
   total: number
 }

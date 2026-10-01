@@ -157,6 +157,10 @@ export function TransactionHistory() {
   const {
     records,
     total,
+    summary,
+    startDate,
+    endDate,
+    handleDateChange,
     page,
     pageSize,
     keyword,
@@ -259,6 +263,58 @@ export function TransactionHistory() {
               </Button>
             )}
           </div>
+        </div>
+        <div className='mt-3 flex flex-wrap items-end gap-3'>
+          <label className='text-muted-foreground text-xs'>
+            {t('Start date (Beijing time)')}
+            <Input
+              type='date'
+              className='mt-1 h-8 w-40'
+              value={startDate}
+              max={endDate || undefined}
+              onChange={(event) =>
+                handleDateChange(event.target.value, endDate)
+              }
+            />
+          </label>
+          <label className='text-muted-foreground text-xs'>
+            {t('End date (Beijing time)')}
+            <Input
+              type='date'
+              className='mt-1 h-8 w-40'
+              value={endDate}
+              min={startDate || undefined}
+              onChange={(event) =>
+                handleDateChange(startDate, event.target.value)
+              }
+            />
+          </label>
+          {(startDate || endDate) && (
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={() => handleDateChange('', '')}
+            >
+              {t('Clear dates')}
+            </Button>
+          )}
+        </div>
+        <div
+          className='bg-muted/40 mt-3 rounded-lg px-3 py-2 text-sm'
+          aria-live='polite'
+        >
+          <span>{t('Successful recharge total')}: </span>
+          <strong>
+            {loading ? '…' : `$${Number(summary.recharge_usd).toFixed(2)}`}
+          </strong>
+          <span className='text-muted-foreground ml-2 text-xs'>
+            {t('{{count}} successful recharges', { count: summary.count })}
+          </span>
+          <p className='text-muted-foreground mt-1 text-xs'>
+            {t(
+              'All filtered pages; credited USD including recharge bonuses; excludes subscriptions and free credits. Dates filter order creation time in Beijing.'
+            )}
+          </p>
         </div>
         {isAdmin && (
           <div className='mt-2 flex gap-1'>

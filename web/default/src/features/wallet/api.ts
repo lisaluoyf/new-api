@@ -352,7 +352,9 @@ export async function getUserBillingHistory(
   page: number,
   pageSize: number,
   keyword?: string,
-  status?: string
+  status?: string,
+  startDate?: string,
+  endDate?: string
 ): Promise<ApiResponse<BillingHistoryResponse>> {
   const params = new URLSearchParams({
     p: page.toString(),
@@ -364,6 +366,8 @@ export async function getUserBillingHistory(
   if (status) {
     params.append('status', status)
   }
+  if (startDate) params.append('start_date', startDate)
+  if (endDate) params.append('end_date', endDate)
   const res = await api.get(`/api/user/topup/self?${params.toString()}`)
   return res.data
 }
@@ -377,7 +381,9 @@ export async function getAllBillingHistory(
   keyword?: string,
   status?: string,
   paymentMethod?: string,
-  transactionType?: string
+  transactionType?: string,
+  startDate?: string,
+  endDate?: string
 ): Promise<ApiResponse<BillingHistoryResponse>> {
   const params = new URLSearchParams({
     p: page.toString(),
@@ -395,6 +401,8 @@ export async function getAllBillingHistory(
   if (transactionType) {
     params.append('transaction_type', transactionType)
   }
+  if (startDate) params.append('start_date', startDate)
+  if (endDate) params.append('end_date', endDate)
   const res = await api.get(`/api/user/topup?${params.toString()}`)
   return res.data
 }
@@ -403,13 +411,17 @@ export async function downloadAllBillingHistory(
   keyword?: string,
   status?: string,
   paymentMethod?: string,
-  transactionType?: string
+  transactionType?: string,
+  startDate?: string,
+  endDate?: string
 ): Promise<void> {
   const params = new URLSearchParams()
   if (keyword) params.append('keyword', keyword)
   if (status) params.append('status', status)
   if (paymentMethod) params.append('payment_method', paymentMethod)
   if (transactionType) params.append('transaction_type', transactionType)
+  if (startDate) params.append('start_date', startDate)
+  if (endDate) params.append('end_date', endDate)
   const res = await api.get(`/api/user/topup/export?${params.toString()}`, {
     responseType: 'blob',
   })

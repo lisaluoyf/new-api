@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import i18next from 'i18next'
 import { toast } from 'sonner'
 import { useIsAdmin } from '@/hooks/use-admin'
@@ -46,6 +46,10 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
 
   const [records, setRecords] = useState<TopupRecord[]>([])
   const [total, setTotal] = useState(0)
+  const [summary, setSummary] = useState({ count: 0, recharge_usd: '0' })
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const requestSequence = useRef(0)
   const [page, setPage] = useState(initialPage)
   const [pageSize, setPageSize] = useState(initialPageSize)
   const [keyword, setKeyword] = useState('')
@@ -60,8 +64,11 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
    * Fetch billing history
    */
   const fetchBillingHistory = useCallback(async () => {
+    const sequence = ++requestSequence.current
     setLoading(true)
     try {
+      if (startDate && endDate && startDate > endDate)
+        throw new Error(i18next.t('Invalid date range'))
       const response = isAdmin
         ? await getAllBillingHistory(
             page,
@@ -69,28 +76,42 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
             keyword,
             statusFilter,
             paymentMethodFilter,
-            transactionTypeFilter
+            transactionTypeFilter,
+            startDate,
+            endDate
           )
-        : await getUserBillingHistory(page, pageSize, keyword)
+        : await getUserBillingHistory(
+            page,
+            pageSize,
+            keyword,
+            statusFilter,
+            startDate,
+            endDate
+          )
 
+      if (sequence !== requestSequence.current) return
       if (isApiSuccess(response) && response.data) {
+        setSummary(response.data.summary || { count: 0, recharge_usd: '0' })
         setRecords(response.data.items || [])
         setTotal(response.data.total || 0)
       } else {
         toast.error(
           response.message || i18next.t('Failed to load billing history')
         )
+        setSummary({ count: 0, recharge_usd: '0' })
         setRecords([])
         setTotal(0)
       }
     } catch (error) {
+      if (sequence !== requestSequence.current) return
+      setSummary({ count: 0, recharge_usd: '0' })
       // eslint-disable-next-line no-console
       console.error('Failed to fetch billing history:', error)
       toast.error(i18next.t('Failed to load billing history'))
       setRecords([])
       setTotal(0)
     } finally {
-      setLoading(false)
+      if (sequence === requestSequence.current) setLoading(false)
     }
   }, [
     isAdmin,
@@ -100,6 +121,8 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     statusFilter,
     paymentMethodFilter,
     transactionTypeFilter,
+    startDate,
+    endDate,
   ])
 
   /**
@@ -177,6 +200,12 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     setPage(1)
   }, [])
 
+  const handleDateChange = useCallback((start: string, end: string) => {
+    setStartDate(start)
+    setEndDate(end)
+    setPage(1)
+  }, [])
+
   const handleExport = useCallback(async () => {
     if (!isAdmin) return
     setExporting(true)
@@ -185,7 +214,9 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
         keyword,
         statusFilter,
         paymentMethodFilter,
-        transactionTypeFilter
+        transactionTypeFilter,
+        startDate,
+        endDate
       )
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -200,6 +231,8 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     statusFilter,
     paymentMethodFilter,
     transactionTypeFilter,
+    startDate,
+    endDate,
   ])
 
   // Fetch data when dependencies change
@@ -210,12 +243,16 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   return {
     records,
     total,
+    summary,
+    handleDateChange,
     page,
     pageSize,
     keyword,
     statusFilter,
     paymentMethodFilter,
     transactionTypeFilter,
+    startDate,
+    endDate,
     loading,
     exporting,
     completing,

@@ -767,67 +767,48 @@ func RequestAmount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
 }
 
-func GetUserTopUps(c *gin.Context) {
-	userId := c.GetInt("id")
-	pageInfo := common.GetPageQuery(c)
-	keyword := c.Query("keyword")
-	status := c.Query("status")
-
-	var (
-		topups []*model.TopUp
-		total  int64
-		err    error
-	)
-	if keyword != "" {
-		topups, total, err = model.SearchUserTopUps(userId, keyword, pageInfo)
-	} else {
-		topups, total, err = model.GetUserTopUps(userId, status, pageInfo)
-	}
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
-	model.EnrichTopupsWithTransactionInfo(topups)
-	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(topups)
-	common.ApiSuccess(c, pageInfo)
+func topupHistoryFilter(c *gin.Context, userID int) (model.TopupHistoryFilter, error) {
+	start, end, err := model.ParseTopupHistoryDates(c.Query("start_date"), c.Query("end_date"))
+	return model.TopupHistoryFilter{UserID: userID, Keyword: c.Query("keyword"), Status: c.Query("status"), PaymentMethod: c.Query("payment_method"), TransactionType: c.Query("transaction_type"), StartTime: start, EndTime: end}, err
 }
 
-// GetAllTopUps 管理员获取全平台充值记录（含用户名和国家）
-func GetAllTopUps(c *gin.Context) {
-	pageInfo := common.GetPageQuery(c)
-	keyword := c.Query("keyword")
-	status := c.Query("status")
-	paymentMethod := c.Query("payment_method")
-	transactionType := c.Query("transaction_type")
+func GetUserTopUps(c *gin.Context) { getTopupHistory(c, c.GetInt("id")) }
 
-	var (
-		topups []*model.TopUp
-		total  int64
-		err    error
-	)
-	if keyword != "" {
-		topups, total, err = model.SearchAllTopUps(keyword, status, paymentMethod, transactionType, pageInfo)
-	} else {
-		topups, total, err = model.GetAllTopUps(status, paymentMethod, transactionType, pageInfo)
-	}
+// GetAllTopUps returns the admin history and a summary across all filtered pages.
+func GetAllTopUps(c *gin.Context) { getTopupHistory(c, 0) }
+
+func getTopupHistory(c *gin.Context, userID int) {
+	filter, err := topupHistoryFilter(c, userID)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-
-	model.EnrichTopupsWithUserInfo(topups)
-	model.EnrichTopupsWithTransactionInfo(topups)
-
-	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(topups)
-	common.ApiSuccess(c, pageInfo)
+	page := common.GetPageQuery(c)
+	rows, total, summary, err := model.QueryTopupHistory(filter, page)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if userID == 0 {
+		model.EnrichTopupsWithUserInfo(rows)
+	}
+	model.EnrichTopupsWithTransactionInfo(rows)
+	page.SetTotal(int(total))
+	page.SetItems(rows)
+	common.ApiSuccess(c, struct {
+		*common.PageInfo
+		Summary model.TopupHistorySummary `json:"summary"`
+	}{page, summary})
 }
 
 // ExportAllTopUps downloads all transaction-history rows matching the admin filters.
 func ExportAllTopUps(c *gin.Context) {
-	topups, err := model.ExportAllTopUps(c.Query("keyword"), c.Query("status"), c.Query("payment_method"), c.Query("transaction_type"))
+	filter, err := topupHistoryFilter(c, 0)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	topups, err := model.ExportTopupHistory(filter)
 	if err != nil {
 		common.ApiError(c, err)
 		return
