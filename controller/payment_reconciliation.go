@@ -122,7 +122,7 @@ func GetPaymentReconciliation(c *gin.Context) {
 		_ = common.UnmarshalJsonStr(runs[i].TotalsJSON, &runs[i].Totals)
 		sort.Slice(runs[i].Totals, func(a, b int) bool { return runs[i].Totals[a].Currency < runs[i].Totals[b].Currency })
 	}
-	c.JSON(200, gin.H{"success": true, "jobs": jobs, "runs": runs, "items": items, "items_truncated": truncated, "items_total": itemsTotal, "page": page, "timezone": "UTC+8", "schedule": "08:30", "scope": "orders_created_or_completed_on_selected_day", "coverage": "bidirectional_when_official_statement_available"})
+	c.JSON(200, gin.H{"success": true, "jobs": jobs, "runs": runs, "items": items, "items_truncated": truncated, "items_total": itemsTotal, "page": page, "timezone": "UTC+8", "schedule": "08:30", "scope": "local_successful_payments_and_all_upstream_successful_payments", "coverage": "bidirectional_when_official_statement_available"})
 }
 func QueuePaymentReconciliation(c *gin.Context) {
 	var req struct {
