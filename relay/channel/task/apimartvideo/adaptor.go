@@ -144,7 +144,7 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 	if strings.TrimSpace(body.Model) == "" {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("model is required"), "missing_model", http.StatusBadRequest)
 	}
-	if strings.TrimSpace(body.Prompt) == "" {
+	if strings.TrimSpace(body.Prompt) == "" && c.GetString("seedance_draft_key_fingerprint") == "" {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("prompt is required"), "invalid_request", http.StatusBadRequest)
 	}
 	body.Model = normalizeModel(body.Model)
@@ -209,6 +209,16 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 			"aspect_ratio":  body.AspectRatio,
 			"auto_duration": body.Model == ModelSeedance25 && body.Duration == -1,
 		},
+	}
+	if body.Model == ModelSeedance25 {
+		var fields map[string]any
+		_ = common.Unmarshal(raw, &fields)
+		store.Metadata["audio"] = fields["generate_audio"]
+		for _, key := range []string{"draft", "draft_task_id", "return_last_frame", "output_format", "omni_reference_task_type"} {
+			if value, exists := fields[key]; exists {
+				store.Metadata[key] = value
+			}
+		}
 	}
 	if refs, ok := c.Get("seedance_public_asset_urls"); ok {
 		store.Metadata["asset_urls"] = refs
@@ -334,8 +344,14 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 			hasVideo = v
 		}
 	}
+	if inputSeconds := c.GetInt("seedance_video_input_seconds"); inputSeconds > 0 {
+		seconds += inputSeconds
+		if seconds > 30 {
+			seconds = 30
+		}
+	}
 	variant := resolution
-	if isSeedance20(req.Model) && hasVideo {
+	if (isSeedance20(req.Model) || req.Model == ModelSeedance25) && hasVideo {
 		variant += "-input"
 	}
 	ratio := taskcommon.VideoResolutionSizeRatio(resolution)
@@ -447,6 +463,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 				body.Resolution = "720p"
 			}
 			passthrough["resolution"] = body.Resolution
+			passthrough = service.ResolveSeedanceDraftRequest(c, passthrough)
 			if webhook := resolveWebhook(body.Webhook); webhook != "" {
 				passthrough["webhook"] = webhook
 			}
@@ -718,5 +735,6 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 			"message": "Video generation failed",
 		}
 	}
+	service.AddSeedanceResultFields(task, out)
 	return common.Marshal(out)
 }

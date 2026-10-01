@@ -1744,6 +1744,10 @@ func RelayTask(c *gin.Context) {
 				}
 			}
 		}
+		if snapshot, ok := c.Get("seedance25_normalized_request"); ok {
+			task.PrivateData.SeedanceRequest = snapshot.(map[string]any)
+			task.PrivateData.Key = common.GetContextKeyString(c, constant.ContextKeyChannelKey)
+		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action

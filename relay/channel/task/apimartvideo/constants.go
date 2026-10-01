@@ -76,6 +76,9 @@ func normalizeVideoDuration(model string, seconds int) int {
 		if seconds == -1 {
 			return -1
 		}
+		if seconds == 0 {
+			return 5
+		}
 		if seconds < 4 {
 			return 4
 		}

@@ -263,6 +263,11 @@ func UpdateLogResultByTaskID(userID int, taskID string, useTimeSeconds int, extr
 	if useTimeSeconds > 0 {
 		updates["use_time"] = useTimeSeconds
 	}
+	if usage, ok := extraOther["usage"].(map[string]any); ok {
+		if tokens, ok := usage["completion_tokens"].(int64); ok && tokens >= 0 {
+			updates["completion_tokens"] = tokens
+		}
+	}
 	return LOG_DB.Model(&Log{}).Where("id = ?", row.Id).Updates(updates).Error
 }
 

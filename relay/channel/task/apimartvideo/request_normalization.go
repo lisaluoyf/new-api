@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -33,6 +34,13 @@ func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {
 	}
 	if fields == nil {
 		return nil, fmt.Errorf("request must be a JSON object")
+	}
+	if fields["model"] == ModelSeedance25 {
+		normalized, err := service.NormalizeSeedance25Generation(c, fields)
+		if err != nil {
+			return nil, err
+		}
+		return common.Marshal(normalized)
 	}
 	requested := map[string]interface{}{}
 	for _, key := range []string{"resolution", "size", "ratio", "aspect_ratio", "duration", "seconds"} {

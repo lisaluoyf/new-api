@@ -115,6 +115,9 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 	pickFilter := ChannelPickFilter(param.Ctx, param.ModelName)
+	if param.Ctx.GetString("seedance_draft_key_fingerprint") != "" {
+		return nil, selectGroup, errors.New("Draft cannot be retried automatically; retry with the same draft_task_id later")
+	}
 	if param.Ctx.GetString("seedance_asset_key_fingerprint") != "" {
 		// Provider libraries are account scoped. Never fall back to a different
 		// account, or duplicate an ambiguously accepted billable submission.

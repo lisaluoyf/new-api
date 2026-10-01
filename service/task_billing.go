@@ -166,6 +166,9 @@ func BackfillTaskLogOnComplete(ctx context.Context, task *model.Task, taskResult
 	}
 	elapsed := TaskLogElapsedSeconds(task)
 	extra := map[string]interface{}{}
+	if tokens, ok := SeedanceCompletionTokens(task); ok {
+		extra["usage"] = map[string]any{"completion_tokens": tokens}
+	}
 	if resultURL := strings.TrimSpace(task.PrivateData.ResultURL); IsValidMediaResultURL(resultURL) {
 		extra["result_url"] = resultURL
 	}

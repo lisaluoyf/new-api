@@ -158,9 +158,17 @@ func serveTrackedImageTask(c *gin.Context, taskID string) bool {
 		return false
 	}
 	if task.UserId != c.GetInt("id") {
-		return false
+		c.JSON(404, gin.H{"error": gin.H{"message": "Task not found", "type": "invalid_request_error"}})
+		return true
 	}
 
+	if task.Properties.OriginModelName == "seedance-2.5" || task.Platform == constant.TaskPlatformApimartVideo {
+		if err := service.SyncSeedanceUsageLog(task); err != nil {
+			logger.LogWarn(c.Request.Context(), "Unable to backfill video usage log")
+		}
+		c.JSON(200, service.SeedanceCompatibleTaskResponse(task))
+		return true
+	}
 	switch task.Status {
 	case model.TaskStatusSuccess:
 		resultURL := task.GetResultURL()

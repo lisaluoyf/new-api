@@ -30,6 +30,8 @@ func videoProxyError(c *gin.Context, status int, errType, message string) {
 	})
 }
 
+func VideoLastFrame(c *gin.Context) { c.Set("video_last_frame", true); VideoProxy(c) }
+
 func VideoProxy(c *gin.Context) {
 	taskID := c.Param("task_id")
 	if taskID == "" {
@@ -112,6 +114,15 @@ func VideoProxy(c *gin.Context) {
 		videoURL = task.GetResultURL()
 	}
 
+	if c.GetBool("video_last_frame") {
+		videoURL = service.SeedanceLastFrameSource(task)
+		if videoURL == "" {
+			videoProxyError(c, 404, "invalid_request_error", "Last frame is not available for this task")
+			return
+		}
+		req.Header.Del("Authorization")
+		req.Header.Del("x-goog-api-key")
+	}
 	videoURL = strings.TrimSpace(videoURL)
 	if videoURL == "" {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Video URL is empty for task %s", taskID))
@@ -153,7 +164,7 @@ func VideoProxy(c *gin.Context) {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Upstream returned status %d for %s", resp.StatusCode, videoURL))
 		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusGone {
 			videoProxyError(c, http.StatusGone, "invalid_request_error",
-				"Video has expired or been removed from upstream storage")
+				"Media has expired or is no longer available")
 			return
 		}
 		videoProxyError(c, http.StatusBadGateway, "server_error", "Video source is unavailable")
@@ -162,7 +173,7 @@ func VideoProxy(c *gin.Context) {
 
 	copySafeVideoHeaders(c.Writer.Header(), resp.Header)
 
-	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
+	c.Writer.Header().Set("Cache-Control", "private, no-store")
 	c.Writer.WriteHeader(resp.StatusCode)
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))
@@ -244,7 +255,7 @@ func writeVideoDataURL(c *gin.Context, dataURL string) error {
 	}
 
 	c.Writer.Header().Set("Content-Type", mimeType)
-	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
+	c.Writer.Header().Set("Cache-Control", "private, no-store")
 	c.Writer.WriteHeader(http.StatusOK)
 	_, err = c.Writer.Write(videoBytes)
 	return err

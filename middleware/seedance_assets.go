@@ -32,6 +32,30 @@ func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 			seedanceRoutingError(c, fmt.Errorf("Invalid generation JSON"))
 			return
 		}
+		if fields["model"] != "seedance-2.5" && (fields["draft"] == true || fields["draft_task_id"] != nil) {
+			seedanceRoutingError(c, fmt.Errorf("Draft mode is only supported by seedance-2.5"))
+			return
+		}
+		if fields["model"] == "seedance-2.5" {
+			fields, err = service.NormalizeSeedance25Generation(c, fields)
+			if err != nil {
+				seedanceRoutingError(c, err)
+				return
+			}
+			if err = service.ValidateSeedanceVideoInputs(c, fields); err != nil {
+				seedanceRoutingError(c, err)
+				return
+			}
+			if v, ok := c.Get("seedance_draft_task"); ok {
+				task := v.(*model.Task)
+				pin := strconv.Itoa(task.ChannelId)
+				if specified, exists := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); exists && specified != pin {
+					seedanceRoutingError(c, fmt.Errorf("Draft is temporarily unavailable; retry with the same draft_task_id later"))
+					return
+				}
+				common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, pin)
+			}
+		}
 		asset, err := service.SeedanceAssetRouting(c, fields)
 		if err != nil {
 			seedanceRoutingError(c, err)
@@ -52,7 +76,11 @@ func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 
 func ApplySeedanceAssetKey() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if fingerprint := c.GetString("seedance_asset_key_fingerprint"); fingerprint != "" {
+		fingerprint := c.GetString("seedance_draft_key_fingerprint")
+		if fingerprint == "" {
+			fingerprint = c.GetString("seedance_asset_key_fingerprint")
+		}
+		if fingerprint != "" {
 			ch, err := model.GetChannelById(common.GetContextKeyInt(c, constant.ContextKeyChannelId), true)
 			if err != nil || ch == nil {
 				seedanceRoutingError(c, fmt.Errorf("Media library is temporarily unavailable"))
@@ -76,6 +104,10 @@ func DistributeUnlessSeedanceAssetTask() gin.HandlerFunc {
 	distribute := Distribute()
 	return func(c *gin.Context) {
 		if strings.HasPrefix(c.Param("task_id"), "asset_task_") {
+			c.Next()
+			return
+		}
+		if _, found, err := model.GetByTaskId(c.GetInt("id"), c.Param("task_id")); err == nil && found {
 			c.Next()
 			return
 		}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 )
 
 const probeVideoMaxBytes = 100 << 20
@@ -43,7 +44,13 @@ func probeRemoteVideoDurationSeconds(ctx context.Context, rawURL string, roundFn
 	if err != nil {
 		return 0, err
 	}
-	client := &http.Client{Timeout: 45 * time.Second}
+	client := &http.Client{Timeout: 45 * time.Second, CheckRedirect: func(next *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return fmt.Errorf("too many video redirects")
+		}
+		setting := system_setting.GetFetchSetting()
+		return common.ValidateURLWithFetchSetting(next.URL.String(), setting.EnableSSRFProtection, setting.AllowPrivateIp, setting.DomainFilterMode, setting.IpFilterMode, setting.DomainList, setting.IpList, setting.AllowedPorts, setting.ApplyIPFilterForDomain)
+	}}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err

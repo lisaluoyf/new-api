@@ -225,7 +225,8 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if resp != nil && resp.StatusCode != http.StatusOK {
 		responseBody, _ := io.ReadAll(resp.Body)
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("task upstream request failed with status %d: %.2048s", resp.StatusCode, string(responseBody)))
-		return nil, service.TaskErrorWrapper(errors.New("video service request failed"), "upstream_error", resp.StatusCode)
+		_ = resp.Body.Close()
+		return nil, service.PublicVideoSubmitError(resp.StatusCode, responseBody, common.GetContextKeyString(c, constant.ContextKeyChannelKey), info.ChannelId)
 	}
 
 	// 10. 返回 OtherRatios 给下游（header 必须在 DoResponse 写 body 之前设置）
@@ -378,6 +379,9 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
+	if err := service.SyncSeedanceUsageLog(originTask); err != nil {
+		logger.LogWarn(c.Request.Context(), "Unable to backfill video usage log")
+	}
 	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
 
 	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态
@@ -541,6 +545,10 @@ func sanitizeOpenAIVideoTaskFailure(task *model.Task, body []byte) ([]byte, erro
 // buildSafeVideoTaskResponse returns the stable compatibility response without
 // serializing provider payloads, identifiers, URLs, routing or billing data.
 func buildSafeVideoTaskResponse(task *model.Task, rawBody []byte) []byte {
+	if task.Properties.OriginModelName == "seedance-2.5" {
+		data, _ := common.Marshal(service.SeedanceCompatibleTaskResponse(task))
+		return data
+	}
 	format := detectVideoFormat(rawBody)
 	resultURL := ""
 	if task.Status == model.TaskStatusSuccess && task.GetResultURL() != "" {

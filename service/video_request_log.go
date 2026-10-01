@@ -85,7 +85,7 @@ func BuildVideoRequestDataForLog(req *relaycommon.TaskSubmitReq) map[string]inte
 				data["asset_urls"] = public
 			}
 		}
-		for _, key := range []string{"billing_variant", "has_video", "audio"} {
+		for _, key := range []string{"billing_variant", "has_video", "audio", "draft", "draft_task_id", "return_last_frame", "output_format", "omni_reference_task_type"} {
 			if value, ok := req.Metadata[key]; ok {
 				data[key] = value
 			}

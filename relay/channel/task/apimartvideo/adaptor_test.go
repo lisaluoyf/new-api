@@ -113,7 +113,7 @@ func TestNormalizeVideoDuration(t *testing.T) {
 	require.Equal(t, 15, normalizeVideoDuration(ModelKlingV3Omni, 15))
 	require.Equal(t, 5, normalizeVideoDuration(ModelKlingV3Omni, 16))
 	require.Equal(t, -1, normalizeVideoDuration(ModelSeedance25, -1))
-	require.Equal(t, 4, normalizeVideoDuration(ModelSeedance25, 0))
+	require.Equal(t, 5, normalizeVideoDuration(ModelSeedance25, 0))
 	require.Equal(t, 30, normalizeVideoDuration(ModelSeedance25, 31))
 }
 
