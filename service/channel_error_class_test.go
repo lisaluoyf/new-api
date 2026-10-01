@@ -150,6 +150,65 @@ func TestClassifyChannelError_genericBadRequestDoesNotDisable(t *testing.T) {
 	require.Equal(t, CategorySkip, ClassifyChannelError(err))
 }
 
+func TestEvaluateChannelHealthDeletedUpstreamGroup(t *testing.T) {
+	previous := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = previous
+		ClearChannelHealth(257)
+	})
+	for _, body := range []string{
+		`{"code":"GROUP_DELETED","message":"API Key 所属分组已删除"}`,
+		`{"code":"GROUP_DELETED","message":"Group unavailable"}`,
+		`{"error":{"code":"GROUP_DELETED","message":"Group unavailable"}}`,
+		`{"message":"API Key 所属分组已删除"}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			err := RelayErrorHandler(context.Background(), &http.Response{
+				StatusCode: http.StatusForbidden,
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}, false)
+			require.Equal(t, CategoryCredentialInvalid, ClassifyChannelError(err))
+			require.True(t, ShouldDisableChannel(err))
+			action, reason := EvaluateChannelHealth(types.ChannelError{ChannelId: 257, AutoBan: true}, err)
+			require.Equal(t, HealthDisableCredential, action, "must disable the key/channel, not just one model")
+			require.NotEmpty(t, reason)
+			action, _ = EvaluateChannelHealth(types.ChannelError{ChannelId: 257, AutoBan: false}, err)
+			require.Equal(t, HealthSkip, action)
+			common.AutomaticDisableChannelEnabled = false
+			action, _ = EvaluateChannelHealth(types.ChannelError{ChannelId: 257, AutoBan: true}, err)
+			require.Equal(t, HealthSkip, action)
+			require.False(t, ShouldDisableChannel(err))
+			common.AutomaticDisableChannelEnabled = true
+		})
+	}
+}
+
+func TestClassifyChannelErrorDeletedGroupBoundaries(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name     string
+		status   int
+		body     string
+		category ChannelErrorCategory
+	}{
+		{"generic forbidden", 403, `{"message":"Forbidden"}`, CategorySkip},
+		{"user quota takes precedence", 403, `{"code":"GROUP_DELETED","message":"用户额度不足"}`, CategorySkip},
+		{"model access remains model scoped", 403, `{"message":"该令牌无权访问模型 claude-opus-4-7"}`, CategoryDisableImmediate},
+		{"code mentioned in message is not a code", 403, `{"message":"unsupported parameter GROUP_DELETED"}`, CategorySkip},
+		{"bad parameter is not credential failure", 400, `{"code":"GROUP_DELETED","message":"invalid parameter"}`, CategorySkip},
+		{"transient failure stays in window", 503, `{"code":"GROUP_DELETED","message":"Service temporarily unavailable"}`, CategoryDisableWindow},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := RelayErrorHandler(context.Background(), &http.Response{
+				StatusCode: tt.status,
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}, false)
+			require.Equal(t, tt.category, ClassifyChannelError(err))
+		})
+	}
+}
+
 func TestClassifyChannelError_legacyDisableKeywordIsNotRecharge(t *testing.T) {
 	t.Parallel()
 	err := types.NewErrorWithStatusCode(

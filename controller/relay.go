@@ -1354,6 +1354,8 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 		originalModel := strings.TrimSpace(c.GetString("original_model"))
 		gopool.Go(func() {
 			switch action {
+			case service.HealthDisableCredential:
+				service.DisableChannel(channelError, reason)
 			case service.HealthNotifyRecharge:
 				service.NotifyUpstreamRecharge(channelError, err)
 				service.DisableChannel(channelError, reason)

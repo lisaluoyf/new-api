@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 )
@@ -17,6 +18,7 @@ const (
 	CategoryDisableWindow
 	CategoryRateLimitWindow // 429 codex cooldown — higher threshold before disable
 	CategoryProbeBeforeDisable
+	CategoryCredentialInvalid // Account/key failures affect every model using the key.
 )
 
 var (
@@ -87,6 +89,9 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 	if isPlatformUserQuotaError(err) {
 		return CategorySkip
 	}
+	if isUpstreamGroupDeletedError(err) {
+		return CategoryCredentialInvalid
+	}
 
 	for _, m := range distributorNoAvailableMarkers {
 		if strings.Contains(msg, m) {
@@ -146,6 +151,24 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 	}
 
 	return CategorySkip
+}
+
+func isUpstreamGroupDeletedError(err *types.NewAPIError) bool {
+	if err == nil || (err.StatusCode != 401 && err.StatusCode != 403) {
+		return false
+	}
+	if strings.EqualFold(string(err.GetErrorCode()), "GROUP_DELETED") {
+		return true
+	}
+	// Some providers return a top-level code which RelayErrorHandler keeps
+	// only in the diagnostic body. Read the exact field, not arbitrary text.
+	var body struct {
+		Code string `json:"code"`
+	}
+	if common.UnmarshalJsonStr(err.UpstreamResponseBody, &body) == nil && strings.EqualFold(body.Code, "GROUP_DELETED") {
+		return true
+	}
+	return strings.Contains(err.Error(), "API Key 所属分组已删除")
 }
 
 func isUpstreamRechargeError(err *types.NewAPIError) bool {

@@ -29,6 +29,7 @@ const (
 	HealthDisableImmediate
 	HealthDisableWindow
 	HealthProbeBeforeDisable
+	HealthDisableCredential
 )
 
 type healthEvent struct {
@@ -113,7 +114,7 @@ func recordChannelErrorEvent(channelID int, category ChannelErrorCategory, statu
 	defer st.mu.Unlock()
 	st.prune(now)
 	st.events = append(st.events, healthEvent{at: now, category: category, statusCode: statusCode})
-	if category == CategoryUpstreamRecharge {
+	if category == CategoryUpstreamRecharge || category == CategoryCredentialInvalid {
 		st.rechargeN++
 	}
 }
@@ -128,7 +129,8 @@ func EvaluateChannelHealth(channelError types.ChannelError, err *types.NewAPIErr
 	}
 
 	category := ClassifyChannelError(err)
-	// Balance exhaustion belongs to the upstream account, regardless of endpoint.
+	// Balance exhaustion and deleted groups belong to the upstream account/key,
+	// regardless of model or endpoint.
 	if category == CategoryUpstreamRecharge {
 		targets = nil
 	}
@@ -140,6 +142,8 @@ func EvaluateChannelHealth(channelError types.ChannelError, err *types.NewAPIErr
 	switch category {
 	case CategorySkip:
 		return HealthSkip, ""
+	case CategoryCredentialInvalid:
+		return HealthDisableCredential, err.ErrorWithStatusCode()
 	case CategoryUpstreamRecharge:
 		st := getChannelHealth(channelError.ChannelId, targets...)
 		st.mu.Lock()
