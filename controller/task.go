@@ -72,7 +72,7 @@ func tasksToUserDto(tasks []*model.Task) []*dto.UserTaskDto {
 	for i, task := range tasks {
 		failReason := ""
 		if task.Status == model.TaskStatusFailure {
-			failReason = "Task failed"
+			failReason = service.PublicTaskFailure(task)
 		}
 		resultURL := task.GetResultURL()
 		platform := string(task.Platform)

@@ -89,6 +89,7 @@ func GetUserLogs(c *gin.Context) {
 		return
 	}
 	service.EnrichLogsMediaURLs(logs)
+	service.EnrichUserTaskLogFailures(logs)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
@@ -119,6 +120,7 @@ func GetLogByKey(c *gin.Context) {
 		})
 		return
 	}
+	service.EnrichUserTaskLogFailures(logs)
 	c.JSON(200, gin.H{
 		"success": true,
 		"message": "",

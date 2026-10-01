@@ -427,6 +427,10 @@ function renderCompactDetailSummary(summarySegments) {
 function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
   const other = getLogOther(record.other);
 
+  if (other?.task_fail_reason) {
+    return { segments: [{ text: other.task_fail_reason, tone: 'primary' }] };
+  }
+
   if (record.type === 6) {
     return {
       segments: [{ text: t('异步任务退款'), tone: 'primary' }],

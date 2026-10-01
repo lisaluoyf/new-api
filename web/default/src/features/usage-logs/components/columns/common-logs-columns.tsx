@@ -104,6 +104,10 @@ function buildDetailSegments(
   other: LogOtherData | null,
   t: (key: string, opts?: Record<string, unknown>) => string
 ): DetailSegment[] {
+  if (other?.task_fail_reason) {
+    return [{ text: other.task_fail_reason, danger: true }]
+  }
+
   if (log.type === 6) {
     return [{ text: t('Async task refund') }]
   }

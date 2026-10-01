@@ -34,15 +34,25 @@ func TestBuildSafeVideoTaskResponseOmitsProviderData(t *testing.T) {
 	}
 }
 
-func TestBuildSafeVideoTaskResponseUsesGenericFailure(t *testing.T) {
+func TestBuildSafeVideoTaskResponsePreservesSafeFailure(t *testing.T) {
 	task := &model.Task{
 		TaskID:     "task_public",
 		Status:     model.TaskStatusFailure,
-		FailReason: "The provider-specific width should not be less than 700px",
+		FailReason: "width should not be less than 700px; https://provider.example/internal?key=secret",
 	}
 	body := buildSafeVideoTaskResponse(task, []byte(`{"error":{"message":"provider-specific"}}`))
 
-	require.Contains(t, string(body), "Video generation failed")
-	require.NotContains(t, string(body), "provider-specific")
-	require.NotContains(t, string(body), "700px")
+	require.Contains(t, string(body), "width should not be less than 700px")
+	require.NotContains(t, string(body), "provider.example")
+	require.NotContains(t, string(body), "secret")
+}
+
+func TestSanitizeOpenAIVideoTaskFailurePreservesPublicShape(t *testing.T) {
+	task := &model.Task{Status: model.TaskStatusFailure, FailReason: "ratio invalid; Bearer secret-token"}
+	result, err := sanitizeOpenAIVideoTaskFailure(task, []byte(`{"id":"task_public","status":"failed","error":{"message":"raw provider error","code":"provider-code"}}`))
+	require.NoError(t, err)
+	require.Contains(t, string(result), "ratio invalid")
+	require.Contains(t, string(result), "task_public")
+	require.NotContains(t, string(result), "secret-token")
+	require.NotContains(t, string(result), "provider-code")
 }

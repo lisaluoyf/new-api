@@ -395,6 +395,9 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		}
 		if converter, ok := adaptor.(channel.OpenAIVideoConverter); ok {
 			openAIVideoData, err := converter.ConvertToOpenAIVideo(originTask)
+			if err == nil {
+				openAIVideoData, err = sanitizeOpenAIVideoTaskFailure(originTask, openAIVideoData)
+			}
 			if err != nil {
 				taskResp = service.TaskErrorWrapper(err, "convert_to_openai_video_failed", http.StatusInternalServerError)
 				return
@@ -522,6 +525,19 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	return buildSafeVideoTaskResponse(task, body)
 }
 
+// Apply the same public error policy after every provider-specific converter.
+func sanitizeOpenAIVideoTaskFailure(task *model.Task, body []byte) ([]byte, error) {
+	if task.Status != model.TaskStatusFailure {
+		return body, nil
+	}
+	var response map[string]interface{}
+	if err := common.Unmarshal(body, &response); err != nil {
+		return nil, err
+	}
+	response["error"] = &dto.OpenAIVideoError{Code: "task_failed", Message: service.PublicTaskFailure(task)}
+	return common.Marshal(response)
+}
+
 // buildSafeVideoTaskResponse returns the stable compatibility response without
 // serializing provider payloads, identifiers, URLs, routing or billing data.
 func buildSafeVideoTaskResponse(task *model.Task, rawBody []byte) []byte {
@@ -541,7 +557,7 @@ func buildSafeVideoTaskResponse(task *model.Task, rawBody []byte) []byte {
 	if task.Status == model.TaskStatusFailure {
 		out["error"] = map[string]string{
 			"code":    "task_failed",
-			"message": "Video generation failed",
+			"message": service.PublicTaskFailure(task),
 		}
 	}
 	respBody, _ := common.Marshal(dto.TaskResponse[any]{

@@ -68,7 +68,7 @@ func TestTasksToUserDtoOmitsProviderAndBillingData(t *testing.T) {
 	}
 }
 
-func TestTasksToUserDtoHidesProviderFailureAndLegacyResult(t *testing.T) {
+func TestTasksToUserDtoPreservesSafeFailureAndHidesLegacyResult(t *testing.T) {
 	task := &model.Task{
 		TaskID:     "task_failed",
 		Platform:   constant.TaskPlatformApimartVideo,
@@ -77,6 +77,6 @@ func TestTasksToUserDtoHidesProviderFailureAndLegacyResult(t *testing.T) {
 	}
 
 	item := tasksToUserDto([]*model.Task{task})[0]
-	require.Equal(t, "Task failed", item.FailReason)
+	require.Equal(t, "The provider width should not be less than 700px", item.FailReason)
 	require.Empty(t, item.ResultURL)
 }
