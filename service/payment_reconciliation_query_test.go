@@ -71,3 +71,10 @@ func TestPlategaStatementDiscoversIndependentSuccessfulOrders(t *testing.T) {
 	require.Len(t, rows, 1)
 	require.Equal(t, "missing-local-order", rows[0].TradeNo)
 }
+
+func TestStatementMerchantReferenceDoesNotRequireLocalOrder(t *testing.T) {
+	p := waffoRefundPayment{OrderMerchantExternalID: "anonymous-missing-order"}
+	trade, e := resolveWaffoMerchantReference(context.Background(), p)
+	require.NoError(t, e)
+	require.Equal(t, "anonymous-missing-order", trade)
+}

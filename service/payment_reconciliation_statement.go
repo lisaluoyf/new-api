@@ -218,16 +218,11 @@ func listWaffoStatement(ctx context.Context, start, end time.Time) ([]StatementP
 				return out, errors.New("duplicate statement payment")
 			}
 			seen[p.ID] = true
-			trade := p.OrderMerchantExternalID
-			if trade == "" {
-				var metadata map[string]string
-				if common.UnmarshalJsonStr(p.OnetimeOrder.Metadata, &metadata) == nil {
-					trade = metadata["tradeNo"]
-					if trade == "" {
-						trade = metadata["orderId"]
-					}
-				}
+			trade, refErr := resolveWaffoMerchantReference(ctx, p)
+			if refErr != nil {
+				trade = ""
 			}
+
 			out = append(out, StatementPayment{ID: p.ID, TradeNo: trade, Status: p.Status, Amount: p.Snapshot.Subtotal, Currency: strings.ToUpper(p.Snapshot.Currency)})
 		}
 		if len(result.Payments) < 100 {
