@@ -214,8 +214,19 @@ func recordNowPaymentsAttempt(local *model.NowPaymentsPayment, remote *service.N
 		}
 		failedOrderCanRetry := locked.Status == common.TopUpStatusFailed && currentPayment.InvoiceID != "" && currentPayment.ProviderPayload == "verified" && (currentPayment.PaymentStatus == "failed" || currentPayment.PaymentStatus == "expired" || currentPayment.PaymentStatus == "refunded")
 		parentPaymentID := strings.TrimSpace(string(remote.ParentPaymentID))
-		if parentPaymentID != "" && (locked.Status != common.TopUpStatusSuccess || currentPayment.PaymentID != parentPaymentID) {
-			return fmt.Errorf("%w: repeated payment parent mismatch", errNowPaymentsVerification)
+		// A linked payment can be the first successful payment (for example,
+		// when the payer changes currency). It is only a duplicate after crediting.
+		// Keep accepting its callbacks after it becomes the bound payment, and
+		// retain the original parent binding through verified attempt history.
+		if parentPaymentID != "" && currentPayment.PaymentID != parentPaymentID && currentPayment.PaymentID != paymentID {
+			var parentAttempt model.NowPaymentsAttempt
+			parentLookup := tx.Where("payment_id = ? AND top_up_trade_no = ? AND invoice_id = ?", parentPaymentID, locked.TradeNo, currentPayment.InvoiceID).Limit(1).Find(&parentAttempt)
+			if parentLookup.Error != nil {
+				return parentLookup.Error
+			}
+			if parentLookup.RowsAffected == 0 {
+				return fmt.Errorf("%w: repeated payment parent mismatch", errNowPaymentsVerification)
+			}
 		}
 		attempt := &model.NowPaymentsAttempt{}
 		lookup := tx.Where("payment_id = ?", paymentID).Limit(1).Find(attempt)

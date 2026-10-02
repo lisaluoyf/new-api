@@ -205,7 +205,7 @@ func TestSettleNowPaymentsAnotherSuccessfulPaymentAlertsOnce(t *testing.T) {
 	require.Equal(t, int(10*common.QuotaPerUnit), storedUser.Quota)
 }
 
-func TestSettleNowPaymentsRejectsRepeatedPaymentBeforeParentSettles(t *testing.T) {
+func TestSettleNowPaymentsAcceptsLinkedPaymentBeforeParentSettles(t *testing.T) {
 	payment, topUp, user := setupNowPaymentsSettlementTest(t, "finished")
 	getNowPaymentsPayment = func(_ context.Context, paymentID string) (*service.NowPaymentsPaymentResponse, error) {
 		return &service.NowPaymentsPaymentResponse{
@@ -214,11 +214,13 @@ func TestSettleNowPaymentsRejectsRepeatedPaymentBeforeParentSettles(t *testing.T
 			PayCurrency: "usdttrc20", Network: "trx", OrderID: topUp.TradeNo,
 		}, nil
 	}
-	require.ErrorIs(t, settleNowPaymentsPayment(payment, "second-payment", "127.0.0.1"), errNowPaymentsVerification)
-	require.Equal(t, common.TopUpStatusPending, model.GetTopUpByTradeNo(topUp.TradeNo).Status)
+	require.NoError(t, settleNowPaymentsPayment(payment, "second-payment", "127.0.0.1"))
+	require.NoError(t, settleNowPaymentsPayment(payment, "second-payment", "127.0.0.1"))
+	require.Equal(t, common.TopUpStatusSuccess, model.GetTopUpByTradeNo(topUp.TradeNo).Status)
+	require.False(t, model.GetNowPaymentsAttemptByID("second-payment").DuplicatePayment)
 	var storedUser model.User
 	require.NoError(t, model.DB.First(&storedUser, user.Id).Error)
-	require.Zero(t, storedUser.Quota)
+	require.Equal(t, int(10*common.QuotaPerUnit), storedUser.Quota)
 }
 
 func TestSettleNowPaymentsAlertFailureRetries(t *testing.T) {
@@ -457,6 +459,71 @@ func TestNowPaymentsRecoveryFindsRepeatedPaymentByParent(t *testing.T) {
 	var storedUser model.User
 	require.NoError(t, model.DB.First(&storedUser, user.Id).Error)
 	require.Equal(t, int(10*common.QuotaPerUnit), storedUser.Quota)
+}
+
+func TestNowPaymentsRecoverySettlesLinkedPaymentAfterCurrencyChange(t *testing.T) {
+	_, topUp, user := setupNowPaymentsSettlementTest(t, "expired")
+	getNowPaymentsPayment = func(_ context.Context, paymentID string) (*service.NowPaymentsPaymentResponse, error) {
+		remote := &service.NowPaymentsPaymentResponse{
+			PaymentID: dto.StringValue(paymentID), InvoiceID: "987", OrderID: topUp.TradeNo,
+			PriceAmount: 9, PriceCurrency: "usd",
+		}
+		if paymentID == "first-payment" {
+			remote.PaymentStatus = "expired"
+			remote.PayCurrency = "usdttrc20"
+			remote.PayAmount = 10
+			remote.PaymentExtraIDs = []dto.StringValue{"second-payment"}
+		} else {
+			remote.ParentPaymentID = "first-payment"
+			remote.PaymentStatus = "finished"
+			remote.PayCurrency = "trx"
+			remote.PayAmount = 95
+			remote.ActuallyPaid = 95
+		}
+		return remote, nil
+	}
+
+	require.NoError(t, runNowPaymentsRecoveryOnce(context.Background()))
+	require.Equal(t, common.TopUpStatusSuccess, model.GetTopUpByTradeNo(topUp.TradeNo).Status)
+	storedPayment := model.GetNowPaymentsPaymentByTradeNo(topUp.TradeNo)
+	require.Equal(t, "second-payment", storedPayment.PaymentID)
+	require.Equal(t, "trx", storedPayment.PayCurrency)
+	require.Equal(t, "finished", storedPayment.PaymentStatus)
+	require.False(t, model.GetNowPaymentsAttemptByID("second-payment").DuplicatePayment)
+
+	// Retried callbacks and recovery must never credit the order again.
+	require.NoError(t, settleNowPaymentsPayment(storedPayment, "second-payment", ""))
+	require.NoError(t, runNowPaymentsRecoveryOnce(context.Background()))
+	var storedUser model.User
+	require.NoError(t, model.DB.First(&storedUser, user.Id).Error)
+	require.Equal(t, int(10*common.QuotaPerUnit), storedUser.Quota)
+
+	// A later payment under the original parent is recorded as a duplicate.
+	t.Setenv("FEISHU_OPS_CHAT_ID", "ops-group-one")
+	t.Setenv("FEISHU_APP_ID", "test-app")
+	t.Setenv("FEISHU_APP_SECRET", "test-secret")
+	sendNowPaymentsDuplicateAlert = func(_, _ string, _ []string) error { return nil }
+	require.NoError(t, settleNowPaymentsPayment(storedPayment, "third-payment", ""))
+	require.True(t, model.GetNowPaymentsAttemptByID("third-payment").DuplicatePayment)
+	require.NoError(t, model.DB.First(&storedUser, user.Id).Error)
+	require.Equal(t, int(10*common.QuotaPerUnit), storedUser.Quota)
+}
+
+func TestSettleNowPaymentsRejectsUnboundParent(t *testing.T) {
+	payment, topUp, user := setupNowPaymentsSettlementTest(t, "finished")
+	getNowPaymentsPayment = func(_ context.Context, paymentID string) (*service.NowPaymentsPaymentResponse, error) {
+		return &service.NowPaymentsPaymentResponse{
+			PaymentID: dto.StringValue(paymentID), ParentPaymentID: "unrelated-payment", InvoiceID: "987",
+			OrderID: topUp.TradeNo, PaymentStatus: "finished", PriceAmount: 9, PriceCurrency: "usd",
+			PayAmount: 95, ActuallyPaid: 95, PayCurrency: "trx",
+		}, nil
+	}
+	require.ErrorIs(t, settleNowPaymentsPayment(payment, "second-payment", ""), errNowPaymentsVerification)
+	require.Equal(t, common.TopUpStatusPending, model.GetTopUpByTradeNo(topUp.TradeNo).Status)
+	require.Nil(t, model.GetNowPaymentsAttemptByID("second-payment"))
+	var storedUser model.User
+	require.NoError(t, model.DB.First(&storedUser, user.Id).Error)
+	require.Zero(t, storedUser.Quota)
 }
 
 func TestNowPaymentsRecoveryRetriesClaimedAlert(t *testing.T) {
