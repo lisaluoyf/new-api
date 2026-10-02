@@ -20,6 +20,8 @@ export type ReconciliationRun = {
   finished_at: number
   coverage: string
   matched_count: number
+  refund_matched_count: number
+  prior_statement_matched_count: number
   checked_count: number
   local_paid_count: number
   official_paid_count: number

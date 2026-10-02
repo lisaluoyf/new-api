@@ -42,22 +42,24 @@ type PaymentReconciliationJob struct {
 	NextAttempt int64  `json:"next_attempt"`
 }
 type PaymentReconciliationRun struct {
-	ID                int                          `json:"id"`
-	Day               string                       `gorm:"type:varchar(10);index" json:"day"`
-	Provider          string                       `gorm:"type:varchar(32);index" json:"provider"`
-	Status            string                       `gorm:"type:varchar(24)" json:"status"`
-	ActorID           int                          `json:"actor_id"`
-	StartedAt         int64                        `json:"started_at"`
-	FinishedAt        int64                        `json:"finished_at"`
-	MatchedCount      int                          `gorm:"-" json:"matched_count"`
-	CheckedCount      int                          `json:"checked_count"`
-	LocalPaidCount    int                          `json:"local_paid_count"`
-	OfficialPaidCount int                          `json:"official_paid_count"`
-	DifferenceCount   int                          `json:"difference_count"`
-	UnverifiedCount   int                          `json:"unverified_count"`
-	TotalsJSON        string                       `gorm:"type:text" json:"-"`
-	Totals            []PaymentReconciliationTotal `gorm:"-" json:"totals"`
-	Coverage          string                       `gorm:"type:varchar(64)" json:"coverage"`
+	RefundMatchedCount         int                          `gorm:"-" json:"refund_matched_count"`
+	PriorStatementMatchedCount int                          `gorm:"-" json:"prior_statement_matched_count"`
+	ID                         int                          `json:"id"`
+	Day                        string                       `gorm:"type:varchar(10);index" json:"day"`
+	Provider                   string                       `gorm:"type:varchar(32);index" json:"provider"`
+	Status                     string                       `gorm:"type:varchar(24)" json:"status"`
+	ActorID                    int                          `json:"actor_id"`
+	StartedAt                  int64                        `json:"started_at"`
+	FinishedAt                 int64                        `json:"finished_at"`
+	MatchedCount               int                          `gorm:"-" json:"matched_count"`
+	CheckedCount               int                          `json:"checked_count"`
+	LocalPaidCount             int                          `json:"local_paid_count"`
+	OfficialPaidCount          int                          `json:"official_paid_count"`
+	DifferenceCount            int                          `json:"difference_count"`
+	UnverifiedCount            int                          `json:"unverified_count"`
+	TotalsJSON                 string                       `gorm:"type:text" json:"-"`
+	Totals                     []PaymentReconciliationTotal `gorm:"-" json:"totals"`
+	Coverage                   string                       `gorm:"type:varchar(64)" json:"coverage"`
 }
 type PaymentReconciliationTotal struct {
 	Currency       string `json:"currency"`
@@ -66,6 +68,7 @@ type PaymentReconciliationTotal struct {
 	Difference     string `json:"difference"`
 }
 type PaymentReconciliationItem struct {
+	Verification     string `gorm:"type:varchar(64)" json:"verification"`
 	ID               int    `json:"id"`
 	RunID            int    `gorm:"index" json:"run_id"`
 	TradeNo          string `gorm:"type:varchar(255);index" json:"trade_no"`
@@ -240,6 +243,12 @@ func SummarizePaymentReconciliation(items []PaymentReconciliationItem) PaymentRe
 		}
 		if i.Result == "matched" && i.Purpose != "coverage" {
 			r.MatchedCount++
+			if i.Verification == "refund_matched" {
+				r.RefundMatchedCount++
+			}
+			if i.Verification == "prior_creation_statement" {
+				r.PriorStatementMatchedCount++
+			}
 		}
 		if i.Result == "difference" {
 			r.DifferenceCount++

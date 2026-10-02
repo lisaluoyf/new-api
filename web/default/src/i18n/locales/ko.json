@@ -4757,7 +4757,10 @@
     "Start Date": "Start Date",
     "End Date": "End Date",
     "Date": "Date",
-    "Order Number": "Order Number"
+    "Order Number": "Order Number",
+    "Reconciled refunds": "대사가 완료된 환불",
+    "Verified prior-date payments credited today": "오늘 입금된 이전 결제 확인 완료",
+    "Reconciliation Platega creation date notice": "Platega statements use the order creation date. Payments created earlier and credited on the selected day are checked against their original statement and listed separately from the selected day’s totals."
   },
   "在线使用": "플레이그라운드",
   "推广有礼": "제휴 추천",

@@ -12,7 +12,6 @@
     "{{count}} successful recharges": "{{count}} 筆成功充值",
     "Invalid date range": "開始日期不能晚於結束日期",
     "All filtered pages; credited USD including recharge bonuses; excludes subscriptions and free credits. Dates filter order creation time in Beijing.": "彙總篩選結果的全部分頁，按美元到帳額度計算（含充值贈送），不含訂閱和免費贈送。時間按北京時間的訂單建立日期篩選。",
-
     "Your account will be closed and access revoked.": "帳戶將被註銷，登入和 API 存取權限將被撤銷。",
     "Type delete to confirm account deletion.": "輸入 delete 以確認刪除帳號。",
     "Close your account and revoke access": "註銷帳戶並撤銷存取權限",
@@ -4785,7 +4784,10 @@
     "reconciliation.problem.official_paid_local_date_mismatch": "上游成功订单不在本地当日订单中，需要核查入账日期和延迟支付",
     "reconciliation.problem.official_duplicate_payment_for_order": "同一商户订单出现多笔不同的上游成功交易，需要核查重复收款",
     "reconciliation.problem.official_paid_local_reference_unresolved": "上游成功交易缺少可解析的商户订单关联，后台无法匹配，需要核查",
-    "reconciliation.problem.official_paid_absent_from_daily_statement": "当前查单已支付，但未出现在所选日期的官方账单中；需要核查跨日支付或账单遗漏"
+    "reconciliation.problem.official_paid_absent_from_daily_statement": "当前查单已支付，但未出现在所选日期的官方账单中；需要核查跨日支付或账单遗漏",
+    "Reconciled refunds": "退款對帳成功",
+    "Verified prior-date payments credited today": "歷史訂單當日入帳已核驗",
+    "Reconciliation Platega creation date notice": "Platega 帳單按訂單建立日期歸屬。歷史訂單在所選日期入帳時，會核對其建立日期的原帳單，並單獨顯示，不計入所選日期的建立訂單金額合計。"
   },
   "User Balance": "用戶餘額",
   "No active subscription": "目前沒有可用訂閱",

@@ -63,7 +63,7 @@ func TestPlategaStatementDiscoversIndependentSuccessfulOrders(t *testing.T) {
 		require.Equal(t, "POST", r.Method)
 		require.Equal(t, "anonymous-merchant", r.Header.Get("X-MerchantId"))
 		require.Empty(t, r.URL.RawQuery)
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[{"recordId":"missing-id","payload":"missing-local-order","status":"CONFIRMED","amount":108.5,"currencyCode":"RUB"},{"recordId":"cancelled-id","status":"CANCELED","amount":10,"currencyCode":"RUB"}]`))}, nil
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[{"recordId":"missing-id","createdAt":"2026-09-30 01:00:00","payload":"missing-local-order","status":"CONFIRMED","amount":108.5,"currencyCode":"RUB"},{"recordId":"cancelled-id","status":"CANCELED","amount":10,"currencyCode":"RUB"}]`))}, nil
 	})}
 	day := time.Date(2026, 9, 30, 0, 0, 0, 0, time.FixedZone("UTC+8", 28800))
 	rows, e := ListReconciliationPayments(context.Background(), "platega", day, day.AddDate(0, 0, 1))

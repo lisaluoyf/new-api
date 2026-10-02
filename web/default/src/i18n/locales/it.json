@@ -4753,7 +4753,10 @@
     "Start Date": "Start Date",
     "End Date": "End Date",
     "Date": "Date",
-    "Order Number": "Order Number"
+    "Order Number": "Order Number",
+    "Reconciled refunds": "Rimborsi riconciliati",
+    "Verified prior-date payments credited today": "Pagamenti precedenti accreditati oggi e verificati",
+    "Reconciliation Platega creation date notice": "Platega statements use the order creation date. Payments created earlier and credited on the selected day are checked against their original statement and listed separately from the selected day’s totals."
   },
   "User Balance": "Saldo utenti",
   "No active subscription": "Nessun abbonamento attivo",

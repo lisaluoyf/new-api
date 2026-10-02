@@ -76,6 +76,57 @@ func TestPaymentReconciliationClassifiesMoneyAndStates(t *testing.T) {
 		})
 	}
 }
+
+func TestPayPalRefundReconciliationRequiresRefundAndQuotaEvidence(t *testing.T) {
+	r := reconciliationCandidate{trade: "anonymous", provider: "paypal", status: "refunded", money: 100, currency: "USD"}
+	p := reconciliationProof{id: "capture", status: "REFUNDED", known: true, amount: "100", currency: "USD", refundVerified: true, refundRecoveryVerified: true}
+	i := classifyReconciliationOrder(r, p)
+	require.Equal(t, "matched", i.Result)
+	require.Equal(t, "refund_matched", i.Verification)
+	require.False(t, i.LocalPaid)
+	require.False(t, i.OfficialPaid)
+	p.refundVerified = false
+	require.Equal(t, "unverified", classifyReconciliationOrder(r, p).Result)
+	p.refundVerified = true
+	p.refundRecoveryVerified = false
+	require.Equal(t, "unverified", classifyReconciliationOrder(r, p).Result)
+	p.refundRecoveryVerified = true
+	p.currency = "EUR"
+	require.Equal(t, "unverified", classifyReconciliationOrder(r, p).Result)
+}
+
+func TestPriorPlategaStatementCannotMaskMissingOrDifferentPayment(t *testing.T) {
+	day := time.Date(2026, 10, 1, 0, 0, 0, 0, reconciliationTimezone)
+	created := day.AddDate(0, 0, -4).Unix()
+	i := model.PaymentReconciliationItem{TradeNo: "order", OfficialID: "provider-id", OfficialCurrency: "RUB", OfficialAmount: "453.26"}
+	p := service.StatementPayment{ID: "provider-id", TradeNo: "order", Status: "CONFIRMED", Currency: "RUB", Amount: "453.260", CreatedAt: created}
+	require.True(t, matchesPriorPlategaStatement(i, created, day, p))
+	p.Amount = "450"
+	require.False(t, matchesPriorPlategaStatement(i, created, day, p))
+	p.Amount = "453.26"
+	p.ID = "different"
+	require.False(t, matchesPriorPlategaStatement(i, created, day, p))
+	p.ID = "provider-id"
+	p.CreatedAt = day.Unix()
+	require.False(t, matchesPriorPlategaStatement(i, created, day, p))
+	require.False(t, matchesPriorPlategaStatement(i, day.Unix(), day, p))
+}
+
+func TestPlategaLocalCohortIncludesCreationDayAndLaterLocalCredit(t *testing.T) {
+	db := setupCryptoPersistenceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}, &model.PaymentQueryReference{}, &model.PlategaOrder{}))
+	day := time.Date(2026, 10, 1, 0, 0, 0, 0, reconciliationTimezone).Unix()
+	for _, top := range []model.TopUp{
+		{TradeNo: "prior-created", PaymentProvider: "platega", Status: "success", Money: 1, CreateTime: day - 86400, CompleteTime: day + 1},
+		{TradeNo: "created-today", PaymentProvider: "platega", Status: "success", Money: 1, CreateTime: day + 1, CompleteTime: day + 86401},
+		{TradeNo: "other-day", PaymentProvider: "platega", Status: "success", Money: 1, CreateTime: day - 86400, CompleteTime: day - 1},
+	} {
+		require.NoError(t, db.Create(&top).Error)
+	}
+	rows, err := loadReconciliationCandidates(day, day+86400, "platega")
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+}
 func TestReconciliationDateRangeAndProviderValidation(t *testing.T) {
 	a, b, e := reconciliationRange("", "")
 	require.NoError(t, e)

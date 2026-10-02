@@ -1817,6 +1817,10 @@ func refundTopUpByReference(referenceId, provider, auditNote string) (reversedQu
 		}
 		quota = topUpCreditQuota(topUp)
 		topUp.Status = common.TopUpStatusRefunded
+		if provider == PaymentProviderPayPal {
+			topUp.RefundedAmount = topUp.Money
+			topUp.RefundedQuota = int(quota)
+		}
 		if e := tx.Save(topUp).Error; e != nil {
 			return e
 		}

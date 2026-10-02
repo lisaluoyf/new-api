@@ -32,8 +32,9 @@ type reconciliationCandidate struct {
 	top                                                                  *model.TopUp
 }
 type reconciliationProof struct {
-	id, status, currency, amount, problem string
-	paid, known                           bool
+	id, status, currency, amount, problem  string
+	paid, known                            bool
+	refundVerified, refundRecoveryVerified bool
 }
 
 func reconciliationRange(start, end string) (time.Time, time.Time, error) {
@@ -120,15 +121,23 @@ func GetPaymentReconciliation(c *gin.Context) {
 	matchedCounts := map[int]int{}
 	if len(ids) > 0 {
 		var counts []struct {
-			RunID        int
-			MatchedCount int
+			RunID                      int
+			MatchedCount               int
+			RefundMatchedCount         int
+			PriorStatementMatchedCount int
 		}
-		if model.DB.Model(&model.PaymentReconciliationItem{}).Select("run_id, COUNT(*) AS matched_count").Where("run_id IN ? AND result = ? AND purpose <> ?", ids, "matched", "coverage").Group("run_id").Scan(&counts).Error != nil {
+		if model.DB.Model(&model.PaymentReconciliationItem{}).Select("run_id, COUNT(*) AS matched_count, SUM(CASE WHEN verification = 'refund_matched' THEN 1 ELSE 0 END) AS refund_matched_count, SUM(CASE WHEN verification = 'prior_creation_statement' THEN 1 ELSE 0 END) AS prior_statement_matched_count").Where("run_id IN ? AND result = ? AND purpose <> ?", ids, "matched", "coverage").Group("run_id").Scan(&counts).Error != nil {
 			common.ApiErrorMsg(c, "Could not count reconciled orders")
 			return
 		}
 		for _, count := range counts {
 			matchedCounts[count.RunID] = count.MatchedCount
+			for index := range runs {
+				if runs[index].ID == count.RunID {
+					runs[index].RefundMatchedCount = count.RefundMatchedCount
+					runs[index].PriorStatementMatchedCount = count.PriorStatementMatchedCount
+				}
+			}
 		}
 	}
 	truncated := int64(page*100) < itemsTotal
@@ -264,6 +273,30 @@ func reconcilePaymentDay(j *model.PaymentReconciliationJob) ([]model.PaymentReco
 				}
 			}
 			if i.OfficialPaid && !found {
+				if j.Provider == "platega" && i.Result == "matched" {
+					creationTime, err := reconciliationCreationTime(i)
+					if err != nil {
+						return items, err
+					}
+					created := time.Unix(creationTime, 0).UTC().Truncate(24 * time.Hour)
+					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+					historical, e := service.ListReconciliationPayments(ctx, "platega", created, created.Add(24*time.Hour))
+					cancel()
+					for _, p := range historical {
+						if e == nil && matchesPriorPlategaStatement(i, creationTime, day, p) {
+							// Export filters creation date, unlike local completion date.
+							// Retain verified late credits without counting them in the day's creation totals.
+							items[index].LocalPaid = false
+							items[index].OfficialPaid = false
+							items[index].Verification = "prior_creation_statement"
+							found = true
+							break
+						}
+					}
+					if found {
+						continue
+					}
+				}
 				items[index].OfficialPaid = false
 				items[index].Result = "unverified"
 				items[index].Problem = "official_paid_absent_from_daily_statement"
@@ -272,6 +305,23 @@ func reconcilePaymentDay(j *model.PaymentReconciliationJob) ([]model.PaymentReco
 	}
 
 	return items, nil
+}
+
+func reconciliationCreationTime(i model.PaymentReconciliationItem) (int64, error) {
+	if i.Purpose == "subscription" {
+		var row model.SubscriptionOrder
+		err := model.DB.Where("trade_no = ?", i.TradeNo).First(&row).Error
+		return row.CreateTime, err
+	}
+	var row model.TopUp
+	err := model.DB.Where("trade_no = ?", i.TradeNo).First(&row).Error
+	return row.CreateTime, err
+}
+
+func matchesPriorPlategaStatement(i model.PaymentReconciliationItem, created int64, day time.Time, p service.StatementPayment) bool {
+	actual, e1 := decimal.NewFromString(p.Amount)
+	expected, e2 := decimal.NewFromString(i.OfficialAmount)
+	return e1 == nil && e2 == nil && actual.Equal(expected) && actual.Sign() > 0 && p.ID == i.OfficialID && p.TradeNo == i.TradeNo && p.Currency == i.OfficialCurrency && p.CreatedAt == created && p.Status == "CONFIRMED" && created > 0 && (created < day.Unix() || created >= day.AddDate(0, 0, 1).Unix())
 }
 
 // Look outside the day's local cohort: upstream payment can settle an older
@@ -315,7 +365,7 @@ func mergeReconciliationStatement(provider string, items []model.PaymentReconcil
 			if (trade != "" && i.TradeNo == trade) || (i.OfficialID != "" && i.OfficialID == payment.ID) {
 				// A successful statement entry is independent evidence even when
 				// a legacy order cannot be queried by its saved identifier.
-				if i.Result == "unverified" && i.Purpose != "coverage" {
+				if i.Result == "unverified" && i.Purpose != "coverage" && i.LocalStatus != "refunded" {
 					items[index].OfficialPaid = true
 					items[index].OfficialID = payment.ID
 					items[index].OfficialStatus = payment.Status
@@ -381,16 +431,21 @@ func mergeReconciliationStatement(provider string, items []model.PaymentReconcil
 					if e := model.DB.Where("trade_no = ? AND provider = ?", trade, provider).First(&ref).Error; e == nil && ref.Currency != "" {
 						row.currency = ref.Currency
 					}
-					if provider == "platega" {
+					if provider == "platega" || (provider == "paypal" && row.status == "refunded") || payment.RefundOnly {
 						ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 						proof = queryReconciliationOrder(ctx, row)
 						cancel()
 					}
 
 					i = classifyReconciliationOrder(row, proof)
+					if i.Verification == "refund_matched" && !payment.RefundOnly {
+						// Original gross payment still belongs to this statement day.
+						i.LocalPaid = true
+						i.OfficialPaid = true
+					}
 					// An independently enumerated successful statement remains
 					// in scope even when a second query fails or contradicts it.
-					if !i.OfficialPaid {
+					if !i.OfficialPaid && i.Verification != "refund_matched" && !payment.RefundOnly {
 						i.OfficialPaid = true
 						i.OfficialID = payment.ID
 						i.OfficialStatus = payment.Status
@@ -401,7 +456,7 @@ func mergeReconciliationStatement(provider string, items []model.PaymentReconcil
 							i.Problem = "official_statement_query_conflict"
 						}
 					}
-					if i.Result == "matched" && i.LocalPaid {
+					if i.Result == "matched" && i.LocalPaid && i.Verification != "refund_matched" {
 						i.Result = "difference"
 						i.Problem = "official_paid_local_date_mismatch"
 					}
@@ -433,6 +488,9 @@ func loadReconciliationCandidates(start, end int64, provider string) ([]reconcil
 	// Start with local successes only. Failed/pending/missing local orders
 	// enter independently through the provider's successful payment statement.
 	scope := "status = ? AND ((complete_time >= ? AND complete_time < ?) OR ((complete_time IS NULL OR complete_time <= 0) AND create_time >= ? AND create_time < ?))"
+	if provider == "platega" {
+		scope = "status = ? AND ((complete_time >= ? AND complete_time < ?) OR (create_time >= ? AND create_time < ?))"
+	}
 	if err := model.DB.Where(scope, common.TopUpStatusSuccess, start, end, start, end).Find(&tops).Error; err != nil {
 		return nil, err
 	}
@@ -442,7 +500,7 @@ func loadReconciliationCandidates(start, end int64, provider string) ([]reconcil
 	rows := map[string]reconciliationCandidate{}
 	for i := range tops {
 		t := tops[i]
-		if t.Status == "success" && t.CompleteTime > 0 && (t.CompleteTime < start || t.CompleteTime >= end) {
+		if provider != "platega" && t.Status == "success" && t.CompleteTime > 0 && (t.CompleteTime < start || t.CompleteTime >= end) {
 			continue
 		}
 		p := normalizeReconciliationProvider(t.PaymentProvider, t.PaymentMethod)
@@ -452,7 +510,7 @@ func loadReconciliationCandidates(start, end int64, provider string) ([]reconcil
 		rows[t.TradeNo] = reconciliationCandidate{trade: t.TradeNo, provider: p, method: t.PaymentMethod, purpose: "wallet", status: t.Status, user: t.UserId, money: t.Money, top: &t}
 	}
 	for _, s := range subs {
-		if s.Status == "success" && s.CompleteTime > 0 && (s.CompleteTime < start || s.CompleteTime >= end) {
+		if provider != "platega" && s.Status == "success" && s.CompleteTime > 0 && (s.CompleteTime < start || s.CompleteTime >= end) {
 			continue
 		}
 		p := normalizeReconciliationProvider(s.PaymentProvider, s.PaymentMethod)
@@ -523,6 +581,12 @@ func classifyReconciliationOrder(r reconciliationCandidate, p reconciliationProo
 		return i
 	}
 	if r.status == "refunded" || strings.Contains(strings.ToLower(p.status), "refund") || strings.Contains(strings.ToLower(p.status), "chargeback") {
+		if r.provider == "paypal" && r.status == "refunded" && p.status == "REFUNDED" && p.refundVerified && p.refundRecoveryVerified && r.currency == p.currency && p.amount == decimal.NewFromFloat(r.money).String() {
+			i.LocalPaid = false
+			i.OfficialPaid = false
+			i.Verification = "refund_matched"
+			return i
+		}
 		i.Result = "unverified"
 		i.Problem = "refund_requires_separate_funds_and_entitlement_review"
 		return i
@@ -651,7 +715,8 @@ func queryReconciliationOrder(ctx context.Context, r reconciliationCandidate) re
 		if common.Unmarshal(raw, &p) != nil {
 			return fail
 		}
-		return reconciliationProof{id: p.ID, status: p.Status, currency: p.Amount.Currency, amount: p.Amount.Value, paid: p.Status == "COMPLETED", known: true, problem: reconciliationIdentityProblem(p.CustomID, r.trade, p.ID, id)}
+		proof := reconciliationProof{id: p.ID, status: p.Status, currency: p.Amount.Currency, amount: p.Amount.Value, paid: p.Status == "COMPLETED", known: true, problem: reconciliationIdentityProblem(p.CustomID, r.trade, p.ID, id)}
+		return verifyPayPalReconciliationRefund(ctx, r, proof)
 	case "creem":
 		if r.queryID == "" {
 			return missing
@@ -834,5 +899,47 @@ func queryPayPalReconciliationOrder(ctx context.Context, id, trade string) recon
 		proof.currency = capture.Amount.Currency
 		proof.paid = capture.Status == "COMPLETED"
 	}
-	return proof
+	return verifyPayPalReconciliationRefund(ctx, reconciliationCandidate{trade: trade, provider: "paypal"}, proof)
+}
+
+func verifyPayPalReconciliationRefund(ctx context.Context, r reconciliationCandidate, p reconciliationProof) reconciliationProof {
+	if p.status != "REFUNDED" || p.problem != "" {
+		return p
+	}
+	raw, err := service.QueryPayPalCapture(ctx, p.id)
+	if err != nil {
+		return p
+	}
+	var capture struct {
+		ID      string `json:"id"`
+		Status  string `json:"status"`
+		Updated string `json:"update_time"`
+		Custom  string `json:"custom_id"`
+		Amount  struct {
+			Value    string `json:"value"`
+			Currency string `json:"currency_code"`
+		} `json:"amount"`
+	}
+	if common.Unmarshal(raw, &capture) != nil || capture.ID != p.id || capture.Status != "REFUNDED" || capture.Custom != r.trade {
+		return p
+	}
+	amount, e := decimal.NewFromString(capture.Amount.Value)
+	if e != nil {
+		return p
+	}
+	p.amount = amount.String()
+	p.currency = capture.Amount.Currency
+	_, err = service.VerifyPayPalFullRefund(ctx, p.id, capture.Updated, p.amount, p.currency)
+	if err != nil {
+		return p
+	}
+	p.refundVerified = true
+	if r.top == nil {
+		r.top = model.GetTopUpByTradeNo(r.trade)
+	}
+	p.refundRecoveryVerified, err = model.VerifyPayPalRefundRecovery(r.top)
+	if err != nil {
+		p.refundRecoveryVerified = false
+	}
+	return p
 }

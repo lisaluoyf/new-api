@@ -12,7 +12,6 @@
     "{{count}} successful recharges": "{{count}} successful recharges",
     "Invalid date range": "Invalid date range",
     "All filtered pages; credited USD including recharge bonuses; excludes subscriptions and free credits. Dates filter order creation time in Beijing.": "All filtered pages; credited USD including recharge bonuses; excludes subscriptions and free credits. Dates filter order creation time in Beijing.",
-
     "Your account will be closed and access revoked.": "Your account will be closed and access revoked.",
     "Type delete to confirm account deletion.": "Type delete to confirm account deletion.",
     "Close your account and revoke access": "Close your account and revoke access",
@@ -4793,7 +4792,6 @@
     "(no analysis content)": "(no analysis content)",
     "(orig: {{pct}}%)": "(orig: {{pct}}%)",
     "All channel prices complete": "All channel prices complete",
-    "All Models": "All Models",
     "Analysis failed": "Analysis failed",
     "Analyzing…": "Analyzing…",
     "Ban Recovery": "Ban Recovery",
@@ -4817,7 +4815,6 @@
     "Incomplete": "Incomplete",
     "Incomplete procurement price: missing {{fields}}": "Incomplete procurement price: missing {{fields}}",
     "Jitter": "Jitter",
-    "Kling": "Kling",
     "Loading…": "Loading…",
     "Manual": "Manual",
     "Manual Detect": "Manual Detect",
@@ -5108,7 +5105,10 @@
     "reconciliation.problem.official_paid_local_date_mismatch": "Official paid date differs from the local reconciliation day; review settlement timing",
     "reconciliation.problem.official_duplicate_payment_for_order": "Multiple distinct successful supplier transactions share one merchant order; possible duplicate collection",
     "reconciliation.problem.official_paid_local_reference_unresolved": "Successful supplier transaction has no resolvable merchant reference; cannot match it to a local order",
-    "reconciliation.problem.official_paid_absent_from_daily_statement": "Current API confirms payment but it is absent from the selected day statement; review payment timing or missing statement records"
+    "reconciliation.problem.official_paid_absent_from_daily_statement": "Current API confirms payment but it is absent from the selected day statement; review payment timing or missing statement records",
+    "Reconciled refunds": "Reconciled refunds",
+    "Verified prior-date payments credited today": "Verified prior-date payments credited today",
+    "Reconciliation Platega creation date notice": "Platega statements use the order creation date. Payments created earlier and credited on the selected day are checked against their original statement and listed separately from the selected day’s totals."
   },
   "Coding Plan Users": "Coding Plan Users",
   "Coding Plan Balance": "Coding Plan Balance",

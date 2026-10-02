@@ -4766,7 +4766,10 @@
     "Start Date": "Start Date",
     "End Date": "End Date",
     "Date": "Date",
-    "Order Number": "Order Number"
+    "Order Number": "Order Number",
+    "Reconciled refunds": "Hoàn tiền đã đối soát",
+    "Verified prior-date payments credited today": "Khoản thanh toán trước được ghi có hôm nay đã xác minh",
+    "Reconciliation Platega creation date notice": "Platega statements use the order creation date. Payments created earlier and credited on the selected day are checked against their original statement and listed separately from the selected day’s totals."
   },
   "在线使用": "Dùng trực tuyến",
   "推广有礼": "Giới thiệu",

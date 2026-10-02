@@ -24,6 +24,8 @@ import (
 type StatementPayment struct {
 	ID, TradeNo, Status, Amount, Currency string
 	PaidAt                                int64
+	RefundOnly                            bool
+	CreatedAt                             int64
 }
 
 func ListReconciliationPayments(ctx context.Context, provider string, start, end time.Time) ([]StatementPayment, error) {
@@ -284,11 +286,12 @@ func listPlategaStatement(ctx context.Context, start, end time.Time) ([]Statemen
 	req.Header.Set("X-Secret", PlategaSecret())
 	req.Header.Set("Content-Type", "application/json")
 	var raw []struct {
-		ID       string          `json:"recordId"`
-		Trade    string          `json:"payload"`
-		Status   string          `json:"status"`
-		Amount   decimal.Decimal `json:"amount"`
-		Currency string          `json:"currencyCode"`
+		CreatedAt string          `json:"createdAt"`
+		ID        string          `json:"recordId"`
+		Trade     string          `json:"payload"`
+		Status    string          `json:"status"`
+		Amount    decimal.Decimal `json:"amount"`
+		Currency  string          `json:"currencyCode"`
 	}
 	// The documented JSON endpoint returns transaction rows, unlike CSV export.
 	if err = verifiedPaymentJSON(req, &raw); err != nil {
@@ -305,7 +308,11 @@ func listPlategaStatement(ctx context.Context, start, end time.Time) ([]Statemen
 		if r.ID == "" || r.Amount.Sign() <= 0 || r.Currency == "" {
 			return nil, errors.New("invalid provider statement")
 		}
-		out = append(out, StatementPayment{ID: r.ID, TradeNo: r.Trade, Status: r.Status, Amount: r.Amount.String(), Currency: strings.ToUpper(r.Currency)})
+		created, err := time.ParseInLocation("2006-01-02 15:04:05", r.CreatedAt, time.UTC)
+		if err != nil || created.Before(start) || !created.Before(end) {
+			return nil, errors.New("invalid provider statement creation date")
+		}
+		out = append(out, StatementPayment{ID: r.ID, TradeNo: r.Trade, Status: r.Status, Amount: r.Amount.String(), Currency: strings.ToUpper(r.Currency), CreatedAt: created.Unix()})
 	}
 	return out, nil
 }
@@ -355,6 +362,7 @@ func listPayPalStatement(ctx context.Context, start, end time.Time) ([]Statement
 	}
 	out := []StatementPayment{}
 	seen := map[string]bool{}
+	refunds := map[string]StatementPayment{}
 	for page := 1; page <= 1000; page++ {
 		q := url.Values{"start_date": {start.UTC().Format(time.RFC3339)}, "end_date": {end.UTC().Add(-time.Second).Format(time.RFC3339)}, "fields": {"transaction_info"}, "page_size": {"500"}, "page": {strconv.Itoa(page)}, "balance_affecting_records_only": {"Y"}}
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, payPalBaseURL()+"/v1/reporting/transactions?"+q.Encode(), nil)
@@ -363,12 +371,14 @@ func listPayPalStatement(ctx context.Context, start, end time.Time) ([]Statement
 			TotalPages *int `json:"total_pages"`
 			Details    []struct {
 				Info struct {
-					ID        string `json:"transaction_id"`
-					Status    string `json:"transaction_status"`
-					Code      string `json:"transaction_event_code"`
-					Reference string `json:"invoice_id"`
-					Custom    string `json:"custom_field"`
-					Amount    struct {
+					ID            string `json:"transaction_id"`
+					Status        string `json:"transaction_status"`
+					Code          string `json:"transaction_event_code"`
+					Reference     string `json:"invoice_id"`
+					Custom        string `json:"custom_field"`
+					ReferenceID   string `json:"paypal_reference_id"`
+					ReferenceType string `json:"paypal_reference_id_type"`
+					Amount        struct {
 						Value    string `json:"value"`
 						Currency string `json:"currency_code"`
 					} `json:"transaction_amount"`
@@ -383,6 +393,10 @@ func listPayPalStatement(ctx context.Context, start, end time.Time) ([]Statement
 			a, e := decimal.NewFromString(v.Amount.Value)
 			if e != nil {
 				return nil, errors.New("invalid PayPal statement amount")
+			}
+			if v.Status == "S" && v.Code == "T1107" && a.Sign() < 0 && v.ReferenceType == "TXN" && v.ReferenceID != "" {
+				refunds[v.ReferenceID] = StatementPayment{ID: v.ReferenceID, Status: "REFUNDED", Amount: a.Abs().String(), Currency: strings.ToUpper(v.Amount.Currency), RefundOnly: true}
+				continue
 			}
 			if v.Status != "S" || !strings.HasPrefix(v.Code, "T00") || a.Sign() <= 0 {
 				continue
@@ -404,6 +418,11 @@ func listPayPalStatement(ctx context.Context, start, end time.Time) ([]Statement
 			return out, errors.New("invalid statement pagination")
 		}
 		if *response.TotalPages <= page {
+			for id, p := range refunds {
+				if !seen[id] {
+					out = append(out, p)
+				}
+			}
 			return out, nil
 		}
 	}

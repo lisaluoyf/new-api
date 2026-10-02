@@ -170,6 +170,8 @@ export function PaymentReconciliationPage() {
         <Alert className='mb-4'>
           <AlertDescription>
             {t('Reconciliation provider coverage notice')}
+            <br />
+            {t('Reconciliation Platega creation date notice')}
           </AlertDescription>
         </Alert>
         {query.isError && (
@@ -288,6 +290,20 @@ export function PaymentReconciliationPage() {
                       <br />
                       {t('Payment Differences')}: {run.difference_count} ·{' '}
                       {t('Awaiting Verification')}: {run.unverified_count}
+                      {run.refund_matched_count > 0 && (
+                        <>
+                          <br />
+                          {t('Reconciled refunds')}: {run.refund_matched_count}
+                        </>
+                      )}
+                      {run.prior_statement_matched_count > 0 && (
+                        <>
+                          <br />
+                          {t(
+                            'Verified prior-date payments credited today'
+                          )}: {run.prior_statement_matched_count}
+                        </>
+                      )}
                     </p>
                   </TableCell>
                   <TableCell className='text-xs'>

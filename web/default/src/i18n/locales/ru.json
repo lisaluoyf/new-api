@@ -4768,7 +4768,10 @@
     "Start Date": "Start Date",
     "End Date": "End Date",
     "Date": "Date",
-    "Order Number": "Order Number"
+    "Order Number": "Order Number",
+    "Reconciled refunds": "Сверенные возвраты",
+    "Verified prior-date payments credited today": "Проверенные прошлые платежи, зачисленные за день",
+    "Reconciliation Platega creation date notice": "Platega statements use the order creation date. Payments created earlier and credited on the selected day are checked against their original statement and listed separately from the selected day’s totals."
   },
   "在线使用": "Песочница",
   "推广有礼": "Партнёрам",
