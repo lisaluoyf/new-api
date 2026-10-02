@@ -601,6 +601,12 @@ func truncateBase64(s string) string {
 //  2. taskResult.TotalTokens > 0 → 按 token 重算
 //  3. 都不满足 → 保持预扣额度不变
 func SettleTaskBillingOnComplete(ctx context.Context, adaptor TaskBillingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	if UsesSeedanceTariff(task) {
+		if quota := SeedanceTariffQuota(task, taskResult); quota > 0 {
+			RecalculateTaskQuota(ctx, task, quota, "Seedance按秒计费调整")
+		}
+		return // Never fall back to provider cost or token billing.
+	}
 	// 0. 按次计费的任务不做差额结算
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))

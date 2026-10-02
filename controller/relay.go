@@ -1731,6 +1731,7 @@ func RelayTask(c *gin.Context) {
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 		task.PrivateData.TokenId = relayInfo.TokenId
 		task.PrivateData.BillingContext = &model.TaskBillingContext{
+			SeedanceTariff:  service.IsSeedanceLibraryModel(relayInfo.OriginModelName),
 			ModelPrice:      relayInfo.PriceData.ModelPrice,
 			GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
 			ModelRatio:      relayInfo.PriceData.ModelRatio,
@@ -1753,6 +1754,14 @@ func RelayTask(c *gin.Context) {
 		if snapshot, ok := c.Get("seedance20_normalized_request"); ok {
 			task.PrivateData.SeedanceRequest = snapshot.(map[string]any)
 			task.PrivateData.SeedanceRequest["video_input_seconds"] = c.GetInt("seedance_video_input_seconds")
+		}
+		if snapshot, ok := c.Get("seedance_billing_snapshot"); ok {
+			if task.PrivateData.SeedanceRequest == nil {
+				task.PrivateData.SeedanceRequest = map[string]any{}
+			}
+			for key, value := range snapshot.(map[string]any) {
+				task.PrivateData.SeedanceRequest[key] = value
+			}
 		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData

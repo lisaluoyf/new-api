@@ -141,6 +141,9 @@ func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *rela
 	if task == nil || taskResult == nil {
 		return 0
 	}
+	if service.UsesSeedanceTariff(task) {
+		return service.SeedanceTariffQuota(task, taskResult)
+	}
 	modelName := motionControlModelName(task)
 	if isSeedance20Variant(modelName) {
 		return seedanceVariantQuota(task, taskResult)

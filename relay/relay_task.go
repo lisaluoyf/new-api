@@ -193,9 +193,18 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			info.PriceData.AddOtherRatio(k, v)
 		}
 	}
+	if service.IsSeedanceLibraryModel(modelName) {
+		ratios, billingErr := service.PrepareSeedanceTaskBilling(c, info)
+		if billingErr != nil {
+			return nil, service.TaskErrorWrapperLocal(billingErr, "invalid_request", http.StatusBadRequest)
+		}
+		// A shared tariff replaces provider-specific token/cost/size policies.
+		info.PriceData.OtherRatios = ratios
+		info.PriceData.Quota = service.SeedanceSubmissionQuota(info.PriceData)
+	}
 
 	// 6. 将 OtherRatios 应用到基础额度
-	if !common.StringsContains(constant.TaskPricePatches, modelName) {
+	if !service.IsSeedanceLibraryModel(modelName) && !common.StringsContains(constant.TaskPricePatches, modelName) {
 		for _, ra := range info.PriceData.OtherRatios {
 			if ra != 1.0 {
 				info.PriceData.Quota = int(float64(info.PriceData.Quota) * ra)
@@ -245,7 +254,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
 	finalQuota := info.PriceData.Quota
-	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
+	var adjustedRatios map[string]float64
+	if !service.IsSeedanceLibraryModel(modelName) {
+		adjustedRatios = adaptor.AdjustBillingOnSubmit(info, taskData)
+	}
+	if len(adjustedRatios) > 0 {
 		// 基于调整后的 ratios 重新计算 quota
 		finalQuota = recalcQuotaFromRatios(info, adjustedRatios)
 		info.PriceData.OtherRatios = adjustedRatios

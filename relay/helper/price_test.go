@@ -129,8 +129,8 @@ func TestModelPriceHelperPerCallUsesExplicitMediaBasePrice(t *testing.T) {
 
 	price, err := ModelPriceHelperPerCall(ctx, info)
 	require.NoError(t, err)
-	require.InDelta(t, 0.142, price.ModelPrice, 1e-9)
-	require.Equal(t, int(0.142*common.QuotaPerUnit*price.GroupRatioInfo.GroupRatio), price.Quota)
+	require.InDelta(t, 0.15120, price.ModelPrice, 1e-9)
+	require.Equal(t, int(0.15120*common.QuotaPerUnit*price.GroupRatioInfo.GroupRatio), price.Quota)
 }
 
 func TestModelPriceHelperPerCallMediaBaseUsesChannelUserPrice(t *testing.T) {

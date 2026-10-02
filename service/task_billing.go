@@ -206,6 +206,9 @@ func taskActualChannelCostUSD(task *model.Task) float64 {
 }
 
 func taskActualBillableSeconds(task *model.Task, taskResult *relaycommon.TaskInfo) int {
+	if UsesSeedanceTariff(task) {
+		return SeedanceTariffSeconds(task, taskResult)
+	}
 	if seconds := Seedance20VariantBillableSeconds(task); seconds > 0 {
 		return seconds
 	}

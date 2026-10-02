@@ -120,6 +120,7 @@ type TaskPrivateData struct {
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
 type TaskBillingContext struct {
+	SeedanceTariff         bool               `json:"seedance_tariff,omitempty"`          // All channels settle new Seedance tasks using frozen per-second tariffs.
 	ProviderCostMultiplier float64            `json:"provider_cost_multiplier,omitempty"` // Frozen Seedance procurement-to-user-price conversion.
 	ModelPrice             float64            `json:"model_price,omitempty"`              // 模型单价
 	GroupRatio             float64            `json:"group_ratio,omitempty"`              // 分组倍率

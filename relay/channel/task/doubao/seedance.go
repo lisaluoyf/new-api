@@ -19,7 +19,7 @@ import (
 )
 
 func isSeedanceAlias(name string) bool {
-	return isSeedance20Alias(name) || name == "seedance-2.5"
+	return service.IsSeedanceLibraryModel(name)
 }
 
 func isSeedance20Alias(name string) bool {
@@ -88,12 +88,18 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 	if seconds != -1 && (seconds < 4 || seconds > 30) {
 		return invalid(fmt.Errorf("duration must be -1 or between 4 and 30 seconds"))
 	}
+	if service.IsSeedance20Variant(req.Model) && (seconds < 4 || seconds > 15) {
+		return invalid(fmt.Errorf("duration must be between 4 and 15 seconds"))
+	}
 	resolution := strings.ToLower(strings.TrimSpace(body.Resolution))
 	if resolution == "" {
 		resolution = "720p"
 	}
 	if resolution != "480p" && resolution != "720p" && resolution != "1080p" && !(isSeedance20Alias(req.Model) && resolution == "4k") {
 		return invalid(fmt.Errorf("unsupported Seedance resolution"))
+	}
+	if service.IsSeedance20Variant(req.Model) && resolution != "480p" && resolution != "720p" {
+		return invalid(fmt.Errorf("unsupported Seedance Fast/Mini resolution"))
 	}
 	req.Metadata["duration"] = seconds
 	req.Metadata["resolution"] = resolution
@@ -126,6 +132,9 @@ func seedanceBillingRatios(req relaycommon.TaskSubmitReq) map[string]float64 {
 }
 
 func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, result *relaycommon.TaskInfo) int {
+	if service.UsesSeedanceTariff(task) {
+		return service.SeedanceTariffQuota(task, result)
+	}
 	if task == nil || result == nil || !isSeedanceAlias(task.Properties.OriginModelName) {
 		return 0
 	}

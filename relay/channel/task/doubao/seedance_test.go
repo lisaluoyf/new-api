@@ -124,7 +124,7 @@ func TestSeedance20RenameKeeps4KVideoInputAndCompletionBilling(t *testing.T) {
 		require.Nil(t, a.ValidateRequestAndSetAction(c, info))
 		ratios := a.EstimateBilling(c, info)
 		require.Equal(t, 5.0, ratios["seconds"])
-		require.InDelta(t, 0.44432/0.142, ratios["size"], 1e-9)
+		require.InDelta(t, 0.46656/0.15120, ratios["size"], 1e-9)
 		task := &model.Task{Quota: 30000, Properties: model.Properties{OriginModelName: name}, PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{OtherRatios: map[string]float64{"seconds": 30}}}}
 		require.Equal(t, 5000, a.AdjustBillingOnComplete(task, &relaycommon.TaskInfo{BillableSeconds: 5}))
 	}

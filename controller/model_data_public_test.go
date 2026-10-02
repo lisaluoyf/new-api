@@ -51,13 +51,13 @@ func TestBuildVideoMediaPricingViewUsesEightSeedanceTiers(t *testing.T) {
 	if len(view.OfficialPrices) != 8 || len(view.ProcurementPrices) != 8 || len(view.BillingPrices) != 8 {
 		t.Fatalf("unexpected tier counts: official=%d procurement=%d billing=%d", len(view.OfficialPrices), len(view.ProcurementPrices), len(view.BillingPrices))
 	}
-	if got := view.OfficialPrices["720P"]; got != 0.1775 {
+	if got := view.OfficialPrices["720P"]; got != 0.15120 {
 		t.Fatalf("official 720P=%v", got)
 	}
-	if got := view.ProcurementPrices["720P"]; math.Abs(got-0.142*0.8) > 1e-9 {
+	if got := view.ProcurementPrices["720P"]; math.Abs(got-0.15120*0.8) > 1e-9 {
 		t.Fatalf("procurement 720P=%v", got)
 	}
-	if got := view.BillingPrices["720P-input"]; got != 0.068672 {
+	if got := view.BillingPrices["720P-input"]; math.Abs(got-0.09288*0.8) > 1e-9 {
 		t.Fatalf("billing 720P-input=%v", got)
 	}
 }

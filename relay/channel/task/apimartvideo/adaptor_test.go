@@ -129,7 +129,7 @@ func TestSeedance25AutoDurationReservesThirtySecondsAndPreservesRequest(t *testi
 	require.Nil(t, a.ValidateRequestAndSetAction(c, info))
 	ratios := a.EstimateBilling(c, info)
 	require.Equal(t, 30.0, ratios["seconds"])
-	require.InDelta(t, 0.38488/0.216, ratios["size"], 1e-9)
+	require.InDelta(t, 0.56862/0.23112, ratios["size"], 1e-9)
 
 	reader, err := a.BuildRequestBody(c, info)
 	require.NoError(t, err)
@@ -189,14 +189,14 @@ func TestSeedanceEstimateBillingUsesConfiguredResolutionPrices(t *testing.T) {
 		hasVideo   bool
 		price      float64
 	}{
-		{resolution: "480P", price: 0.066},
-		{resolution: "720P", price: 0.142},
-		{resolution: "1080P", price: 0.3544},
-		{resolution: "4K", price: 0.722},
-		{resolution: "480P", hasVideo: true, price: 0.04},
-		{resolution: "720P", hasVideo: true, price: 0.08584},
-		{resolution: "1080P", hasVideo: true, price: 0.21568},
-		{resolution: "4K", hasVideo: true, price: 0.44432},
+		{resolution: "480P", price: 0.07031},
+		{resolution: "720P", price: 0.15120},
+		{resolution: "1080P", price: 0.37422},
+		{resolution: "4K", price: 0.77760},
+		{resolution: "480P", hasVideo: true, price: 0.04319},
+		{resolution: "720P", hasVideo: true, price: 0.09288},
+		{resolution: "1080P", hasVideo: true, price: 0.22842},
+		{resolution: "4K", hasVideo: true, price: 0.46656},
 	}
 	for _, tc := range tests {
 		name := tc.resolution
@@ -215,7 +215,7 @@ func TestSeedanceEstimateBillingUsesConfiguredResolutionPrices(t *testing.T) {
 			})
 			got := (&TaskAdaptor{}).EstimateBilling(c, &relaycommon.RelayInfo{})
 			require.Equal(t, 4.0, got["seconds"])
-			require.InDelta(t, tc.price/0.142, got["size"], 1e-9)
+			require.InDelta(t, tc.price/0.15120, got["size"], 1e-9)
 		})
 	}
 }
@@ -243,7 +243,7 @@ func TestSeedanceBuildRequestPreservesReferenceMediaFields(t *testing.T) {
 	a := &TaskAdaptor{}
 	require.Nil(t, a.ValidateRequestAndSetAction(c, info))
 	ratios := a.EstimateBilling(c, info)
-	require.InDelta(t, 0.21568/0.142, ratios["size"], 1e-9)
+	require.InDelta(t, 0.22842/0.15120, ratios["size"], 1e-9)
 
 	reader, err := a.BuildRequestBody(c, info)
 	require.NoError(t, err)

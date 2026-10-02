@@ -35,7 +35,7 @@ func TestSeedancePricingRenamePreservesConfiguredPrices(t *testing.T) {
 			require.InDelta(t, 3.0, GetVideoModelResolutionRatio(requestedName, "4K-input"), 1e-9)
 			price, ok := GetVideoModelPrice(requestedName, "480P")
 			require.True(t, ok)
-			require.InDelta(t, 0.066, price, 1e-9)
+			require.InDelta(t, 0.07031, price, 1e-9)
 		}
 	}
 }
@@ -62,17 +62,17 @@ func TestDefaultVideoModelPricingIncludesKlingOmniTiers(t *testing.T) {
 func TestDefaultVideoModelPricingIncludesSeedanceResolutionPrices(t *testing.T) {
 	base, ok := GetVideoModelBasePrice("doubao-seedance-2.0")
 	require.True(t, ok)
-	require.InDelta(t, 0.142, base, 1e-9)
+	require.InDelta(t, 0.15120, base, 1e-9)
 
 	tests := map[string]float64{
-		"480P":        0.066,
-		"480P-input":  0.04,
-		"720P":        0.142,
-		"720P-input":  0.08584,
-		"1080P":       0.3544,
-		"1080P-input": 0.21568,
-		"4K":          0.722,
-		"4K-input":    0.44432,
+		"480P":        0.07031,
+		"480P-input":  0.04319,
+		"720P":        0.15120,
+		"720P-input":  0.09288,
+		"1080P":       0.37422,
+		"1080P-input": 0.22842,
+		"4K":          0.77760,
+		"4K-input":    0.46656,
 	}
 	for resolution, want := range tests {
 		got, found := GetVideoModelPrice("doubao-seedance-2.0", resolution)
@@ -85,12 +85,7 @@ func TestDefaultVideoModelPricingIncludesSeedanceResolutionPrices(t *testing.T) 
 	require.True(t, found)
 	require.Equal(t, "second", details.Unit)
 	require.Equal(t, "720P", details.BaseVariant)
-	official := map[string]float64{
-		"480P": 0.0825, "480P-input": 0.05,
-		"720P": 0.1775, "720P-input": 0.1073,
-		"1080P": 0.443, "1080P-input": 0.2696,
-		"4K": 0.9025, "4K-input": 0.5554,
-	}
+	official := tests
 	for variant, want := range official {
 		require.InDelta(t, want, details.OfficialPrices[variant], 1e-9, variant)
 	}
@@ -99,11 +94,27 @@ func TestDefaultVideoModelPricingIncludesSeedanceResolutionPrices(t *testing.T) 
 func TestDefaultVideoModelPricingIncludesSeedance25(t *testing.T) {
 	base, ok := GetVideoModelBasePrice("seedance-2.5")
 	require.True(t, ok)
-	require.InDelta(t, 0.216, base, 1e-9)
-	for variant, want := range map[string]float64{"480P": 0.09608, "480P-input": 0.0576, "720P": 0.216, "720P-input": 0.1296, "1080P": 0.38488, "1080P-input": 0.22992} {
+	require.InDelta(t, 0.23112, base, 1e-9)
+	for variant, want := range map[string]float64{"480P": 0.10280, "480P-input": 0.06149, "720P": 0.23112, "720P-input": 0.13824, "1080P": 0.56862, "1080P-input": 0.34020} {
 		got, found := GetVideoModelPrice("seedance-2.5", variant)
 		require.True(t, found, variant)
 		require.InDelta(t, want, got, 1e-9, variant)
 		require.InDelta(t, want/base, GetVideoModelResolutionRatio("seedance-2.5", variant), 1e-9, variant)
+	}
+}
+
+func TestSeedanceFastMiniDefaultTariffsMatchOfficialPrices(t *testing.T) {
+	for name, prices := range map[string]map[string]float64{
+		"seedance-2.0-fast": {"480P": .05625, "480P-input": .03315, "720P": .12096, "720P-input": .07128},
+		"seedance-2.0-mini": {"480P": .03515, "480P-input": .02109, "720P": .07560, "720P-input": .04536},
+	} {
+		details, ok := GetVideoModelPricingDetails(name)
+		require.True(t, ok)
+		require.Equal(t, "720P", details.BaseVariant)
+		require.InDelta(t, prices["720P"], details.BasePrice, 1e-9)
+		for variant, price := range prices {
+			require.InDelta(t, price, details.Prices[variant], 1e-9)
+			require.InDelta(t, price, details.OfficialPrices[variant], 1e-9)
+		}
 	}
 }
