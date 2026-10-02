@@ -89,7 +89,7 @@ func runAutoDetectOnce(flaskURL string) {
 				continue // channel doesn't support this model
 			}
 			cfg := LoadDetectConfig(m)
-			if !cfg.FingerprintEnabled {
+			if !cfg.FingerprintEnabled || cfg.FingerprintSkipsChannel(ch.Id) {
 				continue
 			}
 

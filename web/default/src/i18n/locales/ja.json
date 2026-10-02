@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Skip detection": "検出をスキップ",
+    "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "チャネル番号をカンマで区切って入力してください。このモデルの定期検出のみをスキップし、手動検出には影響しません。空欄の場合はスキップしません。",
+    "Enter positive channel IDs separated by commas, for example: 38,224.": "正の整数のチャネル番号をカンマで区切って入力してください。例：38,224。",
     "Your account will be closed and access revoked.": "アカウントは閉鎖され、アクセス権が取り消されます。",
     "Type delete to confirm account deletion.": "アカウント削除を確認するには delete と入力してください。",
     "Close your account and revoke access": "アカウントを閉鎖し、アクセス権を取り消す",

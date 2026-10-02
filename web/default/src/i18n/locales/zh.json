@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Skip detection": "跳过检测",
+    "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "输入渠道号并用逗号分隔。仅跳过当前模型的定时检测，不影响手动检测；留空则不跳过任何渠道。",
+    "Enter positive channel IDs separated by commas, for example: 38,224.": "请输入用逗号分隔的正整数渠道号，例如：38,224。",
     "Daily reconciliation schedule and provider scope": "每天北京时间 08:30 对账。链上支付和 NOWPayments 仅核验后台成功订单；其他渠道还核对上游全部成功支付，发现后台失败或缺失的订单。对账不会修改余额或订阅。",
     "Reconciliation provider coverage notice": "链上支付和 NOWPayments 按单向口径核验：后台成功订单全部核验一致即完成，没有后台成功订单时显示无支付订单。其他渠道仍需取得完整上游账单双向核对。查单失败或支付差异仍会提示；金额按币种汇总。",
     "Local successful orders verification only": "仅核验后台成功订单",

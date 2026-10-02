@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react'
 import { Settings2, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import {
@@ -179,6 +180,7 @@ interface AnalysisState {
 interface DetectConfig {
   fingerprint_enabled: boolean
   fingerprint_interval_minutes: number
+  fingerprint_skip_channel_ids: number[]
   uptime_enabled: boolean
   uptime_interval_minutes: number
   next_fingerprint_at?: number // unix sec; 0 means feature off
@@ -694,31 +696,68 @@ function IntervalDialog({
   open,
   onClose,
   initialMinutes,
+  skipChannelIds,
   onSave,
 }: {
   open: boolean
   onClose: () => void
   initialMinutes: number
-  onSave: (intervalMinutes: number) => void
+  skipChannelIds?: number[]
+  onSave: (
+    intervalMinutes: number,
+    skipChannelIds?: number[]
+  ) => Promise<boolean>
 }) {
   const { t } = useTranslation()
   const { value: initVal, unit: initUnit } = minutesToUnit(initialMinutes)
   const [value, setValue] = useState(initVal)
   const [unit, setUnit] = useState(initUnit)
+  const [skipChannels, setSkipChannels] = useState('')
+  const [skipError, setSkipError] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const skipInputId = useId()
+  const initialSkipChannels = (skipChannelIds ?? []).join(',')
 
   useEffect(() => {
     if (open) {
       const { value: v, unit: u } = minutesToUnit(initialMinutes)
       setValue(v)
       setUnit(u)
+      setSkipChannels(initialSkipChannels)
+      setSkipError(false)
     }
-  }, [open, initialMinutes])
+  }, [open, initialMinutes, initialSkipChannels])
 
-  function handleSave() {
+  async function handleSave() {
+    let ids: number[] | undefined
+    if (skipChannelIds !== undefined) {
+      const text = skipChannels.trim().replaceAll('，', ',')
+      ids = []
+      if (text !== '') {
+        const parts = text.split(',').map((part) => part.trim())
+        if (
+          parts.some(
+            (part) =>
+              !/^\d+$/.test(part) ||
+              !Number.isSafeInteger(Number(part)) ||
+              Number(part) < 1 ||
+              Number(part) > 2147483647
+          )
+        ) {
+          setSkipError(true)
+          return
+        }
+        ids = [...new Set(parts.map(Number))].sort((a, b) => a - b)
+      }
+    }
     const unitOpt = UNIT_OPTIONS.find((o) => o.value === unit)!
     const safeValue = Number.isFinite(value) && value >= 1 ? value : 1
-    onSave(unitOpt.toMinutes(safeValue))
-    onClose()
+    setSaving(true)
+    try {
+      if (await onSave(unitOpt.toMinutes(safeValue), ids)) onClose()
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -762,12 +801,45 @@ function IntervalDialog({
               ))}
             </div>
           </div>
+          {skipChannelIds !== undefined && (
+            <div className='space-y-2'>
+              <label htmlFor={skipInputId} className='text-sm font-medium'>
+                {t('Skip detection')}
+              </label>
+              <Input
+                id={skipInputId}
+                value={skipChannels}
+                placeholder='38,224'
+                disabled={saving}
+                aria-invalid={skipError}
+                aria-describedby={`${skipInputId}-help`}
+                onChange={(e) => {
+                  setSkipChannels(e.target.value)
+                  setSkipError(false)
+                }}
+              />
+              <p id={`${skipInputId}-help`} className='text-xs text-gray-500'>
+                {t(
+                  'Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.'
+                )}
+              </p>
+              {skipError && (
+                <p role='alert' className='text-xs text-red-500'>
+                  {t(
+                    'Enter positive channel IDs separated by commas, for example: 38,224.'
+                  )}
+                </p>
+              )}
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant='outline' onClick={onClose}>
             {t('Cancel')}
           </Button>
-          <Button onClick={handleSave}>{t('Save')}</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {t('Save')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -894,6 +966,7 @@ export function ChannelDataPage() {
   const [config, setConfig] = useState<DetectConfig>({
     fingerprint_enabled: false,
     fingerprint_interval_minutes: 360,
+    fingerprint_skip_channel_ids: [],
     uptime_enabled: false,
     uptime_interval_minutes: 30,
   })
@@ -1329,25 +1402,35 @@ export function ChannelDataPage() {
   )
 
   const saveConfig = useCallback(
-    (patch: Partial<DetectConfig>) => {
+    async (patch: Partial<DetectConfig>): Promise<boolean> => {
       const next = { ...config, ...patch }
-      setConfig(next)
-      setTabDetectEnabled((prev) => ({
-        ...prev,
-        [activeModel]: !!(next.fingerprint_enabled || next.uptime_enabled),
-      }))
       setConfigLoading(true)
-      api
-        .post('/api/admin/model-detect-config', {
+      try {
+        const res = await api.post('/api/admin/model-detect-config', {
           model: activeModel,
           fingerprint_enabled: next.fingerprint_enabled,
           fingerprint_interval_minutes: next.fingerprint_interval_minutes,
+          fingerprint_skip_channel_ids: next.fingerprint_skip_channel_ids,
           uptime_enabled: next.uptime_enabled,
           uptime_interval_minutes: next.uptime_interval_minutes,
         })
-        .finally(() => setConfigLoading(false))
+        if (!res.data?.success) {
+          toast.error(res.data?.message || t('Save failed, please retry'))
+          return false
+        }
+        if (activeModelRef.current === activeModel) setConfig(next)
+        setTabDetectEnabled((prev) => ({
+          ...prev,
+          [activeModel]: !!(next.fingerprint_enabled || next.uptime_enabled),
+        }))
+        return true
+      } catch {
+        return false
+      } finally {
+        setConfigLoading(false)
+      }
     },
-    [config, activeModel]
+    [config, activeModel, t]
   )
 
   const saveCommonAutoReenable = useCallback((enabled: boolean) => {
@@ -2496,7 +2579,13 @@ export function ChannelDataPage() {
           open={intervalOpen === 'fingerprint'}
           onClose={() => setIntervalOpen(null)}
           initialMinutes={config.fingerprint_interval_minutes}
-          onSave={(m) => saveConfig({ fingerprint_interval_minutes: m })}
+          skipChannelIds={config.fingerprint_skip_channel_ids ?? []}
+          onSave={(m, ids) =>
+            saveConfig({
+              fingerprint_interval_minutes: m,
+              fingerprint_skip_channel_ids: ids ?? [],
+            })
+          }
         />
         <IntervalDialog
           open={intervalOpen === 'uptime'}

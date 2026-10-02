@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Skip detection": "Ignorar detecção",
+    "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "Insira os números dos canais separados por vírgulas. Apenas as detecções agendadas deste modelo serão ignoradas; a detecção manual não será afetada. Deixe vazio para não ignorar nenhum.",
+    "Enter positive channel IDs separated by commas, for example: 38,224.": "Insira números de canais inteiros positivos separados por vírgulas, por exemplo: 38,224.",
     "Your account will be closed and access revoked.": "Sua conta será encerrada e o acesso revogado.",
     "Type delete to confirm account deletion.": "Digite delete para confirmar a exclusão da conta.",
     "Close your account and revoke access": "Encerrar sua conta e revogar o acesso",

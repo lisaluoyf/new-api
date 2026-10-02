@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Skip detection": "Bỏ qua kiểm tra",
+    "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "Nhập số kênh cách nhau bằng dấu phẩy. Chỉ bỏ qua kiểm tra định kỳ của mô hình này; không ảnh hưởng đến kiểm tra thủ công. Để trống để không bỏ qua kênh nào.",
+    "Enter positive channel IDs separated by commas, for example: 38,224.": "Nhập số kênh nguyên dương cách nhau bằng dấu phẩy, ví dụ: 38,224.",
     "Your account will be closed and access revoked.": "Tài khoản của bạn sẽ bị đóng và quyền truy cập sẽ bị thu hồi.",
     "Type delete to confirm account deletion.": "Nhập delete để xác nhận xóa tài khoản.",
     "Close your account and revoke access": "Đóng tài khoản và thu hồi quyền truy cập",

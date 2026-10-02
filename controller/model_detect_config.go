@@ -8,14 +8,16 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
 type ModelDetectConfig struct {
-	FingerprintEnabled         bool `json:"fingerprint_enabled"`
-	FingerprintIntervalMinutes int  `json:"fingerprint_interval_minutes"`
-	UptimeEnabled              bool `json:"uptime_enabled"`
-	UptimeIntervalMinutes      int  `json:"uptime_interval_minutes"`
+	FingerprintEnabled         bool  `json:"fingerprint_enabled"`
+	FingerprintIntervalMinutes int   `json:"fingerprint_interval_minutes"`
+	FingerprintSkipChannelIDs  []int `json:"fingerprint_skip_channel_ids"`
+	UptimeEnabled              bool  `json:"uptime_enabled"`
+	UptimeIntervalMinutes      int   `json:"uptime_interval_minutes"`
 }
 
 func detectConfigKey(modelName string) string {
@@ -26,6 +28,7 @@ func defaultDetectConfig() ModelDetectConfig {
 	return ModelDetectConfig{
 		FingerprintEnabled:         false,
 		FingerprintIntervalMinutes: 360,
+		FingerprintSkipChannelIDs:  []int{},
 		UptimeEnabled:              false,
 		UptimeIntervalMinutes:      30,
 	}
@@ -78,6 +81,7 @@ func buildModelDetectConfigResponse(modelName string) gin.H {
 	return gin.H{
 		"fingerprint_enabled":          cfg.FingerprintEnabled,
 		"fingerprint_interval_minutes": cfg.FingerprintIntervalMinutes,
+		"fingerprint_skip_channel_ids": cfg.FingerprintSkipChannelIDs,
 		"uptime_enabled":               cfg.UptimeEnabled,
 		"uptime_interval_minutes":      cfg.UptimeIntervalMinutes,
 		"next_fingerprint_at":          nextDetectAt(modelName, "auto", cfg.FingerprintEnabled, cfg.FingerprintIntervalMinutes),
@@ -113,6 +117,7 @@ func SaveModelDetectConfig(c *gin.Context) {
 		Model                      string `json:"model"`
 		FingerprintEnabled         bool   `json:"fingerprint_enabled"`
 		FingerprintIntervalMinutes int    `json:"fingerprint_interval_minutes"`
+		FingerprintSkipChannelIDs  *[]int `json:"fingerprint_skip_channel_ids"`
 		UptimeEnabled              bool   `json:"uptime_enabled"`
 		UptimeIntervalMinutes      int    `json:"uptime_interval_minutes"`
 	}
@@ -126,10 +131,22 @@ func SaveModelDetectConfig(c *gin.Context) {
 	if req.UptimeIntervalMinutes < 1 {
 		req.UptimeIntervalMinutes = 30
 	}
+	// Older clients omit the new field when toggling detection or updating uptime.
+	// Preserve the saved list unless the caller explicitly provides an array.
+	skipIDs := service.LoadDetectConfig(req.Model).FingerprintSkipChannelIDs
+	if req.FingerprintSkipChannelIDs != nil {
+		var err error
+		skipIDs, err = service.NormalizeFingerprintSkipChannelIDs(*req.FingerprintSkipChannelIDs)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+	}
 
 	cfg := ModelDetectConfig{
 		FingerprintEnabled:         req.FingerprintEnabled,
 		FingerprintIntervalMinutes: req.FingerprintIntervalMinutes,
+		FingerprintSkipChannelIDs:  skipIDs,
 		UptimeEnabled:              req.UptimeEnabled,
 		UptimeIntervalMinutes:      req.UptimeIntervalMinutes,
 	}

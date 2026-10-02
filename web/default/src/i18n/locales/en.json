@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Skip detection": "Skip detection",
+    "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.",
+    "Enter positive channel IDs separated by commas, for example: 38,224.": "Enter positive channel IDs separated by commas, for example: 38,224.",
     "Daily reconciliation schedule and provider scope": "Runs daily at 08:30 UTC+8. On-chain payments and NOWPayments verify locally successful orders only; other channels also check all upstream successful payments. Reconciliation never changes balances or subscriptions.",
     "Reconciliation provider coverage notice": "On-chain payments and NOWPayments finish when all local successful orders are verified; no local successful orders means no orders to check. Other channels require a complete upstream statement for bidirectional reconciliation. Query failures and payment differences remain visible. Amounts are separated by currency.",
     "Local successful orders verification only": "Local successful orders verification only",
