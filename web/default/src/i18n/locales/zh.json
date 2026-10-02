@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Text Embeddings": "文本向量模型",
     "Skip detection": "跳过检测",
     "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "输入渠道号并用逗号分隔。仅跳过当前模型的定时检测，不影响手动检测；留空则不跳过任何渠道。",
     "Enter positive channel IDs separated by commas, for example: 38,224.": "请输入用逗号分隔的正整数渠道号，例如：38,224。",

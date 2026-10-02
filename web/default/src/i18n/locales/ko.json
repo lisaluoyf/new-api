@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Text Embeddings": "텍스트 임베딩 모델",
     "Skip detection": "검사 건너뛰기",
     "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "채널 번호를 쉼표로 구분하여 입력하세요. 이 모델의 예약 검사만 건너뛰며 수동 검사에는 영향을 주지 않습니다. 비워두면 건너뛰지 않습니다.",
     "Enter positive channel IDs separated by commas, for example: 38,224.": "양의 정수 채널 번호를 쉼표로 구분하여 입력하세요. 예: 38,224.",

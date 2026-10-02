@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Text Embeddings": "Модели текстовых эмбеддингов",
     "Skip detection": "Пропустить проверку",
     "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "Введите номера каналов через запятую. Пропускаются только плановые проверки этой модели; ручные проверки не затрагиваются. Оставьте поле пустым, чтобы ничего не пропускать.",
     "Enter positive channel IDs separated by commas, for example: 38,224.": "Введите положительные целые номера каналов через запятую, например: 38,224.",

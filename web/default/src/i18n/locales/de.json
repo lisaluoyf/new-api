@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Text Embeddings": "Text-Embedding-Modelle",
     "Skip detection": "Erkennung überspringen",
     "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "Kanalnummern durch Kommas getrennt eingeben. Nur geplante Prüfungen dieses Modells werden übersprungen; manuelle Prüfungen bleiben unverändert. Leer lassen, um nichts zu überspringen.",
     "Enter positive channel IDs separated by commas, for example: 38,224.": "Positive ganzzahlige Kanalnummern durch Kommas getrennt eingeben, zum Beispiel: 38,224.",

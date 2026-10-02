@@ -2,12 +2,13 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
@@ -51,13 +52,32 @@ func fetchOpenRouterChannelPricing(ctx context.Context, channel *model.Channel) 
 		logger.LogWarn(ctx, fmt.Sprintf("channel-pricing [%d]: OpenRouter decode: %v", channel.Id, err))
 		return false
 	}
-	if len(priceByID) == 0 {
-		logger.LogWarn(ctx, fmt.Sprintf("channel-pricing [%d]: OpenRouter returned no usable pricing", channel.Id))
-		return false
-	}
 
 	channelModels := channelModelsFromList(channel.Models)
 	if len(channelModels) == 0 {
+		return false
+	}
+	// OpenRouter publishes embeddings in a separate catalog. Its chat catalog
+	// does not contain these IDs, so include the native input-only prices.
+	for _, localModel := range channelModels {
+		if !IsTextEmbeddingModel(localModel) {
+			continue
+		}
+		embeddingBody, embeddingStatus, embeddingErr := doPricingGet(ctx, baseURL+"/v1/embeddings/models", key)
+		if embeddingErr == nil && embeddingStatus == http.StatusOK {
+			if embeddingPrices, parseErr := parseOpenRouterModelPrices(embeddingBody); parseErr == nil {
+				for id, price := range embeddingPrices {
+					priceByID[id] = price
+				}
+			}
+		} else {
+			logger.LogWarn(ctx, fmt.Sprintf("channel-pricing [%d]: OpenRouter embedding catalog unavailable (HTTP %d)", channel.Id, embeddingStatus))
+		}
+		break
+	}
+
+	if len(priceByID) == 0 {
+		logger.LogWarn(ctx, fmt.Sprintf("channel-pricing [%d]: OpenRouter returned no usable pricing", channel.Id))
 		return false
 	}
 
@@ -134,7 +154,7 @@ func parseOpenRouterModelPrices(body []byte) (map[string]openRouterModelPrice, e
 			} `json:"pricing"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := common.Unmarshal(body, &resp); err != nil {
 		return nil, err
 	}
 

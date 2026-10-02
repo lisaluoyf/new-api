@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Text Embeddings": "Modelos de embeddings de texto",
     "Skip detection": "Ignorar detecção",
     "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "Insira os números dos canais separados por vírgulas. Apenas as detecções agendadas deste modelo serão ignoradas; a detecção manual não será afetada. Deixe vazio para não ignorar nenhum.",
     "Enter positive channel IDs separated by commas, for example: 38,224.": "Insira números de canais inteiros positivos separados por vírgulas, por exemplo: 38,224.",

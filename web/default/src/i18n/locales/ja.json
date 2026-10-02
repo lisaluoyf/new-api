@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Text Embeddings": "テキスト埋め込みモデル",
     "Skip detection": "検出をスキップ",
     "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "チャネル番号をカンマで区切って入力してください。このモデルの定期検出のみをスキップし、手動検出には影響しません。空欄の場合はスキップしません。",
     "Enter positive channel IDs separated by commas, for example: 38,224.": "正の整数のチャネル番号をカンマで区切って入力してください。例：38,224。",

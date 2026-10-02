@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Text Embeddings": "Modelli di embedding testuali",
     "Skip detection": "Salta rilevamento",
     "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "Inserisci i numeri dei canali separati da virgole. Verranno saltati solo i rilevamenti pianificati di questo modello; quelli manuali non cambiano. Lascia vuoto per non saltarne nessuno.",
     "Enter positive channel IDs separated by commas, for example: 38,224.": "Inserisci numeri di canale interi positivi separati da virgole, ad esempio: 38,224.",

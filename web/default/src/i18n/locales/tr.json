@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Text Embeddings": "Metin embedding modelleri",
     "Skip detection": "Tespiti atla",
     "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "Kanal numaralarını virgülle ayırarak girin. Yalnızca bu modelin zamanlanmış tespitleri atlanır; manuel tespit etkilenmez. Hiçbirini atlamamak için boş bırakın.",
     "Enter positive channel IDs separated by commas, for example: 38,224.": "Virgülle ayrılmış pozitif tam sayı kanal numaraları girin, örneğin: 38,224.",

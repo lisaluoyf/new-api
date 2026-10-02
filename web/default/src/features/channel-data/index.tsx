@@ -370,6 +370,8 @@ const STATUS_LABEL_KEY: Record<string, string> = {
 }
 
 const NON_LLM_MODEL_IDS = new Set([
+  'text-embedding-3-small',
+  'bge-m3',
   'jev-latest',
   'jev-preview',
   'jev-1.13.0',
@@ -456,6 +458,7 @@ type ModelCategoryKey =
   | 'minimax'
   | 'mimo'
   | 'kling'
+  | 'embeddings'
 
 const MODEL_CATEGORY_FILTERS: Array<{
   key: ModelCategoryKey
@@ -475,6 +478,7 @@ const MODEL_CATEGORY_FILTERS: Array<{
   { key: 'minimax', label: 'MiniMax' },
   { key: 'mimo', label: 'MiMo' },
   { key: 'kling', label: 'Kling' },
+  { key: 'embeddings', label: 'Text Embeddings' },
 ]
 
 const FOREIGN_MODEL_PREFIXES = ['gpt-', 'claude-', 'gemini-', 'grok-', 'sora-']
@@ -500,6 +504,8 @@ function modelMatchesCategory(
   category: ModelCategoryKey
 ): boolean {
   if (category === 'all') return true
+  if (category === 'embeddings')
+    return modelId === 'text-embedding-3-small' || modelId === 'bge-m3'
   if (category === 'foreign')
     return hasAnyPrefix(modelId, FOREIGN_MODEL_PREFIXES)
   if (category === 'domestic') {
@@ -1010,6 +1016,8 @@ export function ChannelDataPage() {
   )
   const [numericEditSaving, setNumericEditSaving] = useState(false)
   const isFreeModel = activeModel === 'apimaster-freemodel'
+  const isEmbeddingModel =
+    activeModel === 'text-embedding-3-small' || activeModel === 'bge-m3'
   const visibleModelTabs = useMemo(
     () =>
       MODEL_TABS.filter((tab) =>
@@ -1722,7 +1730,7 @@ export function ChannelDataPage() {
             {/* Auto-detect controls: two rows */}
             <div className='flex flex-col items-end gap-1.5'>
               {/* Model detection */}
-              {!isFreeModel && (
+              {!isFreeModel && !isEmbeddingModel && (
                 <>
                   <div className='flex items-center gap-2'>
                     <span className='w-16 text-right text-xs text-gray-400'>
@@ -2476,7 +2484,7 @@ export function ChannelDataPage() {
                       )}
                     </td>
                     <td className={`px-3 py-2.5 ${dim}`}>
-                      {isFreeModel ? (
+                      {isFreeModel || isEmbeddingModel ? (
                         <span className='text-gray-300'>—</span>
                       ) : (
                         <DotGrid
@@ -2494,7 +2502,7 @@ export function ChannelDataPage() {
                     </td>
                     <td className='px-3 py-2.5 text-center'>
                       <div className='flex items-center justify-center gap-2'>
-                        {!isFreeModel && (
+                        {!isFreeModel && !isEmbeddingModel && (
                           <button
                             onClick={() => detectNow(item.channel_id)}
                             disabled={

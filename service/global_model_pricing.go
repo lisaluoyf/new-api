@@ -94,6 +94,10 @@ func fillGlobalDerivedPrices(name string, input float64, output, cache, cacheCre
 	if input <= 0 {
 		return
 	}
+	if IsTextEmbeddingModel(name) {
+		*output, *cache, *cacheCreation = 0, 0, 0
+		return
+	}
 	if comp := ratio_setting.GetCompletionRatio(name); comp > 0 {
 		*output = input * comp
 	}

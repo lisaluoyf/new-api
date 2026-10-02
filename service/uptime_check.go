@@ -189,6 +189,16 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 	if apiKey == "" || baseURL == "" {
 		return
 	}
+	if IsTextEmbeddingModel(targetModel) {
+		upstreamModel := ProbeModelCandidates(targetModel, ch.ModelMapping)[0]
+		result, err := sendEmbeddingUptimeProbe(ctx, &http.Client{Timeout: uptimeRequestTimeout}, baseURL, apiKey, upstreamModel)
+		if err != nil {
+			recordUptimeResult(ch, targetModel, baseURL, "notcomplete", result.LatencyMs, err.msg)
+		} else {
+			recordUptimeResult(ch, targetModel, baseURL, "pass", result.LatencyMs, "")
+		}
+		return
+	}
 
 	// Client-exclusive channels must be probed with their real CLI. Sending
 	// /chat/completions first can produce relay-specific rejection text and a

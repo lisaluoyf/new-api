@@ -89,7 +89,7 @@ func runAutoDetectOnce(flaskURL string) {
 				continue // channel doesn't support this model
 			}
 			cfg := LoadDetectConfig(m)
-			if !cfg.FingerprintEnabled || cfg.FingerprintSkipsChannel(ch.Id) {
+			if !cfg.FingerprintEnabled || cfg.FingerprintSkipsChannel(ch.Id) || IsTextEmbeddingModel(m) {
 				continue
 			}
 
@@ -443,7 +443,7 @@ const fingerprintRecoveryThreshold = 12
 // Synchronous — callers should run in a goroutine because the upstream
 // fingerprint call takes 5–15s.
 func RunChannelDetectionNow(ch *model.Channel, targetModel string) {
-	if ch == nil {
+	if ch == nil || IsTextEmbeddingModel(targetModel) {
 		return
 	}
 	flaskURL := os.Getenv("APIMASTER_FLASK_URL")

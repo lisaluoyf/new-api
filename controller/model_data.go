@@ -1107,7 +1107,7 @@ func applyModelMappingPricingToRow(
 	}
 	in := pr.InputPrice
 	*inputPrice = &in
-	if outputPrice != nil && (pr.OutputPrice > 0 || service.IsJevModel(canonical)) {
+	if outputPrice != nil && (pr.OutputPrice > 0 || service.IsJevModel(canonical) || service.IsTextEmbeddingModel(canonical)) {
 		out := pr.OutputPrice
 		*outputPrice = &out
 	}
@@ -1146,7 +1146,7 @@ func applyPublicManualPricingToRow(
 	}
 	in := pr.InputPrice
 	*inputPrice = &in
-	if outputPrice != nil && (pr.OutputPrice > 0 || service.IsJevModel(canonical)) {
+	if outputPrice != nil && (pr.OutputPrice > 0 || service.IsJevModel(canonical) || service.IsTextEmbeddingModel(canonical)) {
 		out := pr.OutputPrice
 		*outputPrice = &out
 	}
@@ -1183,7 +1183,7 @@ func applyGlobalModelPricingToRow(
 		return
 	}
 	*inputPrice = &in
-	if outputPrice != nil && (out > 0 || service.IsJevModel(canonical)) {
+	if outputPrice != nil && (out > 0 || service.IsJevModel(canonical) || service.IsTextEmbeddingModel(canonical)) {
 		o := out
 		*outputPrice = &o
 	}
@@ -1605,6 +1605,11 @@ func DetectChannelNow(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "channel_id and model are required"})
 		return
 	}
+	if service.IsTextEmbeddingModel(req.Model) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Embedding models use uptime checks, not chat fingerprint detection"})
+		return
+	}
+
 	ch, err := model.GetChannelById(req.ChannelID, true)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": err.Error()})

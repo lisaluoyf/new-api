@@ -245,7 +245,7 @@ func channelDataAuditShouldAlert(item ChannelDataAuditItem) bool {
 }
 
 func channelDataAuditRequiresFourPiece(modelName string) bool {
-	if service.IsJevModel(modelName) {
+	if service.IsJevModel(modelName) || service.IsTextEmbeddingModel(modelName) {
 		return false
 	}
 	switch strings.TrimSpace(modelName) {

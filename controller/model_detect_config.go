@@ -143,6 +143,10 @@ func SaveModelDetectConfig(c *gin.Context) {
 		}
 	}
 
+	if service.IsTextEmbeddingModel(req.Model) {
+		req.FingerprintEnabled = false
+	}
+
 	cfg := ModelDetectConfig{
 		FingerprintEnabled:         req.FingerprintEnabled,
 		FingerprintIntervalMinutes: req.FingerprintIntervalMinutes,

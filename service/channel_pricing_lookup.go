@@ -173,7 +173,7 @@ func ChannelModelPriceData(channelID int, modelName string) (ChannelModelPriceRa
 	}
 	// Jev explicitly prices output at zero; preserve that value instead of
 	// applying the legacy missing-output fallback used by other providers.
-	if row.OutputPrice > 0 || IsJevModel(modelName) {
+	if row.OutputPrice > 0 || IsJevModel(modelName) || IsTextEmbeddingModel(modelName) {
 		priceData.CompletionRatio = row.OutputPrice / row.InputPrice
 	}
 	if row.CachePrice > 0 {

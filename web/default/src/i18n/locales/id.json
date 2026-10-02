@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Text Embeddings": "Model embedding teks",
     "Skip detection": "Lewati pemeriksaan",
     "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "Masukkan nomor kanal dipisahkan koma. Hanya pemeriksaan terjadwal model ini yang dilewati; pemeriksaan manual tidak terpengaruh. Kosongkan untuk tidak melewati kanal apa pun.",
     "Enter positive channel IDs separated by commas, for example: 38,224.": "Masukkan nomor kanal berupa bilangan bulat positif dipisahkan koma, misalnya: 38,224.",

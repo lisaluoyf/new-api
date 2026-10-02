@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Text Embeddings": "Modèles de vecteurs textuels",
     "Skip detection": "Ignorer la détection",
     "Enter channel IDs separated by commas. Applies to scheduled detection of this model only; manual detection is unaffected. Leave blank to skip none.": "Saisissez les numéros de canal séparés par des virgules. Seules les détections programmées de ce modèle sont ignorées, sans effet sur la détection manuelle. Laissez vide pour ne rien ignorer.",
     "Enter positive channel IDs separated by commas, for example: 38,224.": "Saisissez des numéros de canal entiers positifs séparés par des virgules, par exemple : 38,224.",
