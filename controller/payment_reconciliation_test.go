@@ -100,16 +100,18 @@ func TestPriorPlategaStatementCannotMaskMissingOrDifferentPayment(t *testing.T) 
 	created := day.AddDate(0, 0, -4).Unix()
 	i := model.PaymentReconciliationItem{TradeNo: "order", OfficialID: "provider-id", OfficialCurrency: "RUB", OfficialAmount: "453.26"}
 	p := service.StatementPayment{ID: "provider-id", TradeNo: "order", Status: "CONFIRMED", Currency: "RUB", Amount: "453.260", CreatedAt: created}
-	require.True(t, matchesPriorPlategaStatement(i, created, day, p))
+	i.OfficialAmount = "417.75"
+	require.True(t, matchesPriorPlategaStatement(i, created, day, p, "453.26"))
+	require.False(t, matchesPriorPlategaStatement(i, created, day, p, "417.75"))
 	p.Amount = "450"
-	require.False(t, matchesPriorPlategaStatement(i, created, day, p))
+	require.False(t, matchesPriorPlategaStatement(i, created, day, p, "453.26"))
 	p.Amount = "453.26"
 	p.ID = "different"
-	require.False(t, matchesPriorPlategaStatement(i, created, day, p))
+	require.False(t, matchesPriorPlategaStatement(i, created, day, p, "453.26"))
 	p.ID = "provider-id"
 	p.CreatedAt = day.Unix()
-	require.False(t, matchesPriorPlategaStatement(i, created, day, p))
-	require.False(t, matchesPriorPlategaStatement(i, day.Unix(), day, p))
+	require.False(t, matchesPriorPlategaStatement(i, created, day, p, "453.26"))
+	require.False(t, matchesPriorPlategaStatement(i, day.Unix(), day, p, "453.26"))
 }
 
 func TestPlategaLocalCohortIncludesCreationDayAndLaterLocalCredit(t *testing.T) {

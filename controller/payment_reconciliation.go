@@ -278,12 +278,17 @@ func reconcilePaymentDay(j *model.PaymentReconciliationJob) ([]model.PaymentReco
 					if err != nil {
 						return items, err
 					}
+					order := model.GetPlategaOrderByTradeNo(i.TradeNo)
+					if order == nil {
+						return items, errors.New("Platega creation invoice unavailable")
+					}
+					bill, billErr := service.ExpectedPlategaBill(order)
 					created := time.Unix(creationTime, 0).UTC().Truncate(24 * time.Hour)
 					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 					historical, e := service.ListReconciliationPayments(ctx, "platega", created, created.Add(24*time.Hour))
 					cancel()
 					for _, p := range historical {
-						if e == nil && matchesPriorPlategaStatement(i, creationTime, day, p) {
+						if e == nil && billErr == nil && matchesPriorPlategaStatement(i, creationTime, day, p, decimal.NewFromFloat(bill).String()) {
 							// Export filters creation date, unlike local completion date.
 							// Retain verified late credits without counting them in the day's creation totals.
 							items[index].LocalPaid = false
@@ -318,9 +323,11 @@ func reconciliationCreationTime(i model.PaymentReconciliationItem) (int64, error
 	return row.CreateTime, err
 }
 
-func matchesPriorPlategaStatement(i model.PaymentReconciliationItem, created int64, day time.Time, p service.StatementPayment) bool {
+func matchesPriorPlategaStatement(i model.PaymentReconciliationItem, created int64, day time.Time, p service.StatementPayment, expectedBill string) bool {
 	actual, e1 := decimal.NewFromString(p.Amount)
-	expected, e2 := decimal.NewFromString(i.OfficialAmount)
+	// Export amounts include payer fees; the audit's OfficialAmount is the
+	// merchant base amount, normalized only after the live bill was verified.
+	expected, e2 := decimal.NewFromString(expectedBill)
 	return e1 == nil && e2 == nil && actual.Equal(expected) && actual.Sign() > 0 && p.ID == i.OfficialID && p.TradeNo == i.TradeNo && p.Currency == i.OfficialCurrency && p.CreatedAt == created && p.Status == "CONFIRMED" && created > 0 && (created < day.Unix() || created >= day.AddDate(0, 0, 1).Unix())
 }
 
