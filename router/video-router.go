@@ -25,6 +25,8 @@ func SetVideoRouter(router *gin.Engine) {
 		resources.PATCH("/:resource_id", controller.UpdateSeedanceResource)
 		resources.DELETE("/:resource_id", controller.DeleteSeedanceResource)
 	}
+	receipts := router.Group("/v1", middleware.RouteTag("relay"), middleware.TokenAuth())
+	receipts.GET("/videos/:task_id/billing", controller.GetSeedanceBillingReceipt)
 	// Video proxy: accepts either session auth (dashboard) or token auth (API clients)
 	videoProxyRouter := router.Group("/v1")
 	videoProxyRouter.Use(middleware.RouteTag("relay"))
@@ -38,6 +40,7 @@ func SetVideoRouter(router *gin.Engine) {
 	videoV1Router.Use(middleware.RouteTag("relay"))
 	videoV1Router.Use(middleware.TokenAuth(), middleware.PrepareSeedanceAssetGeneration(), middleware.Distribute(), middleware.ApplySeedanceAssetKey())
 	{
+		videoV1Router.POST("/videos/quote", middleware.ModelRequestRateLimit(), controller.QuoteSeedanceVideo)
 		videoV1Router.POST("/video/generations", controller.RelayTask)
 		videoV1Router.GET("/video/generations/:task_id", controller.RelayTaskFetch)
 		videoV1Router.POST("/videos/generations", controller.RelayTask)

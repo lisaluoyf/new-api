@@ -1773,7 +1773,18 @@ func RelayTask(c *gin.Context) {
 				}
 			}
 		}
-		if insertErr := task.Insert(); insertErr != nil {
+		var insertErr error
+		if service.UsesSeedanceTariff(task) {
+			receipt, receiptErr := service.NewSeedanceTaskReceipt(c, relayInfo, task)
+			if receiptErr != nil {
+				insertErr = receiptErr
+			} else {
+				insertErr = model.InsertSeedanceTaskWithReceipt(task, receipt)
+			}
+		} else {
+			insertErr = task.Insert()
+		}
+		if insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
 		}
 	}

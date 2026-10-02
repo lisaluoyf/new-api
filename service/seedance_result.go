@@ -36,6 +36,7 @@ func SeedanceLastFrameSource(task *model.Task) string {
 }
 
 func AddSeedanceResultFields(task *model.Task, out map[string]any) {
+	AddSeedanceBillingReceipt(task, out)
 	if task == nil || !IsSeedanceLibraryModel(task.Properties.OriginModelName) || task.Status != model.TaskStatusSuccess {
 		return
 	}

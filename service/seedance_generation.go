@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -420,12 +421,16 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 		return fmt.Errorf("video_urls supports at most %d videos", count)
 	}
 	total := 0
+	measurements := make([]model.SeedanceInputVideoMeasurement, 0, len(urls))
 	for i, v := range urls {
 		u, ok := v.(string)
 		if !ok || u == "" {
 			return fmt.Errorf("video_urls[%d] must be a non-empty string", i)
 		}
 		seconds := 0
+		var measured *float64
+		measurementSource := "apimaster_probe"
+		mediaID := seedanceProtectedMediaID(c.GetInt("id"), u)
 		var libraryAsset *model.SeedanceResource
 		if strings.HasPrefix(u, "asset://") {
 			asset, e := seedanceOwnedAsset(c, strings.TrimPrefix(u, "asset://"))
@@ -437,6 +442,12 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 			}
 			libraryAsset = asset
 			seconds = asset.DurationSeconds
+			mediaID = asset.ID
+			measurementSource = "apimaster_asset_cache"
+			if asset.MeasuredDurationSeconds > 0 {
+				raw := asset.MeasuredDurationSeconds
+				measured = &raw
+			}
 			u = asset.SourceURL
 		}
 		if seconds <= 0 {
@@ -445,13 +456,16 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 				return fmt.Errorf("video_urls[%d] is not an accessible video URL", i)
 			}
 			var e error
-			seconds, e = ProbeRemoteVideoDurationSeconds(c.Request.Context(), u)
+			raw, probeErr := ProbeRemoteVideoDuration(c.Request.Context(), u)
+			e = probeErr
+			seconds = int(math.Ceil(raw))
+			measured = &raw
 			if e != nil {
 				return fmt.Errorf("Unable to verify video_urls[%d] duration; provide an accessible MP4 or MOV video", i)
 			}
 
 			if libraryAsset != nil {
-				_ = model.DB.Model(libraryAsset).Update("duration_seconds", seconds).Error
+				_ = model.DB.Model(libraryAsset).Updates(map[string]any{"duration_seconds": seconds, "measured_duration_seconds": *measured}).Error
 			}
 		}
 		minimum := 2
@@ -462,11 +476,13 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 			return fmt.Errorf("video_urls[%d] duration must be from %d to %d seconds", i, minimum, maximum)
 		}
 		total += seconds
+		measurements = append(measurements, model.SeedanceInputVideoMeasurement{Index: i, MediaID: mediaID, MeasuredSeconds: measured, BillableSeconds: seconds, DurationSource: measurementSource})
 	}
 	if total > maximum {
 		return fmt.Errorf("video_urls total duration must not exceed %d seconds", maximum)
 	}
 	c.Set("seedance_video_input_seconds", total)
+	c.Set("seedance_video_input_measurements", measurements)
 	return nil
 }
 

@@ -338,6 +338,7 @@ func taskModelName(task *model.Task) string {
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	quota := task.Quota
 	if quota == 0 {
+		CompleteSeedanceBillingReceipt(task, true, nil)
 		return
 	}
 
@@ -373,14 +374,15 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 		Group:     task.Group,
 		Other:     other,
 	})
+	CompleteSeedanceBillingReceipt(task, true, nil)
 }
 
 // RecalculateTaskQuota 通用的异步差额结算。
 // actualQuota 是任务完成后的实际应扣额度，与预扣额度 (task.Quota) 做差额结算。
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
-func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) {
+func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) bool {
 	if actualQuota <= 0 {
-		return
+		return false
 	}
 	preConsumedQuota := task.Quota
 	quotaDelta := actualQuota - preConsumedQuota
@@ -388,7 +390,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if quotaDelta == 0 {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 预扣费准确（%s，%s）",
 			task.TaskID, logger.LogQuota(actualQuota), reason))
-		return
+		return true
 	}
 
 	logger.LogInfo(ctx, fmt.Sprintf("任务 %s 差额结算：delta=%s（实际：%s，预扣：%s，%s）",
@@ -402,7 +404,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	// 调整资金来源
 	if err := taskAdjustFunding(task, quotaDelta); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("差额结算资金调整失败 task %s: %s", task.TaskID, err.Error()))
-		return
+		return false
 	}
 
 	// 调整令牌额度
@@ -442,6 +444,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		Group:     task.Group,
 		Other:     other,
 	})
+	return true
 }
 
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。

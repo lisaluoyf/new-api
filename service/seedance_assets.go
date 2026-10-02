@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -132,9 +133,11 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 		return nil, err
 	}
 	durations := make([]int, len(input.Assets))
+	measuredDurations := make([]float64, len(input.Assets))
 	if input.AssetType == "Video" {
 		for i, item := range input.Assets {
-			seconds, err := ProbeRemoteVideoDurationSeconds(c.Request.Context(), item.URL)
+			measured, err := ProbeRemoteVideoDuration(c.Request.Context(), item.URL)
+			seconds := int(math.Ceil(measured))
 			if err != nil {
 				return nil, seedanceError(400, fmt.Sprintf("invalid_asset_material: assets[%d] video duration could not be verified", i))
 			}
@@ -146,6 +149,7 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 				return nil, seedanceError(400, fmt.Sprintf("invalid_asset_material: assets[%d] video duration must be from 2 to %d seconds", i, maximum))
 			}
 			durations[i] = seconds
+			measuredDurations[i] = measured
 		}
 	}
 	var group *model.SeedanceResource
@@ -176,7 +180,7 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 	assetIDs := make([]string, 0, len(input.Assets))
 	assets := make([]model.SeedanceResource, 0, len(input.Assets))
 	for i, item := range input.Assets {
-		asset := model.SeedanceResource{ID: seedanceID("asset"), Kind: "asset", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, Model: input.Model, GroupID: group.ID, Name: item.Name, SourceURL: item.URL, AssetType: input.AssetType, Status: "Pending", DurationSeconds: durations[i]}
+		asset := model.SeedanceResource{ID: seedanceID("asset"), Kind: "asset", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, Model: input.Model, GroupID: group.ID, Name: item.Name, SourceURL: item.URL, AssetType: input.AssetType, Status: "Pending", DurationSeconds: durations[i], MeasuredDurationSeconds: measuredDurations[i]}
 		assetIDs = append(assetIDs, asset.ID)
 		assets = append(assets, asset)
 	}

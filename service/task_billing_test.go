@@ -41,6 +41,7 @@ func TestMain(m *testing.M) {
 
 	if err := db.AutoMigrate(
 		&model.Task{},
+		&model.SeedanceBillingReceipt{},
 		&model.User{},
 		&model.Token{},
 		&model.Log{},
@@ -74,6 +75,7 @@ func TestMain(m *testing.M) {
 func truncate(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
+		model.DB.Exec("DELETE FROM seedance_billing_receipts")
 		model.DB.Exec("DELETE FROM tasks")
 		model.DB.Exec("DELETE FROM users")
 		model.DB.Exec("DELETE FROM tokens")

@@ -1,9 +1,7 @@
 package service
 
 import (
-	"context"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -13,7 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
-	"github.com/tidwall/gjson"
+	"github.com/shopspring/decimal"
 )
 
 // PrepareSeedanceTaskBilling runs after protocol normalization on every channel.
@@ -91,6 +89,9 @@ func PrepareSeedanceTaskBilling(c *gin.Context, info *relaycommon.RelayInfo) (ma
 			return nil, err
 		}
 		input = probe.GetInt("seedance_video_input_seconds")
+		if measurements, ok := probe.Get("seedance_video_input_measurements"); ok {
+			c.Set("seedance_video_input_measurements", measurements)
+		}
 	}
 	hasVideo, _ := req.Metadata["has_video"].(bool)
 	if hasVideo && input == 0 {
@@ -105,7 +106,11 @@ func PrepareSeedanceTaskBilling(c *gin.Context, info *relaycommon.RelayInfo) (ma
 	if !ok || !baseOK || price <= 0 || base <= 0 {
 		return nil, fmt.Errorf("Seedance price is not configured for %s", variant)
 	}
-	c.Set("seedance_billing_snapshot", map[string]any{"duration": seconds, "video_input_seconds": input, "billing_variant": variant, "auto_duration": auto})
+	measurements, _ := c.Get("seedance_video_input_measurements")
+	if draft, ok := c.Get("seedance_draft_task"); ok && measurements == nil {
+		measurements = draft.(*model.Task).PrivateData.SeedanceRequest["input_video_measurements"]
+	}
+	c.Set("seedance_billing_snapshot", map[string]any{"tariff_unit_rate": price, "input_video_measurements": measurements, "duration": seconds, "video_input_seconds": input, "billing_variant": variant, "auto_duration": auto})
 	return map[string]float64{"seconds": float64(seconds + input), "size": price / base}, nil
 }
 
@@ -140,7 +145,7 @@ func seedanceTariffVideoURLs(fields map[string]any) []any {
 }
 
 func SeedanceSubmissionQuota(price types.PriceData) int {
-	return int(math.Round(price.ModelPrice * price.GroupRatioInfo.GroupRatio * price.OtherRatios["seconds"] * price.OtherRatios["size"] * common.QuotaPerUnit))
+	return seedanceQuotaFromRate(seedanceEffectiveRate(price.ModelPrice*price.GroupRatioInfo.GroupRatio*price.OtherRatios["size"]), int(price.OtherRatios["seconds"]))
 }
 
 func UsesSeedanceTariff(task *model.Task) bool {
@@ -152,28 +157,8 @@ func SeedanceTariffSeconds(task *model.Task, result *relaycommon.TaskInfo) int {
 	if !UsesSeedanceTariff(task) {
 		return 0
 	}
-	output := 0
-	for _, path := range []string{"data.output_duration", "output_duration", "data.duration", "duration", "data.result.videos.0.duration", "result.videos.0.duration"} {
-		if v := gjson.GetBytes(task.Data, path); v.Exists() && v.Float() > 0 {
-			output = int(math.Round(v.Float()))
-			break
-		}
-	}
-	if output <= 0 && result != nil && result.BillableSeconds > 0 {
-		output = result.BillableSeconds
-	}
-	if output <= 0 && task.PrivateData.SeedanceRequest["auto_duration"] == true {
-		if u := task.GetResultURL(); u != "" {
-			output, _ = ProbeRemoteVideoDurationSecondsRound(context.Background(), u)
-		}
-	}
-	if output <= 0 {
-		output = seedanceInt(task.PrivateData.SeedanceRequest["duration"])
-	}
-	if output <= 0 {
-		return int(math.Round(task.PrivateData.BillingContext.OtherRatios["seconds"]))
-	}
-	return output + seedanceInt(task.PrivateData.SeedanceRequest["video_input_seconds"])
+	output := seedanceOutputDuration(task, result)
+	return output.BillableSeconds + seedanceInt(task.PrivateData.SeedanceRequest["video_input_seconds"])
 }
 
 func SeedanceTariffQuota(task *model.Task, result *relaycommon.TaskInfo) int {
@@ -191,5 +176,11 @@ func SeedanceTariffQuota(task *model.Task, result *relaycommon.TaskInfo) int {
 			price *= ratio
 		}
 	}
-	return int(math.Round(price * float64(seconds) * bc.GroupRatio * common.QuotaPerUnit))
+	return seedanceQuotaFromRate(seedanceEffectiveRate(price*bc.GroupRatio), seconds)
+}
+
+// Freeze a decimal rate to 12 places, then round the total exactly once.
+func seedanceEffectiveRate(rate float64) decimal.Decimal { return decimal.NewFromFloat(rate).Round(12) }
+func seedanceQuotaFromRate(rate decimal.Decimal, seconds int) int {
+	return int(rate.Mul(decimal.NewFromInt(int64(seconds))).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).Round(0).IntPart())
 }

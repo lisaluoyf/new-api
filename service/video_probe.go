@@ -31,6 +31,18 @@ func ProbeRemoteVideoDurationSecondsRound(ctx context.Context, rawURL string) (i
 }
 
 func probeRemoteVideoDurationSeconds(ctx context.Context, rawURL string, roundFn func(float64) float64) (int, error) {
+	seconds, err := ProbeRemoteVideoDuration(ctx, rawURL)
+	if err != nil {
+		return 0, err
+	}
+	rounded := int(roundFn(seconds))
+	if rounded <= 0 {
+		rounded = 1
+	}
+	return rounded, nil
+}
+
+func ProbeRemoteVideoDuration(ctx context.Context, rawURL string) (float64, error) {
 	u := strings.TrimSpace(rawURL)
 	if u == "" {
 		return 0, fmt.Errorf("empty video url")
@@ -40,6 +52,10 @@ func probeRemoteVideoDurationSeconds(ctx context.Context, rawURL string, roundFn
 		return 0, fmt.Errorf("unsupported video url")
 	}
 
+	setting := system_setting.GetFetchSetting()
+	if err := common.ValidateURLWithFetchSetting(u, setting.EnableSSRFProtection, setting.AllowPrivateIp, setting.DomainFilterMode, setting.IpFilterMode, setting.DomainList, setting.IpList, setting.AllowedPorts, setting.ApplyIPFilterForDomain); err != nil {
+		return 0, fmt.Errorf("video URL is not allowed")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return 0, err
@@ -89,11 +105,7 @@ func probeRemoteVideoDurationSeconds(ctx context.Context, rawURL string, roundFn
 	if seconds <= 0 {
 		return 0, fmt.Errorf("zero duration")
 	}
-	rounded := int(roundFn(seconds))
-	if rounded <= 0 && seconds > 0 {
-		rounded = 1
-	}
-	return rounded, nil
+	return seconds, nil
 }
 
 func videoProbeExt(rawURL, contentType string) string {

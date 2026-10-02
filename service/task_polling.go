@@ -602,8 +602,11 @@ func truncateBase64(s string) string {
 //  3. 都不满足 → 保持预扣额度不变
 func SettleTaskBillingOnComplete(ctx context.Context, adaptor TaskBillingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) {
 	if UsesSeedanceTariff(task) {
-		if quota := SeedanceTariffQuota(task, taskResult); quota > 0 {
-			RecalculateTaskQuota(ctx, task, quota, "Seedance按秒计费调整")
+		if quota := SeedanceTariffQuota(task, taskResult); quota >= 0 {
+			if quota == 0 && task.Quota == 0 || RecalculateTaskQuota(ctx, task, quota, "Seedance按秒计费调整") {
+				output := seedanceOutputDuration(task, taskResult)
+				CompleteSeedanceBillingReceipt(task, false, &output)
+			}
 		}
 		return // Never fall back to provider cost or token billing.
 	}
