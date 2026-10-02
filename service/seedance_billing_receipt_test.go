@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -149,4 +150,45 @@ func TestSeedanceEstimateIncludesNoReservationOrPrivateReferences(t *testing.T) 
 	require.Equal(t, "estimate", details.SettlementStatus)
 	require.Empty(t, details.ReceiptID)
 	require.Empty(t, details.InputVideos)
+}
+
+func TestSeedanceReceiptRecoveryChecksLedgerAndNeverMovesFunds(t *testing.T) {
+	truncate(t)
+	uid, tid, cid := 9103, 9103, 9103
+	seedUser(t, uid, 900000)
+	seedToken(t, tid, uid, "recover-receipt-test", 900000)
+	seedChannel(t, cid)
+	task := makeTask(uid, cid, 100000, tid, BillingSourceWallet, 0)
+	task.ID = 0
+	task.TaskID = "task_receipt_recovery"
+	task.Status = model.TaskStatusSuccess
+	task.FinishTime = time.Now().Unix() - 120
+	task.Properties.OriginModelName = "seedance-2.0"
+	task.PrivateData.SeedanceBillingReceiptEnabled = true
+	task.PrivateData.BillingContext = &model.TaskBillingContext{SeedanceTariff: true, OriginModelName: "seedance-2.0", ModelPrice: .05, GroupRatio: 1, OtherRatios: map[string]float64{"seconds": 4, "size": 1}}
+	task.PrivateData.SeedanceRequest = map[string]any{"duration": 4, "video_input_seconds": 0}
+	task.Data = []byte(`{"duration":4}`)
+	details := model.SeedanceBillingDetails{ReceiptID: "bill_" + task.TaskID, TaskID: task.TaskID, SettlementStatus: "pending", EffectiveUnitRate: "0.05", ReservedAmount: "0.200000", MediaCharges: map[string]string{}, InputVideos: []model.SeedanceInputVideoMeasurement{}}
+	raw, _ := common.Marshal(details)
+	require.NoError(t, model.InsertSeedanceTaskWithReceipt(task, &model.SeedanceBillingReceipt{ID: details.ReceiptID, TaskID: task.TaskID, UserID: uid, Status: "pending", InitialQuota: 100000, Details: raw}))
+	// A different task referring to this task must not count as its ledger entry.
+	log := model.Log{UserId: uid, Type: model.LogTypeConsume, Quota: 100000, Other: `{"task_id":"task_other","request_data":{"draft_task_id":"task_receipt_recovery"}}`}
+	require.NoError(t, model.LOG_DB.Create(&log).Error)
+	ReconcileSeedanceBillingReceipts(context.Background())
+	got, err := model.GetSeedanceBillingReceipt(uid, task.TaskID)
+	require.NoError(t, err)
+	require.Equal(t, "pending", got.Status)
+	log = model.Log{UserId: uid, Type: model.LogTypeConsume, Quota: 100000, Other: `{"task_id":"task_receipt_recovery"}`}
+	require.NoError(t, model.LOG_DB.Create(&log).Error)
+	ReconcileSeedanceBillingReceipts(context.Background())
+	got, err = model.GetSeedanceBillingReceipt(uid, task.TaskID)
+	require.NoError(t, err)
+	require.Equal(t, "settled", got.Status)
+	before := string(got.Details)
+	ReconcileSeedanceBillingReceipts(context.Background())
+	got, err = model.GetSeedanceBillingReceipt(uid, task.TaskID)
+	require.NoError(t, err)
+	require.Equal(t, before, string(got.Details))
+	require.Equal(t, 900000, getUserQuota(t, uid))
+	require.Equal(t, 900000, getTokenRemainQuota(t, tid))
 }

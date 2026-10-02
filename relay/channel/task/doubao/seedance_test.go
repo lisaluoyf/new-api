@@ -145,3 +145,28 @@ func TestDoubaoCompletedTaskRequiresVideo(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(body), `"generation_failed"`)
 }
+
+func TestSeedanceVideoReferenceRoleAcrossPublicAndNativeRequests(t *testing.T) {
+	for _, name := range []string{"seedance-2.0", "seedance-2.5", "seedance-2.0-fast", "seedance-2.0-mini"} {
+		for _, refs := range []string{`"video_urls":["https://example.com/reference.mp4"]`, `"content":[{"type":"video_url","video_url":{"url":"https://example.com/reference.mp4"}}]`} {
+			c, _ := seedanceContext(`{"model":"` + name + `","prompt":"scene","duration":4,"resolution":"480p",` + refs + `}`)
+			info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}, OriginModelName: name, ChannelMeta: &relaycommon.ChannelMeta{IsModelMapped: true, UpstreamModelName: "seedance-reference-model"}}
+			a := &TaskAdaptor{}
+			require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+			body, err := a.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			data, err := io.ReadAll(body)
+			require.NoError(t, err)
+			var payload requestPayload
+			require.NoError(t, common.Unmarshal(data, &payload))
+			found := false
+			for _, item := range payload.Content {
+				if item.Type == "video_url" {
+					found = true
+					require.Equal(t, "reference_video", item.Role)
+				}
+			}
+			require.True(t, found)
+		}
+	}
+}

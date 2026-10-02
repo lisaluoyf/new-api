@@ -231,3 +231,31 @@ func seedanceOutputProbeURL(task *model.Task, result *relaycommon.TaskInfo) stri
 	}
 	return task.GetResultURL()
 }
+
+// Repair receipt persistence after interruption without issuing any debit or
+// refund. Finalize only when the recorded ledger agrees with task settlement.
+func ReconcileSeedanceBillingReceipts(ctx context.Context) {
+	receipts, err := model.PendingCompletedSeedanceReceipts(100)
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("scan pending Seedance receipts: %v", err))
+		return
+	}
+	for _, receipt := range receipts {
+		task, found, err := model.GetByTaskId(receipt.UserID, receipt.TaskID)
+		if err != nil || !found || !task.PrivateData.SeedanceBillingReceiptEnabled {
+			continue
+		}
+		net, logged, err := model.SeedanceTaskLedgerNet(task.UserId, task.TaskID)
+		if err != nil || !logged {
+			continue
+		}
+		if task.Status == model.TaskStatusFailure && net == 0 {
+			CompleteSeedanceBillingReceipt(task, true, nil)
+			continue
+		}
+		if task.Status == model.TaskStatusSuccess && net == task.Quota && net == SeedanceTariffQuota(task, nil) {
+			output := seedanceOutputDuration(task, nil)
+			CompleteSeedanceBillingReceipt(task, false, &output)
+		}
+	}
+}

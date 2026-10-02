@@ -1,12 +1,38 @@
 package model
 
 import (
-	"encoding/json"
+	"database/sql/driver"
+	"fmt"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
+
+// TEXT values are strings with PostgreSQL/MySQL and may be []byte with SQLite.
+// Implement Scanner/Valuer explicitly rather than relying on json.RawMessage.
+type SeedanceReceiptJSON []byte
+
+func (j *SeedanceReceiptJSON) Scan(value any) error {
+	switch v := value.(type) {
+	case string:
+		*j = append((*j)[:0], v...)
+	case []byte:
+		*j = append((*j)[:0], v...)
+	case nil:
+		*j = nil
+	default:
+		return fmt.Errorf("unsupported receipt JSON database type %T", value)
+	}
+	return nil
+}
+
+func (j SeedanceReceiptJSON) Value() (driver.Value, error) {
+	if len(j) == 0 {
+		return nil, nil
+	}
+	return string(j), nil
+}
 
 type SeedanceInputVideoMeasurement struct {
 	Index           int      `json:"index"`
@@ -66,12 +92,12 @@ type SeedanceBillingReceipt struct {
 	ID           string `gorm:"primaryKey;size:191"`
 	TaskID       string `gorm:"uniqueIndex;size:191"`
 	UserID       int    `gorm:"index"`
-	Status       string `gorm:"size:32"`
+	Status       string `gorm:"size:32;index:idx_sd_receipt_pending,priority:1"`
 	InitialQuota int
 	FinalQuota   int
-	Details      json.RawMessage `gorm:"type:text"`
+	Details      SeedanceReceiptJSON `gorm:"type:text"`
 	CreatedAt    int64
-	UpdatedAt    int64
+	UpdatedAt    int64 `gorm:"index:idx_sd_receipt_pending,priority:2"`
 }
 
 func GetSeedanceBillingReceipt(userID int, taskID string) (*SeedanceBillingReceipt, error) {
@@ -99,4 +125,40 @@ func InsertSeedanceTaskWithReceipt(task *Task, receipt *SeedanceBillingReceipt) 
 		}
 		return tx.Create(receipt).Error
 	})
+}
+
+// Only completed tasks whose receipt was not finalized are recovery candidates.
+func PendingCompletedSeedanceReceipts(limit int) ([]SeedanceBillingReceipt, error) {
+	var receipts []SeedanceBillingReceipt
+	err := DB.Model(&SeedanceBillingReceipt{}).Select("seedance_billing_receipts.*").
+		Joins("JOIN tasks ON tasks.task_id = seedance_billing_receipts.task_id AND tasks.user_id = seedance_billing_receipts.user_id").
+		Where("seedance_billing_receipts.status = ? AND tasks.status IN ? AND tasks.finish_time > 0 AND tasks.finish_time < ?", "pending", []TaskStatus{TaskStatusSuccess, TaskStatusFailure}, time.Now().Unix()-60).
+		Order("seedance_billing_receipts.updated_at").Limit(limit).Find(&receipts).Error
+	return receipts, err
+}
+
+// Match only the top-level task ID, never a referenced task in request_data.
+func SeedanceTaskLedgerNet(userID int, taskID string) (int, bool, error) {
+	var rows []Log
+	if LOG_DB == nil {
+		return 0, false, fmt.Errorf("billing log database unavailable")
+	}
+	err := LOG_DB.Where("user_id = ? AND type IN ? AND other LIKE ?", userID, []int{LogTypeConsume, LogTypeRefund}, "%"+taskID+"%").Find(&rows).Error
+	if err != nil {
+		return 0, false, err
+	}
+	net, found := 0, false
+	for _, row := range rows {
+		var other map[string]any
+		if common.UnmarshalJsonStr(row.Other, &other) != nil || other["task_id"] != taskID {
+			continue
+		}
+		found = true
+		if row.Type == LogTypeConsume {
+			net += row.Quota
+		} else {
+			net -= row.Quota
+		}
+	}
+	return net, found, nil
 }

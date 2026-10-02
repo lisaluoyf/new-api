@@ -413,6 +413,9 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		if converter, ok := adaptor.(channel.OpenAIVideoConverter); ok {
 			openAIVideoData, err := converter.ConvertToOpenAIVideo(originTask)
 			if err == nil {
+				openAIVideoData, err = addSeedanceResultFieldsToResponse(originTask, openAIVideoData)
+			}
+			if err == nil {
 				openAIVideoData, err = sanitizeOpenAIVideoTaskFailure(originTask, openAIVideoData)
 			}
 			if err != nil {
@@ -650,4 +653,18 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Username:   task.Username,
 		Data:       task.Data,
 	}
+}
+
+// Billing/result metadata belongs to the common public response, independent
+// of which channel's OpenAI converter generated the base payload.
+func addSeedanceResultFieldsToResponse(task *model.Task, body []byte) ([]byte, error) {
+	if task == nil || !service.IsSeedanceLibraryModel(task.Properties.OriginModelName) {
+		return body, nil
+	}
+	var out map[string]any
+	if err := common.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+	service.AddSeedanceResultFields(task, out)
+	return common.Marshal(out)
 }

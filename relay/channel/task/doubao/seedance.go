@@ -76,6 +76,18 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 			req.Metadata["content"] = content
 		}
 	}
+
+	// Public video_urls and native video references need the provider's explicit
+	// reference role. Preserve caller-specified roles while filling the default.
+	if content, ok := req.Metadata["content"].([]interface{}); ok {
+		for _, value := range content {
+			if item, ok := value.(map[string]interface{}); ok && item["type"] == "video_url" {
+				if role, _ := item["role"].(string); role == "" {
+					item["role"] = "reference_video"
+				}
+			}
+		}
+	}
 	// Convert before charging so malformed parameters fail locally.
 	body, err := a.convertToRequestPayload(&req)
 	if err != nil {

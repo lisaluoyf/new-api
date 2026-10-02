@@ -100,6 +100,7 @@ func TaskPollingLoop() {
 		common.SysLog("任务进度轮询开始")
 		ctx := context.TODO()
 		sweepTimedOutTasks(ctx)
+		ReconcileSeedanceBillingReceipts(ctx)
 		allTasks := model.GetAllUnFinishSyncTasks(constant.TaskQueryLimit)
 		platformTask := make(map[constant.TaskPlatform][]*model.Task)
 		for _, t := range allTasks {
@@ -605,6 +606,11 @@ func SettleTaskBillingOnComplete(ctx context.Context, adaptor TaskBillingAdaptor
 		if quota := SeedanceTariffQuota(task, taskResult); quota >= 0 {
 			if quota == 0 && task.Quota == 0 || RecalculateTaskQuota(ctx, task, quota, "Seedance按秒计费调整") {
 				output := seedanceOutputDuration(task, taskResult)
+				if task.PrivateData.SeedanceBillingReceiptEnabled && task.ID > 0 {
+					if err := model.DB.Model(&model.Task{}).Where("id = ? AND user_id = ?", task.ID, task.UserId).Update("private_data", task.PrivateData).Error; err != nil {
+						logger.LogError(ctx, fmt.Sprintf("persist Seedance output duration %s: %v", task.TaskID, err))
+					}
+				}
 				CompleteSeedanceBillingReceipt(task, false, &output)
 			}
 		}
