@@ -237,3 +237,9 @@ func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {
 	c.Set("apimart_normalized_request", fields)
 	return common.Marshal(fields)
 }
+
+// NormalizeGenerationJSON shares the public video contract with providers
+// that have a different transport, without duplicating aliases or defaults.
+func NormalizeGenerationJSON(c *gin.Context) ([]byte, error) {
+	return normalizedGenerationJSON(c)
+}

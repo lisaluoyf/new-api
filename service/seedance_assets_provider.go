@@ -108,7 +108,7 @@ func selectSeedanceLibrary(c *gin.Context, name string) (*model.SeedanceResource
 			return false
 		}
 		host := strings.ToLower(parsed.Hostname())
-		provider := host == "apimart.ai" || strings.HasSuffix(host, ".apimart.ai") || host == "apib.ai" || strings.HasSuffix(host, ".apib.ai")
+		provider := host == "apimart.ai" || strings.HasSuffix(host, ".apimart.ai") || host == "apib.ai" || strings.HasSuffix(host, ".apib.ai") || ch.Id == constant.VideoFeeSeedanceChannelID
 		return provider && seedanceChannelAllowed(c, ch, name)
 	}
 	var ch *model.Channel
@@ -142,6 +142,13 @@ func seedanceProviderRequest(ctx context.Context, resource *model.SeedanceResour
 	if err != nil {
 		return nil, err
 	}
+	if ch.Id == constant.VideoFeeSeedanceChannelID {
+		return videoFeeLibraryRequest(ctx, resource, ch, key, method, path, payload)
+	}
+	return seedanceProviderRawRequest(ctx, resource, ch, key, method, path, payload)
+}
+
+func seedanceProviderRawRequest(ctx context.Context, resource *model.SeedanceResource, ch *model.Channel, key, method, path string, payload any) (map[string]any, error) {
 	var body io.Reader
 	if payload != nil {
 		encoded, e := common.Marshal(payload)

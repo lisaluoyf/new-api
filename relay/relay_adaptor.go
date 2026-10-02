@@ -40,6 +40,7 @@ import (
 	tasksora "github.com/QuantumNous/new-api/relay/channel/task/sora"
 	"github.com/QuantumNous/new-api/relay/channel/task/suno"
 	taskvertex "github.com/QuantumNous/new-api/relay/channel/task/vertex"
+	"github.com/QuantumNous/new-api/relay/channel/task/videofee"
 	taskVidu "github.com/QuantumNous/new-api/relay/channel/task/vidu"
 	"github.com/QuantumNous/new-api/relay/channel/tencent"
 	"github.com/QuantumNous/new-api/relay/channel/typesafe"
@@ -146,6 +147,8 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 		return &taskapimartvideo.TaskAdaptor{}
 	case constant.TaskPlatformMiniMaxH3:
 		return &hailuo.H3TaskAdaptor{}
+	case constant.TaskPlatformVideoFee:
+		return &videofee.TaskAdaptor{}
 	}
 	if channelType, err := strconv.ParseInt(string(platform), 10, 64); err == nil {
 		switch channelType {

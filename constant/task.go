@@ -8,7 +8,11 @@ const (
 	TaskPlatformApimartVideo              = "apimart-video"
 	TaskPlatformOpenAIImage               = "openai-image"
 	TaskPlatformMiniMaxH3                 = "minimax-h3"
+	TaskPlatformVideoFee                  = "videofee"
 )
+
+// This compatibility contract is scoped to the explicitly configured route.
+const VideoFeeSeedanceChannelID = 273
 
 const (
 	SunoActionMusic  = "MUSIC"

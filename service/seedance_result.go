@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/tidwall/gjson"
@@ -27,7 +28,11 @@ func SeedanceLastFrameSource(task *model.Task) string {
 	if task == nil || task.Status != model.TaskStatusSuccess || task.PrivateData.SeedanceRequest["return_last_frame"] != true {
 		return ""
 	}
-	for _, p := range []string{"data.result.videos.0.last_frame_url", "result.videos.0.last_frame_url", "data.result.last_frame_url"} {
+	paths := []string{"data.result.videos.0.last_frame_url", "result.videos.0.last_frame_url", "data.result.last_frame_url"}
+	if task.ChannelId == constant.VideoFeeSeedanceChannelID {
+		paths = append(paths, "data.last_frame_url", "data.last_frame.url", "data.data.last_frame_url", "last_frame_url")
+	}
+	for _, p := range paths {
 		if u := gjson.GetBytes(task.Data, p).String(); IsValidMediaResultURL(u) {
 			return u
 		}

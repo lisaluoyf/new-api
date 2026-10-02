@@ -21,3 +21,14 @@ func TestSeedance20SelectsApimartBeforeModelMapping(t *testing.T) {
 		require.Equal(t, constant.TaskPlatform(constant.TaskPlatformApimartVideo), ResolveTaskPlatform(c, constant.TaskPlatform("sora"), info))
 	}
 }
+
+func TestVideoFeeScopeIsChannel273AndEnabledModelsOnly(t *testing.T) {
+	for _, id := range []int{273, 272, 999} {
+		for _, name := range []string{"seedance-2.0", "seedance-2.5", "seedance-2.0-mini", "MiniMax-H3", "sora-2"} {
+			info := &relaycommon.RelayInfo{OriginModelName: name, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: id, ChannelBaseUrl: "https://seedance2026.vip", ChannelType: constant.ChannelTypeOpenAI}}
+			c, _ := gin.CreateTestContext(nil)
+			platform := ResolveTaskPlatform(c, "1", info)
+			require.Equal(t, id == 273 && (name == "seedance-2.0" || name == "seedance-2.5"), platform == constant.TaskPlatformVideoFee)
+		}
+	}
+}

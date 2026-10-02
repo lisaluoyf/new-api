@@ -44,6 +44,9 @@ func updateVideoTaskAll(ctx context.Context, platform constant.TaskPlatform, cha
 		}
 		return fmt.Errorf("CacheGetChannel failed: %w", err)
 	}
+	if channelId == constant.VideoFeeSeedanceChannelID {
+		platform = constant.TaskPlatformVideoFee
+	}
 	adaptor := relay.GetTaskAdaptor(platform)
 	if adaptor == nil {
 		return fmt.Errorf("video adaptor not found")
@@ -101,7 +104,12 @@ func updateVideoSingleTask(ctx context.Context, adaptor channel.TaskAdaptor, cha
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as New API response format
 	var responseItems dto.TaskResponse[model.Task]
-	if err = common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
+	if channel.Id == constant.VideoFeeSeedanceChannelID {
+		if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
+			return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+		}
+		task.Data = redactVideoResponseBody(responseBody)
+	} else if err = common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
 		logger.LogDebug(ctx, fmt.Sprintf("UpdateVideoSingleTask parsed as new api response format: %+v", responseItems))
 		t := responseItems.Data
 		taskResult.TaskID = t.TaskID
