@@ -192,3 +192,8 @@ func TestSeedanceReceiptRecoveryChecksLedgerAndNeverMovesFunds(t *testing.T) {
 	require.Equal(t, 900000, getUserQuota(t, uid))
 	require.Equal(t, 900000, getTokenRemainQuota(t, tid))
 }
+
+func TestSeedanceReceiptPersistenceErrorDoesNotPanicPolling(t *testing.T) {
+	task := &model.Task{UserId: 9104, TaskID: "task_missing_receipt_error_path", PrivateData: model.TaskPrivateData{SeedanceBillingReceiptEnabled: true}}
+	require.NotPanics(t, func() { CompleteSeedanceBillingReceipt(task, false, nil) })
+}

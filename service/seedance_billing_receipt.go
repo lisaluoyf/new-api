@@ -103,7 +103,7 @@ func CompleteSeedanceBillingReceipt(task *model.Task, refunded bool, output *mod
 	}
 	receipt, err := model.GetSeedanceBillingReceipt(task.UserId, task.TaskID)
 	if err != nil {
-		logger.LogError(nil, fmt.Sprintf("read Seedance billing receipt %s: %v", task.TaskID, err))
+		logger.LogError(context.Background(), fmt.Sprintf("read Seedance billing receipt %s: %v", task.TaskID, err))
 		return
 	}
 	if receipt.Status != "pending" {
@@ -146,7 +146,7 @@ func CompleteSeedanceBillingReceipt(task *model.Task, refunded bool, output *mod
 		}
 	}
 	if err = model.SaveSeedanceBillingReceipt(receipt, details); err != nil {
-		logger.LogError(nil, fmt.Sprintf("save Seedance billing receipt %s: %v", task.TaskID, err))
+		logger.LogError(context.Background(), fmt.Sprintf("save Seedance billing receipt %s: %v", task.TaskID, err))
 	}
 }
 
