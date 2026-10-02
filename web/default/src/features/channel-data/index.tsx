@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react'
 import { Settings2, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import {
@@ -1414,10 +1413,8 @@ export function ChannelDataPage() {
           uptime_enabled: next.uptime_enabled,
           uptime_interval_minutes: next.uptime_interval_minutes,
         })
-        if (!res.data?.success) {
-          toast.error(res.data?.message || t('Save failed, please retry'))
-          return false
-        }
+        // The API interceptor already displays business and HTTP errors.
+        if (!res.data?.success) return false
         if (activeModelRef.current === activeModel) setConfig(next)
         setTabDetectEnabled((prev) => ({
           ...prev,
@@ -1430,7 +1427,7 @@ export function ChannelDataPage() {
         setConfigLoading(false)
       }
     },
-    [config, activeModel, t]
+    [config, activeModel]
   )
 
   const saveCommonAutoReenable = useCallback((enabled: boolean) => {
