@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { CopyButton } from '@/components/copy-button'
 import { SectionPageLayout } from '@/components/layout'
 import {
   getReconciliation,
@@ -326,8 +327,28 @@ export function PaymentReconciliationPage() {
                     {label(runMap.get(item.run_id)?.provider ?? '')}
                   </TableCell>
                   <TableCell className='max-w-80 text-xs break-all whitespace-normal'>
-                    <p>{item.trade_no}</p>
-                    <p className='text-muted-foreground'>{item.official_id}</p>
+                    <div className='flex items-center gap-1'>
+                      <span>{item.trade_no}</span>
+                      {item.trade_no && (
+                        <CopyButton
+                          value={item.trade_no}
+                          className='size-6'
+                          iconClassName='size-3'
+                          tooltip={t('Copy to clipboard')}
+                        />
+                      )}
+                    </div>
+                    <div className='text-muted-foreground flex items-center gap-1'>
+                      <span>{item.official_id}</span>
+                      {item.official_id && (
+                        <CopyButton
+                          value={item.official_id}
+                          className='size-6'
+                          iconClassName='size-3'
+                          tooltip={t('Copy to clipboard')}
+                        />
+                      )}
+                    </div>
                     <p>
                       {t(
                         item.purpose === 'subscription'
