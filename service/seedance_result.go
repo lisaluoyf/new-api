@@ -15,7 +15,7 @@ func SeedanceCompletionTokens(task *model.Task) (int64, bool) {
 	if task == nil || !IsSeedanceLibraryModel(task.Properties.OriginModelName) || task.Status != model.TaskStatusSuccess {
 		return 0, false
 	}
-	for _, p := range []string{"data.usage.completion_tokens", "usage.completion_tokens"} {
+	for _, p := range []string{"data.usage.completion_tokens", "usage.completion_tokens", "data.data.usage.completion_tokens"} {
 		v := gjson.GetBytes(task.Data, p)
 		if v.Exists() && v.Type == gjson.Number && v.Int() >= 0 {
 			return v.Int(), true
@@ -29,8 +29,8 @@ func SeedanceLastFrameSource(task *model.Task) string {
 		return ""
 	}
 	paths := []string{"data.result.videos.0.last_frame_url", "result.videos.0.last_frame_url", "data.result.last_frame_url"}
-	if task.ChannelId == constant.VideoFeeSeedanceChannelID {
-		paths = append(paths, "data.last_frame_url", "data.last_frame.url", "data.data.last_frame_url", "last_frame_url")
+	if task.ChannelId == constant.VideoFeeSeedanceChannelID || task.ChannelId == constant.BeeNexSeedanceChannelID {
+		paths = append(paths, "data.last_frame_url", "data.last_frame.url", "data.data.last_frame_url", "data.data.content.last_frame_url", "last_frame_url")
 	}
 	for _, p := range paths {
 		if u := gjson.GetBytes(task.Data, p).String(); IsValidMediaResultURL(u) {

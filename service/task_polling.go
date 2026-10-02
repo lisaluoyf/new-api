@@ -331,6 +331,9 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 	if channelId == constant.VideoFeeSeedanceChannelID {
 		platform = constant.TaskPlatformVideoFee
 	}
+	if channelId == constant.BeeNexSeedanceChannelID {
+		platform = constant.TaskPlatformBeeNex
+	}
 	adaptor := GetTaskAdaptorFunc(platform)
 	if adaptor == nil {
 		return fmt.Errorf("video adaptor not found")
@@ -390,7 +393,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as New API response format
 	var responseItems dto.TaskResponse[model.Task]
-	if ch.Id == constant.VideoFeeSeedanceChannelID {
+	if ch.Id == constant.VideoFeeSeedanceChannelID || ch.Id == constant.BeeNexSeedanceChannelID {
 		if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 			return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 		}

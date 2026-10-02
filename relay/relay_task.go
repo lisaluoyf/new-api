@@ -409,6 +409,9 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		if originTask.ChannelId == constant.VideoFeeSeedanceChannelID {
 			adaptor = GetTaskAdaptor(constant.TaskPlatformVideoFee)
 		}
+		if originTask.ChannelId == constant.BeeNexSeedanceChannelID {
+			adaptor = GetTaskAdaptor(constant.TaskPlatformBeeNex)
+		}
 		if adaptor == nil {
 			taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("invalid channel id: %d", originTask.ChannelId), "invalid_channel_id", http.StatusBadRequest)
 			return

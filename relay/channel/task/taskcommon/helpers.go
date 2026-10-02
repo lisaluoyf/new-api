@@ -85,7 +85,7 @@ func ShouldProxyVideoURL(raw string) bool {
 	if strings.Contains(host, "apimart.ai") || strings.Contains(host, "apib.ai") || strings.Contains(host, "cdn.apimart") || strings.Contains(host, "getapib.org") {
 		return true
 	}
-	if u.Hostname() == "seedance2026.vip" {
+	if u.Hostname() == "seedance2026.vip" || u.Hostname() == "beenexapi.phone580.com" {
 		return true
 	}
 	return false

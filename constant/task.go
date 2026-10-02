@@ -9,6 +9,7 @@ const (
 	TaskPlatformOpenAIImage               = "openai-image"
 	TaskPlatformMiniMaxH3                 = "minimax-h3"
 	TaskPlatformVideoFee                  = "videofee"
+	TaskPlatformBeeNex                    = "beenex"
 )
 
 // This compatibility contract is scoped to the explicitly configured route.
@@ -29,3 +30,5 @@ var SunoModel2Action = map[string]string{
 	"suno_music":  SunoActionMusic,
 	"suno_lyrics": SunoActionLyrics,
 }
+
+const BeeNexSeedanceChannelID = 274

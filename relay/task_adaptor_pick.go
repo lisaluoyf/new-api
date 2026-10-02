@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskapimartvideo "github.com/QuantumNous/new-api/relay/channel/task/apimartvideo"
+	"github.com/QuantumNous/new-api/relay/channel/task/beenex"
 	"github.com/QuantumNous/new-api/relay/channel/task/hailuo"
 	"github.com/QuantumNous/new-api/relay/channel/task/videofee"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -19,6 +20,9 @@ func ResolveTaskAdaptor(c *gin.Context, platform constant.TaskPlatform, info *re
 	modelName := strings.TrimSpace(info.OriginModelName)
 	if modelName == "" {
 		modelName = peekTaskModel(c)
+	}
+	if info.ChannelId == constant.BeeNexSeedanceChannelID && beenex.IsModel(modelName) {
+		return &beenex.TaskAdaptor{}
 	}
 	if info.ChannelId == constant.VideoFeeSeedanceChannelID && videofee.IsModel(modelName) {
 		return &videofee.TaskAdaptor{}
@@ -40,6 +44,9 @@ func ResolveTaskPlatform(c *gin.Context, platform constant.TaskPlatform, info *r
 	}
 	if info.ChannelId == constant.VideoFeeSeedanceChannelID && videofee.IsModel(modelName) {
 		return constant.TaskPlatformVideoFee
+	}
+	if info.ChannelId == constant.BeeNexSeedanceChannelID && beenex.IsModel(modelName) {
+		return constant.TaskPlatformBeeNex
 	}
 	if taskapimartvideo.IsChannel(info.ChannelBaseUrl) && taskapimartvideo.IsVideoModel(modelName) {
 		return constant.TaskPlatformApimartVideo

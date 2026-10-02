@@ -47,6 +47,9 @@ func updateVideoTaskAll(ctx context.Context, platform constant.TaskPlatform, cha
 	if channelId == constant.VideoFeeSeedanceChannelID {
 		platform = constant.TaskPlatformVideoFee
 	}
+	if channelId == constant.BeeNexSeedanceChannelID {
+		platform = constant.TaskPlatformBeeNex
+	}
 	adaptor := relay.GetTaskAdaptor(platform)
 	if adaptor == nil {
 		return fmt.Errorf("video adaptor not found")
@@ -84,7 +87,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor channel.TaskAdaptor, cha
 		key = privateData.Key
 	}
 	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
-		"task_id": taskId,
+		"task_id": task.GetUpstreamTaskID(),
 		"action":  task.Action,
 	}, proxy)
 	if err != nil {
@@ -104,7 +107,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor channel.TaskAdaptor, cha
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as New API response format
 	var responseItems dto.TaskResponse[model.Task]
-	if channel.Id == constant.VideoFeeSeedanceChannelID {
+	if channel.Id == constant.VideoFeeSeedanceChannelID || channel.Id == constant.BeeNexSeedanceChannelID {
 		if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 			return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 		}

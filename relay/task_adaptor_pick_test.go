@@ -32,3 +32,14 @@ func TestVideoFeeScopeIsChannel273AndEnabledModelsOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestBeeNexScope(t *testing.T) {
+	for _, id := range []int{274, 273, 272} {
+		for _, name := range []string{"seedance-2.0", "seedance-2.5", "seedance-2.0-mini", "sora-2"} {
+			info := &relaycommon.RelayInfo{OriginModelName: name, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: id, ChannelType: constant.ChannelTypeOpenAI}}
+			c, _ := gin.CreateTestContext(nil)
+			want := id == 274 && (name == "seedance-2.0" || name == "seedance-2.5")
+			require.Equal(t, want, ResolveTaskPlatform(c, "1", info) == constant.TaskPlatformBeeNex)
+		}
+	}
+}
