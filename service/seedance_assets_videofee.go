@@ -3,8 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -34,7 +37,17 @@ func videoFeeLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 			if err != nil {
 				return nil, err
 			}
-			imported, err := seedanceProviderRawRequest(ctx, asset, ch, key, http.MethodPost, "/api/real-person-assets/import-url", map[string]any{"url": asset.SourceURL})
+			path := "/api/real-person-assets/import-url"
+			var payload any = map[string]any{"url": asset.SourceURL}
+			// Send our own uploaded image bytes directly: VideoFee's URL importer
+			// cannot fetch this origin in production. External URLs retain import.
+			if upload, err := videoFeeLocalUpload(asset.SourceURL); err != nil {
+				return nil, err
+			} else if upload != nil {
+				path = "/api/real-person-assets/upload"
+				payload = *upload
+			}
+			imported, err := seedanceProviderRawRequest(ctx, asset, ch, key, http.MethodPost, path, payload)
 			if err != nil {
 				return nil, err
 			}
@@ -121,4 +134,66 @@ func videoFeeAssetStatus(ctx context.Context, asset *model.SeedanceResource, ch 
 	default:
 		return "", seedanceError(502, "Invalid media certification status")
 	}
+}
+
+// Only canonical filenames emitted by StoreUploadedMediaImage can access disk.
+// Never download an arbitrary caller URL or interpret it as a local path.
+type seedanceMediaUpload struct {
+	filename string
+	data     []byte
+}
+
+func videoFeeLocalUpload(source string) (*seedanceMediaUpload, error) {
+	if !strings.HasPrefix(source, imageCachePublicBase) {
+		return nil, nil
+	}
+	filename := strings.TrimPrefix(source, imageCachePublicBase)
+	if !strings.HasPrefix(filename, "media_upload_task_") || filepath.Base(filename) != filename || strings.ContainsAny(filename, "%?#\\") {
+		return nil, nil
+	}
+	file, err := os.Open(filepath.Join(imageCacheDir, filename))
+	if err != nil {
+		return nil, seedanceError(400, "Uploaded image is unavailable; upload it again")
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, (20<<20)+1))
+	if err != nil {
+		return nil, seedanceError(502, "Unable to read uploaded image")
+	}
+	if len(data) > 20<<20 {
+		return nil, seedanceError(413, "This media route accepts uploads up to 20 MB")
+	}
+	return &seedanceMediaUpload{filename: filename, data: data}, nil
+}
+
+// Bridge APIMaster-uploaded ordinary images without requiring a separate client
+// import call. Certified asset:// references have already been resolved and are
+// left intact; arbitrary public URLs retain the provider's direct-URL workflow.
+func ResolveVideoFeeUploadedImages(ctx context.Context, baseURL, key string, content []any) error {
+	for _, value := range content {
+		item, ok := value.(map[string]any)
+		if !ok || item["type"] != "image_url" {
+			continue
+		}
+		image, _ := item["image_url"].(map[string]any)
+		source, _ := image["url"].(string)
+		upload, err := videoFeeLocalUpload(source)
+		if err != nil {
+			return err
+		}
+		if upload == nil {
+			continue
+		}
+		response, err := seedanceProviderRawRequest(ctx, &model.SeedanceResource{}, &model.Channel{BaseURL: &baseURL, Key: key}, key, http.MethodPost, "/api/assets/upload", *upload)
+		if err != nil {
+			return err
+		}
+		row, _ := response["row"].(map[string]any)
+		id := seedanceString(row, "assetKey")
+		if id == "" {
+			return seedanceError(502, "Invalid media upload response")
+		}
+		image["url"] = "asset://" + id
+	}
+	return nil
 }

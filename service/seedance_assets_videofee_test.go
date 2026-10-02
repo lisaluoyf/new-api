@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -79,4 +81,42 @@ func TestVideoFeePublicMediaLibraryContract(t *testing.T) {
 	require.NotContains(t, string(public), key)
 	require.NotContains(t, string(public), "provider1")
 	require.NotContains(t, string(public), "provider2")
+}
+
+func TestVideoFeeLocalUploadAndMultipart(t *testing.T) {
+	oldDir, oldBase := imageCacheDir, imageCachePublicBase
+	imageCacheDir, imageCachePublicBase = t.TempDir(), "https://apimaster.ai/imgs/"
+	t.Cleanup(func() { imageCacheDir, imageCachePublicBase = oldDir, oldBase })
+	filename := "media_upload_task_test.png"
+	data := []byte("\x89PNG\r\n\x1a\nfixture")
+	require.NoError(t, os.WriteFile(filepath.Join(imageCacheDir, filename), data, 0600))
+	for _, source := range []string{"https://other.example/file.png", oldBase + "../secret", oldBase + "media_upload_task_x%2fsecret", oldBase + "media_upload_task_x?other"} {
+		upload, err := videoFeeLocalUpload(source)
+		require.NoError(t, err)
+		require.Nil(t, upload)
+	}
+	upload, err := videoFeeLocalUpload(imageCachePublicBase + filename)
+	require.NoError(t, err)
+	require.Equal(t, data, upload.data)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Contains(t, []string{"/api/real-person-assets/upload", "/api/assets/upload"}, r.URL.Path)
+		require.NoError(t, r.ParseMultipartForm(1<<20))
+		defer r.MultipartForm.RemoveAll()
+		file, header, err := r.FormFile("file")
+		require.NoError(t, err)
+		defer file.Close()
+		require.Equal(t, "image/png", header.Header.Get("Content-Type"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"row":{"assetKey":"provider-test"}}`)
+	}))
+	defer server.Close()
+	base := server.URL
+	result, err := seedanceProviderRawRequest(t.Context(), &model.SeedanceResource{}, &model.Channel{BaseURL: &base}, "key", http.MethodPost, "/api/real-person-assets/upload", *upload)
+	require.NoError(t, err)
+	require.Contains(t, result, "row")
+	image := map[string]any{"url": imageCachePublicBase + filename}
+	content := []any{map[string]any{"type": "image_url", "role": "first_frame", "image_url": image}}
+	require.NoError(t, ResolveVideoFeeUploadedImages(t.Context(), base, "key", content))
+	require.Equal(t, "asset://provider-test", image["url"])
+	require.Equal(t, "first_frame", content[0].(map[string]any)["role"])
 }

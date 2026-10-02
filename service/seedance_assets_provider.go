@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strconv"
 	"strings"
@@ -150,7 +152,23 @@ func seedanceProviderRequest(ctx context.Context, resource *model.SeedanceResour
 
 func seedanceProviderRawRequest(ctx context.Context, resource *model.SeedanceResource, ch *model.Channel, key, method, path string, payload any) (map[string]any, error) {
 	var body io.Reader
-	if payload != nil {
+	contentType := "application/json"
+	if upload, ok := payload.(seedanceMediaUpload); ok {
+		var buffer bytes.Buffer
+		writer := multipart.NewWriter(&buffer)
+		part, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {fmt.Sprintf(`form-data; name="file"; filename="%s"`, upload.filename)}, "Content-Type": {http.DetectContentType(upload.data)}})
+		if err != nil {
+			return nil, err
+		}
+		if _, err = part.Write(upload.data); err != nil {
+			return nil, err
+		}
+		if err = writer.Close(); err != nil {
+			return nil, err
+		}
+		contentType = writer.FormDataContentType()
+		body = &buffer
+	} else if payload != nil {
 		encoded, e := common.Marshal(payload)
 		if e != nil {
 			return nil, e
@@ -162,7 +180,7 @@ func seedanceProviderRawRequest(ctx context.Context, resource *model.SeedanceRes
 		return nil, seedanceError(502, "Unable to contact media library")
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	client := &http.Client{Timeout: 45 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(req)
 	if err != nil {

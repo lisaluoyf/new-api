@@ -106,6 +106,20 @@ func TestStatusesAndBillingIsolation(t *testing.T) {
 	require.Contains(t, string(data), "task_public")
 }
 
+func TestTaskTypeIsOnlySentForReferences(t *testing.T) {
+	for _, media := range []map[string]any{
+		{"prompt": "boat", "omni_reference_task_type": "auto"},
+		{"prompt": "boat", "omni_reference_task_type": "auto", "image_with_roles": []any{map[string]any{"url": "https://example.com/first.png", "role": "first_frame"}}},
+	} {
+		out, err := contentPayload(media)
+		require.NoError(t, err)
+		require.NotContains(t, out, "omni_reference_task_type")
+	}
+	out, err := contentPayload(map[string]any{"prompt": "boat", "omni_reference_task_type": "reference", "video_urls": []any{"https://example.com/ref.mp4"}})
+	require.NoError(t, err)
+	require.Equal(t, "reference", out["omni_reference_task_type"])
+}
+
 func TestPollingUsesDocumentedEndpoint(t *testing.T) {
 	service.InitHttpClient()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -119,4 +133,13 @@ func TestPollingUsesDocumentedEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, 200, resp.StatusCode)
+}
+
+func TestRelativeResultURLUsesProviderBase(t *testing.T) {
+	a := &TaskAdaptor{baseURL: "https://seedance2026.vip"}
+	r, err := a.ParseTaskResult([]byte(`{"data":{"status":"SUCCESS","result_url":"/v1/videos/provider-id/content"}}`))
+	require.NoError(t, err)
+	require.Equal(t, "https://seedance2026.vip/v1/videos/provider-id/content", r.Url)
+	_, err = (&TaskAdaptor{}).ParseTaskResult([]byte(`{"data":{"status":"SUCCESS","result_url":"/v1/videos/id/content"}}`))
+	require.Error(t, err)
 }

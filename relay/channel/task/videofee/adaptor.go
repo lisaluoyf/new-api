@@ -164,6 +164,19 @@ func contentPayload(fields map[string]any) (map[string]any, error) {
 			item["role"] = "reference_" + strings.TrimSuffix(kind, "_url")
 		}
 	}
+	// MaaS rejects this option for text and first/last-frame tasks; the public
+	// normalizer supplies auto by default, so omit it outside reference mode.
+	hasReference := false
+	for _, value := range content {
+		item := value.(map[string]any)
+		role, _ := item["role"].(string)
+		if strings.HasPrefix(role, "reference_") {
+			hasReference = true
+		}
+	}
+	if !hasReference {
+		delete(out, "omni_reference_task_type")
+	}
 	if prompt, ok := fields["prompt"].(string); ok && strings.TrimSpace(prompt) != "" {
 		content = append([]any{map[string]any{"type": "text", "text": prompt}}, content...)
 	}
@@ -206,6 +219,11 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if _, upgrade := fields["draft_task_id"]; upgrade {
 		delete(out, "content")
 		delete(out, "ratio")
+	}
+	if content, ok := out["content"].([]any); ok {
+		if err := service.ResolveVideoFeeUploadedImages(c.Request.Context(), a.baseURL, a.apiKey, content); err != nil {
+			return nil, err
+		}
 	}
 	out["model"] = info.UpstreamModelName
 	if _, ok := out["duration"]; !ok {
@@ -255,6 +273,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	return id, raw, nil
 }
 func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy string) (*http.Response, error) {
+	a.baseURL = strings.TrimRight(baseURL, "/")
 	id, ok := body["task_id"].(string)
 	if !ok || id == "" {
 		return nil, fmt.Errorf("invalid task ID")
@@ -293,6 +312,13 @@ func (a *TaskAdaptor) ParseTaskResult(raw []byte) (*relaycommon.TaskInfo, error)
 		result.Progress = "100%"
 		for _, path := range []string{"result_url", "data.url", "video_url", "content.video_url", "url"} {
 			if u := data.Get(path).String(); service.IsValidMediaResultURL(u) {
+				if parsed, err := url.Parse(u); err == nil && !parsed.IsAbs() {
+					base, err := url.Parse(a.baseURL)
+					if err != nil || base.Host == "" {
+						return nil, fmt.Errorf("relative video result requires provider base URL")
+					}
+					u = base.ResolveReference(parsed).String()
+				}
 				result.Url = u
 				break
 			}
