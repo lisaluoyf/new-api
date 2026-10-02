@@ -812,6 +812,7 @@ export function ChannelMutateDrawer({
   const initialModelsRef = useRef<string[]>([])
   const initialModelMappingRef = useRef<string>('')
   const initialStatusCodeMappingRef = useRef<string>('')
+  const initializedFormRef = useRef<number | 'create' | null>(null)
   const [statusCodeRiskOpen, setStatusCodeRiskOpen] = useState(false)
   const [statusCodeRiskDetailItems, setStatusCodeRiskDetailItems] = useState<
     string[]
@@ -831,16 +832,16 @@ export function ChannelMutateDrawer({
   const channelId = currentRow?.id ?? null
 
   // Fetch channel details if editing
-  const { data: channelData, isFetching: isFetchingChannel } = useQuery({
+  const { data: channelData } = useQuery({
     queryKey: channelsQueryKeys.detail(channelId ?? 0),
     queryFn: () => getChannel(channelId!),
-    enabled: isEditing && channelId != null,
+    enabled: open && isEditing && channelId != null,
   })
 
   const loadedChannel =
     channelData?.data?.id === channelId ? channelData.data : undefined
   const isChannelDetailLoading =
-    isEditing && channelId != null && (isFetchingChannel || !loadedChannel)
+    isEditing && channelId != null && !loadedChannel
 
   // Fetch available groups
   const { data: groupsData, isLoading: isLoadingGroups } = useQuery({
@@ -1105,8 +1106,14 @@ export function ChannelMutateDrawer({
     upstreamUpdateMeta.detectedModels.length -
     upstreamDetectedModelsPreview.length
 
-  // Load channel data into form when editing (only after detail matches currentRow)
+  // Initialize once per open/channel. Background refetches must preserve drafts.
   useEffect(() => {
+    if (!open) {
+      initializedFormRef.current = null
+      return
+    }
+    const formIdentity = channelId ?? 'create'
+    if (initializedFormRef.current === formIdentity) return
     if (loadedChannel) {
       const defaults = transformChannelToFormDefaults(loadedChannel)
       form.reset(defaults)
@@ -1120,14 +1127,16 @@ export function ChannelMutateDrawer({
       initialModelMappingRef.current = loadedChannel.model_mapping || ''
       initialStatusCodeMappingRef.current =
         loadedChannel.status_code_mapping || ''
+      initializedFormRef.current = formIdentity
     } else if (!isEditing) {
       form.reset(CHANNEL_FORM_DEFAULT_VALUES)
       setAdvancedSettingsOpen(false)
       initialModelsRef.current = []
       initialModelMappingRef.current = ''
       initialStatusCodeMappingRef.current = ''
+      initializedFormRef.current = formIdentity
     }
-  }, [loadedChannel, isEditing, form])
+  }, [open, channelId, loadedChannel, isEditing, form])
 
   // Handle type change - set default values for specific types
   useEffect(() => {
