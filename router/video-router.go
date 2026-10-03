@@ -38,7 +38,7 @@ func SetVideoRouter(router *gin.Engine) {
 
 	videoV1Router := router.Group("/v1")
 	videoV1Router.Use(middleware.RouteTag("relay"))
-	videoV1Router.Use(middleware.TokenAuth(), middleware.PrepareSeedanceAssetGeneration(), middleware.Distribute(), middleware.ApplySeedanceAssetKey())
+	videoV1Router.Use(middleware.TokenAuth(), middleware.TaskWebhookNotifications(), middleware.PrepareSeedanceAssetGeneration(), middleware.Distribute(), middleware.ApplySeedanceAssetKey())
 	{
 		videoV1Router.POST("/videos/quote", middleware.ModelRequestRateLimit(), controller.QuoteSeedanceVideo)
 		videoV1Router.POST("/video/generations", controller.RelayTask)

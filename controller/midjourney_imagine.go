@@ -79,7 +79,7 @@ func RelayImagine(c *gin.Context) {
 		imagineError(c, 500, "Could not initialize image task")
 		return
 	}
-	batch := &model.ImagineBatch{ID: "imagine_batch_" + strings.TrimPrefix(model.GenerateTaskID(), "task_"), RequestID: info.RequestId, CallbackToken: secret,
+	batch := &model.ImagineBatch{Webhook: GetTaskWebhookConfig(c), ID: "imagine_batch_" + strings.TrimPrefix(model.GenerateTaskID(), "task_"), RequestID: info.RequestId, CallbackToken: secret,
 		UserID: info.UserId, TokenID: info.TokenId, TokenName: c.GetString("token_name"), ChannelID: info.ChannelId, Model: request.Model, Speed: request.Speed, Version: request.Payload["version"].(string), Niji: request.Model == "midjourney-niji-7",
 		Size: request.Payload["size"].(string), Repeat: request.Repeat, BaseUnitPrice: basePrice, FinalMultiplier: userPrice / basePrice * priceData.GroupRatioInfo.GroupRatio, UnitQuota: unitQuota,
 		ReservedQuota: info.Billing.GetPreConsumedQuota(), BillingSource: info.BillingSource, SubscriptionID: info.SubscriptionId, Group: info.UsingGroup, Status: "submitting", CreatedAt: time.Now().Unix(), RequestData: string(body)}

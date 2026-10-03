@@ -1200,6 +1200,7 @@ func trackSubmittedImageTask(c *gin.Context, info *relaycommon.RelayInfo, respon
 			task.PrivateData.RequestData = string(encoded)
 		}
 	}
+	task.PrivateData.Webhook = service.TaskWebhookConfigFromContext(c)
 	if err := task.Insert(); err != nil {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("image task insert failed, exposing upstream task_id directly: %v", err))
 		return responseBody, upstreamTaskID
@@ -1248,6 +1249,7 @@ func trackCompletedSyncImageTask(c *gin.Context, info *relaycommon.RelayInfo, re
 			task.PrivateData.RequestData = string(encoded)
 		}
 	}
+	task.PrivateData.Webhook = service.TaskWebhookConfigFromContext(c)
 	if err := task.Insert(); err != nil {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("completed image task insert failed: %v", err))
 		return nil, ""
@@ -1293,7 +1295,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 			upstreamTaskID := strings.TrimSpace(asyncCheck.Data[0].TaskID)
 			var publicTaskID string
 			responseBody, publicTaskID = trackSubmittedImageTask(c, info, responseBody, upstreamTaskID)
-			if info.RelayMode == relayconstant.RelayModeImagesEdits && publicTaskID == upstreamTaskID {
+			if (info.RelayMode == relayconstant.RelayModeImagesEdits || service.TaskWebhookConfigFromContext(c) != nil) && publicTaskID == upstreamTaskID {
 				return nil, types.NewErrorWithStatusCode(fmt.Errorf("failed to persist image edit task"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 			}
 			c.Set(imagePollTaskIDContextKey, publicTaskID)

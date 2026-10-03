@@ -13,10 +13,11 @@ import (
 
 // ImagineBatch persists the reservation before any request reaches the provider.
 type ImagineBatch struct {
-	ID                 string `gorm:"primaryKey;size:64"`
-	RequestID          string `gorm:"uniqueIndex;size:64"`
-	CallbackToken      string `json:"-" gorm:"uniqueIndex;size:64"`
-	UserID             int    `gorm:"index"`
+	Webhook            *TaskWebhookConfig `json:"-" gorm:"serializer:json;type:text"`
+	ID                 string             `gorm:"primaryKey;size:64"`
+	RequestID          string             `gorm:"uniqueIndex;size:64"`
+	CallbackToken      string             `json:"-" gorm:"uniqueIndex;size:64"`
+	UserID             int                `gorm:"index"`
 	TokenID            int
 	TokenName          string
 	ChannelID          int
@@ -307,6 +308,9 @@ func ApplyImagineResult(taskID string, result ImagineTask) error {
 			batch.Status = "finished"
 		}
 		if err := tx.Save(batch).Error; err != nil {
+			return err
+		}
+		if err := EnqueueImagineWebhook(tx, batch, &result); err != nil {
 			return err
 		}
 		var images []string

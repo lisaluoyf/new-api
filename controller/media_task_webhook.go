@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -12,12 +13,13 @@ import (
 )
 
 func MediaTaskCallback(c *gin.Context) {
-	body, err := io.ReadAll(c.Request.Body)
+	ctx := context.WithValue(c.Request.Context(), service.TaskWebhookContextKey, service.ValidMediaTaskWebhookToken(c.Query("apimaster_callback_token")))
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 4<<20))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "failed to read body"})
 		return
 	}
-	if err := service.ProcessMediaTaskWebhook(c.Request.Context(), body); err != nil {
+	if err := service.ProcessMediaTaskWebhook(ctx, body); err != nil {
 		logger.LogWarn(c.Request.Context(), "media task webhook ignored: "+err.Error())
 		if strings.Contains(err.Error(), "invalid media task webhook payload") ||
 			strings.Contains(err.Error(), "missing media task webhook id") {

@@ -152,6 +152,7 @@ func main() {
 	service.StartBillingHoldReconcileTask()
 	service.StartCancellationObservationTask()
 	service.StartImagineTaskWorker()
+	service.StartTaskWebhookWorker()
 
 	// Platform billing hourly summary (平台账单)
 	service.StartBillingSummaryTask()

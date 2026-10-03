@@ -641,7 +641,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	default:
 		if !dto.IsGrokImage20(info.OriginModelName) && isAPIMartCompatibleBase(info.ChannelBaseUrl) &&
 			strings.TrimSpace(request.Webhook) == "" {
-			request.Webhook = service.MediaTaskWebhookBase()
+			request.Webhook = service.SignedMediaTaskWebhookBase()
 		}
 		if shouldNormalizeGptImage2Size(info) {
 			normalizeSyncGptImage2ImageRequest(&request)

@@ -1629,6 +1629,12 @@ func RelayTaskFetch(c *gin.Context) {
 }
 
 func RelayTask(c *gin.Context) {
+	var webhookResponse *taskWebhookResponseWriter
+	if GetTaskWebhookConfig(c) != nil {
+		webhookResponse = &taskWebhookResponseWriter{ResponseWriter: c.Writer}
+		c.Writer = webhookResponse
+		defer webhookResponse.commit(c)
+	}
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &dto.TaskError{
@@ -1726,6 +1732,7 @@ func RelayTask(c *gin.Context) {
 		service.LogTaskConsumption(c, relayInfo)
 
 		task := model.InitTask(result.Platform, relayInfo)
+		task.PrivateData.Webhook = GetTaskWebhookConfig(c)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
@@ -1786,6 +1793,9 @@ func RelayTask(c *gin.Context) {
 		}
 		if insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
+			if webhookResponse != nil {
+				webhookResponse.failPersistence()
+			}
 		}
 	}
 

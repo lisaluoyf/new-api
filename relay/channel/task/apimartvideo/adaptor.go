@@ -565,7 +565,7 @@ func resolveWebhook(raw string) string {
 	if strings.TrimSpace(raw) != "" {
 		return strings.TrimSpace(raw)
 	}
-	return service.MediaTaskWebhookBase()
+	return service.SignedMediaTaskWebhookBase()
 }
 
 func sizeToApimart(size string) (resolution, aspect string) {

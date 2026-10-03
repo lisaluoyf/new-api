@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
+	"gorm.io/gorm"
 )
 
 type TaskStatus string
@@ -98,6 +99,7 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
+	Webhook                       *TaskWebhookConfig      `json:"task_webhook,omitempty"`
 	SeedanceBillingReceiptEnabled bool                    `json:"seedance_billing_receipt_enabled,omitempty"`
 	SeedanceOutput                *SeedanceOutputDuration `json:"seedance_output,omitempty"`
 	SeedanceRequest               map[string]any          `json:"seedance_request,omitempty"`
@@ -449,50 +451,78 @@ func (t *Task) Snapshot() taskSnapshot {
 	}
 }
 
-func (Task *Task) Update() error {
-	var err error
-	err = DB.Save(Task).Error
+func (t *Task) Update() error {
+	var previous Task
+	if err := DB.First(&previous, t.ID).Error; err != nil {
+		return err
+	}
+	if previous.Status == TaskStatusSuccess || previous.Status == TaskStatusFailure {
+		return nil
+	}
+	_, err := t.UpdateWithStatus(previous.Status)
 	return err
 }
 
-// UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).
-// Returns (true, nil) if this caller won the update, (false, nil) if
-// another process already moved the task out of fromStatus.
-//
-// Uses Model().Select("*").Updates() instead of Save() because GORM's Save
-// falls back to INSERT ON CONFLICT when the WHERE-guarded UPDATE matches
-// zero rows, which silently bypasses the CAS guard.
+// Persist the CAS terminal transition and durable event in the same transaction.
 func (t *Task) UpdateWithStatus(fromStatus TaskStatus) (bool, error) {
-	result := DB.Model(t).Where("status = ?", fromStatus).Select("*").Updates(t)
-	if result.Error != nil {
-		return false, result.Error
+	won := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		res := tx.Session(&gorm.Session{SkipHooks: true}).Model(t).Where("status = ?", fromStatus).Select("*").Updates(t)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil
+		}
+		if err := t.enqueueWebhook(tx); err != nil {
+			return err
+		}
+		won = true
+		return nil
+	})
+	if err != nil {
+		return false, err
 	}
-	return result.RowsAffected > 0, nil
+	return won, nil
 }
 
-// TaskBulkUpdate performs an unconditional bulk UPDATE by upstream task_id strings.
-// Same caveats as TaskBulkUpdateByID — no CAS guard.
+// TaskBulkUpdate updates nonterminal rows with a status guard and atomic webhook events.
 func TaskBulkUpdate(taskIds []string, params map[string]any) error {
-	if len(taskIds) == 0 {
-		return nil
-	}
-	return DB.Model(&Task{}).
-		Where("task_id in (?)", taskIds).
-		Updates(params).Error
+	return taskBulkWebhookUpdate(DB.Where("task_id in (?)", taskIds), params)
 }
-
-// TaskBulkUpdateByID performs an unconditional bulk UPDATE by primary key IDs.
-// WARNING: This function has NO CAS (Compare-And-Swap) guard — it will overwrite
-// any concurrent status changes. DO NOT use in billing/quota lifecycle flows
-// (e.g., timeout, success, failure transitions that trigger refunds or settlements).
-// For status transitions that involve billing, use Task.UpdateWithStatus() instead.
 func TaskBulkUpdateByID(ids []int64, params map[string]any) error {
-	if len(ids) == 0 {
+	return taskBulkWebhookUpdate(DB.Where("id in (?)", ids), params)
+}
+func taskBulkWebhookUpdate(query *gorm.DB, params map[string]any) error {
+	return query.Transaction(func(tx *gorm.DB) error {
+		var tasks []Task
+		if err := tx.Find(&tasks).Error; err != nil {
+			return err
+		}
+		for _, task := range tasks {
+			if task.Status == TaskStatusSuccess || task.Status == TaskStatusFailure {
+				continue
+			}
+			old := task.Status
+			// GORM map Updates do not hydrate every value before hooks. Read the persisted
+			// row in the same transaction and enqueue explicitly, without skipping hooks on create.
+			res := tx.Session(&gorm.Session{NewDB: true, SkipHooks: true}).Model(&Task{}).Where("id = ? AND status = ?", task.ID, old).Updates(params)
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				continue
+			}
+			var fresh Task
+			if err := tx.Session(&gorm.Session{NewDB: true}).First(&fresh, task.ID).Error; err != nil {
+				return err
+			}
+			if err := fresh.enqueueWebhook(tx.Session(&gorm.Session{NewDB: true})); err != nil {
+				return err
+			}
+		}
 		return nil
-	}
-	return DB.Model(&Task{}).
-		Where("id in (?)", ids).
-		Updates(params).Error
+	})
 }
 
 type TaskQuotaUsage struct {
@@ -500,7 +530,7 @@ type TaskQuotaUsage struct {
 	Count float64 `json:"count"`
 }
 
-// TaskCountAllTasks returns total tasks that match the given query params (admin usage)
+// TaskCountAllTasks returns total tasks that match the query parameters.
 func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	var total int64
 	query := DB.Model(&Task{})

@@ -69,6 +69,12 @@ func ProcessMediaTaskWebhook(ctx context.Context, body []byte) error {
 	if !exists || task == nil {
 		return fmt.Errorf("media task %s not found", payload.ID)
 	}
+	if task.PrivateData.Webhook != nil {
+		valid, _ := ctx.Value(TaskWebhookContextKey).(bool)
+		if !valid {
+			return fmt.Errorf("media callback authentication required")
+		}
+	}
 	if task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure {
 		logger.LogInfo(ctx, fmt.Sprintf("media task webhook duplicate ignored task_id=%s upstream_id=%s status=%s", task.TaskID, payload.ID, task.Status))
 		return nil
