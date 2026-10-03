@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -106,6 +107,9 @@ func enqueueTaskWebhook(tx *gorm.DB, config *TaskWebhookConfig, resource, taskID
 	}
 	id := NewWebhookID("evt_")
 	taskURL := webhookOrigin() + "/v1/tasks/" + taskID
+	if kind == "image" {
+		taskURL += "?model=" + url.QueryEscape(modelName)
+	}
 	if kind == "video" {
 		taskURL = webhookOrigin() + "/v1/videos/" + taskID
 	}

@@ -131,11 +131,27 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 	}
 
+	var webhookWriter *taskWebhookImageWriter
+	if service.TaskWebhookConfigFromContext(c) != nil && strings.Contains(c.Request.URL.Path, "/async") {
+		webhookWriter = &taskWebhookImageWriter{ResponseWriter: c.Writer}
+		c.Writer = webhookWriter
+		defer func() { c.Writer = webhookWriter.ResponseWriter }()
+	}
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
 	if newAPIError != nil {
 		// reset status code 重置状态码
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
+	}
+
+	if webhookWriter != nil {
+		body, err := persistTaskWebhookImageResponse(c, info, webhookWriter.body.Bytes())
+		if err != nil {
+			return types.NewErrorWithStatusCode(fmt.Errorf("unable to persist image task notification: %w", err), types.ErrorCodeBadResponseBody, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+		}
+		c.Writer = webhookWriter.ResponseWriter
+		c.Writer.WriteHeader(webhookWriter.Status())
+		_, _ = c.Writer.Write(body)
 	}
 
 	imageN := uint(1)
