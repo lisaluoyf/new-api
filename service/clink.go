@@ -83,6 +83,7 @@ type ClinkWebhookEvent struct {
 }
 
 type ClinkOrderWebhookData struct {
+	SessionID           string  `json:"sessionId"`
 	OrderID             string  `json:"orderId"`
 	MerchantReferenceID string  `json:"merchantReferenceId"`
 	Status              string  `json:"status"`

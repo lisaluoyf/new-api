@@ -24,9 +24,11 @@ import (
 
 var reconciliationTimezone = time.FixedZone("UTC+8", 8*3600)
 var reconciliationOnce sync.Once
+var queryClinkReconciliationOrder = service.GetClinkOrder
 
 type reconciliationCandidate struct {
 	trade, provider, method, purpose, status, queryID, currency, payload string
+	clinkSessionID                                                       string
 	user                                                                 int
 	money                                                                float64
 	top                                                                  *model.TopUp
@@ -238,6 +240,26 @@ func reconcilePaymentDay(j *model.PaymentReconciliationJob) ([]model.PaymentReco
 	if err != nil {
 		return nil, err
 	}
+	// Clink checkout sessions expire even after payment. Resolve stable order
+	// IDs from the independent daily statement before verifying each order.
+	var upstream []service.StatementPayment
+	var statementErr error
+	if j.Provider == "clink" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		upstream, statementErr = service.ListReconciliationPayments(ctx, j.Provider, day, day.AddDate(0, 0, 1))
+		cancel()
+		for index := range rows {
+			for _, payment := range upstream {
+				if payment.TradeNo == rows[index].trade {
+					if strings.HasPrefix(rows[index].queryID, "sess_") {
+						rows[index].clinkSessionID = rows[index].queryID
+					}
+					rows[index].queryID = payment.ID
+					break
+				}
+			}
+		}
+	}
 	items := make([]model.PaymentReconciliationItem, 0, len(rows))
 	for _, row := range rows {
 		if err = model.HeartbeatPaymentReconciliation(j, time.Now().Unix()); err != nil {
@@ -252,9 +274,11 @@ func reconcilePaymentDay(j *model.PaymentReconciliationJob) ([]model.PaymentReco
 	if model.PaymentReconciliationLocalOnly(j.Provider) {
 		return items, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	upstream, statementErr := service.ListReconciliationPayments(ctx, j.Provider, day, day.AddDate(0, 0, 1))
-	cancel()
+	if j.Provider != "clink" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		upstream, statementErr = service.ListReconciliationPayments(ctx, j.Provider, day, day.AddDate(0, 0, 1))
+		cancel()
+	}
 	items, err = mergeReconciliationStatement(j.Provider, items, upstream)
 	if err != nil {
 		return items, err
@@ -435,10 +459,15 @@ func mergeReconciliationStatement(provider string, items []model.PaymentReconcil
 						row.currency = "RUB"
 					}
 					var ref model.PaymentQueryReference
-					if e := model.DB.Where("trade_no = ? AND provider = ?", trade, provider).First(&ref).Error; e == nil && ref.Currency != "" {
-						row.currency = ref.Currency
+					if e := model.DB.Where("trade_no = ? AND provider = ?", trade, provider).First(&ref).Error; e == nil {
+						if ref.Currency != "" {
+							row.currency = ref.Currency
+						}
+						if provider == "clink" && strings.HasPrefix(ref.QueryID, "sess_") {
+							row.clinkSessionID = ref.QueryID
+						}
 					}
-					if provider == "platega" || (provider == "paypal" && row.status == "refunded") || payment.RefundOnly {
+					if provider == "platega" || provider == "clink" || (provider == "paypal" && row.status == "refunded") || payment.RefundOnly {
 						ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 						proof = queryReconciliationOrder(ctx, row)
 						cancel()
@@ -759,6 +788,17 @@ func queryReconciliationOrder(ctx context.Context, r reconciliationCandidate) re
 		if r.queryID == "" {
 			return missing
 		}
+		if strings.HasPrefix(r.queryID, "order_") {
+			p, e := queryClinkReconciliationOrder(ctx, r.queryID)
+			if e != nil || p == nil {
+				return fail
+			}
+			problem := reconciliationIdentityProblem(p.MerchantReferenceID, r.trade, p.OrderID, r.queryID)
+			if r.clinkSessionID != "" && p.SessionID != r.clinkSessionID {
+				problem = "official_identity_mismatch"
+			}
+			return reconciliationProof{id: p.OrderID, status: p.Status, currency: p.OriginalCurrency, amount: decimal.NewFromFloat(p.AmountSubtotal).String(), paid: p.Status == "success", known: true, problem: problem}
+		}
 		p, e := service.GetClinkCheckoutSession(ctx, r.queryID)
 		if e != nil {
 			return fail
@@ -851,7 +891,7 @@ func knownReconciliationStatus(provider, status string) bool {
 	case "creem":
 		return status == "completed/paid" || strings.HasPrefix(status, "pending/") || strings.HasPrefix(status, "expired/") || strings.HasPrefix(status, "canceled/")
 	case "clink":
-		return strings.HasSuffix(status, "/paid") || strings.HasSuffix(status, "/unpaid") || strings.HasSuffix(status, "/pending")
+		return status == "success" || strings.HasSuffix(status, "/paid") || strings.HasSuffix(status, "/unpaid") || strings.HasSuffix(status, "/pending")
 	case "waffo":
 		return status == "PAY_SUCCESS" || status == "PAY_FAILED" || status == "PAY_PENDING" || status == "PAY_CLOSED"
 	case "waffo_pancake":

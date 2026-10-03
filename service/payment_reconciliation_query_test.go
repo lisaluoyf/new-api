@@ -78,3 +78,19 @@ func TestStatementMerchantReferenceDoesNotRequireLocalOrder(t *testing.T) {
 	require.NoError(t, e)
 	require.Equal(t, "anonymous-missing-order", trade)
 }
+
+func TestClinkStableOrderQueryPreservesSessionIdentity(t *testing.T) {
+	t.Setenv("CLINK_SECRET_KEY", "test-secret")
+	old := paymentVerificationClient
+	t.Cleanup(func() { paymentVerificationClient = old })
+	paymentVerificationClient = &http.Client{Transport: reconciliationRoundTripper(func(r *http.Request) (*http.Response, error) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "/api/order/order_test", r.URL.Path)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"code":200,"data":{"orderId":"order_test","sessionId":"sess_expired","merchantReferenceId":"CLINK-test","status":"success","amountSubtotal":1,"amountTotal":117.83,"originalCurrency":"USD","paymentCurrency":"INR"}}`)), Header: make(http.Header)}, nil
+	})}
+	order, err := GetClinkOrder(context.Background(), "order_test")
+	require.NoError(t, err)
+	require.Equal(t, "sess_expired", order.SessionID)
+	require.Equal(t, float64(1), order.AmountSubtotal)
+	require.Equal(t, "USD", order.OriginalCurrency)
+}

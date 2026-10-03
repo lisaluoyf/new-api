@@ -2,9 +2,13 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -312,4 +316,83 @@ func TestLocalOnlyEmptyReconciliationDoesNotRequireStatement(t *testing.T) {
 	require.Len(t, items, 1)
 	require.Equal(t, "official_statement_unavailable", items[0].Problem)
 	require.Equal(t, "incomplete", model.SummarizePaymentReconciliation(items).Status)
+}
+
+func TestClinkReconciliationUsesStableOrderAndOriginalCurrency(t *testing.T) {
+	old := queryClinkReconciliationOrder
+	t.Cleanup(func() { queryClinkReconciliationOrder = old })
+	candidate := reconciliationCandidate{trade: "CLINK-test", provider: "clink", purpose: "wallet", status: "success", queryID: "order_test", clinkSessionID: "sess_expired", currency: "USD", money: 1}
+	tests := []struct {
+		name, trade, order, session, currency string
+		amount                                float64
+		result, problem                       string
+	}{
+		{"expired session paid in INR", "CLINK-test", "order_test", "sess_expired", "USD", 1, "matched", ""},
+		{"wrong merchant reference", "other", "order_test", "sess_expired", "USD", 1, "difference", "official_identity_mismatch"},
+		{"wrong order", "CLINK-test", "order_other", "sess_expired", "USD", 1, "difference", "official_identity_mismatch"},
+		{"wrong session", "CLINK-test", "order_test", "sess_other", "USD", 1, "difference", "official_identity_mismatch"},
+		{"missing session", "CLINK-test", "order_test", "", "USD", 1, "difference", "official_identity_mismatch"},
+		{"wrong amount", "CLINK-test", "order_test", "sess_expired", "USD", 2, "difference", "amount_mismatch"},
+		{"wrong original currency", "CLINK-test", "order_test", "sess_expired", "INR", 1, "difference", "currency_mismatch"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queryClinkReconciliationOrder = func(ctx context.Context, id string) (*service.ClinkOrderWebhookData, error) {
+				require.Equal(t, "order_test", id)
+				return &service.ClinkOrderWebhookData{OrderID: tt.order, SessionID: tt.session, MerchantReferenceID: tt.trade, Status: "success", AmountSubtotal: tt.amount, AmountTotal: 117.83, OriginalCurrency: tt.currency, PaymentCurrency: "INR"}, nil
+			}
+			item := classifyReconciliationOrder(candidate, queryReconciliationOrder(context.Background(), candidate))
+			require.Equal(t, tt.result, item.Result)
+			require.Equal(t, tt.problem, item.Problem)
+		})
+	}
+	queryClinkReconciliationOrder = func(context.Context, string) (*service.ClinkOrderWebhookData, error) {
+		return nil, context.DeadlineExceeded
+	}
+	item := classifyReconciliationOrder(candidate, queryReconciliationOrder(context.Background(), candidate))
+	require.Equal(t, "unverified", item.Result)
+	require.Equal(t, "official_query_failed", item.Problem)
+}
+
+type clinkReconciliationTransport func(*http.Request) (*http.Response, error)
+
+func (f clinkReconciliationTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestClinkDailyReconciliationNeverQueriesExpiredSession(t *testing.T) {
+	db := setupCryptoPersistenceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}, &model.PaymentQueryReference{}, &model.PaymentReconciliationJob{}, &model.PaymentReconciliationRun{}))
+	day := time.Date(2026, 10, 2, 0, 0, 0, 0, reconciliationTimezone)
+	require.NoError(t, db.Create(&model.TopUp{TradeNo: "CLINK-test", PaymentProvider: "clink", Status: "success", Money: 1, CreateTime: day.Unix() + 1, CompleteTime: day.Unix() + 2}).Error)
+	require.NoError(t, db.Create(&model.PaymentQueryReference{TradeNo: "CLINK-test", Provider: "clink", QueryID: "sess_expired", Currency: "USD"}).Error)
+	require.NoError(t, model.QueuePaymentReconciliation(day.Format("2006-01-02"), "clink", 0, false))
+	job, err := model.ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	t.Setenv("CLINK_SECRET_KEY", "test-secret")
+	old := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = old })
+	calls := []string{}
+	http.DefaultTransport = clinkReconciliationTransport(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.URL.Path)
+		var body string
+		switch r.URL.Path {
+		case "/api/order":
+			body = `{"code":200,"total":1,"rows":[{"orderId":"order_test","merchantReferenceId":"CLINK-test","status":"success","amountSubtotal":1,"originalCurrency":"USD","paymentTime":` + fmt.Sprint((day.Unix()+2)*1000) + `}]}`
+		case "/api/order/order_test":
+			body = `{"code":200,"data":{"orderId":"order_test","sessionId":"sess_expired","merchantReferenceId":"CLINK-test","status":"success","amountSubtotal":1,"amountTotal":117.83,"originalCurrency":"USD","paymentCurrency":"INR"}}`
+		default:
+			t.Fatalf("unexpected query, expired sessions must not be queried: %s", r.URL.Path)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})
+	items, err := reconcilePaymentDay(job)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, "matched", items[0].Result)
+	require.Equal(t, "order_test", items[0].OfficialID)
+	require.Equal(t, []string{"/api/order", "/api/order/order_test"}, calls)
+	var top model.TopUp
+	require.NoError(t, db.Where("trade_no = ?", "CLINK-test").First(&top).Error)
+	require.Equal(t, "success", top.Status)
+	require.Equal(t, float64(1), top.Money)
 }
