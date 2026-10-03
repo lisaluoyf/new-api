@@ -4,7 +4,7 @@ package service
 // accepts JSON image_urls at /images/generations instead of multipart edits.
 // Keep the original client path/body intact: a later fallback may use native edits.
 func GptImage2EditsViaGenerations(channelID int, modelName string) bool {
-	if NormalizeGptImage2ModelName(modelName) != gptImage2CanonicalModel {
+	if NormalizeGptImage2ModelName(modelName) != gptImage2CanonicalModel && !IsGptImage25Model(modelName) {
 		return false
 	}
 	switch channelID {

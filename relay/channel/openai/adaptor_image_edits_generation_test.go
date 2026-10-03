@@ -3,6 +3,7 @@ package openai
 import (
 	"bytes"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -67,5 +68,59 @@ func TestImageEditsGenerationAdaptorSendsJSON(t *testing.T) {
 		url, err := a.GetRequestURL(info)
 		require.NoError(t, err)
 		require.Equal(t, upstream.URL+"/v1/images/edits", url)
+	}
+}
+
+func TestImage25MultipartEditsGenerationKeepsReferencesAndNativeFallback(t *testing.T) {
+	for _, id := range []int{59, 81} {
+		for _, name := range []string{"gpt-image-2.5-flare", "gpt-image-2.5-sunburst"} {
+			for _, path := range []string{"/v1/images/edits", "/v1/images/edits/async"} {
+				var body bytes.Buffer
+				writer := multipart.NewWriter(&body)
+				for k, v := range map[string]string{"model": name, "prompt": "preserve the reference", "n": "1", "size": "9:16", "resolution": "1k"} {
+					require.NoError(t, writer.WriteField(k, v))
+				}
+				for _, key := range []string{"image[]", "image[1]"} {
+					part, err := writer.CreateFormFile(key, "reference.png")
+					require.NoError(t, err)
+					_, err = part.Write([]byte("unique reference bytes"))
+					require.NoError(t, err)
+				}
+				require.NoError(t, writer.Close())
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest("POST", path, bytes.NewReader(body.Bytes()))
+				c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+				t.Cleanup(func() { common.CleanupBodyStorage(c) })
+				mapped := name
+				if id == 81 {
+					mapped = "gpt-image-2.5-ext"
+				}
+				info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeImagesEdits, OriginModelName: name, RequestURLPath: path, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: id, ChannelType: constant.ChannelTypeOpenAI, ChannelBaseUrl: "https://example.test", ChannelOtherSettings: dto.ChannelOtherSettings{GptImage2Capabilities: &dto.GptImage2Capabilities{SizeFormat: dto.GptImage2SizeFormatAspectRatioWithResolution}}}}
+				a := &Adaptor{}
+				a.Init(info)
+				converted, err := a.ConvertImageRequest(c, info, dto.ImageRequest{Model: mapped})
+				require.NoError(t, err)
+				raw, err := common.Marshal(converted)
+				require.NoError(t, err)
+				var got dto.ImageRequest
+				require.NoError(t, common.Unmarshal(raw, &got))
+				require.Equal(t, mapped, got.Model)
+				require.Equal(t, "preserve the reference", got.Prompt)
+				require.Equal(t, []string{"data:image/png;base64,dW5pcXVlIHJlZmVyZW5jZSBieXRlcw==", "data:image/png;base64,dW5pcXVlIHJlZmVyZW5jZSBieXRlcw=="}, got.ImageUrls)
+				url, err := a.GetRequestURL(info)
+				require.NoError(t, err)
+				require.Equal(t, "https://example.test/v1/images/generations", url)
+				require.Equal(t, path, c.Request.URL.Path)
+				require.Equal(t, path, info.RequestURLPath)
+				require.Equal(t, relayconstant.RelayModeImagesEdits, info.RelayMode)
+				info.ChannelId = 102
+				info.ChannelOtherSettings = dto.ChannelOtherSettings{}
+				url, err = a.GetRequestURL(info)
+				require.NoError(t, err)
+				require.Equal(t, "https://example.test/v1/images/edits", url)
+				_, err = a.ConvertImageRequest(c, info, dto.ImageRequest{Model: name})
+				require.NoError(t, err, "native fallback must retain readable uploaded files")
+			}
+		}
 	}
 }

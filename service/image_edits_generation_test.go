@@ -40,7 +40,28 @@ func TestImageEditsGenerationCapability(t *testing.T) {
 		require.Equal(t, "capabilities_disabled_or_invalid", gptImage2ChannelRejectionReason(ch, req))
 	}
 	require.False(t, GptImage2EditsViaGenerations(102, "gpt-image-2"))
-	require.False(t, GptImage2EditsViaGenerations(81, "gpt-image-2.5-flare"))
+	require.False(t, GptImage2EditsViaGenerations(81, "unrelated-image-model"))
+}
+
+func TestImage25EditsGenerationCapability(t *testing.T) {
+	for _, id := range []int{59, 81} {
+		for _, name := range []string{"gpt-image-2.5-flare", "gpt-image-2.5-sunburst"} {
+			for _, async := range []bool{false, true} {
+				ch := &model.Channel{Id: id}
+				ch.SetOtherSettings(dto.ChannelOtherSettings{GptImage2Capabilities: &dto.GptImage2Capabilities{
+					Version: 1, Enabled: true,
+					Generations: &dto.GptImage2EndpointCapabilities{Enabled: true, MaxN: 1, MaxImageURLs: 2, OptionalFields: []string{"size", "resolution"}},
+				}})
+				req := gptImage2CapabilityRequest{ModelName: name, EditsPath: true, AsyncPath: async, Multipart: true, HasUploadedImage: true, UploadedImageCount: 1, N: 1, Resolution: "1k"}
+				require.Empty(t, gptImage2ChannelRejectionReason(ch, req), "channel %d model %s async %t", id, name, async)
+				req.HasUploadedMask = true
+				require.Equal(t, "uploaded_mask_not_supported", gptImage2ChannelRejectionReason(ch, req))
+			}
+			for _, native := range []int{73, 102, 243} {
+				require.False(t, GptImage2EditsViaGenerations(native, name))
+			}
+		}
+	}
 }
 
 func TestImageEditsGenerationCountsActualMultipartReferences(t *testing.T) {
