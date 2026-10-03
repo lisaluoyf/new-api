@@ -45,6 +45,10 @@ export const STATUS_CONFIG: Record<TopupStatus, StatusConfig> = {
     variant: 'danger',
     label: 'Expired',
   },
+  chargeback: {
+    variant: 'danger',
+    label: 'Chargeback',
+  },
   refunded: {
     variant: 'danger',
     label: 'Refunded',
@@ -95,7 +99,7 @@ const RUB_METHODS = new Set(['platega'])
 export function formatPaidAmount(
   money: number,
   method: string,
-  actualPayment?: string,
+  actualPayment?: string
 ): string {
   if (actualPayment) {
     return actualPayment
@@ -116,7 +120,7 @@ export function formatPaidAmount(
  */
 export function getPaymentMethodName(
   method: string,
-  t?: (key: string) => string,
+  t?: (key: string) => string
 ): string {
   const name = PAYMENT_METHOD_NAMES[method] || method
   return t ? t(name) : name

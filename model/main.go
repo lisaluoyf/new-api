@@ -382,6 +382,9 @@ func migrateDB() error {
 			return err
 		}
 	}
+	if err := normalizeLegacyRefundStatuses(DB); err != nil {
+		return err
+	}
 	if err := SeedDefaultGPTSubscriptionPlans(); err != nil {
 		return err
 	}
@@ -491,6 +494,9 @@ func migrateDBFast() error {
 		if err := autoMigrateWithLimits(DB, &SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := normalizeLegacyRefundStatuses(DB); err != nil {
+		return err
 	}
 	if err := SeedDefaultGPTSubscriptionPlans(); err != nil {
 		return err

@@ -50,6 +50,7 @@ const STATUS_TABS = [
   { value: 'success', labelKey: 'Success' },
   { value: 'pending', labelKey: 'Awaiting Payment' },
   { value: 'refunded', labelKey: 'Refunded' },
+  { value: 'chargeback', labelKey: 'Chargeback' },
 ] as const
 
 const PAYMENT_METHODS = [
@@ -108,6 +109,7 @@ const STATUS_STYLE: Record<TopupStatus, string> = {
   success: 'bg-green-50 text-green-600 border border-green-200',
   pending: 'bg-orange-50 text-orange-500 border border-orange-200',
   expired: 'bg-gray-100 text-gray-400 border border-gray-200',
+  chargeback: 'bg-red-50 text-red-600 border border-red-200',
   refunded: 'bg-red-50 text-red-600 border border-red-200',
 }
 
@@ -116,6 +118,7 @@ const STATUS_LABEL: Record<TopupStatus, string> = {
   pending: 'Awaiting Payment',
   expired: 'Expired',
   refunded: 'Refunded',
+  chargeback: 'Chargeback',
 }
 
 function StatusChip({ status }: { status: TopupStatus }) {

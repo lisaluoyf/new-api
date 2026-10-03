@@ -1010,8 +1010,20 @@ func reverseSubscriptionOrderWithDB(db *gorm.DB, tradeNo string, amount float64,
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
-		if order.Status != common.TopUpStatusSuccess && order.Status != "refunded" && order.Status != "chargeback" {
+		if order.Status != common.TopUpStatusSuccess && order.Status != common.TopUpStatusRefunded && order.Status != "refund" && order.Status != "chargeback" {
 			return ErrSubscriptionOrderStatusInvalid
+		}
+		status := reversalType
+		if reversalType == "refund" {
+			status = common.TopUpStatusRefunded
+		}
+		// A repeated completed reversal must not rewind a later renewal/upgrade.
+		if (order.Status == status || (status == common.TopUpStatusRefunded && order.Status == "refund")) &&
+			order.RefundAmount+order.ChargebackAmount+0.005 >= order.Money {
+			if err := tx.Model(&order).Update("status", status).Error; err != nil {
+				return err
+			}
+			return tx.Model(&TopUp{}).Where("trade_no = ?", tradeNo).Update("status", status).Error
 		}
 		if reversalType == "refund" {
 			if amount > order.RefundAmount {
@@ -1089,12 +1101,12 @@ func reverseSubscriptionOrderWithDB(db *gorm.DB, tradeNo string, amount float64,
 				}
 			}
 		}
-		order.Status = reversalType
+		order.Status = status
 		if err := tx.Save(&order).Error; err != nil {
 			return err
 		}
 		return tx.Model(&TopUp{}).Where("trade_no = ?", tradeNo).
-			Updates(map[string]any{"status": reversalType, "complete_time": now}).Error
+			Updates(map[string]any{"status": status, "complete_time": now}).Error
 	})
 }
 

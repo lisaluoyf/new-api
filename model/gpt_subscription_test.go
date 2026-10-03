@@ -165,7 +165,7 @@ func TestReverseRenewalRestoresPreviousEntitlement(t *testing.T) {
 	require.Equal(t, "active", restored.Status)
 	var reversed SubscriptionOrder
 	require.NoError(t, DB.First(&reversed, order.Id).Error)
-	require.Equal(t, "refund", reversed.Status)
+	require.Equal(t, common.TopUpStatusRefunded, reversed.Status)
 	require.EqualValues(t, 10, reversed.RefundAmount)
 }
 
