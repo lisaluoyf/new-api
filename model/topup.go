@@ -1483,9 +1483,9 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		} else {
 			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
 		}
-		todayPaymentLine := "今日累计实收（北京时间）：暂不可用"
+		todayPaymentLine := "今日实收（北京时间）：暂不可用"
 		if amount, users, err := todayPaymentSummary(time.Now()); err == nil {
-			todayPaymentLine = fmt.Sprintf("今日累计实收（北京时间）：$%.2f（%d 位付款用户）", amount, users)
+			todayPaymentLine = fmt.Sprintf("今日实收（北京时间）：$%.2f（%d 位付款用户）", amount, users)
 		} else {
 			common.SysLog("NotifyPaymentSuccess: calculate today's payment summary: " + err.Error())
 		}
