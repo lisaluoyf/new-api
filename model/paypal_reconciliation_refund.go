@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 // VerifyPayPalRefundRecovery is read-only. New reversals record exact quota in
@@ -40,4 +41,41 @@ func VerifyPayPalRefundRecovery(top *TopUp) (bool, error) {
 	refund, e1 := decimal.NewFromString(parts[1])
 	credit, e2 := decimal.NewFromString(parts[2])
 	return e1 == nil && e2 == nil && refund.Equal(decimal.NewFromFloat(top.Money)) && credit.Mul(decimal.NewFromFloat(common.QuotaPerUnit)).Equal(decimal.NewFromInt(int64(expectedQuota))), nil
+}
+
+// VerifyPayPalSubscriptionRefundRecovery verifies a full purchase refund against
+// the exact order cycle, never against the wallet mirror or current balance.
+// Renewals/upgrades and superseded cycles need historical restoration evidence
+// and remain under review rather than inferring recovery from an inactive plan.
+func VerifyPayPalSubscriptionRefundRecovery(trade string, userID int, amount float64) (bool, error) {
+	if trade == "" || userID <= 0 || amount <= 0 {
+		return false, nil
+	}
+	var order SubscriptionOrder
+	err := DB.Where("trade_no = ?", trade).First(&order).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if order.PaymentProvider != PaymentProviderPayPal || order.UserId != userID ||
+		order.Status != common.TopUpStatusRefunded || order.CompleteTime <= 0 ||
+		!decimal.NewFromFloat(order.Money).Equal(decimal.NewFromFloat(amount)) ||
+		!decimal.NewFromFloat(order.RefundAmount).Equal(decimal.NewFromFloat(amount)) ||
+		order.ChargebackAmount != 0 || (order.OrderType != "" && order.OrderType != "purchase") ||
+		order.PreviousSubscriptionId != 0 || order.PreviousCycleId != 0 {
+		return false, nil
+	}
+	var cycles []UserSubscription
+	if err := DB.Where("current_cycle_id = ?", order.Id).Limit(2).Find(&cycles).Error; err != nil {
+		return false, err
+	}
+	if len(cycles) != 1 {
+		return false, nil
+	}
+	cycle := cycles[0]
+	return cycle.UserId == order.UserId && cycle.PlanId == order.PlanId && cycle.Source == "order" &&
+		cycle.Status == "cancelled" && cycle.StartTime > 0 && cycle.EndTime >= cycle.StartTime &&
+		cycle.EndTime <= GetDBTimestamp(), nil
 }

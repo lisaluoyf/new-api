@@ -487,7 +487,7 @@ func mergeReconciliationStatement(provider string, items []model.PaymentReconcil
 						i.OfficialStatus = payment.Status
 						i.OfficialAmount = payment.Amount
 						i.OfficialCurrency = payment.Currency
-						if proof.known && !proof.paid && proof.problem == "" {
+						if proof.known && !proof.paid && proof.problem == "" && proof.status != "REFUNDED" {
 							i.Result = "unverified"
 							i.Problem = "official_statement_query_conflict"
 						}
@@ -733,7 +733,7 @@ func queryReconciliationOrder(ctx context.Context, r reconciliationCandidate) re
 			return missing
 		}
 		if strings.HasPrefix(id, "order:") {
-			return queryPayPalReconciliationOrder(ctx, strings.TrimPrefix(id, "order:"), r.trade)
+			return queryPayPalReconciliationOrder(ctx, strings.TrimPrefix(id, "order:"), r)
 		}
 		raw, e := service.QueryPayPalCapture(ctx, id)
 		if e != nil {
@@ -904,7 +904,7 @@ func knownReconciliationStatus(provider, status string) bool {
 	return false
 }
 
-func queryPayPalReconciliationOrder(ctx context.Context, id, trade string) reconciliationProof {
+func queryPayPalReconciliationOrder(ctx context.Context, id string, r reconciliationCandidate) reconciliationProof {
 	raw, err := service.QueryPayPalOrder(ctx, id)
 	if err != nil {
 		return reconciliationProof{problem: "official_query_failed"}
@@ -934,7 +934,7 @@ func queryPayPalReconciliationOrder(ctx context.Context, id, trade string) recon
 		return reconciliationProof{problem: "official_query_failed"}
 	}
 	u := p.Units[0]
-	proof := reconciliationProof{id: p.ID, status: p.Status, currency: u.Amount.Currency, amount: u.Amount.Value, known: true, problem: reconciliationIdentityProblem(u.CustomID, trade, p.ID, id)}
+	proof := reconciliationProof{id: p.ID, status: p.Status, currency: u.Amount.Currency, amount: u.Amount.Value, known: true, problem: reconciliationIdentityProblem(u.CustomID, r.trade, p.ID, id)}
 	if p.Status == "COMPLETED" {
 		if len(u.Payments.Captures) != 1 {
 			return reconciliationProof{problem: "missing_official_transaction_id"}
@@ -946,7 +946,7 @@ func queryPayPalReconciliationOrder(ctx context.Context, id, trade string) recon
 		proof.currency = capture.Amount.Currency
 		proof.paid = capture.Status == "COMPLETED"
 	}
-	return verifyPayPalReconciliationRefund(ctx, reconciliationCandidate{trade: trade, provider: "paypal"}, proof)
+	return verifyPayPalReconciliationRefund(ctx, r, proof)
 }
 
 func verifyPayPalReconciliationRefund(ctx context.Context, r reconciliationCandidate, p reconciliationProof) reconciliationProof {
@@ -981,6 +981,13 @@ func verifyPayPalReconciliationRefund(ctx context.Context, r reconciliationCandi
 		return p
 	}
 	p.refundVerified = true
+	if r.purpose == "subscription" {
+		p.refundRecoveryVerified, err = model.VerifyPayPalSubscriptionRefundRecovery(r.trade, r.user, r.money)
+		if err != nil {
+			p.refundRecoveryVerified = false
+		}
+		return p
+	}
 	if r.top == nil {
 		r.top = model.GetTopUpByTradeNo(r.trade)
 	}

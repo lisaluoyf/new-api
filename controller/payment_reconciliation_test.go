@@ -3,8 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/QuantumNous/new-api/common"
-	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,8 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -395,4 +396,132 @@ func TestClinkDailyReconciliationNeverQueriesExpiredSession(t *testing.T) {
 	require.NoError(t, db.Where("trade_no = ?", "CLINK-test").First(&top).Error)
 	require.Equal(t, "success", top.Status)
 	require.Equal(t, float64(1), top.Money)
+}
+
+func TestPayPalDailySubscriptionRefundUsesEntitlementEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name                                                               string
+		active, partial, queryFailure, wrongIdentity, refundOnly, conflict bool
+		want                                                               string
+	}{
+		{name: "same day full refund", want: "matched"},
+		{name: "refund only day", refundOnly: true, want: "matched"},
+		{name: "entitlement not revoked", active: true, want: "unverified"},
+		{name: "local partial refund", partial: true, want: "unverified"},
+		{name: "official query unavailable", queryFailure: true, want: "unverified"},
+		{name: "wrong capture identity", wrongIdentity: true, want: "difference"},
+		{name: "genuine statement query conflict", conflict: true, want: "unverified"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupCryptoPersistenceTestDB(t)
+			require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}, &model.UserSubscription{}, &model.PaymentQueryReference{}, &model.PaymentReconciliationJob{}, &model.PaymentReconciliationRun{}))
+			day := time.Date(2026, 10, 3, 0, 0, 0, 0, reconciliationTimezone)
+			order := model.SubscriptionOrder{TradeNo: "subscription-refund", UserId: 1, PlanId: 10, Money: 69, RefundAmount: 69, PaymentProvider: "paypal", Status: "refunded", OrderType: "purchase", CompleteTime: day.Unix() + 3600}
+			if tc.partial {
+				order.RefundAmount = 20
+			}
+			require.NoError(t, db.Create(&order).Error)
+			cycle := model.UserSubscription{UserId: 1, PlanId: 10, CurrentCycleId: order.Id, Status: "cancelled", Source: "order", StartTime: day.Unix() + 3600, EndTime: day.Unix() + 7200}
+			if tc.active {
+				cycle.Status = "active"
+			}
+			require.NoError(t, db.Create(&cycle).Error)
+			top := model.TopUp{TradeNo: order.TradeNo, UserId: 1, Money: 69, PaymentProvider: "paypal", PayPalCaptureID: "capture-sub", Status: "refunded"}
+			require.NoError(t, db.Create(&top).Error)
+			require.NoError(t, db.Create(&model.PaymentQueryReference{TradeNo: order.TradeNo, Provider: "paypal", QueryID: "capture-sub", Currency: "USD"}).Error)
+			require.NoError(t, model.QueuePaymentReconciliation(day.Format("2006-01-02"), "paypal", 0, false))
+			job, err := model.ClaimPaymentReconciliationJob(time.Now().Unix())
+			require.NoError(t, err)
+			oldTransport, oldID, oldSecret := http.DefaultTransport, setting.PayPalClientID, setting.PayPalClientSecret
+			t.Cleanup(func() {
+				http.DefaultTransport = oldTransport
+				setting.PayPalClientID = oldID
+				setting.PayPalClientSecret = oldSecret
+			})
+			setting.PayPalClientID = "test"
+			setting.PayPalClientSecret = "test"
+			http.DefaultTransport = clinkReconciliationTransport(func(r *http.Request) (*http.Response, error) {
+				body := ""
+				switch r.URL.Path {
+				case "/v1/oauth2/token":
+					require.Equal(t, "POST", r.Method)
+					body = `{"access_token":"test-refund-token","expires_in":3600}`
+				case "/v1/reporting/transactions":
+					require.Equal(t, "GET", r.Method)
+					refund := `{"transaction_info":{"transaction_id":"refund-sub","paypal_reference_id":"capture-sub","paypal_reference_id_type":"TXN","transaction_event_code":"T1107","transaction_status":"S","transaction_amount":{"value":"-69","currency_code":"USD"}}}`
+					receipt := `{"transaction_info":{"transaction_id":"capture-sub","custom_field":"subscription-refund","transaction_event_code":"T0006","transaction_status":"S","transaction_amount":{"value":"69","currency_code":"USD"}}}`
+					if tc.refundOnly {
+						body = `{"total_pages":1,"transaction_details":[` + refund + `]}`
+					} else {
+						body = `{"total_pages":1,"transaction_details":[` + receipt + `,` + refund + `]}`
+					}
+				case "/v2/payments/captures/capture-sub":
+					require.Equal(t, "GET", r.Method)
+					if tc.queryFailure {
+						return nil, context.DeadlineExceeded
+					}
+					body = `{"id":"capture-sub","status":"REFUNDED","custom_id":"subscription-refund","amount":{"value":"69","currency_code":"USD"},"update_time":"2026-10-03T12:08:35Z"}`
+					if tc.conflict {
+						body = strings.Replace(body, "REFUNDED", "DECLINED", 1)
+					}
+					if tc.wrongIdentity {
+						body = strings.Replace(body, `"custom_id":"subscription-refund"`, `"custom_id":"other-order"`, 1)
+					}
+				case "/v2/checkout/orders/order-sub":
+					require.Equal(t, "GET", r.Method)
+					body = `{"id":"order-sub","status":"COMPLETED","purchase_units":[{"custom_id":"subscription-refund","amount":{"value":"69","currency_code":"USD"},"payments":{"captures":[{"id":"capture-sub","status":"REFUNDED","amount":{"value":"69","currency_code":"USD"}}]}}]}`
+				case "/v2/payments/refunds/refund-sub":
+					require.Equal(t, "GET", r.Method)
+					body = `{"id":"refund-sub","status":"COMPLETED","amount":{"value":"69","currency_code":"USD"},"links":[{"rel":"up","href":"https://api.paypal.com/v2/payments/captures/capture-sub"}]}`
+				default:
+					t.Fatalf("unexpected payment endpoint: %s", r.URL.Path)
+				}
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+			})
+			if service.GetHttpClient() == nil {
+				service.InitHttpClient()
+			}
+			client := service.GetHttpClient()
+			oldClientTransport := client.Transport
+			client.Transport = http.DefaultTransport
+			t.Cleanup(func() { client.Transport = oldClientTransport })
+			if tc.want == "matched" {
+				candidate := reconciliationCandidate{trade: order.TradeNo, provider: "paypal", purpose: "subscription", user: 1, money: 69, currency: "USD", status: "refunded", queryID: "order:order-sub"}
+				proof := queryReconciliationOrder(context.Background(), candidate)
+				require.True(t, proof.refundVerified)
+				require.True(t, proof.refundRecoveryVerified)
+			}
+			items, err := reconcilePaymentDay(job)
+			require.NoError(t, err)
+			require.Len(t, items, 1)
+			item := items[0]
+			require.Equal(t, tc.want, item.Result)
+			if tc.conflict {
+				require.Equal(t, "official_statement_query_conflict", item.Problem)
+			} else {
+				require.NotEqual(t, "official_statement_query_conflict", item.Problem)
+			}
+			if tc.want == "matched" {
+				require.Equal(t, "refund_matched", item.Verification)
+				require.Equal(t, !tc.refundOnly, item.LocalPaid)
+				require.Equal(t, !tc.refundOnly, item.OfficialPaid)
+				summary := model.SummarizePaymentReconciliation(items)
+				require.Zero(t, summary.DifferenceCount)
+				require.Zero(t, summary.UnverifiedCount)
+				if !tc.refundOnly {
+					require.Equal(t, "0", summary.Totals[0].Difference)
+					require.Equal(t, "69", summary.Totals[0].LocalAmount)
+				}
+			} else if tc.want == "unverified" && !tc.queryFailure && !tc.conflict {
+				require.Equal(t, "refund_requires_separate_funds_and_entitlement_review", item.Problem)
+			}
+			beforeOrder, beforeCycle, beforeTop := order, cycle, top
+			require.NoError(t, db.First(&order, order.Id).Error)
+			require.NoError(t, db.First(&cycle, cycle.Id).Error)
+			require.NoError(t, db.First(&top, top.Id).Error)
+			require.Equal(t, beforeOrder, order)
+			require.Equal(t, beforeCycle, cycle)
+			require.Equal(t, beforeTop, top)
+		})
+	}
 }

@@ -66,3 +66,64 @@ func TestPayPalReversalPersistsQuotaEvidenceWithBalanceAndRemainsIdempotent(t *t
 	require.NoError(t, DB.First(&user, 1).Error)
 	require.Equal(t, 100, user.Quota)
 }
+
+func TestPayPalSubscriptionRefundRequiresExactCancelledPurchaseCycle(t *testing.T) {
+	cases := []struct {
+		name string
+		edit func(*SubscriptionOrder, *UserSubscription)
+		want bool
+	}{
+		{"full purchase", func(*SubscriptionOrder, *UserSubscription) {}, true},
+		{"partial refund", func(o *SubscriptionOrder, _ *UserSubscription) { o.RefundAmount = 20 }, false},
+		{"wrong user", func(o *SubscriptionOrder, _ *UserSubscription) { o.UserId = 2 }, false},
+		{"wrong amount", func(o *SubscriptionOrder, _ *UserSubscription) { o.Money = 70 }, false},
+		{"wrong provider", func(o *SubscriptionOrder, _ *UserSubscription) { o.PaymentProvider = "clink" }, false},
+		{"not refunded", func(o *SubscriptionOrder, _ *UserSubscription) { o.Status = "success" }, false},
+		{"chargeback", func(o *SubscriptionOrder, _ *UserSubscription) { o.ChargebackAmount = 1 }, false},
+		{"renewal", func(o *SubscriptionOrder, _ *UserSubscription) { o.OrderType = "renewal" }, false},
+		{"upgrade", func(o *SubscriptionOrder, _ *UserSubscription) { o.OrderType = "upgrade" }, false},
+		{"missing completion", func(o *SubscriptionOrder, _ *UserSubscription) { o.CompleteTime = 0 }, false},
+		{"active entitlement", func(_ *SubscriptionOrder, s *UserSubscription) { s.Status = "active" }, false},
+		{"expired entitlement", func(_ *SubscriptionOrder, s *UserSubscription) { s.Status = "expired" }, false},
+		{"wrong cycle", func(_ *SubscriptionOrder, s *UserSubscription) { s.CurrentCycleId = 999 }, false},
+		{"wrong plan", func(_ *SubscriptionOrder, s *UserSubscription) { s.PlanId = 2 }, false},
+		{"wrong cycle owner", func(_ *SubscriptionOrder, s *UserSubscription) { s.UserId = 2 }, false},
+		{"manual entitlement", func(_ *SubscriptionOrder, s *UserSubscription) { s.Source = "admin" }, false},
+		{"future entitlement end", func(_ *SubscriptionOrder, s *UserSubscription) { s.EndTime = GetDBTimestamp() + 3600 }, false},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			setupGPTSubscriptionTestDB(t)
+			now := GetDBTimestamp()
+			o := SubscriptionOrder{TradeNo: "purchase", UserId: 1, PlanId: 1, Money: 69, RefundAmount: 69, Status: "refunded", PaymentProvider: "paypal", OrderType: "purchase", CompleteTime: now - 100}
+			require.NoError(t, DB.Create(&o).Error)
+			s := UserSubscription{UserId: 1, PlanId: 1, CurrentCycleId: o.Id, Status: "cancelled", Source: "order", StartTime: now - 100, EndTime: now - 1}
+			tt.edit(&o, &s)
+			require.NoError(t, DB.Save(&o).Error)
+			require.NoError(t, DB.Create(&s).Error)
+			beforeOrder, beforeCycle := o, s
+			ok, err := VerifyPayPalSubscriptionRefundRecovery("purchase", 1, 69)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, ok)
+			require.NoError(t, DB.First(&o, o.Id).Error)
+			require.NoError(t, DB.First(&s, s.Id).Error)
+			require.Equal(t, beforeOrder, o)
+			require.Equal(t, beforeCycle, s)
+		})
+	}
+	t.Run("missing and duplicate cycle", func(t *testing.T) {
+		setupGPTSubscriptionTestDB(t)
+		now := GetDBTimestamp()
+		o := SubscriptionOrder{TradeNo: "purchase", UserId: 1, PlanId: 1, Money: 69, RefundAmount: 69, Status: "refunded", PaymentProvider: "paypal", OrderType: "purchase", CompleteTime: now - 100}
+		require.NoError(t, DB.Create(&o).Error)
+		ok, err := VerifyPayPalSubscriptionRefundRecovery(o.TradeNo, 1, 69)
+		require.NoError(t, err)
+		require.False(t, ok)
+		for n := 0; n < 2; n++ {
+			require.NoError(t, DB.Create(&UserSubscription{UserId: 1, PlanId: 1, CurrentCycleId: o.Id, Status: "cancelled", Source: "order", StartTime: now - 100, EndTime: now - 1}).Error)
+		}
+		ok, err = VerifyPayPalSubscriptionRefundRecovery(o.TradeNo, 1, 69)
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+}
