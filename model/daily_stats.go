@@ -110,6 +110,28 @@ func dailyStatsPaidAmount(row dailyStatsTopupRow) float64 {
 	return 0
 }
 
+func todayPaymentSummary(now time.Time) (float64, int, error) {
+	dayStart := dailyStatsDayStart(now.Unix())
+	var topups []dailyStatsTopupRow
+	err := DB.Table("top_ups").
+		Select("user_id, paid_amount_usd, paid_amount_usd_source, money, payment_provider, payment_method").
+		Where("status = ? AND (paid_amount_usd > 0 OR money > 0)", common.TopUpStatusSuccess).
+		Where("COALESCE(NULLIF(complete_time, 0), create_time) >= ?", dayStart).
+		Where("COALESCE(NULLIF(complete_time, 0), create_time) < ?", now.Unix()+1).
+		Scan(&topups).Error
+	if err != nil {
+		return 0, 0, err
+	}
+
+	var paidAmountUSD float64
+	payingUsers := make(map[int]struct{})
+	for _, topup := range topups {
+		paidAmountUSD += dailyStatsPaidAmount(topup)
+		payingUsers[topup.UserID] = struct{}{}
+	}
+	return paidAmountUSD, len(payingUsers), nil
+}
+
 func GetDailyStatsOldestRegistrationDay() (int64, error) {
 	if APIMASTER_PG_DB == nil {
 		return 0, errors.New("APIMASTER_PG_DSN is not configured")

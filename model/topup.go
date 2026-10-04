@@ -1483,6 +1483,12 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		} else {
 			common.SysLog("NotifyPaymentSuccess: calculate cumulative USD total: " + cumulativeErr.Error())
 		}
+		todayPaymentLine := "今日累计实收（北京时间）：暂不可用"
+		if amount, users, err := todayPaymentSummary(time.Now()); err == nil {
+			todayPaymentLine = fmt.Sprintf("今日累计实收（北京时间）：$%.2f（%d 位付款用户）", amount, users)
+		} else {
+			common.SysLog("NotifyPaymentSuccess: calculate today's payment summary: " + err.Error())
+		}
 
 		// Use the exact trade instead of the user's latest row: payment callbacks
 		// can finish close together and must not borrow another order's amount.
@@ -1558,6 +1564,7 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 
 		lines = append(lines,
 			cumulativeLine,
+			todayPaymentLine,
 			fmt.Sprintf("余额：$%.2f", walletBalance),
 			fmt.Sprintf("渠道：%s", channel),
 			fmt.Sprintf("国家：%s", FormatCountryLabel(country)),

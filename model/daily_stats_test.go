@@ -4,7 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestDailyStatsDayStartUsesBeijingCalendarDay(t *testing.T) {
@@ -61,4 +64,42 @@ func TestDailyStatsPaidAmountMatchesDailyReportRules(t *testing.T) {
 			require.Equal(t, test.want, dailyStatsPaidAmount(test.row))
 		})
 	}
+}
+
+func TestTodayPaymentSummaryMatchesDailyStatsCashReceipts(t *testing.T) {
+	previousDB := DB
+	t.Cleanup(func() { DB = previousDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&TopUp{}))
+	DB = db
+
+	dayStart := time.Date(2026, 10, 3, 16, 0, 0, 0, time.UTC).Unix()
+	now := time.Unix(dayStart+10*3600, 0)
+	require.NoError(t, db.Create(&[]TopUp{
+		{TradeNo: "yesterday", UserId: 9, Money: 99, PaymentProvider: PaymentProviderPayPal, CompleteTime: dayStart - 1, Status: common.TopUpStatusSuccess},
+		{TradeNo: "discounted-wallet", UserId: 1, PaidAmountUSD: 8.5, CreditedAmount: 10, Money: 10, PaymentProvider: PaymentProviderStripe, CompleteTime: dayStart, Status: common.TopUpStatusSuccess},
+		{TradeNo: "repeat-wallet", UserId: 1, PaidAmountUSD: 4, Money: 4, PaymentProvider: PaymentProviderPayPal, CompleteTime: dayStart + 60, Status: common.TopUpStatusSuccess},
+		{TradeNo: "subscription", UserId: 2, PaidAmountUSD: 29.99, PaidAmountUSDSource: "subscription", Money: 29.99, CompleteTime: dayStart + 120, Status: common.TopUpStatusSuccess},
+		{TradeNo: "legacy-usd", UserId: 3, Money: 2, PaymentProvider: PaymentProviderPayPal, CreateTime: dayStart + 180, Status: common.TopUpStatusSuccess},
+		{TradeNo: "legacy-local-currency", UserId: 4, Money: 70, PaymentProvider: PaymentProviderEpay, CompleteTime: dayStart + 240, Status: common.TopUpStatusSuccess},
+		{TradeNo: "explicit-zero", UserId: 5, Money: 10, PaidAmountUSDSource: "settlement", PaymentProvider: PaymentProviderStripe, CompleteTime: dayStart + 300, Status: common.TopUpStatusSuccess},
+		{TradeNo: "free-credit", UserId: 6, Amount: 100, PaymentProvider: PaymentProviderFree, CompleteTime: dayStart + 360, Status: common.TopUpStatusSuccess},
+		{TradeNo: "pending", UserId: 7, PaidAmountUSD: 500, CompleteTime: dayStart + 420, Status: common.TopUpStatusPending},
+		{TradeNo: "future", UserId: 8, PaidAmountUSD: 500, CompleteTime: now.Unix() + 1, Status: common.TopUpStatusSuccess},
+	}).Error)
+
+	amount, users, err := todayPaymentSummary(now)
+	require.NoError(t, err)
+	require.InDelta(t, 44.49, amount, 0.000001)
+	require.Equal(t, 5, users)
+
+	amount, users, err = todayPaymentSummary(time.Unix(dayStart-1, 0))
+	require.NoError(t, err)
+	require.Equal(t, float64(99), amount)
+	require.Equal(t, 1, users)
+
+	require.NoError(t, db.Migrator().DropTable(&TopUp{}))
+	_, _, err = todayPaymentSummary(now)
+	require.Error(t, err)
 }
