@@ -1564,13 +1564,11 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 
 		lines = append(lines,
 			cumulativeLine,
-			todayPaymentLine,
 			fmt.Sprintf("余额：$%.2f", walletBalance),
 			fmt.Sprintf("渠道：%s", channel),
 			fmt.Sprintf("国家：%s", FormatCountryLabel(country)),
 			fmt.Sprintf("语言：%s", language),
 			fmt.Sprintf("方式：%s", methodLabel),
-			fmt.Sprintf("注册于：%s", registeredAt),
 		)
 
 		if topUp := GetTopUpByTradeNo(tradeNo); topUp != nil && topUp.UserId == userId {
@@ -1578,6 +1576,7 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 				lines = append(lines, line)
 			}
 		}
+		lines = append(lines, fmt.Sprintf("注册于：%s", registeredAt), todayPaymentLine)
 
 		title := fmt.Sprintf("💰 付款成功（第 %d 次）", payCount)
 		if paymentContext.IsSubscription {
