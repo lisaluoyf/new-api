@@ -637,16 +637,15 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 		return 0, pendingCryptoRetryableError("transaction confirmations are not sufficient")
 	}
 
-	fromField, _ := txMap["from"].(string)
-	if strings.ToLower(strings.TrimSpace(fromField)) != intent.WalletAddressFrom {
-		return 0, fmt.Errorf("wallet address mismatch")
-	}
-
 	platformWallet := strings.ToLower(strings.TrimSpace(intent.ExpectedToAddress))
 	if platformWallet == "" {
 		platformWallet = getPlatformWallet()
 	}
 	if intent.TokenAddress == "" {
+		fromField, _ := txMap["from"].(string)
+		if strings.ToLower(strings.TrimSpace(fromField)) != intent.WalletAddressFrom {
+			return 0, fmt.Errorf("wallet address mismatch")
+		}
 		toField, _ := txMap["to"].(string)
 		valueField, _ := txMap["value"].(string)
 		if strings.ToLower(strings.TrimSpace(toField)) != platformWallet {
@@ -661,11 +660,6 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 		}
 		nativeAmt := decimal.NewFromBigInt(weiAmount, int32(-cfg.nativeDecimals))
 		return cryptoAssetUSD(intent, cfg, nativeAmt)
-	}
-
-	toField, _ := txMap["to"].(string)
-	if strings.ToLower(strings.TrimSpace(toField)) != intent.TokenAddress {
-		return 0, fmt.Errorf("token contract mismatch")
 	}
 
 	logsRaw, _ := receipt["logs"].([]interface{})

@@ -369,6 +369,84 @@ func TestCryptoDepositRecoveryWindows(t *testing.T) {
 	require.Equal(t, 30*time.Minute, cryptoHashVerificationWindow)
 }
 
+func TestFailedCryptoIntentDoesNotRecreditManualAdjustment(test *testing.T) {
+	db := setupCryptoPersistenceTestDB(test)
+	user := model.User{Id: 107, Username: "crypto-manual", Password: "password", Quota: 2_500_000}
+	require.NoError(test, db.Create(&user).Error)
+	txHash := "0x" + strings.Repeat("c", 64)
+	intent := model.CryptoDepositIntent{
+		Id: "manual-adjusted-intent", UserId: user.Id, Chain: "arbitrum", TokenSymbol: "USDT",
+		WalletAddressFrom: "0x" + strings.Repeat("1", 40),
+		ExpectedToAddress: "0x" + strings.Repeat("2", 40),
+		Challenge:         "challenge", Purpose: cryptoIntentPurposeWalletTopup,
+		TopUpTradeNo: "CRYPTO:manual-adjusted-intent", Status: model.CryptoDepositIntentStatusFailed,
+		TxHash: &txHash, ErrorMessage: "wallet address mismatch",
+	}
+	require.NoError(test, db.Create(&intent).Error)
+	require.NoError(test, db.Create(&model.TopUp{
+		UserId: user.Id, TradeNo: intent.TopUpTradeNo, PaymentMethod: model.PaymentMethodCrypto,
+		PaymentProvider: model.PaymentProviderCrypto, Status: common.TopUpStatusFailed,
+	}).Error)
+
+	verifyAndCredit(intent.Id)
+	credited, err := settleCryptoWalletTopup(&intent, 5, 5, 2_500_000, intent.TopUpTradeNo, common.GetTimestamp())
+	require.EqualError(test, err, "intent status is failed")
+	require.False(test, credited)
+	require.NoError(test, db.First(&user, user.Id).Error)
+	require.Equal(test, 2_500_000, user.Quota)
+	require.NoError(test, db.First(&intent, "id = ?", intent.Id).Error)
+	require.Equal(test, model.CryptoDepositIntentStatusFailed, intent.Status)
+	require.Zero(test, intent.UsdAdded)
+	require.Zero(test, intent.RetryCount)
+	var topUp model.TopUp
+	require.NoError(test, db.First(&topUp, "trade_no = ?", intent.TopUpTradeNo).Error)
+	require.Equal(test, common.TopUpStatusFailed, topUp.Status)
+}
+
+func TestSubmitCryptoDepositRejectsUnauthorizedWalletClaims(test *testing.T) {
+	testCases := []struct {
+		name       string
+		userID     int
+		signature  string
+		statusCode int
+		errorText  string
+	}{
+		{name: "missing signature", userID: 108, statusCode: http.StatusBadRequest, errorText: "wallet authorization is required"},
+		{name: "invalid signature", userID: 108, signature: "invalid", statusCode: http.StatusBadRequest, errorText: "invalid signature encoding"},
+		{name: "another account", userID: 109, statusCode: http.StatusNotFound, errorText: "deposit intent not found"},
+	}
+	for _, testCase := range testCases {
+		test.Run(testCase.name, func(test *testing.T) {
+			db := setupCryptoPersistenceTestDB(test)
+			intent := model.CryptoDepositIntent{
+				Id: "unauthorized-intent", UserId: 108, Chain: "arbitrum", TokenSymbol: "USDT",
+				WalletAddressFrom: "0x" + strings.Repeat("1", 40),
+				ExpectedToAddress: "0x" + strings.Repeat("2", 40),
+				Challenge:         "challenge", Status: model.CryptoDepositIntentStatusPending,
+				ExpiresAt: common.GetTimestamp() + 300, RecoveryExpiresAt: common.GetTimestamp() + 3600,
+			}
+			require.NoError(test, db.Create(&intent).Error)
+			body, err := common.Marshal(map[string]string{
+				"intent_id": intent.Id, "tx_hash": "0x" + strings.Repeat("d", 64), "wallet_signature": testCase.signature,
+			})
+			require.NoError(test, err)
+			gin.SetMode(gin.TestMode)
+			recorder := httptest.NewRecorder()
+			context, _ := gin.CreateTestContext(recorder)
+			context.Set("id", testCase.userID)
+			context.Request = httptest.NewRequest(http.MethodPost, "/api/user/crypto/submit", bytes.NewReader(body))
+			context.Request.Header.Set("Content-Type", "application/json")
+			SubmitCryptoDeposit(context)
+			require.Equal(test, testCase.statusCode, recorder.Code, recorder.Body.String())
+			require.Contains(test, recorder.Body.String(), testCase.errorText)
+			require.NoError(test, db.First(&intent, "id = ?", intent.Id).Error)
+			require.Nil(test, intent.TxHash)
+			require.Empty(test, intent.WalletSignature)
+			require.Equal(test, model.CryptoDepositIntentStatusPending, intent.Status)
+		})
+	}
+}
+
 func mustBigInt(value string) *big.Int {
 	result, ok := new(big.Int).SetString(value, 10)
 	if !ok {
