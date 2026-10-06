@@ -17,6 +17,7 @@ func TestSeedanceLibraryRoutesRequireAuthentication(t *testing.T) {
 	SetRelayRouter(router)
 	SetVideoRouter(router)
 	for _, route := range []struct{ method, path string }{
+		{"POST", "/v1/seedance2/private-avatar/verifications"}, {"GET", "/v1/seedance2/private-avatar/verifications/verification_x"},
 		{"POST", "/v1/uploads/images"}, {"POST", "/v1/seedance2/private-avatar/assets"}, {"POST", "/v1/seedance2/private-avatar"},
 		{"GET", "/v1/seedance2/private-avatar/assets"}, {"GET", "/v1/seedance2/private-avatar/assets/asset_x"}, {"PATCH", "/v1/seedance2/private-avatar/assets/asset_x"}, {"DELETE", "/v1/seedance2/private-avatar/assets/asset_x"},
 		{"POST", "/v1/seedance2/private-avatar/groups"}, {"GET", "/v1/seedance2/private-avatar/groups"}, {"GET", "/v1/seedance2/private-avatar/groups/group_x"}, {"PATCH", "/v1/seedance2/private-avatar/groups/group_x"}, {"DELETE", "/v1/seedance2/private-avatar/groups/group_x"},

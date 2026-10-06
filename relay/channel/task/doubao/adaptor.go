@@ -202,6 +202,20 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, err
 	}
+	// Resolve public APIMaster asset IDs only in the outbound body. The
+	// normalized request and billing logs retain customer-visible identifiers.
+	var fields map[string]any
+	if err = common.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+	fields, err = service.ResolveSeedanceAssetReferences(c, fields, info.ChannelId, a.apiKey)
+	if err != nil {
+		return nil, err
+	}
+	data, err = common.Marshal(fields)
+	if err != nil {
+		return nil, err
+	}
 	return bytes.NewReader(data), nil
 }
 

@@ -101,6 +101,10 @@ func seedanceChannelAllowed(c *gin.Context, ch *model.Channel, name string) bool
 }
 
 func selectSeedanceLibrary(c *gin.Context, name string) (*model.SeedanceResource, error) {
+	return selectSeedanceLibraryWithFilter(c, name, nil)
+}
+
+func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability func(*model.Channel) bool) (*model.SeedanceResource, error) {
 	if err := ValidateSeedanceModelAccess(c, name); err != nil {
 		return nil, err
 	}
@@ -110,6 +114,15 @@ func selectSeedanceLibrary(c *gin.Context, name string) (*model.SeedanceResource
 			return false
 		}
 		host := strings.ToLower(parsed.Hostname())
+		if capability != nil && !capability(ch) {
+			return false
+		}
+		if isBytePlusSeedanceChannel(ch) {
+			credentials, err := loadBytePlusAssetCredentials(ch.Id)
+			_, pinned := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
+			autoEnabled := credentials.AutoRouteEnabled == nil || *credentials.AutoRouteEnabled
+			return err == nil && (pinned || autoEnabled) && seedanceChannelAllowed(c, ch, name)
+		}
 		provider := host == "apimart.ai" || strings.HasSuffix(host, ".apimart.ai") || host == "apib.ai" || strings.HasSuffix(host, ".apib.ai") || ch.Id == constant.VideoFeeSeedanceChannelID
 		return provider && seedanceChannelAllowed(c, ch, name)
 	}
@@ -143,6 +156,9 @@ func seedanceProviderRequest(ctx context.Context, resource *model.SeedanceResour
 	key, _, err := SeedanceResourceKey(ch, resource.KeyFingerprint)
 	if err != nil {
 		return nil, err
+	}
+	if isBytePlusSeedanceChannel(ch) {
+		return bytePlusLibraryRequest(ctx, resource, method, path, payload)
 	}
 	if ch.Id == constant.VideoFeeSeedanceChannelID {
 		return videoFeeLibraryRequest(ctx, resource, ch, key, method, path, payload)

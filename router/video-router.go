@@ -13,6 +13,8 @@ func SetVideoRouter(router *gin.Engine) {
 	mediaLibrary.POST("/uploads/images", middleware.UploadRateLimit(), controller.UploadMediaImage)
 	library := mediaLibrary.Group("/seedance2/private-avatar")
 	library.POST("", middleware.UploadRateLimit(), controller.SubmitSeedanceAssets)
+	library.POST("/verifications", middleware.UploadRateLimit(), controller.CreateSeedanceVerification)
+	library.GET("/verifications/:verification_id", controller.GetSeedanceVerification)
 	library.POST("/assets", middleware.UploadRateLimit(), controller.SubmitSeedanceAssets)
 	for _, kind := range []string{"asset", "group"} {
 		resourceKind := kind
