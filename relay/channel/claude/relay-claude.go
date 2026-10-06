@@ -628,12 +628,15 @@ func ResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.OpenAITextRe
 }
 
 type ClaudeResponseInfo struct {
-	ResponseId   string
-	Created      int64
-	Model        string
-	ResponseText strings.Builder
-	Usage        *dto.Usage
-	Done         bool
+	ResponseId           string
+	Created              int64
+	Model                string
+	ResponseText         strings.Builder
+	Usage                *dto.Usage
+	Done                 bool
+	reportedUsage        *dto.Usage
+	reportedUsageInvalid bool
+	reportedTerminal     bool
 }
 
 func cacheCreationTokensForOpenAIUsage(usage *dto.Usage) int {
@@ -849,6 +852,7 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	if claudeError := claudeResponse.GetClaudeError(); claudeError != nil && claudeError.Type != "" {
 		return types.WithClaudeError(*claudeError, http.StatusInternalServerError)
 	}
+	captureClaudeReportedUsage(info, claudeInfo, data, &claudeResponse)
 	if claudeResponse.Usage != nil && claudeResponse.Usage.ServerToolUse != nil && claudeResponse.Usage.ServerToolUse.WebSearchRequests > c.GetInt("claude_web_search_requests") {
 		c.Set("claude_web_search_requests", claudeResponse.Usage.ServerToolUse.WebSearchRequests)
 	}
@@ -905,7 +909,7 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 	if claudeInfo.Usage.PromptTokens == 0 {
 		//上游出错
 	}
-	if claudeInfo.Usage.CompletionTokens == 0 || !claudeInfo.Done {
+	if claudeInfo.Usage.UsageSource != "upstream_reported" && (claudeInfo.Usage.CompletionTokens == 0 || !claudeInfo.Done) {
 		if common.DebugEnabled {
 			common.SysLog("claude response usage is not complete, maybe upstream error")
 		}
@@ -957,8 +961,15 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	if err != nil {
 		return nil, err
 	}
-	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, claudeInfo.Done); streamErr != nil {
+	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, claudeInfo.Done || claudeInfo.reportedTerminal); streamErr != nil {
+		if usage := canceledClaudeReportedUsage(c, info, claudeInfo, streamStatus); usage != nil {
+			return usage, nil
+		}
 		return nil, streamErr
+	}
+	if claudeInfo.reportedTerminal && !claudeInfo.reportedUsageInvalid {
+		claudeInfo.Usage = claudeInfo.reportedUsage
+		claudeInfo.Usage.UsageSource = "upstream_reported"
 	}
 
 	HandleStreamFinalResponse(c, info, claudeInfo)

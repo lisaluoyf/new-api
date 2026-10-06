@@ -449,10 +449,23 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 	return "openai"
 }
 
-func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
+func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) error {
+	canceledUsage := relayInfo != nil && relayInfo.CanceledStreamUsage != nil
+	if canceledUsage && ctx.GetBool("canceled_usage_settled") {
+		return nil
+	}
 	// clientgone fallback 竞速中的 attempt：计费延迟到竞速终局由控制器统一结算
 	if relayInfo != nil && relayInfo.HedgeState != nil && relayInfo.HedgeState.TryDefer(usage, extraContent) {
-		return
+		return nil
+	}
+	if canceledUsage {
+		// Persist the provider counts before touching funds. A failed debit is
+		// still recoverable without inventing usage from an estimate.
+		if err := ObserveCanceledRelay(ctx, relayInfo); err != nil {
+			logger.LogError(ctx, "cannot persist canceled usage: "+err.Error())
+			return err
+		}
+		extraContent = append(extraContent, "Client canceled; settled provider-reported partial usage; remaining output usage unknown")
 	}
 	if relayInfo != nil && IsFreeModel(relayInfo.OriginModelName) {
 		MarkFreeModelAttemptSuccessForLog(ctx)
@@ -507,13 +520,23 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 		MarkUpstreamNoUsage(ctx, relayInfo)
-	} else {
+	} else if !canceledUsage {
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
+		if canceledUsage {
+			return err
+		}
+	}
+	if canceledUsage {
+		ctx.Set("canceled_usage_settled", true)
+		if summary.TotalTokens > 0 {
+			model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
+			model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
+		}
 	}
 
 	logModel := summary.ModelName
@@ -548,6 +571,13 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	other["cache_token_semantic_source"] = summary.CacheTokenSemanticSource
 	if adminRejectReason != "" {
 		other["reject_reason"] = adminRejectReason
+	}
+	if canceledUsage {
+		other["client_canceled"] = true
+		other["status_code"] = 499
+		other["usage_source"] = "upstream_reported_partial"
+		other["output_usage_complete"] = false
+		other["cancellation_billing"] = "reported_usage_only"
 	}
 	if summary.ImageTokens != 0 {
 		other["image"] = true
@@ -679,6 +709,12 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 	applyTieredAccountingContext(&accountingInput, relayInfo, usage)
 	accounting := BuildConsumeAccountingFields(accountingInput)
+	if canceledUsage {
+		// The normal accounting estimate covers only the observed counts,
+		// not the supplier's final invoice for this interrupted request.
+		other["upstream_cost"] = nil
+		other["supplier_cost_complete"] = false
+	}
 	if summary.TotalTokens == 0 {
 		// A zero-quota billing diagnostic is an internal audit event, not a user
 		// consumption record. Keep ownership in admin_info for correlation.
@@ -708,6 +744,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		Accounting:       accounting,
 	})
 	gopool.Go(func() {
-		perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
+		perfmetrics.RecordRelaySample(relayInfo, !canceledUsage, int64(summary.CompletionTokens))
 	})
+	return nil
 }

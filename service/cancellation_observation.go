@@ -54,6 +54,10 @@ func ObserveCanceledRelay(c *gin.Context, info *relaycommon.RelayInfo) error {
 		// deliberately not persisted; this is NOT a replayable pricing contract.
 		"automatic_charge_allowed": false, "pricing_replay_supported": false,
 	}
+	if info.CanceledStreamUsage != nil {
+		snapshot["reported_partial_usage"] = info.CanceledStreamUsage
+		snapshot["output_usage_complete"] = false
+	}
 	if info.ChannelMeta != nil {
 		snapshot["upstream_model"] = info.UpstreamModelName
 		snapshot["channel_type"] = info.ChannelType
