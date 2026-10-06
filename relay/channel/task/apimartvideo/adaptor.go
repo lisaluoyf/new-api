@@ -220,7 +220,7 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 			"auto_duration": body.Model == ModelSeedance25 && body.Duration == -1,
 		},
 	}
-	if body.Model == ModelSeedance25 || isSeedance20Variant(body.Model) {
+	if body.Model == ModelSeedance25 || isSeedance20(body.Model) {
 		var fields map[string]any
 		_ = common.Unmarshal(raw, &fields)
 		store.Metadata["audio"] = fields["generate_audio"]

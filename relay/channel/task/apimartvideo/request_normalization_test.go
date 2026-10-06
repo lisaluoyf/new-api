@@ -20,6 +20,42 @@ func generationContext(path, body string) *gin.Context {
 	return c
 }
 
+func TestSeedance20LastFrameFlagSurvivesSubmissionAndPersistence(t *testing.T) {
+	for _, name := range []string{ModelSeedance20, ModelDoubaoSeedance20, ModelSeedance20Fast, ModelSeedance20Mini} {
+		for _, path := range []string{"/v1/video/generations", "/v1/videos/generations"} {
+			for _, flag := range []any{true, false, nil} {
+				fields := map[string]any{"model": name, "prompt": "scene", "duration": 4, "resolution": "480p"}
+				if flag != nil {
+					fields["return_last_frame"] = flag
+				}
+				c := generationContext(path, common.MapToJsonStr(fields))
+				info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "mapped-seedance"}, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+				a := &TaskAdaptor{}
+				require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+				reader, err := a.BuildRequestBody(c, info)
+				require.NoError(t, err)
+				raw, err := io.ReadAll(reader)
+				require.NoError(t, err)
+				var sent map[string]any
+				require.NoError(t, common.Unmarshal(raw, &sent))
+				snapshot, exists := c.Get("seedance20_normalized_request")
+				require.True(t, exists, name)
+				req, err := relaycommon.GetTaskRequest(c)
+				require.NoError(t, err)
+				for _, preserved := range []map[string]any{sent, snapshot.(map[string]any), req.Metadata} {
+					if flag == nil {
+						require.NotContains(t, preserved, "return_last_frame")
+					} else {
+						require.Equal(t, flag, preserved["return_last_frame"], name)
+					}
+				}
+			}
+			c := generationContext(path, common.MapToJsonStr(map[string]any{"model": name, "prompt": "scene", "return_last_frame": "true"}))
+			require.NotNil(t, (&TaskAdaptor{}).ValidateRequestAndSetAction(c, &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}))
+		}
+	}
+}
+
 func TestGenerationAliasesPreserveSeedanceParametersAndPricing(t *testing.T) {
 	for _, model := range []string{ModelSeedance20, ModelSeedance25} {
 		for _, res := range []string{"480p", "720p", "1080p"} {

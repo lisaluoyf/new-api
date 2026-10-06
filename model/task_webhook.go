@@ -153,7 +153,7 @@ func (t *Task) enqueueWebhook(tx *gorm.DB) error {
 		if kind == "video" {
 			outputs = append(outputs, map[string]any{"output_id": "0", "type": "video", "url": webhookOrigin() + "/v1/videos/" + t.TaskID + "/content", "authentication": "bearer", "expires_at": nil})
 			if requested, _ := t.PrivateData.SeedanceRequest["return_last_frame"].(bool); requested {
-				for _, path := range []string{"data.result.videos.0.last_frame_url", "result.videos.0.last_frame_url", "data.content.last_frame_url", "content.last_frame_url", "data.last_frame_url", "last_frame_url"} {
+				for _, path := range []string{"data.result.videos.0.last_frame_url", "result.videos.0.last_frame_url", "data.result.last_frame_url", "data.content.last_frame_url", "content.last_frame_url", "data.last_frame_url", "last_frame_url"} {
 					if gjson.GetBytes(t.Data, path).String() != "" {
 						outputs = append(outputs, map[string]any{"output_id": "last_frame", "type": "image", "url": webhookOrigin() + "/v1/videos/" + t.TaskID + "/last-frame", "authentication": "bearer", "expires_at": nil})
 						break

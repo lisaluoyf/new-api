@@ -59,6 +59,22 @@ func TestTaskWebhookRollback(t *testing.T) {
 	require.NoError(t, db.First(&fresh, task.ID).Error)
 	require.Equal(t, TaskStatus(TaskStatusSubmitted), fresh.Status)
 }
+
+func TestTaskWebhookSeedance20LastFrame(t *testing.T) {
+	for _, requested := range []bool{true, false} {
+		db := webhookTestDB(t)
+		task := Task{TaskID: GenerateTaskID(), UserId: 1, Status: TaskStatusSuccess, Properties: Properties{OriginModelName: "seedance-2.0"}, PrivateData: TaskPrivateData{SeedanceRequest: map[string]any{"return_last_frame": requested}, Webhook: &TaskWebhookConfig{EndpointID: "endpoint"}}, Data: []byte(`{"data":{"result":{"last_frame_url":"https://private.example/frame.jpg"}}}`)}
+		require.NoError(t, task.Insert())
+		var event TaskWebhookEvent
+		require.NoError(t, db.First(&event).Error)
+		if requested {
+			require.Contains(t, event.Payload, "/v1/videos/"+task.TaskID+"/last-frame")
+		} else {
+			require.NotContains(t, event.Payload, "/last-frame")
+		}
+		require.NotContains(t, event.Payload, "private.example")
+	}
+}
 func TestTaskWebhookCompletedInsert(t *testing.T) {
 	db := webhookTestDB(t)
 	task := Task{TaskID: GenerateTaskID(), Platform: constant.TaskPlatformOpenAIImage, Status: TaskStatusSuccess, PrivateData: TaskPrivateData{ImageResultURLs: []string{"https://provider/1", "https://provider/2"}, Webhook: &TaskWebhookConfig{EndpointID: "ep"}}}

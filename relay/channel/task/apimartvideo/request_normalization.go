@@ -225,13 +225,24 @@ func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {
 				}
 			}
 		}
-		c.Set("seedance20_normalized_request", fields)
+	}
+	if isSeedance20(model) {
+		if value, exists := fields["return_last_frame"]; exists {
+			if _, ok := value.(bool); !ok {
+				return nil, fmt.Errorf("return_last_frame must be a boolean")
+			}
+		}
 	}
 	fields["resolution"], fields["aspect_ratio"] = resolution, aspect
 	delete(fields, "ratio")
 	delete(fields, "metadata")
 	if err := validateSeedanceVariantFields(fields); err != nil {
 		return nil, err
+	}
+	if isSeedance20(model) {
+		// Persist the request flag for standard 2.0 as well as Mini/Fast.
+		// Result and last-frame download handlers use this snapshot.
+		c.Set("seedance20_normalized_request", fields)
 	}
 	c.Set("video_requested_spec", requested)
 	c.Set("apimart_normalized_request", fields)
