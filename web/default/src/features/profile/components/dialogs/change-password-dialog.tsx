@@ -91,10 +91,19 @@ export function ChangePasswordDialog({
 
     try {
       setLoading(true)
-      const response = await updateUserProfile({
+      const request = {
         original_password: formData.originalPassword,
         password: formData.newPassword,
-      })
+      }
+      const websiteAccount = window.location.pathname.startsWith('/_panel/')
+      const response: { success?: boolean; code?: string; message?: string } = websiteAccount
+        ? await fetch('/api/auth/password-change', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(request),
+          }).then(async (r) => (await r.json()) as { success?: boolean; code?: string; message?: string })
+        : await updateUserProfile(request)
 
       if (response.success) {
         toast.success(t('Password changed successfully'))
@@ -104,8 +113,13 @@ export function ChangePasswordDialog({
           newPassword: '',
           confirmPassword: '',
         })
+        if (websiteAccount) window.top?.location.assign('/login')
       } else {
-        toast.error(response.message || t('Failed to change password'))
+        const message = response.code === 'CURRENT_PASSWORD_INVALID'
+          ? t('Current password is incorrect')
+          : response.message || t('Failed to change password')
+        toast.error(message)
+        if (websiteAccount && response.code === 'AUTH_REQUIRED') window.top?.location.assign('/login')
       }
     } catch (_error) {
       toast.error(t('Failed to change password'))
