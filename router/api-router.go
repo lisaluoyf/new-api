@@ -314,6 +314,7 @@ func SetApiRouter(router *gin.Engine) {
 		reconciliationRoute := apiRouter.Group("/payment-reconciliation")
 		reconciliationRoute.Use(middleware.RootAuth())
 		reconciliationRoute.GET("/", controller.GetPaymentReconciliation)
+		reconciliationRoute.POST("/items/:id/confirm", middleware.CriticalRateLimit(), controller.ConfirmPaymentReconciliationItem)
 		reconciliationRoute.POST("/run", middleware.CriticalRateLimit(), controller.QueuePaymentReconciliation)
 		dailyStatsRoute := apiRouter.Group("/daily-stats")
 		dailyStatsRoute.Use(middleware.RootAuth())

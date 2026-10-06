@@ -5151,7 +5151,11 @@
     "reconciliation.problem.official_paid_absent_from_daily_statement": "当前查单已支付，但未出现在所选日期的官方账单中；需要核查跨日支付或账单遗漏",
     "Reconciled refunds": "退款对账成功",
     "Verified prior-date payments credited today": "历史订单当日入账已核验",
-    "Reconciliation Platega creation date notice": "Platega 账单按订单创建日期归属。历史订单在所选日期入账时，会核对其创建日期的原账单，并单独显示，不计入所选日期的创建订单金额合计。"
+    "Reconciliation Platega creation date notice": "Platega 账单按订单创建日期归属。历史订单在所选日期入账时，会核对其创建日期的原账单，并单独显示，不计入所选日期的创建订单金额合计。",
+    "Confirm matched": "确认相符",
+    "Order manually confirmed as matched": "已人工确认该笔对账成功",
+    "Manual reconciliation confirmation notice": "我已人工核对该订单，确认对账成功。确认后将记录核对人和时间，该笔计入对账成功；订单金额和钱包余额保持不变。",
+    "Manually matched orders": "人工确认相符"
   },
   "Coding Plan Users": "Coding Plan 用户",
   "Coding Plan Balance": "Coding Plan 余额",

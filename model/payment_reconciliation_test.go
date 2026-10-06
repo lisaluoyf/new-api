@@ -174,3 +174,105 @@ func TestLocalOnlyReconciliationPreservesOrderFailures(t *testing.T) {
 	require.False(t, PaymentReconciliationLocalOnly("paypal"))
 	require.False(t, PaymentReconciliationLocalOnly("epay"))
 }
+
+func TestManualReconciliationConfirmationPreservesEvidenceAndReruns(t *testing.T) {
+	setupPaymentReconciliationTest(t)
+	require.NoError(t, QueuePaymentReconciliation("2026-10-01", "epay", 1, true))
+	job, err := ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	rows := []PaymentReconciliationItem{
+		{TradeNo: "manual-order", Purpose: "wallet", LocalPaid: true, LocalAmount: "10", Currency: "CNY", OfficialPaid: true, OfficialAmount: "9", OfficialCurrency: "CNY", Result: "difference", Problem: "amount_mismatch"},
+		{TradeNo: "unverified-order", Purpose: "wallet", Result: "unverified", Problem: "official_query_failed"},
+	}
+	require.NoError(t, FinishPaymentReconciliation(job, rows, false))
+	var item PaymentReconciliationItem
+	require.NoError(t, DB.Where("run_id = ? AND trade_no = ?", job.RunID, "manual-order").First(&item).Error)
+	require.NoError(t, ConfirmPaymentReconciliationItem(item.ID, 7))
+	require.NoError(t, ConfirmPaymentReconciliationItem(item.ID, 8))
+	require.NoError(t, DB.First(&item, item.ID).Error)
+	require.Equal(t, 7, item.ManualConfirmedBy)
+	require.Positive(t, item.ManualConfirmedAt)
+	require.Equal(t, "difference", item.Result)
+	require.Equal(t, "amount_mismatch", item.Problem)
+	require.Equal(t, "9", item.OfficialAmount)
+	var run PaymentReconciliationRun
+	require.NoError(t, DB.First(&run, job.RunID).Error)
+	require.Zero(t, run.DifferenceCount)
+	require.Equal(t, 1, run.UnverifiedCount)
+	require.Equal(t, "incomplete", run.Status)
+	var other PaymentReconciliationItem
+	require.NoError(t, DB.Where("run_id = ? AND trade_no = ?", job.RunID, "unverified-order").First(&other).Error)
+	require.NoError(t, ConfirmPaymentReconciliationItem(other.ID, 7))
+	require.NoError(t, DB.First(&run, job.RunID).Error)
+	require.Equal(t, "matched", run.Status)
+	require.Zero(t, run.UnverifiedCount)
+	var finishedJob PaymentReconciliationJob
+	require.NoError(t, DB.First(&finishedJob, job.ID).Error)
+	require.Equal(t, "done", finishedJob.Status)
+
+	require.NoError(t, QueuePaymentReconciliation(job.Day, job.Provider, 1, true))
+	next, err := ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	require.ErrorIs(t, ConfirmPaymentReconciliationItem(item.ID, 7), ErrReconciliationReviewConflict)
+	require.NoError(t, FinishPaymentReconciliation(next, rows, false))
+	run = PaymentReconciliationRun{}
+	require.NoError(t, DB.First(&run, next.RunID).Error)
+	require.Equal(t, "matched", run.Status)
+	var copied PaymentReconciliationItem
+	require.NoError(t, DB.Where("run_id = ? AND trade_no = ?", next.RunID, "manual-order").First(&copied).Error)
+	require.Equal(t, item.ManualConfirmedAt, copied.ManualConfirmedAt)
+	require.Equal(t, 7, copied.ManualConfirmedBy)
+
+	require.NoError(t, QueuePaymentReconciliation(job.Day, job.Provider, 1, true))
+	changed, err := ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	rows[0].OfficialAmount = "8"
+	require.NoError(t, FinishPaymentReconciliation(changed, rows, false))
+	run = PaymentReconciliationRun{}
+	require.NoError(t, DB.First(&run, changed.RunID).Error)
+	require.Equal(t, "difference", run.Status)
+	require.Equal(t, 1, run.DifferenceCount)
+}
+
+func TestManualReconciliationRejectsCoverageAndRunningJobs(t *testing.T) {
+	setupPaymentReconciliationTest(t)
+	require.ErrorIs(t, ConfirmPaymentReconciliationItem(0, 1), ErrReconciliationReviewInvalid)
+	require.ErrorIs(t, ConfirmPaymentReconciliationItem(1, 0), ErrReconciliationReviewInvalid)
+	require.NoError(t, QueuePaymentReconciliation("2026-10-01", "epay", 1, true))
+	job, err := ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	pending := PaymentReconciliationItem{RunID: job.RunID, TradeNo: "order", Result: "difference"}
+	require.NoError(t, DB.Create(&pending).Error)
+	require.ErrorIs(t, ConfirmPaymentReconciliationItem(pending.ID, 1), ErrReconciliationReviewConflict)
+	require.NoError(t, DB.Delete(&pending).Error)
+	require.NoError(t, FinishPaymentReconciliation(job, []PaymentReconciliationItem{{Purpose: "coverage", Result: "unverified", Problem: "official_statement_unavailable"}, {TradeNo: "matched", Result: "matched"}}, false))
+	var items []PaymentReconciliationItem
+	require.NoError(t, DB.Where("run_id = ?", job.RunID).Find(&items).Error)
+	for _, item := range items {
+		require.ErrorIs(t, ConfirmPaymentReconciliationItem(item.ID, 1), ErrReconciliationReviewInvalid)
+	}
+}
+
+func TestManualReconciliationConfirmationRollsBackOnSummaryFailure(t *testing.T) {
+	setupPaymentReconciliationTest(t)
+	require.NoError(t, QueuePaymentReconciliation("2026-10-01", "epay", 1, true))
+	job, err := ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	require.NoError(t, FinishPaymentReconciliation(job, []PaymentReconciliationItem{{TradeNo: "atomic-order", Purpose: "wallet", Result: "difference"}}, false))
+	var item PaymentReconciliationItem
+	require.NoError(t, DB.Where("run_id = ?", job.RunID).First(&item).Error)
+	require.NoError(t, DB.Callback().Update().Before("gorm:update").Register("fail-manual-summary", func(tx *gorm.DB) {
+		if tx.Statement.Table == "payment_reconciliation_runs" {
+			tx.AddError(gorm.ErrInvalidData)
+		}
+	}))
+	t.Cleanup(func() { _ = DB.Callback().Update().Remove("fail-manual-summary") })
+	require.Error(t, ConfirmPaymentReconciliationItem(item.ID, 7))
+	require.NoError(t, DB.First(&item, item.ID).Error)
+	require.Zero(t, item.ManualConfirmedAt)
+	require.Zero(t, item.ManualConfirmedBy)
+	var run PaymentReconciliationRun
+	require.NoError(t, DB.First(&run, job.RunID).Error)
+	require.Equal(t, 1, run.DifferenceCount)
+	require.Equal(t, "difference", run.Status)
+}

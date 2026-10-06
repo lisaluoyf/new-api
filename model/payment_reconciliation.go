@@ -42,6 +42,7 @@ type PaymentReconciliationJob struct {
 	NextAttempt int64  `json:"next_attempt"`
 }
 type PaymentReconciliationRun struct {
+	ManualMatchedCount         int                          `gorm:"-" json:"manual_matched_count"`
 	RefundMatchedCount         int                          `gorm:"-" json:"refund_matched_count"`
 	PriorStatementMatchedCount int                          `gorm:"-" json:"prior_statement_matched_count"`
 	ID                         int                          `json:"id"`
@@ -68,24 +69,26 @@ type PaymentReconciliationTotal struct {
 	Difference     string `json:"difference"`
 }
 type PaymentReconciliationItem struct {
-	Verification     string `gorm:"type:varchar(64)" json:"verification"`
-	ID               int    `json:"id"`
-	RunID            int    `gorm:"index" json:"run_id"`
-	TradeNo          string `gorm:"type:varchar(255);index" json:"trade_no"`
-	UserID           int    `json:"user_id"`
-	Purpose          string `gorm:"type:varchar(32)" json:"purpose"`
-	LocalStatus      string `gorm:"type:varchar(32)" json:"local_status"`
-	LocalPaid        bool   `json:"local_paid"`
-	LocalAmount      string `gorm:"type:varchar(64)" json:"local_amount"`
-	Currency         string `gorm:"type:varchar(16)" json:"currency"`
-	OfficialID       string `gorm:"type:varchar(255)" json:"official_id"`
-	OfficialStatus   string `gorm:"type:varchar(64)" json:"official_status"`
-	OfficialPaid     bool   `json:"official_paid"`
-	OfficialAmount   string `gorm:"type:varchar(64)" json:"official_amount"`
-	OfficialCurrency string `gorm:"type:varchar(16)" json:"official_currency"`
-	Result           string `gorm:"type:varchar(24);index" json:"result"`
-	Problem          string `gorm:"type:varchar(96)" json:"problem"`
-	CheckedAt        int64  `json:"checked_at"`
+	ManualConfirmedBy int    `gorm:"not null;default:0" json:"manual_confirmed_by"`
+	ManualConfirmedAt int64  `gorm:"not null;default:0" json:"manual_confirmed_at"`
+	Verification      string `gorm:"type:varchar(64)" json:"verification"`
+	ID                int    `json:"id"`
+	RunID             int    `gorm:"index" json:"run_id"`
+	TradeNo           string `gorm:"type:varchar(255);index" json:"trade_no"`
+	UserID            int    `json:"user_id"`
+	Purpose           string `gorm:"type:varchar(32)" json:"purpose"`
+	LocalStatus       string `gorm:"type:varchar(32)" json:"local_status"`
+	LocalPaid         bool   `json:"local_paid"`
+	LocalAmount       string `gorm:"type:varchar(64)" json:"local_amount"`
+	Currency          string `gorm:"type:varchar(16)" json:"currency"`
+	OfficialID        string `gorm:"type:varchar(255)" json:"official_id"`
+	OfficialStatus    string `gorm:"type:varchar(64)" json:"official_status"`
+	OfficialPaid      bool   `json:"official_paid"`
+	OfficialAmount    string `gorm:"type:varchar(64)" json:"official_amount"`
+	OfficialCurrency  string `gorm:"type:varchar(16)" json:"official_currency"`
+	Result            string `gorm:"type:varchar(24);index" json:"result"`
+	Problem           string `gorm:"type:varchar(96)" json:"problem"`
+	CheckedAt         int64  `json:"checked_at"`
 }
 
 // Only currently enabled channels participate in reconciliation and its summaries.
@@ -197,6 +200,27 @@ func FinishPaymentReconciliation(j *PaymentReconciliationJob, items []PaymentRec
 		if lock.RunID != j.RunID || lock.Status != "running" {
 			return errors.New("stale reconciliation result")
 		}
+		// Carry a review forward only if every piece of order evidence is unchanged.
+		var reviewed []PaymentReconciliationItem
+		if err := tx.Model(&PaymentReconciliationItem{}).Where("run_id IN (?) AND manual_confirmed_at > 0", tx.Model(&PaymentReconciliationRun{}).Select("id").Where("day = ? AND provider = ?", j.Day, j.Provider)).Order("id DESC").Find(&reviewed).Error; err != nil {
+			return err
+		}
+		for i := range items {
+			items[i].ManualConfirmedBy, items[i].ManualConfirmedAt = 0, 0
+			for _, previous := range reviewed {
+				if sameReconciliationEvidence(items[i], previous) {
+					items[i].ManualConfirmedBy = previous.ManualConfirmedBy
+					items[i].ManualConfirmedAt = previous.ManualConfirmedAt
+					break
+				}
+			}
+		}
+		// Recompute effective counts after carrying forward manual reviews.
+		summary := SummarizePaymentReconciliation(items)
+		r.Status, r.DifferenceCount, r.UnverifiedCount = summary.Status, summary.DifferenceCount, summary.UnverifiedCount
+		if runError {
+			r.Status = "incomplete"
+		}
 		for i := range items {
 			items[i].ID = 0
 			items[i].RunID = j.RunID
@@ -241,8 +265,11 @@ func SummarizePaymentReconciliation(items []PaymentReconciliationItem) PaymentRe
 				official[i.OfficialCurrency] = official[i.OfficialCurrency].Add(a)
 			}
 		}
-		if i.Result == "matched" && i.Purpose != "coverage" {
+		if (i.Result == "matched" || i.ManualConfirmedAt > 0) && i.Purpose != "coverage" {
 			r.MatchedCount++
+			if i.ManualConfirmedAt > 0 {
+				r.ManualMatchedCount++
+			}
 			if i.Verification == "refund_matched" {
 				r.RefundMatchedCount++
 			}
@@ -250,10 +277,10 @@ func SummarizePaymentReconciliation(items []PaymentReconciliationItem) PaymentRe
 				r.PriorStatementMatchedCount++
 			}
 		}
-		if i.Result == "difference" {
+		if i.Result == "difference" && i.ManualConfirmedAt == 0 {
 			r.DifferenceCount++
 		}
-		if i.Result == "unverified" {
+		if i.Result == "unverified" && i.ManualConfirmedAt == 0 {
 			r.UnverifiedCount++
 		}
 	}
@@ -274,4 +301,66 @@ func SummarizePaymentReconciliation(items []PaymentReconciliationItem) PaymentRe
 		r.Status = "incomplete"
 	}
 	return r
+}
+
+var ErrReconciliationReviewConflict = errors.New("reconciliation changed or is running; refresh before confirming")
+var ErrReconciliationReviewInvalid = errors.New("only problem orders can be manually confirmed")
+
+func sameReconciliationEvidence(a, b PaymentReconciliationItem) bool {
+	if a.Purpose == "coverage" || (a.TradeNo == "" && a.OfficialID == "") {
+		return false
+	}
+	a.ID, b.ID, a.RunID, b.RunID = 0, 0, 0, 0
+	a.CheckedAt, b.CheckedAt = 0, 0
+	a.ManualConfirmedBy, b.ManualConfirmedBy = 0, 0
+	a.ManualConfirmedAt, b.ManualConfirmedAt = 0, 0
+	return a == b
+}
+
+// Preserve automatic evidence; a manual review changes only the effective result.
+// Lock the job first, as the worker does, so a review cannot race a replacement run.
+func ConfirmPaymentReconciliationItem(itemID, actorID int) error {
+	if itemID <= 0 || actorID <= 0 {
+		return ErrReconciliationReviewInvalid
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var item PaymentReconciliationItem
+		if err := tx.First(&item, itemID).Error; err != nil {
+			return err
+		}
+		var job PaymentReconciliationJob
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("run_id = ?", item.RunID).First(&job).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrReconciliationReviewConflict
+			}
+			return err
+		}
+		if job.Status == "running" {
+			return ErrReconciliationReviewConflict
+		}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&item, itemID).Error; err != nil {
+			return err
+		}
+		if item.ManualConfirmedAt > 0 {
+			return nil
+		}
+		if !PaymentReconciliationProviderEnabled(job.Provider) || item.Purpose == "coverage" || (item.TradeNo == "" && item.OfficialID == "") || (item.Result != "difference" && item.Result != "unverified") {
+			return ErrReconciliationReviewInvalid
+		}
+		if err := tx.Model(&item).Updates(map[string]any{"manual_confirmed_by": actorID, "manual_confirmed_at": time.Now().Unix()}).Error; err != nil {
+			return err
+		}
+		var items []PaymentReconciliationItem
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("run_id = ?", item.RunID).Find(&items).Error; err != nil {
+			return err
+		}
+		summary := SummarizePaymentReconciliation(items)
+		if err := tx.Model(&PaymentReconciliationRun{}).Where("id = ?", item.RunID).Updates(map[string]any{"status": summary.Status, "difference_count": summary.DifferenceCount, "unverified_count": summary.UnverifiedCount}).Error; err != nil {
+			return err
+		}
+		if job.Status == "queued" && summary.UnverifiedCount == 0 {
+			return tx.Model(&job).Updates(map[string]any{"status": "done", "next_attempt": 0, "lease_until": 0}).Error
+		}
+		return nil
+	})
 }

@@ -525,3 +525,49 @@ func TestPayPalDailySubscriptionRefundUsesEntitlementEvidence(t *testing.T) {
 		})
 	}
 }
+
+func TestManualConfirmationAPIUpdatesIssuesAndMatchedCounts(t *testing.T) {
+	db := setupCryptoPersistenceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.PaymentReconciliationRun{}, &model.PaymentReconciliationJob{}, &model.PaymentReconciliationItem{}))
+	run := model.PaymentReconciliationRun{Day: "2026-10-01", Provider: "epay", CheckedCount: 1, DifferenceCount: 1, Status: "difference"}
+	require.NoError(t, db.Create(&run).Error)
+	require.NoError(t, db.Create(&model.PaymentReconciliationJob{Day: run.Day, Provider: run.Provider, RunID: run.ID, Status: "done"}).Error)
+	item := model.PaymentReconciliationItem{RunID: run.ID, TradeNo: "manual-test", Purpose: "wallet", Result: "difference", Problem: "amount_mismatch"}
+	require.NoError(t, db.Create(&item).Error)
+	router := gin.New()
+	router.POST("/items/:id/confirm", func(c *gin.Context) { c.Set("id", 7) }, ConfirmPaymentReconciliationItem)
+	for _, id := range []string{fmt.Sprint(item.ID), fmt.Sprint(item.ID), "bad", "99999"} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/items/"+id+"/confirm", nil))
+		expected := http.StatusOK
+		if id == "bad" {
+			expected = http.StatusBadRequest
+		}
+		if id == "99999" {
+			expected = http.StatusNotFound
+		}
+		require.Equal(t, expected, response.Code)
+	}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest("GET", "/?start_date=2026-10-01&end_date=2026-10-01&provider=epay", nil)
+	GetPaymentReconciliation(ctx)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Success    bool
+		Runs       []model.PaymentReconciliationRun
+		Items      []model.PaymentReconciliationItem
+		ItemsTotal int `json:"items_total"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Empty(t, response.Items)
+	require.Zero(t, response.ItemsTotal)
+	require.Len(t, response.Runs, 1)
+	require.Equal(t, 1, response.Runs[0].MatchedCount)
+	require.Equal(t, 1, response.Runs[0].ManualMatchedCount)
+	require.Equal(t, "matched", response.Runs[0].Status)
+	require.NoError(t, db.First(&item, item.ID).Error)
+	require.Equal(t, "difference", item.Result)
+	require.Equal(t, 7, item.ManualConfirmedBy)
+}

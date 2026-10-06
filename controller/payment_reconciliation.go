@@ -109,12 +109,12 @@ func GetPaymentReconciliation(c *gin.Context) {
 			common.ApiErrorMsg(c, "Could not load reconciliation")
 			return
 		}
-		if model.DB.Model(&model.PaymentReconciliationItem{}).Where("run_id IN ? AND result <> ?", ids, "matched").Count(&itemsTotal).Error != nil {
+		if model.DB.Model(&model.PaymentReconciliationItem{}).Where("run_id IN ? AND result <> ? AND manual_confirmed_at = 0", ids, "matched").Count(&itemsTotal).Error != nil {
 			common.ApiErrorMsg(c, "Could not count differences")
 			return
 		}
 		// Paginated issues; summaries always cover every checked order.
-		if model.DB.Where("run_id IN ? AND result <> ?", ids, "matched").Order("id ASC").Offset((page-1)*100).Limit(100).Find(&items).Error != nil {
+		if model.DB.Where("run_id IN ? AND result <> ? AND manual_confirmed_at = 0", ids, "matched").Order("id ASC").Offset((page-1)*100).Limit(100).Find(&items).Error != nil {
 			common.ApiErrorMsg(c, "Could not load differences")
 			return
 		}
@@ -124,11 +124,12 @@ func GetPaymentReconciliation(c *gin.Context) {
 	if len(ids) > 0 {
 		var counts []struct {
 			RunID                      int
+			ManualMatchedCount         int
 			MatchedCount               int
 			RefundMatchedCount         int
 			PriorStatementMatchedCount int
 		}
-		if model.DB.Model(&model.PaymentReconciliationItem{}).Select("run_id, COUNT(*) AS matched_count, SUM(CASE WHEN verification = 'refund_matched' THEN 1 ELSE 0 END) AS refund_matched_count, SUM(CASE WHEN verification = 'prior_creation_statement' THEN 1 ELSE 0 END) AS prior_statement_matched_count").Where("run_id IN ? AND result = ? AND purpose <> ?", ids, "matched", "coverage").Group("run_id").Scan(&counts).Error != nil {
+		if model.DB.Model(&model.PaymentReconciliationItem{}).Select("run_id, COUNT(*) AS matched_count, SUM(CASE WHEN manual_confirmed_at > 0 THEN 1 ELSE 0 END) AS manual_matched_count, SUM(CASE WHEN verification = 'refund_matched' THEN 1 ELSE 0 END) AS refund_matched_count, SUM(CASE WHEN verification = 'prior_creation_statement' THEN 1 ELSE 0 END) AS prior_statement_matched_count").Where("run_id IN ? AND (result = ? OR manual_confirmed_at > 0) AND purpose <> ?", ids, "matched", "coverage").Group("run_id").Scan(&counts).Error != nil {
 			common.ApiErrorMsg(c, "Could not count reconciled orders")
 			return
 		}
@@ -136,6 +137,7 @@ func GetPaymentReconciliation(c *gin.Context) {
 			matchedCounts[count.RunID] = count.MatchedCount
 			for index := range runs {
 				if runs[index].ID == count.RunID {
+					runs[index].ManualMatchedCount = count.ManualMatchedCount
 					runs[index].RefundMatchedCount = count.RefundMatchedCount
 					runs[index].PriorStatementMatchedCount = count.PriorStatementMatchedCount
 				}
@@ -996,4 +998,28 @@ func verifyPayPalReconciliationRefund(ctx context.Context, r reconciliationCandi
 		p.refundRecoveryVerified = false
 	}
 	return p
+}
+
+func ConfirmPaymentReconciliationItem(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid item id"})
+		return
+	}
+	err = model.ConfirmPaymentReconciliationItem(id, c.GetInt("id"))
+	if err != nil {
+		status, message := http.StatusInternalServerError, "Could not confirm reconciliation"
+		if errors.Is(err, model.ErrReconciliationReviewConflict) {
+			status, message = http.StatusConflict, err.Error()
+		}
+		if errors.Is(err, model.ErrReconciliationReviewInvalid) {
+			status, message = http.StatusBadRequest, err.Error()
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			status, message = http.StatusNotFound, "reconciliation item not found"
+		}
+		c.JSON(status, gin.H{"success": false, "message": message})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }

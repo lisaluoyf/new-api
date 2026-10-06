@@ -4792,7 +4792,11 @@
     "reconciliation.problem.official_paid_absent_from_daily_statement": "当前查单已支付，但未出现在所选日期的官方账单中；需要核查跨日支付或账单遗漏",
     "Reconciled refunds": "退款對帳成功",
     "Verified prior-date payments credited today": "歷史訂單當日入帳已核驗",
-    "Reconciliation Platega creation date notice": "Platega 帳單按訂單建立日期歸屬。歷史訂單在所選日期入帳時，會核對其建立日期的原帳單，並單獨顯示，不計入所選日期的建立訂單金額合計。"
+    "Reconciliation Platega creation date notice": "Platega 帳單按訂單建立日期歸屬。歷史訂單在所選日期入帳時，會核對其建立日期的原帳單，並單獨顯示，不計入所選日期的建立訂單金額合計。",
+    "Confirm matched": "確認相符",
+    "Order manually confirmed as matched": "已人工確認該筆對帳成功",
+    "Manual reconciliation confirmation notice": "我已人工核對該訂單，確認對帳成功。確認後將記錄核對人和時間，該筆計入對帳成功；訂單金額和錢包餘額保持不變。",
+    "Manually matched orders": "人工確認相符"
   },
   "User Balance": "用戶餘額",
   "No active subscription": "目前沒有可用訂閱",

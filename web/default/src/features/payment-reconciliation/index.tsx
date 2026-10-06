@@ -14,14 +14,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { CopyButton } from '@/components/copy-button'
 import { SectionPageLayout } from '@/components/layout'
 import {
+  confirmReconciliationItem,
   getReconciliation,
   providers,
   queueReconciliation,
   yesterdayBeijing,
   type ReconciliationFilters,
+  type ReconciliationItem,
 } from './api'
 
 export function PaymentReconciliationPage() {
@@ -34,6 +37,7 @@ export function PaymentReconciliationPage() {
   const [filters, setFilters] = useState(draft)
   const [issuesOnly, setIssuesOnly] = useState(false)
   const [page, setPage] = useState(1)
+  const [reviewItem, setReviewItem] = useState<ReconciliationItem | null>(null)
   const query = useQuery({
     queryKey: ['payment-reconciliation', filters, page],
     queryFn: () => getReconciliation(filters, page),
@@ -44,6 +48,16 @@ export function PaymentReconciliationPage() {
     mutationFn: () => queueReconciliation(filters),
     onSuccess: () => {
       toast.success(t('Reconciliation queued'))
+      void query.refetch()
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+  const confirmMutation = useMutation({
+    mutationFn: confirmReconciliationItem,
+    onSuccess: () => {
+      toast.success(t('Order manually confirmed as matched'))
+      setReviewItem(null)
+      setPage(1)
       void query.refetch()
     },
     onError: (error: Error) => toast.error(error.message),
@@ -290,6 +304,13 @@ export function PaymentReconciliationPage() {
                       <br />
                       {t('Payment Differences')}: {run.difference_count} ·{' '}
                       {t('Awaiting Verification')}: {run.unverified_count}
+                      {run.manual_matched_count > 0 && (
+                        <>
+                          <br />
+                          {t('Manually matched orders')}:{' '}
+                          {run.manual_matched_count}
+                        </>
+                      )}
                       {run.refund_matched_count > 0 && (
                         <>
                           <br />
@@ -330,6 +351,7 @@ export function PaymentReconciliationPage() {
                   'Official Status',
                   'Payment Amounts',
                   'Specific Issue',
+                  'Actions',
                 ].map((key) => (
                   <TableHead key={key}>{t(key)}</TableHead>
                 ))}
@@ -388,12 +410,32 @@ export function PaymentReconciliationPage() {
                   <TableCell className='min-w-60 text-sm whitespace-normal'>
                     {t(`reconciliation.problem.${item.problem}`)}
                   </TableCell>
+                  <TableCell>
+                    {item.purpose !== 'coverage' &&
+                      (item.trade_no || item.official_id) && (
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          disabled={
+                            confirmMutation.isPending ||
+                            jobs.some(
+                              (job) =>
+                                job.run_id === item.run_id &&
+                                job.status === 'running'
+                            )
+                          }
+                          onClick={() => setReviewItem(item)}
+                        >
+                          {t('Confirm matched')}
+                        </Button>
+                      )}
+                  </TableCell>
                 </TableRow>
               ))}
               {items.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className='text-muted-foreground py-8 text-center'
                   >
                     {query.isLoading
@@ -424,6 +466,23 @@ export function PaymentReconciliationPage() {
             {t('Next')}
           </Button>
         </div>
+        <ConfirmDialog
+          open={reviewItem !== null}
+          onOpenChange={(open) => {
+            if (!open && !confirmMutation.isPending) setReviewItem(null)
+          }}
+          title={t('Confirm matched')}
+          desc={t('Manual reconciliation confirmation notice')}
+          confirmText={t('Confirm matched')}
+          isLoading={confirmMutation.isPending}
+          handleConfirm={() => {
+            if (reviewItem) confirmMutation.mutate(reviewItem.id)
+          }}
+        >
+          <p className='text-sm break-all'>
+            {reviewItem?.trade_no || reviewItem?.official_id}
+          </p>
+        </ConfirmDialog>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

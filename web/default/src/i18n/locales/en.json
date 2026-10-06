@@ -5113,7 +5113,11 @@
     "reconciliation.problem.official_paid_absent_from_daily_statement": "Current API confirms payment but it is absent from the selected day statement; review payment timing or missing statement records",
     "Reconciled refunds": "Reconciled refunds",
     "Verified prior-date payments credited today": "Verified prior-date payments credited today",
-    "Reconciliation Platega creation date notice": "Platega statements use the order creation date. Payments created earlier and credited on the selected day are checked against their original statement and listed separately from the selected day’s totals."
+    "Reconciliation Platega creation date notice": "Platega statements use the order creation date. Payments created earlier and credited on the selected day are checked against their original statement and listed separately from the selected day’s totals.",
+    "Confirm matched": "Confirm matched",
+    "Order manually confirmed as matched": "Order manually confirmed as matched",
+    "Manual reconciliation confirmation notice": "I have manually checked this order and confirm reconciliation succeeded. This records my review and counts the order as matched; payment amounts and wallet balances are unchanged.",
+    "Manually matched orders": "Manually matched orders"
   },
   "Coding Plan Users": "Coding Plan Users",
   "Coding Plan Balance": "Coding Plan Balance",

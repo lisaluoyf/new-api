@@ -19,6 +19,7 @@ export type ReconciliationRun = {
   started_at: number
   finished_at: number
   coverage: string
+  manual_matched_count: number
   matched_count: number
   refund_matched_count: number
   prior_statement_matched_count: number
@@ -94,6 +95,14 @@ export async function queueReconciliation(
   filters: ReconciliationFilters
 ): Promise<void> {
   const response = await api.post('/api/payment-reconciliation/run', filters)
+  if (!response.data.success)
+    throw new Error(response.data.message ?? 'Failed to load')
+}
+
+export async function confirmReconciliationItem(id: number): Promise<void> {
+  const response = await api.post(
+    `/api/payment-reconciliation/items/${id}/confirm`
+  )
   if (!response.data.success)
     throw new Error(response.data.message ?? 'Failed to load')
 }
