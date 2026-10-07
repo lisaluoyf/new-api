@@ -190,6 +190,10 @@ type RelayInfo struct {
 	// HasActiveGPTTrial caches the request-time subscription existence check so
 	// billing selection does not need to re-query or guess.
 	HasActiveGPTTrial bool
+	// TrialModelAllowed is set only after the requested model passes the
+	// current trial plan allowlist. Billing must not infer this from the
+	// existence of an active trial alone.
+	TrialModelAllowed bool
 	// HasActiveGPTReferralReward caches the permanent referral-credit lookup.
 	HasActiveGPTReferralReward bool
 	HasActiveGPTSubscription   bool

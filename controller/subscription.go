@@ -233,6 +233,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.PlanType = model.NormalizeSubscriptionPlanType(req.Plan.PlanType)
+	req.Plan.ModelAllowlist = model.NormalizeModelAllowlist(req.Plan.ModelAllowlist)
 	if err := normalizeCodingPlanForAdmin(&req.Plan); err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
@@ -309,6 +310,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.PlanType = model.NormalizeSubscriptionPlanType(req.Plan.PlanType)
+	req.Plan.ModelAllowlist = model.NormalizeModelAllowlist(req.Plan.ModelAllowlist)
 	if err := normalizeCodingPlanForAdmin(&req.Plan); err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
@@ -349,7 +351,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"tier_level":                 req.Plan.TierLevel,
 			"five_hour_amount":           req.Plan.FiveHourAmount,
 			"seven_day_amount":           req.Plan.SevenDayAmount,
-			"model_allowlist":            strings.TrimSpace(req.Plan.ModelAllowlist),
+			"model_allowlist":            req.Plan.ModelAllowlist,
 			"recommended":                req.Plan.Recommended,
 			"card_description":           req.Plan.CardDescription,
 			"coding_official_amount_usd": req.Plan.CodingOfficialAmountUSD,

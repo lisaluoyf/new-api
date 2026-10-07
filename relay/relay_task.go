@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
@@ -22,6 +23,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -179,7 +181,33 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 4. 价格计算：基础模型价格
 	info.OriginModelName = modelName
-	priceData, err := helper.ModelPriceHelperPerCall(c, info)
+	hasTrial := false
+	trialAllowed := false
+	if info.UserId > 0 {
+		var trialAccessErr error
+		hasTrial, trialAllowed, trialAccessErr = service.FreeTrialModelAccess(info.UserId, modelName)
+		if trialAccessErr != nil {
+			return nil, service.TaskErrorWrapper(trialAccessErr, "trial_access_check_failed", http.StatusInternalServerError)
+		}
+	}
+	if hasTrial && !trialAllowed {
+		return nil, service.TaskErrorWrapperLocal(
+			fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorTrialModelForbidden, map[string]any{"Model": modelName})),
+			"trial_model_forbidden",
+			http.StatusForbidden,
+		)
+	}
+	info.TrialModelAllowed = hasTrial && trialAllowed
+	if hasTrial {
+		c.Set("trial_official_pricing", true)
+	}
+	var priceData types.PriceData
+	var err error
+	if hasTrial {
+		priceData, err = helper.ModelPriceHelperPerCallForTrial(c, info)
+	} else {
+		priceData, err = helper.ModelPriceHelperPerCall(c, info)
+	}
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 	}

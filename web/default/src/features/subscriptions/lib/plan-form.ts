@@ -20,6 +20,16 @@ import { z } from 'zod'
 import type { TFunction } from 'i18next'
 import type { SubscriptionPlan, PlanPayload } from '../types'
 
+export const DEFAULT_GPT_TRIAL_MODELS = [
+  'gpt-5.5',
+  'gpt-5.6-luna',
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'gpt-6.1-sol',
+  'gpt-6-astra',
+  'gpt-6-sol',
+]
+
 export function getPlanFormSchema(t: TFunction) {
   return z
     .object({
@@ -62,7 +72,10 @@ export function getPlanFormSchema(t: TFunction) {
           model: z.string().trim().min(1, t('Please select a model')),
           multiplier: z
             .string()
-            .regex(/^\d+(?:\.\d{1,3})?$/, t('Multiplier supports at most three decimal places'))
+            .regex(
+              /^\d+(?:\.\d{1,3})?$/,
+              t('Multiplier supports at most three decimal places')
+            )
             .refine((value) => {
               const number = Number(value)
               return number >= 0.001 && number <= 1
@@ -148,7 +161,7 @@ export const GPT_TRIAL_PRESET: PlanFormValues = {
   tier_level: 0,
   five_hour_amount: 0,
   seven_day_amount: 0,
-  model_allowlist: '',
+  model_allowlist: DEFAULT_GPT_TRIAL_MODELS.join(','),
   recommended: false,
   card_description: '',
   coding_official_amount_usd: 0,

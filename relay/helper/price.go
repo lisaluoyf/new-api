@@ -122,7 +122,17 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 			meta.ImagePriceVariant = tier
 			service.SetImageRequestDataOnContext(c, &dto.ImageRequest{Model: info.OriginModelName, Resolution: tier})
 		}
-		if !useTrialPricing {
+		if useTrialPricing {
+			imagePrice, configured := ratio_setting.GetImageModelPrice(info.OriginModelName, metaImageVariant(meta))
+			if !configured {
+				return types.PriceData{}, modelPriceNotConfiguredError(info.OriginModelName, info.UserId)
+			}
+			modelPrice = imagePrice
+			usePrice = true
+			if meta != nil {
+				meta.ImagePriceRatio = 1
+			}
+		} else {
 			if imageBasePrice, configured := ratio_setting.GetImageModelBasePrice(info.OriginModelName); configured {
 				modelPrice = imageBasePrice
 				if channelID := c.GetInt("channel_id"); channelID > 0 {
@@ -303,6 +313,13 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 	return priceData, nil
 }
 
+func metaImageVariant(meta *types.TokenCountMeta) string {
+	if meta == nil {
+		return ""
+	}
+	return meta.ImagePriceVariant
+}
+
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
 	// Freeze procurement independently of trial/subscription retail pricing.
 	if info != nil && !service.IsFreeModel(info.OriginModelName) {
@@ -449,7 +466,18 @@ func RefreshModelPriceForRetry(c *gin.Context, info *relaycommon.RelayInfo, prom
 
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
+	return modelPriceHelperPerCall(c, info, false)
+}
+
+func ModelPriceHelperPerCallForTrial(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
+	return modelPriceHelperPerCall(c, info, true)
+}
+
+func modelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo, useTrialPricing bool) (types.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
+	if useTrialPricing {
+		groupRatioInfo = types.GroupRatioInfo{GroupRatio: 1, GroupSpecialRatio: -1}
+	}
 
 	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
 	usePrice := success
@@ -471,7 +499,14 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 	// coefficients to that base before falling back to the legacy channel-price
 	// path. Without this resolution, media models with a configured base price
 	// bypass apimaster_price_ratio entirely.
-	if mediaBasePrice, ok := ratio_setting.GetVideoModelBasePrice(info.OriginModelName); ok {
+	if useTrialPricing {
+		if mediaBasePrice, ok := ratio_setting.GetVideoModelOfficialBasePrice(info.OriginModelName); ok {
+			modelPrice = mediaBasePrice
+			usePrice = true
+		} else {
+			return types.PriceData{}, modelPriceNotConfiguredError(info.OriginModelName, info.UserId)
+		}
+	} else if mediaBasePrice, ok := ratio_setting.GetVideoModelBasePrice(info.OriginModelName); ok {
 		modelPrice = mediaBasePrice
 		if channelID := c.GetInt("channel_id"); channelID > 0 {
 			if resolved, err := service.ChannelBaseUserPriceResolved(channelID, info.OriginModelName, mediaBasePrice); err == nil && resolved > 0 {

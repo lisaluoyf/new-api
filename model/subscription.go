@@ -238,6 +238,24 @@ func NormalizeSubscriptionPlanType(value string) string {
 	}
 }
 
+func NormalizeModelAllowlist(value string) string {
+	seen := make(map[string]struct{})
+	models := make([]string, 0)
+	for _, candidate := range strings.Split(value, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		key := strings.ToLower(candidate)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		models = append(models, candidate)
+	}
+	return strings.Join(models, ",")
+}
+
 func IsSupportedSubscriptionPlanType(value string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	return normalized == SubscriptionPlanTypeNone ||
@@ -1400,6 +1418,58 @@ func HasActiveUserSubscriptionByPlanMatcher(userId int, matcher SubscriptionPlan
 	return hasActiveUserSubscription(userId, func(plan *SubscriptionPlan) bool {
 		return plan != nil && matcher(plan)
 	})
+}
+
+// GetActiveGPTTrialModelAccess reports whether the user has an active trial
+// subscription and whether that subscription currently allows the requested
+// model. Trial access is intentionally resolved from the current plan config;
+// historical subscription snapshots are not used for model authorization.
+func GetActiveGPTTrialModelAccess(userId int, modelName string) (hasTrial bool, allowed bool, err error) {
+	if userId <= 0 {
+		return false, false, errors.New("invalid userId")
+	}
+	wanted := strings.ToLower(strings.TrimSpace(modelName))
+	if wanted == "" {
+		return false, false, nil
+	}
+	hasTrial, allowedModels, err := GetActiveGPTTrialModels(userId)
+	if err != nil {
+		return false, false, err
+	}
+	_, allowed = allowedModels[wanted]
+	return hasTrial, allowed, nil
+}
+
+// GetActiveGPTTrialModels returns the current model allowlist union for all
+// active GPT trial subscriptions owned by the user.
+func GetActiveGPTTrialModels(userId int) (bool, map[string]struct{}, error) {
+	if userId <= 0 {
+		return false, nil, errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	var subs []UserSubscription
+	if err := DB.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).Find(&subs).Error; err != nil {
+		return false, nil, err
+	}
+	hasTrial := false
+	allowedModels := make(map[string]struct{})
+	for _, sub := range subs {
+		plan, planErr := getSubscriptionPlanByIdTx(nil, sub.PlanId)
+		if planErr != nil {
+			return false, nil, planErr
+		}
+		if !IsGPTTrialSubscriptionPlan(plan) {
+			continue
+		}
+		hasTrial = true
+		for _, candidate := range strings.Split(plan.ModelAllowlist, ",") {
+			candidate = strings.ToLower(strings.TrimSpace(candidate))
+			if candidate != "" {
+				allowedModels[candidate] = struct{}{}
+			}
+		}
+	}
+	return hasTrial, allowedModels, nil
 }
 
 func hasActiveUserSubscription(userId int, planMatcher SubscriptionPlanMatcher) (bool, error) {

@@ -233,7 +233,7 @@ func getTokenGroupEnabledModels(userID int, tokenGroup string) ([]string, error)
 		return models, nil
 	}
 	if service.IsFreeTrialGroup(tokenGroup) {
-		return service.FilterFreeTrialModels(model.GetGroupEnabledModels(service.AutoCheapestGroup)), nil
+		return service.FilterFreeTrialModelsForUser(userID, model.GetGroupEnabledModels(service.AutoCheapestGroup))
 	}
 	if tokenGroup != "" {
 		userGroup = tokenGroup
@@ -308,7 +308,10 @@ func getAccessibleOpenAIModels(userID int, tokenGroup string, modelLimitEnable b
 				}
 			}
 		} else if service.IsFreeTrialGroup(tokenGroup) {
-			models = service.FilterFreeTrialModels(model.GetGroupEnabledModels(service.AutoCheapestGroup))
+			models, err = service.FilterFreeTrialModelsForUser(userID, model.GetGroupEnabledModels(service.AutoCheapestGroup))
+			if err != nil {
+				return nil, err
+			}
 		} else {
 			models = model.GetGroupEnabledModels(group)
 		}

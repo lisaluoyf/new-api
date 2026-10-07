@@ -27,6 +27,7 @@ func seedGPTTrialBillingInfo(modelName string, pref string) *relaycommon.RelayIn
 		},
 		GPTTrialChecked:   true,
 		HasActiveGPTTrial: true,
+		TrialModelAllowed: IsFreeTrialEligibleModel(modelName),
 	}
 	info.SetWalletPriceData(types.PriceData{
 		ModelRatio:        3,

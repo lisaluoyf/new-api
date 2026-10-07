@@ -157,11 +157,19 @@ func Distribute() func(c *gin.Context) {
 			abortImageModelOnTextEndpoint(c, modelRequest.Model)
 			return
 		}
-		if service.IsFreeTrialGroup(common.GetContextKeyString(c, constant.ContextKeyTokenGroup)) &&
-			modelRequest.Model != "" &&
-			!service.IsFreeTrialEligibleModel(modelRequest.Model) {
-			abortWithOpenAiMessage(c, http.StatusForbidden, "Free Trial keys only support GPT LLM models")
-			return
+		if modelRequest.Model != "" {
+			trialToken := service.IsFreeTrialGroup(common.GetContextKeyString(c, constant.ContextKeyTokenGroup))
+			if trialToken {
+				_, allowed, accessErr := service.FreeTrialModelAccess(c.GetInt("id"), modelRequest.Model)
+				if accessErr != nil {
+					abortWithOpenAiMessage(c, http.StatusInternalServerError, i18n.T(c, i18n.MsgDatabaseError))
+					return
+				}
+				if !allowed {
+					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTrialModelForbidden, map[string]any{"Model": modelRequest.Model}))
+					return
+				}
+			}
 		}
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 )
 
 const (
@@ -29,6 +30,38 @@ func IsFreeTrialEligibleModel(modelName string) bool {
 		return false
 	}
 	return strings.Contains(lower, "gpt-") || strings.HasPrefix(lower, "chatgpt")
+}
+
+func FreeTrialModelAccess(userID int, modelName string) (hasTrial bool, allowed bool, err error) {
+	return model.GetActiveGPTTrialModelAccess(userID, modelName)
+}
+
+func FilterFreeTrialModelsForUser(userID int, models []string) ([]string, error) {
+	hasTrial, allowedModels, err := model.GetActiveGPTTrialModels(userID)
+	if err != nil {
+		return nil, err
+	}
+	if !hasTrial {
+		return []string{}, nil
+	}
+	filtered := make([]string, 0, len(models))
+	seen := make(map[string]struct{}, len(models))
+	for _, modelName := range models {
+		trimmed := strings.TrimSpace(modelName)
+		key := strings.ToLower(trimmed)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := allowedModels[key]; !ok {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		filtered = append(filtered, trimmed)
+	}
+	return filtered, nil
 }
 
 func FilterFreeTrialModels(models []string) []string {

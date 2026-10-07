@@ -129,6 +129,22 @@ func GetVideoModelPriceRatio(model, variant string) float64 {
 	return selected / base
 }
 
+func GetVideoModelOfficialPriceRatio(model, variant string) float64 {
+	config, ok := getVideoModelPricing(model)
+	if !ok || len(config.OfficialPrices) == 0 {
+		return GetVideoModelPriceRatio(model, variant)
+	}
+	base, baseVariant := videoBasePrice(config)
+	if officialBase := videoPriceByName(config.OfficialPrices, baseVariant); officialBase > 0 {
+		base = officialBase
+	}
+	selected := videoPriceByName(config.OfficialPrices, variant)
+	if base <= 0 || selected <= 0 {
+		return GetVideoModelPriceRatio(model, variant)
+	}
+	return selected / base
+}
+
 func GetVideoModelResolutionRatio(model, resolution string) float64 {
 	return GetVideoModelPriceRatio(model, resolution)
 }
@@ -145,6 +161,26 @@ func GetVideoModelBasePrice(model string) (float64, bool) {
 	return base, base > 0
 }
 
+func GetVideoModelOfficialBasePrice(model string) (float64, bool) {
+	config, ok := getVideoModelPricing(model)
+	if !ok {
+		return 0, false
+	}
+	base, baseVariant := videoBasePrice(config)
+	if len(config.OfficialPrices) > 0 {
+		if official := videoPriceByName(config.OfficialPrices, baseVariant); official > 0 {
+			return official, true
+		}
+		if official := videoPriceByName(config.OfficialPrices, "base"); official > 0 {
+			return official, true
+		}
+		if official := videoPriceByName(config.OfficialPrices, "768P"); official > 0 {
+			return official, true
+		}
+	}
+	return base, base > 0
+}
+
 func GetVideoModelPrice(model, variant string) (float64, bool) {
 	config, ok := getVideoModelPricing(model)
 	if !ok {
@@ -156,6 +192,17 @@ func GetVideoModelPrice(model, variant string) (float64, bool) {
 		}
 	}
 	return 0, false
+}
+
+func GetVideoModelOfficialPrice(model, variant string) (float64, bool) {
+	config, ok := getVideoModelPricing(model)
+	if !ok {
+		return 0, false
+	}
+	if price := videoPriceByName(config.OfficialPrices, variant); price > 0 {
+		return price, true
+	}
+	return GetVideoModelPrice(model, variant)
 }
 
 func GetVideoModelPricingDetails(model string) (VideoModelPricingDetails, bool) {

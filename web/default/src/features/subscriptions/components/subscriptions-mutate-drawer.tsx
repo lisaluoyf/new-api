@@ -60,13 +60,14 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { MultiSelect } from '@/components/multi-select'
-import { MODEL_TABS } from '@/features/channel-data/constants'
+import { getEnabledModels } from '@/features/channels/api'
 import { createPlan, updatePlan, getGroups } from '../api'
 import { getDurationUnitOptions, getResetPeriodOptions } from '../constants'
 import {
   getPlanFormSchema,
   PLAN_FORM_DEFAULTS,
   GPT_TRIAL_PRESET,
+  DEFAULT_GPT_TRIAL_MODELS,
   planToFormValues,
   formValuesToPlanPayload,
   type PlanFormValues,
@@ -101,6 +102,7 @@ export function SubscriptionsMutateDrawer({
   const { triggerRefresh } = useSubscriptions()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [groupOptions, setGroupOptions] = useState<string[]>([])
+  const [enabledModels, setEnabledModels] = useState<string[]>([])
 
   const schema = getPlanFormSchema(t)
   const form = useForm<PlanFormValues>({
@@ -124,6 +126,11 @@ export function SubscriptionsMutateDrawer({
           if (res.success) setGroupOptions(res.data || [])
         })
         .catch(() => {})
+      getEnabledModels()
+        .then((res) => {
+          if (res.success) setEnabledModels(res.data || [])
+        })
+        .catch(() => {})
     }
   }, [open, currentRow, form])
 
@@ -131,6 +138,12 @@ export function SubscriptionsMutateDrawer({
   const resetPeriod = form.watch('quota_reset_period')
   const modelAllowlist = form.watch('model_allowlist')
   const planType = form.watch('plan_type')
+
+  useEffect(() => {
+    if (!isEdit && planType === 'gpt_trial' && !(modelAllowlist || '').trim()) {
+      form.setValue('model_allowlist', DEFAULT_GPT_TRIAL_MODELS.join(','))
+    }
+  }, [form, isEdit, modelAllowlist, planType])
 
   useEffect(() => {
     if (planType !== 'coding_plan') return
@@ -142,11 +155,14 @@ export function SubscriptionsMutateDrawer({
   }, [form, planType])
 
   const modelOptions = useMemo(() => {
-    const channelDataModelIds = new Set(MODEL_TABS.map((tab) => tab.modelId))
-    const channelDataOptions = MODEL_TABS.map((tab) => ({
-      value: tab.modelId,
-      label: `${tab.label} (${tab.modelId})`,
-    }))
+    const channelDataModelIds = new Set(enabledModels)
+    const channelDataOptions = enabledModels
+      .slice()
+      .sort((a, b) => a.localeCompare(b))
+      .map((model) => ({
+        value: model,
+        label: model,
+      }))
     const selectedModelsMissingFromChannelData = parseModelAllowlist(
       modelAllowlist
     )
@@ -158,7 +174,7 @@ export function SubscriptionsMutateDrawer({
       }))
 
     return [...channelDataOptions, ...selectedModelsMissingFromChannelData]
-  }, [modelAllowlist, t])
+  }, [enabledModels, modelAllowlist, t])
 
   const onSubmit = async (values: PlanFormValues) => {
     setIsSubmitting(true)
@@ -372,7 +388,9 @@ export function SubscriptionsMutateDrawer({
                       </FormControl>
                       <FormDescription>
                         {planType === 'coding_plan'
-                          ? t('Calculated automatically from official-price quota')
+                          ? t(
+                              'Calculated automatically from official-price quota'
+                            )
                           : t('0 means unlimited')}
                       </FormDescription>
                       <FormMessage />
@@ -383,7 +401,9 @@ export function SubscriptionsMutateDrawer({
 
               {form.watch('plan_type') === 'gpt_subscription' ? (
                 <div className='space-y-4 rounded-md border border-fuchsia-500/20 bg-fuchsia-500/5 p-3'>
-                  <h4 className='text-sm font-medium'>{t('GPT Subscription Settings')}</h4>
+                  <h4 className='text-sm font-medium'>
+                    {t('GPT Subscription Settings')}
+                  </h4>
                   <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
                     {(
                       [
@@ -432,7 +452,9 @@ export function SubscriptionsMutateDrawer({
                           />
                         </FormControl>
                         <FormDescription>
-                          {t('The model list matches Channel Data and changes take effect immediately.')}
+                          {t(
+                            'The model list matches Channel Data and changes take effect immediately.'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -452,7 +474,9 @@ export function SubscriptionsMutateDrawer({
                           />
                         </FormControl>
                         <FormDescription>
-                          {t('Describe only enabled services or permissions and separate benefits with |.')}
+                          {t(
+                            'Describe only enabled services or permissions and separate benefits with |.'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -469,7 +493,9 @@ export function SubscriptionsMutateDrawer({
                             onCheckedChange={field.onChange}
                           />
                         </FormControl>
-                        <FormLabel className='!mt-0'>{t('Recommended plan')}</FormLabel>
+                        <FormLabel className='!mt-0'>
+                          {t('Recommended plan')}
+                        </FormLabel>
                       </FormItem>
                     )}
                   />
@@ -478,14 +504,18 @@ export function SubscriptionsMutateDrawer({
 
               {form.watch('plan_type') === 'coding_plan' ? (
                 <div className='space-y-4 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-3'>
-                  <h4 className='text-sm font-medium'>{t('Coding Plan Settings')}</h4>
+                  <h4 className='text-sm font-medium'>
+                    {t('Coding Plan Settings')}
+                  </h4>
                   <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                     <FormField
                       control={form.control}
                       name='coding_official_amount_usd'
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t('Official pricing quota (USD)')}</FormLabel>
+                          <FormLabel>
+                            {t('Official pricing quota (USD)')}
+                          </FormLabel>
                           <FormControl>
                             <Input
                               {...field}
@@ -527,9 +557,13 @@ export function SubscriptionsMutateDrawer({
                   <div className='space-y-2'>
                     <div className='flex items-center justify-between gap-3'>
                       <div>
-                        <FormLabel>{t('Models and billing multipliers')}</FormLabel>
+                        <FormLabel>
+                          {t('Models and billing multipliers')}
+                        </FormLabel>
                         <p className='text-muted-foreground text-xs'>
-                          {t('Changes to models and multipliers immediately affect active users.')}
+                          {t(
+                            'Changes to models and multipliers immediately affect active users.'
+                          )}
                         </p>
                       </div>
                       <Button
@@ -577,7 +611,9 @@ export function SubscriptionsMutateDrawer({
                                     <Input
                                       {...field}
                                       list='coding-plan-models'
-                                      placeholder={t('Select or enter model ID')}
+                                      placeholder={t(
+                                        'Select or enter model ID'
+                                      )}
                                     />
                                   </FormControl>
                                   <FormMessage />
@@ -611,7 +647,9 @@ export function SubscriptionsMutateDrawer({
                               onClick={() => codingModels.remove(index)}
                             >
                               <Trash2 className='h-4 w-4' />
-                              <span className='sr-only'>{t('Delete model')}</span>
+                              <span className='sr-only'>
+                                {t('Delete model')}
+                              </span>
                             </Button>
                           </div>
                         ))
@@ -652,7 +690,9 @@ export function SubscriptionsMutateDrawer({
                             onCheckedChange={field.onChange}
                           />
                         </FormControl>
-                        <FormLabel className='!mt-0'>{t('Recommended plan')}</FormLabel>
+                        <FormLabel className='!mt-0'>
+                          {t('Recommended plan')}
+                        </FormLabel>
                       </FormItem>
                     )}
                   />

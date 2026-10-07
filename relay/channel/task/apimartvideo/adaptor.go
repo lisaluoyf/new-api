@@ -339,9 +339,13 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 			}
 		}
 		variant := klingOmniBillingVariant(mode, audio, hasVideo)
+		ratio := ratio_setting.GetVideoModelPriceRatio(ModelKlingV3Omni, variant)
+		if c.GetBool("trial_official_pricing") {
+			ratio = ratio_setting.GetVideoModelOfficialPriceRatio(ModelKlingV3Omni, variant)
+		}
 		return map[string]float64{
 			"seconds": float64(seconds),
-			"variant": ratio_setting.GetVideoModelPriceRatio(ModelKlingV3Omni, variant),
+			"variant": ratio,
 		}
 	}
 	resolution := "720p"
@@ -367,6 +371,9 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	ratio := taskcommon.VideoResolutionSizeRatio(resolution)
 	if _, ok := ratio_setting.GetVideoModelBasePrice(req.Model); ok {
 		ratio = ratio_setting.GetVideoModelResolutionRatio(req.Model, variant)
+		if c.GetBool("trial_official_pricing") {
+			ratio = ratio_setting.GetVideoModelOfficialPriceRatio(req.Model, variant)
+		}
 	}
 	return map[string]float64{
 		"seconds": float64(seconds),

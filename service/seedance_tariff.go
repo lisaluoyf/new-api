@@ -103,6 +103,10 @@ func PrepareSeedanceTaskBilling(c *gin.Context, info *relaycommon.RelayInfo) (ma
 	}
 	price, ok := ratio_setting.GetVideoModelPrice(name, variant)
 	base, baseOK := ratio_setting.GetVideoModelBasePrice(name)
+	if c.GetBool("trial_official_pricing") {
+		price, ok = ratio_setting.GetVideoModelOfficialPrice(name, variant)
+		base, baseOK = ratio_setting.GetVideoModelOfficialBasePrice(name)
+	}
 	if !ok || !baseOK || price <= 0 || base <= 0 {
 		return nil, fmt.Errorf("Seedance price is not configured for %s", variant)
 	}

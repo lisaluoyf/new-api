@@ -991,7 +991,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	tryGPTTrial := func() (*BillingSession, *types.NewAPIError) {
-		if !relayInfo.GPTTrialChecked || !relayInfo.HasActiveGPTTrial || !IsFreeTrialEligibleModel(relayInfo.OriginModelName) {
+		if !relayInfo.GPTTrialChecked || !relayInfo.HasActiveGPTTrial || !relayInfo.TrialModelAllowed {
 			return nil, nil
 		}
 		trialQuota := relayInfo.PriceData.QuotaToPreConsume

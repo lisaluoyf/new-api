@@ -21,6 +21,7 @@ export {
   getPlanFormSchema,
   PLAN_FORM_DEFAULTS,
   GPT_TRIAL_PRESET,
+  DEFAULT_GPT_TRIAL_MODELS,
   planToFormValues,
   formValuesToPlanPayload,
   type PlanFormValues,
