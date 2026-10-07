@@ -25,6 +25,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	"github.com/tidwall/gjson"
 )
 
 // https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference?hl=zh-cn#blob
@@ -1272,10 +1273,13 @@ func handleFinalStream(c *gin.Context, info *relaycommon.RelayInfo, resp *dto.Ch
 
 func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, callback func(data string, geminiResponse *dto.GeminiChatResponse) bool) (*dto.Usage, *types.NewAPIError) {
 	var usage = &dto.Usage{}
+	var reportedUsage *dto.Usage
+	reportedInvalid := false
+	var terminalFrame bool
 	var imageCount int
 	responseText := strings.Builder{}
 
-	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		var geminiResponse dto.GeminiChatResponse
 		if err := common.UnmarshalJsonStr(data, &geminiResponse); err != nil {
 			sr.Stop(fmt.Errorf("unmarshal: %w", err))
@@ -1286,6 +1290,25 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			common.SetContextKey(c, constant.ContextKeyAdminRejectReason, fmt.Sprintf("gemini_block_reason=%s", *geminiResponse.PromptFeedback.BlockReason))
 		}
 
+		for _, candidate := range geminiResponse.Candidates {
+			if candidate.FinishReason != nil && *candidate.FinishReason != "" {
+				terminalFrame = true
+			}
+		}
+		if reported := reportedGeminiUsage(data, geminiResponse.UsageMetadata); reported != nil && !reportedInvalid {
+			if reportedUsage == nil || reported.CompletionTokens >= reportedUsage.CompletionTokens {
+				reportedUsage = reported
+				if terminalFrame {
+					sr.CompleteWithUsage("gemini.usageMetadata", "")
+				}
+			} else {
+				reportedInvalid = true
+				reportedUsage = nil
+			}
+		} else if gjson.Get(data, "usageMetadata").IsObject() {
+			reportedInvalid = true
+			reportedUsage = nil
+		}
 		// 统计图片数量
 		for _, candidate := range geminiResponse.Candidates {
 			for _, part := range candidate.Content.Parts {
@@ -1308,6 +1331,16 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			sr.Stop(fmt.Errorf("gemini callback stopped"))
 		}
 	})
+
+	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame); streamErr != nil {
+		if reported := service.CanceledReportedUsage(c, info, reportedUsage, streamStatus); reported != nil {
+			return reported, nil
+		}
+		return nil, streamErr
+	}
+	if reportedUsage != nil && streamStatus.HasTerminalUsage() {
+		return reportedUsage, nil
+	}
 
 	if imageCount != 0 {
 		if usage.CompletionTokens == 0 {

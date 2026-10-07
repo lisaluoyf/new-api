@@ -27,17 +27,18 @@ import (
 // BillingSession 封装单次请求的预扣费/结算/退款生命周期。
 // 实现 relaycommon.BillingSettler 接口。
 type BillingSession struct {
-	relayInfo        *relaycommon.RelayInfo
-	funding          FundingSource
-	preConsumedQuota int  // 实际预扣额度（信任用户可能为 0）
-	tokenConsumed    int  // 令牌额度实际扣减量
-	extraReserved    int  // 发送前补充预扣的额度（订阅退款时需要单独回滚）
-	trusted          bool // 是否命中信任额度旁路
-	fundingSettled   bool // funding.Settle 已成功，资金来源已提交
-	settled          bool // Settle 全部完成（资金 + 令牌）
-	refunded         bool // Refund 已调用
-	holdRefund       bool // 异步补结算期间暂不退预扣费
-	mu               sync.Mutex
+	relayInfo           *relaycommon.RelayInfo
+	funding             FundingSource
+	preConsumedQuota    int  // 实际预扣额度（信任用户可能为 0）
+	tokenConsumed       int  // 令牌额度实际扣减量
+	extraReserved       int  // 发送前补充预扣的额度（订阅退款时需要单独回滚）
+	trusted             bool // 是否命中信任额度旁路
+	fundingSettled      bool // funding.Settle 已成功，资金来源已提交
+	settled             bool // Settle 全部完成（资金 + 令牌）
+	refunded            bool // Refund 已调用
+	durableSettlementID int  // authoritative usage owned by the persistent ledger
+	holdRefund          bool // 异步补结算期间暂不退预扣费
+	mu                  sync.Mutex
 }
 
 // HoldRefundActive reports whether refund is blocked pending async reconcile.
@@ -69,6 +70,20 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	defer s.mu.Unlock()
 	if s.settled {
 		return nil
+	}
+	if s.durableSettlementID > 0 {
+		var saved model.TextSettlement
+		if err := model.DB.First(&saved, s.durableSettlementID).Error; err != nil {
+			return err
+		}
+		if saved.Quota != actualQuota {
+			return fmt.Errorf("conflicting quota for durable settlement")
+		}
+		item, err := model.ApplyTextSettlement(saved.Id)
+		if item != nil && item.Status == "settled" {
+			s.settled, s.fundingSettled = true, true
+		}
+		return err
 	}
 	delta := actualQuota - s.preConsumedQuota
 	if delta == 0 {
@@ -250,6 +265,9 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.durableSettlementID > 0 {
+		return fmt.Errorf("usage already frozen for settlement")
+	}
 	if s.settled || s.refunded || s.trusted || targetQuota <= s.preConsumedQuota {
 		return nil
 	}
@@ -873,6 +891,12 @@ func newGPTSubscriptionRollingLimitAPIError(c *gin.Context, relayInfo *relaycomm
 func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError) {
 	if relayInfo == nil {
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	}
+
+	if pending, err := model.HasPendingTextSettlement(relayInfo.UserId); err != nil {
+		return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+	} else if pending {
+		return nil, types.NewErrorWithStatusCode(fmt.Errorf("previous request has a pending billing settlement; restore wallet/key/subscription quota and retry"), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 	}
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)

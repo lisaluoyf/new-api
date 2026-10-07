@@ -317,3 +317,22 @@ func TestClaudeResponsesToolIntegersRemainExact(t *testing.T) {
 	require.NoError(t, e)
 	require.Contains(t, string(encoded), "1234567890123456789")
 }
+
+func TestClaudeResponsesPartialCancellationUsesReportedInput(t *testing.T) {
+	c, rec, info := responsesClaudeContext(t, true)
+	info.UserId = 123
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+	c.Request = c.Request.WithContext(ctx)
+	c.Writer = &cancelOnClaudeFrameWriter{c.Writer, rec, "response.output_text.delta", cancel}
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	go func() { _, _ = io.WriteString(writer, responsesClaudeSSE(responsesClaudeEvents("end_turn")[:7])) }()
+	u, err := ClaudeResponsesHandler(c, &http.Response{StatusCode: 200, Body: reader}, info)
+	require.Nil(t, err)
+	require.Equal(t, 100, u.PromptTokens)
+	require.Equal(t, 200, u.PromptTokensDetails.CachedTokens)
+	require.Equal(t, "upstream_reported_partial", u.UsageSource)
+	require.NotNil(t, info.CanceledStreamUsage)
+}

@@ -26,6 +26,7 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/tidwall/gjson"
 )
 
 func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
@@ -237,6 +238,8 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var lastStreamData string
 	var secondLastStreamData string // 存储倒数第二个stream data，用于音频模型
 	var streamEventErr *types.NewAPIError
+	var reportedUsage *dto.Usage
+	reportedInvalid := false
 	var pendingFrames []string
 
 	// 检查是否为音频模型
@@ -305,6 +308,27 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			sr.Stop(streamEventErr)
 			return
 		}
+		if chatStreamDataHasUsableOutput(data) {
+			validOutput = true
+		}
+		if reported, id, terminal := reportedChatUsage(data); reported != nil && !reportedInvalid {
+			if reportedUsage == nil || reported.CompletionTokens >= reportedUsage.CompletionTokens {
+				reportedUsage = reported
+				applyUsagePostProcessing(info, reportedUsage, common.StringToByteSlice(data))
+				if id != "" {
+					sr.ObserveResponseID(id)
+				}
+				if terminal && validOutput && id != "" {
+					sr.CompleteWithUsage("chat.usage", id)
+				}
+			} else {
+				reportedInvalid = true
+				reportedUsage = nil
+			}
+		} else if gjson.Get(data, "usage").IsObject() {
+			reportedInvalid = true
+			reportedUsage = nil
+		}
 		if !outputCommitted {
 			pendingFrames = append(pendingFrames, data)
 			if !chatStreamDataHasUsableOutput(data) {
@@ -344,9 +368,17 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 		}
 	}
+	if streamStatus.HasTerminalUsage() {
+		terminalFrame = true
+	}
 	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, terminalFrame); streamErr != nil {
 		if !validOutput {
 			streamErr = markResponsesFalseSuccess(streamErr, falseSuccessStreamTrigger(streamStatus, terminalFrame, false), resp.StatusCode, true, "", nil, nil, streamStatus, terminalFrame, false, falseSuccessRawFrames(pendingFrames))
+		}
+		if !isAudioModel {
+			if reported := service.CanceledReportedUsage(c, info, reportedUsage, streamStatus); reported != nil {
+				return reported, nil
+			}
 		}
 		return nil, streamErr
 	}
@@ -396,6 +428,10 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		usage.CompletionTokens += toolCount * 7
 	}
 
+	if streamStatus.HasTerminalUsage() && reportedUsage != nil {
+		usage = reportedUsage
+		containStreamUsage = true
+	}
 	applyUsagePostProcessing(info, usage, common.StringToByteSlice(lastStreamData))
 
 	HandleFinalResponse(c, info, lastStreamData, responseId, createAt, model, systemFingerprint, usage, containStreamUsage)

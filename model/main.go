@@ -343,6 +343,7 @@ func migrateDB() error {
 		&ReferralGPTRewardLog{},
 		&ResellerModelRule{},
 		&BillingHold{},
+		&TextSettlement{},
 		&CancellationObservation{},
 		&CancellationObservationCursor{},
 		&TaskWebhookEndpoint{}, &TaskWebhookEvent{}, &TaskWebhookAttempt{},

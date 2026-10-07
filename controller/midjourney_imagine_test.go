@@ -45,7 +45,7 @@ func testImagineSubmission(t *testing.T, upstreamStatus int) {
 	common.RedisEnabled = false
 	ratio_setting.InitRatioSettings()
 	operation_setting.CustomCallbackAddress = "https://apimaster.ai"
-	require.NoError(t, db.AutoMigrate(&model.ImagineBatch{}, &model.ImagineTask{}, &model.ImagineBillingEvent{}, &model.User{}, &model.Token{}, &model.Channel{}, &model.ChannelModelPricing{}))
+	require.NoError(t, db.AutoMigrate(&model.TextSettlement{}, &model.ImagineBatch{}, &model.ImagineTask{}, &model.ImagineBillingEvent{}, &model.User{}, &model.Token{}, &model.Channel{}, &model.ChannelModelPricing{}))
 	common.OptionMap = map[string]string{"VideoModelPricing": `{"midjourney-niji-7":{"unit":"generation","base_price":0.04504,"base_variant":"relax","prices":{"relax":0.04504,"fast":0.05504,"turbo":0.1}}}`}
 	user := model.User{Username: "imagine", Quota: 1000000}
 	require.NoError(t, db.Create(&user).Error)

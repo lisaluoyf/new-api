@@ -278,6 +278,8 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 		Usage:        &dto.Usage{},
 	}
 
+	status := relaycommon.NewStreamStatus()
+	info.StreamStatus = status
 	for event := range stream.Events() {
 		switch v := event.(type) {
 		case *bedrockruntimeTypes.ResponseStreamMemberChunk:
@@ -295,8 +297,19 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 		}
 	}
 
-	claude.HandleStreamFinalResponse(c, info, claudeInfo)
-	return nil, claudeInfo.Usage
+	if err := stream.Err(); err != nil {
+		if c.Request != nil && errors.Is(c.Request.Context().Err(), context.Canceled) {
+			status.SetEndReason(relaycommon.StreamEndReasonClientGone, context.Canceled)
+		} else {
+			status.SetEndReason(relaycommon.StreamEndReasonScannerErr, err)
+		}
+	} else if c.Request != nil && errors.Is(c.Request.Context().Err(), context.Canceled) {
+		status.SetEndReason(relaycommon.StreamEndReasonClientGone, context.Canceled)
+	} else {
+		status.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
+	}
+	usage, apiErr := claude.FinalizeClaudeStream(c, info, claudeInfo, status)
+	return apiErr, usage
 }
 
 // Nova模型处理函数

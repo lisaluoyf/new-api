@@ -52,6 +52,7 @@ func TestMain(m *testing.M) {
 		&model.SubscriptionPreConsumeRecord{},
 		&model.Option{},
 		&model.BillingHold{},
+		&model.TextSettlement{},
 		&model.BillingHourlySummary{},
 		&model.BillingDailyUserActivity{},
 		&model.BillingSummaryState{},
@@ -86,6 +87,7 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM user_subscriptions")
 		model.DB.Exec("DELETE FROM subscription_pre_consume_records")
 		model.DB.Exec("DELETE FROM billing_holds")
+		model.DB.Exec("DELETE FROM text_settlements")
 		model.DB.Exec("DELETE FROM billing_hourly_summaries")
 		model.DB.Exec("DELETE FROM billing_daily_user_activities")
 		model.DB.Exec("DELETE FROM billing_summary_states")

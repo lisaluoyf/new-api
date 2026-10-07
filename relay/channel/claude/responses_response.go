@@ -453,6 +453,7 @@ func ClaudeResponsesHandler(c *gin.Context, resp *http.Response, info *relaycomm
 			sr.Stop(failure)
 			return
 		}
+		captureClaudeReportedUsage(info, s.usage, data, &r)
 		FormatClaudeResponseInfo(&r, nil, s.usage)
 		reported := r.Usage
 		if r.Type == "message_start" && r.Message != nil {
@@ -542,6 +543,9 @@ func ClaudeResponsesHandler(c *gin.Context, resp *http.Response, info *relaycomm
 		return nil, failure
 	}
 	if err := service.ValidateRelayStreamEnd(c, info, streamStatus, s.done, s.usable || s.stopReason == "refusal" || s.stopReason == "max_tokens"); err != nil {
+		if usage := canceledClaudeReportedUsage(c, info, s.usage, streamStatus); usage != nil {
+			return usage, nil
+		}
 		return nil, err
 	}
 	return s.usage.Usage, nil

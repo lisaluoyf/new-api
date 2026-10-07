@@ -145,7 +145,11 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			info.PriceData = originPriceData
 			return types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry(), types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		}
-		service.PostTextConsumeQuota(c, info, usageDto, nil)
+		if err := service.PostTextConsumeQuota(c, info, usageDto, nil); err != nil {
+			info.OriginModelName = originModelName
+			info.PriceData = originPriceData
+			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
 
 		info.OriginModelName = originModelName
 		info.PriceData = originPriceData
@@ -153,9 +157,13 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	}
 
 	if strings.HasPrefix(info.OriginModelName, "gpt-4o-audio") {
-		service.PostAudioConsumeQuota(c, info, usageDto, "")
+		if err := service.PostAudioConsumeQuota(c, info, usageDto, ""); err != nil {
+			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
 	} else {
-		service.PostTextConsumeQuota(c, info, usageDto, nil)
+		if err := service.PostTextConsumeQuota(c, info, usageDto, nil); err != nil {
+			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
 	}
 	return nil
 }

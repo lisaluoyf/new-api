@@ -961,6 +961,11 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	if err != nil {
 		return nil, err
 	}
+	return FinalizeClaudeStream(c, info, claudeInfo, streamStatus)
+}
+
+// FinalizeClaudeStream shares validated cancellation settlement with SDK adapters.
+func FinalizeClaudeStream(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo, streamStatus *relaycommon.StreamStatus) (*dto.Usage, *types.NewAPIError) {
 	if streamErr := service.ValidateRelayStreamEnd(c, info, streamStatus, claudeInfo.Done || claudeInfo.reportedTerminal); streamErr != nil {
 		if usage := canceledClaudeReportedUsage(c, info, claudeInfo, streamStatus); usage != nil {
 			return usage, nil

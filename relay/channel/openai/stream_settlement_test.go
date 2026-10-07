@@ -122,3 +122,41 @@ func TestResponsesEarlyCancellationDoesNotEstimateSettlement(t *testing.T) {
 		require.Nil(t, usage)
 	}
 }
+
+func TestChatUsageFrameSettlesCancellationWithoutDone(t *testing.T) {
+	c, _ := responsesStreamTestContext(t)
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+	c.Request = c.Request.WithContext(ctx)
+	info := responsesStreamTestInfo()
+	info.RelayFormat = types.RelayFormatOpenAI
+	c.Writer = &cancelOnFrameWriter{ResponseWriter: c.Writer, match: `"usage"`, cancel: cancel}
+	body := &terminalStreamBody{Reader: strings.NewReader("data: {\"id\":\"chat_usage\",\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n" +
+		"data: {\"id\":\"chat_usage\",\"choices\":[],\"usage\":{\"prompt_tokens\":120,\"completion_tokens\":7,\"total_tokens\":127,\"prompt_tokens_details\":{\"cached_tokens\":100}}}\n\n"), closed: make(chan struct{})}
+	timer := time.AfterFunc(time.Second, func() { cancel(); _ = body.Close() })
+	defer timer.Stop()
+	usage, err := OaiStreamHandler(c, info, &http.Response{StatusCode: 200, Body: body})
+	require.Nil(t, err)
+	require.Equal(t, 120, usage.PromptTokens)
+	require.Equal(t, 7, usage.CompletionTokens)
+	require.Equal(t, 100, usage.PromptTokensDetails.CachedTokens)
+	require.True(t, info.StreamStatus.HasTerminalUsage())
+}
+
+func TestChatEarlyCancellationDoesNotEstimateUsage(t *testing.T) {
+	c, _ := responsesStreamTestContext(t)
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+	c.Request = c.Request.WithContext(ctx)
+	info := responsesStreamTestInfo()
+	info.UserId = 1
+	info.RelayFormat = types.RelayFormatOpenAI
+	c.Writer = &cancelOnFrameWriter{ResponseWriter: c.Writer, match: "hello", cancel: cancel}
+	body := &terminalStreamBody{Reader: strings.NewReader("data: {\"id\":\"chat_partial\",\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n" +
+		"data: {\"id\":\"chat_partial\",\"choices\":[{\"delta\":{\"content\":\"later\"}}]}\n\n"), closed: make(chan struct{})}
+	timer := time.AfterFunc(time.Second, func() { cancel(); _ = body.Close() })
+	defer timer.Stop()
+	usage, err := OaiStreamHandler(c, info, &http.Response{StatusCode: 200, Body: body})
+	require.NotNil(t, err)
+	require.Nil(t, usage)
+}

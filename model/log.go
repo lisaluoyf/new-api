@@ -568,6 +568,21 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		return
 	}
 	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
+	log := BuildConsumeLog(c, userId, params)
+	username := log.Username
+	err := LOG_DB.Create(log).Error
+	if err != nil {
+		logger.LogError(c, "failed to record log: "+err.Error())
+	}
+	if common.DataExportEnabled {
+		gopool.Go(func() {
+			LogQuotaData(userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
+		})
+	}
+}
+
+// BuildConsumeLog freezes usage, prices and request metadata before settlement.
+func BuildConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) *Log {
 	username := resolveLogUsername(c, userId)
 	requestId := c.GetString(common.RequestIdKey)
 	otherStr := common.MapToJsonStr(params.Other)
@@ -614,15 +629,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		AccountingStatus:                params.Accounting.Status,
 		AccountingSnapshot:              params.Accounting.Snapshot,
 	}
-	err := LOG_DB.Create(log).Error
-	if err != nil {
-		logger.LogError(c, "failed to record log: "+err.Error())
-	}
-	if common.DataExportEnabled {
-		gopool.Go(func() {
-			LogQuotaData(userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
-		})
-	}
+	return log
 }
 
 type RecordTaskBillingLogParams struct {

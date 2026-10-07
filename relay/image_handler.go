@@ -203,6 +203,10 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		logContent = append(logContent, fmt.Sprintf("task_id %s", taskID))
 	}
 
-	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
+	if err := service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent); err != nil {
+
+		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+
+	}
 	return nil
 }
