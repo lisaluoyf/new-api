@@ -93,7 +93,8 @@ func getPlategaPayRubAmount(amount int64, group string, userId int) float64 {
 	// window and successful top-up history, so later payments remain full price.
 	payRub = payRub.Mul(decimal.NewFromFloat(firstTopupPromoFactor(userId, amount)))
 
-	return payRub.InexactFloat64()
+	// Freeze the same two-decimal RUB amount for the quote, local order and provider request.
+	return payRub.Round(2).InexactFloat64()
 }
 
 func normalizePlategaTopUpAmount(amount int64) int64 {
@@ -162,7 +163,7 @@ func RequestPlategaPay(c *gin.Context) {
 		if rate <= 0 {
 			rate = 90
 		}
-		payRub = decimal.NewFromFloat(terms.Payable).Mul(decimal.NewFromFloat(rate)).InexactFloat64()
+		payRub = decimal.NewFromFloat(terms.Payable).Mul(decimal.NewFromFloat(rate)).Round(2).InexactFloat64()
 	} else {
 		group, groupErr := model.GetUserGroup(id, true)
 		if groupErr != nil {

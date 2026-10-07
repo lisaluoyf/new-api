@@ -109,3 +109,23 @@ func TestJevProcurementAuditRequiresOnlyInputPrice(t *testing.T) {
 	require.Equal(t, 1, summary.CompleteCount)
 	require.Equal(t, 0, summary.AnomalyCount)
 }
+
+func TestNanoBanana21ProcurementAuditRequiresOnlyImagePrice(t *testing.T) {
+	items, summary, groups := buildChannelDataAudit("gemini-nano-banana-2.1", []ModelDataItem{{
+		ChannelID: 1, PricingSource: "image", ActualPrice: floatPtr(0.0336),
+	}})
+	require.Empty(t, items[0].MissingFields)
+	require.Equal(t, "complete", items[0].Completeness)
+	require.False(t, channelDataAuditShouldAlert(items[0]))
+	require.Equal(t, 1, summary.CompleteCount)
+	require.Equal(t, 0, summary.AnomalyCount)
+	require.Empty(t, groups["image_missing_output"])
+	require.Empty(t, groups["image_missing_cache_read"])
+	require.Empty(t, groups["image_missing_cache_write"])
+
+	missing, _, _ := buildChannelDataAudit("gemini-nano-banana-2.1", []ModelDataItem{{
+		ChannelID: 1, PricingSource: "image",
+	}})
+	require.Equal(t, []string{"input"}, missing[0].MissingFields)
+	require.True(t, channelDataAuditShouldAlert(missing[0]))
+}

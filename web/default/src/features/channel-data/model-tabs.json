@@ -181,6 +181,11 @@
     "accent": "#4285f4"
   },
   {
+    "model_id": "gemini-nano-banana-2.1",
+    "label": "Nano Banana 2.1",
+    "accent": "#4285f4"
+  },
+  {
     "model_id": "doubao-seedream-5-0-pro-260628",
     "label": "Seedream 5.0 Pro",
     "accent": "#3b82f6"

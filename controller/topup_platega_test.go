@@ -44,8 +44,21 @@ func TestPlategaFirstTopupPromoOnlyAppliesToEligibleTier(t *testing.T) {
 	now := common.GetTimestamp()
 	require.NoError(t, db.Create(&model.User{Id: 1, Username: "promo-user", CreatedAt: now - 3600}).Error)
 
-	// Eligible new user's configured $10 tier receives exactly 15% off.
-	require.InDelta(t, 10*83.55*0.85, getPlategaPayRubAmount(10, "default", 1), 0.0001)
+	// Round promotional prices only after applying the discount and RUB rate.
+	for _, tc := range []struct {
+		discount float64
+		wantRUB  float64
+	}{
+		{0.85, 710.18}, // 710.175: round half up
+		{0.75, 626.63}, // 626.625: round half up
+		{0.84, 701.82}, // already two decimals
+		{0.83, 693.47}, // 693.465: round half up
+		{0.82, 685.11}, // already two decimals
+	} {
+		common.FirstTopupPromoDiscount = tc.discount
+		require.Equal(t, tc.wantRUB, getPlategaPayRubAmount(10, "default", 1))
+	}
+	common.FirstTopupPromoDiscount = 0.85
 	// The promo is tier-specific; a different amount remains full price.
 	require.InDelta(t, 20*83.55, getPlategaPayRubAmount(20, "default", 1), 0.0001)
 
