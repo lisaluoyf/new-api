@@ -132,7 +132,7 @@ func GetVideoModelPriceRatio(model, variant string) float64 {
 func GetVideoModelOfficialPriceRatio(model, variant string) float64 {
 	config, ok := getVideoModelPricing(model)
 	if !ok || len(config.OfficialPrices) == 0 {
-		return GetVideoModelPriceRatio(model, variant)
+		return 0
 	}
 	base, baseVariant := videoBasePrice(config)
 	if officialBase := videoPriceByName(config.OfficialPrices, baseVariant); officialBase > 0 {
@@ -140,7 +140,7 @@ func GetVideoModelOfficialPriceRatio(model, variant string) float64 {
 	}
 	selected := videoPriceByName(config.OfficialPrices, variant)
 	if base <= 0 || selected <= 0 {
-		return GetVideoModelPriceRatio(model, variant)
+		return 0
 	}
 	return selected / base
 }
@@ -163,22 +163,20 @@ func GetVideoModelBasePrice(model string) (float64, bool) {
 
 func GetVideoModelOfficialBasePrice(model string) (float64, bool) {
 	config, ok := getVideoModelPricing(model)
-	if !ok {
+	if !ok || len(config.OfficialPrices) == 0 {
 		return 0, false
 	}
-	base, baseVariant := videoBasePrice(config)
-	if len(config.OfficialPrices) > 0 {
-		if official := videoPriceByName(config.OfficialPrices, baseVariant); official > 0 {
-			return official, true
-		}
-		if official := videoPriceByName(config.OfficialPrices, "base"); official > 0 {
-			return official, true
-		}
-		if official := videoPriceByName(config.OfficialPrices, "768P"); official > 0 {
-			return official, true
-		}
+	_, baseVariant := videoBasePrice(config)
+	if official := videoPriceByName(config.OfficialPrices, baseVariant); official > 0 {
+		return official, true
 	}
-	return base, base > 0
+	if official := videoPriceByName(config.OfficialPrices, "base"); official > 0 {
+		return official, true
+	}
+	if official := videoPriceByName(config.OfficialPrices, "768P"); official > 0 {
+		return official, true
+	}
+	return 0, false
 }
 
 func GetVideoModelPrice(model, variant string) (float64, bool) {
@@ -196,13 +194,13 @@ func GetVideoModelPrice(model, variant string) (float64, bool) {
 
 func GetVideoModelOfficialPrice(model, variant string) (float64, bool) {
 	config, ok := getVideoModelPricing(model)
-	if !ok {
+	if !ok || len(config.OfficialPrices) == 0 {
 		return 0, false
 	}
 	if price := videoPriceByName(config.OfficialPrices, variant); price > 0 {
 		return price, true
 	}
-	return GetVideoModelPrice(model, variant)
+	return 0, false
 }
 
 func GetVideoModelPricingDetails(model string) (VideoModelPricingDetails, bool) {

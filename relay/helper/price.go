@@ -123,7 +123,7 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 			service.SetImageRequestDataOnContext(c, &dto.ImageRequest{Model: info.OriginModelName, Resolution: tier})
 		}
 		if useTrialPricing {
-			imagePrice, configured := ratio_setting.GetImageModelPrice(info.OriginModelName, metaImageVariant(meta))
+			imagePrice, configured := ratio_setting.GetImageModelOfficialPrice(info.OriginModelName, metaImageVariant(meta))
 			if !configured {
 				return types.PriceData{}, modelPriceNotConfiguredError(info.OriginModelName, info.UserId)
 			}

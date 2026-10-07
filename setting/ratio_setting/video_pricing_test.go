@@ -59,6 +59,22 @@ func TestDefaultVideoModelPricingIncludesKlingOmniTiers(t *testing.T) {
 	}
 }
 
+func TestOfficialVideoPricingDoesNotFallbackToRegularPrices(t *testing.T) {
+	price, ok := GetVideoModelOfficialBasePrice("kling-v3-omni")
+	require.False(t, ok)
+	require.Zero(t, price)
+	require.Zero(t, GetVideoModelOfficialPriceRatio("kling-v3-omni", "base"))
+
+	price, ok = GetVideoModelOfficialBasePrice("seedance-2.0")
+	require.True(t, ok)
+	require.InDelta(t, 0.1512, price, 1e-9)
+	price, ok = GetVideoModelOfficialPrice("seedance-2.0", "1080P")
+	require.True(t, ok)
+	require.InDelta(t, 0.37422, price, 1e-9)
+	_, ok = GetVideoModelOfficialPrice("seedance-2.0", "8K")
+	require.False(t, ok)
+}
+
 func TestDefaultVideoModelPricingIncludesSeedanceResolutionPrices(t *testing.T) {
 	base, ok := GetVideoModelBasePrice("doubao-seedance-2.0")
 	require.True(t, ok)

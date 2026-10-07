@@ -91,6 +91,18 @@ func GetImageModelPrice(model, variant string) (float64, bool) {
 	return price, true
 }
 
+func GetImageModelOfficialPrice(model, variant string) (float64, bool) {
+	config, ok := getImageModelPricing(model)
+	if !ok {
+		return 0, false
+	}
+	if strings.TrimSpace(variant) == "" {
+		return config.BasePrice, config.BasePrice > 0
+	}
+	price := imagePriceByName(config.Prices, variant)
+	return price, price > 0
+}
+
 func GetImageModelPriceRatio(model, variant string) float64 {
 	config, ok := getImageModelPricing(model)
 	if !ok || config.BasePrice <= 0 {
