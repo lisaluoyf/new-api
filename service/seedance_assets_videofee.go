@@ -38,15 +38,30 @@ func videoFeeLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 				return nil, err
 			}
 			path := "/api/real-person-assets/import-url"
+			if asset.GroupType == "ordinary" {
+				path = "/api/assets/import-url"
+			}
 			var payload any = map[string]any{"url": asset.SourceURL}
 			// Send our own uploaded image bytes directly: VideoFee's URL importer
 			// cannot fetch this origin in production. External URLs retain import.
-			if upload, err := videoFeeLocalUpload(asset.SourceURL); err != nil {
+			upload, err := videoFeePrivateUpload(asset)
+			if err != nil {
 				return nil, err
-			} else if upload != nil {
+			}
+			if upload == nil {
+				upload, err = videoFeeLocalUpload(asset.SourceURL)
+			}
+			if err != nil {
+				return nil, err
+			}
+			if upload != nil {
 				path = "/api/real-person-assets/upload"
+				if asset.GroupType == "ordinary" {
+					path = "/api/assets/upload"
+				}
 				payload = *upload
 			}
+
 			imported, err := seedanceProviderRawRequest(ctx, asset, ch, key, http.MethodPost, path, payload)
 			if err != nil {
 				return nil, err
@@ -55,6 +70,9 @@ func videoFeeLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 			upstream := seedanceString(row, "assetKey")
 			if upstream == "" {
 				return nil, seedanceError(502, "Invalid media import response")
+			}
+			if err = storeVideoFeeReview(asset, row); err != nil {
+				return nil, err
 			}
 			if err = model.DB.Model(asset).Update("upstream_id", upstream).Error; err != nil {
 				return nil, err
@@ -103,7 +121,11 @@ func videoFeeLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 			if err != nil {
 				return nil, err
 			}
-			return result(map[string]any{"status": status})
+			data := map[string]any{"status": status}
+			if status == "Failed" {
+				data["Error"] = map[string]any{"Message": "Channel material review failed or the material purpose is incompatible"}
+			}
+			return result(data)
 		case http.MethodPatch, http.MethodDelete:
 			// These manage the APIMaster entry. VideoFee does not document remote
 			// rename/delete endpoints, so retain the upstream file instead of guessing.
@@ -119,21 +141,11 @@ func videoFeeAssetStatus(ctx context.Context, asset *model.SeedanceResource, ch 
 		return "", err
 	}
 	row, _ := response["row"].(map[string]any)
-	status := seedanceString(row, "status")
-	if status == "" {
-		cert, _ := row["assetCertification"].(map[string]any)
-		status = seedanceString(cert, "status")
+	if err := storeVideoFeeReview(asset, row); err != nil {
+		return "", err
 	}
-	switch strings.ToLower(status) {
-	case "active":
-		return "Active", nil
-	case "failed", "blocked", "rejected":
-		return "Failed", nil
-	case "certifying", "pending", "uploaded", "processing":
-		return "Pending", nil
-	default:
-		return "", seedanceError(502, "Invalid media certification status")
-	}
+	return videoFeeReviewedStatus(asset, row)
+
 }
 
 // Only canonical filenames emitted by StoreUploadedMediaImage can access disk.

@@ -11,12 +11,15 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 type SeedanceGroupInput struct {
+	Purpose     string `json:"purpose,omitempty"`
+	ChannelID   int    `json:"channel_id,omitempty"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
@@ -96,6 +99,15 @@ func CreateSeedanceGroup(c *gin.Context, name string, input SeedanceGroupInput) 
 	if utf8.RuneCountInString(input.Name) > 255 || utf8.RuneCountInString(input.Description) > 4000 {
 		return nil, seedanceError(400, "Group name or description is too long")
 	}
+	if input.ChannelID > 0 {
+		if fixed, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok && fixed != strconv.Itoa(input.ChannelID) {
+			return nil, seedanceError(403, "Requested channel conflicts with this key")
+		}
+		common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(input.ChannelID))
+	}
+	if input.Purpose != "" && input.Purpose != "ordinary" && input.Purpose != "channel_portrait" {
+		return nil, seedanceError(400, "purpose must be ordinary or channel_portrait")
+	}
 	resource, err := selectSeedanceLibrary(c, name)
 	if err != nil {
 		return nil, err
@@ -103,6 +115,12 @@ func CreateSeedanceGroup(c *gin.Context, name string, input SeedanceGroupInput) 
 	resource.ID, resource.Kind, resource.Status = seedanceID("group"), "group", "Creating"
 	resource.Name, resource.Description = input.Name, input.Description
 	resource.GroupType = "virtual"
+	if input.Purpose != "" {
+		if resource.ChannelID != constant.VideoFeeSeedanceChannelID {
+			return nil, seedanceError(400, "Explicit channel material purpose is unsupported on this channel", "channel_not_supported")
+		}
+		resource.GroupType = input.Purpose
+	}
 	if resource.Name == "" {
 		resource.Name = "My media library"
 	}
@@ -208,6 +226,9 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 			return nil, err
 		}
 	}
+	if group.GroupType == "channel_portrait" && (len(idempotency) < 8 || len(idempotency) > 128) {
+		return nil, seedanceError(400, "Idempotency-Key of 8–128 characters is required for channel portrait assets")
+	}
 	task := &model.SeedanceResource{ID: taskID, Description: requestHash, Kind: "task", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, ProjectName: group.ProjectName, CredentialFingerprint: group.CredentialFingerprint, GroupType: group.GroupType, VerificationID: group.VerificationID, Model: input.Model, GroupID: group.ID, Status: "processing"}
 	assetIDs := make([]string, 0, len(input.Assets))
 	assets := make([]model.SeedanceResource, 0, len(input.Assets))
@@ -264,6 +285,14 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 
 func SeedanceAssetDTO(resource *model.SeedanceResource) map[string]any {
 	dto := map[string]any{"id": resource.ID, "asset_id": resource.ID, "asset_url": "asset://" + resource.ID, "name": resource.Name, "asset_type": resource.AssetType, "group_id": resource.GroupID, "status": resource.Status, "url": seedancePublicSourceURL(resource), "created_at": resource.CreatedAt, "updated_at": resource.UpdatedAt}
+	if resource.ChannelID == constant.VideoFeeSeedanceChannelID {
+		dto["material_purpose"] = resource.GroupType
+		dto["verification_method"] = "channel_material_review"
+		dto["owner_verified"] = false
+		if review := videoFeeStoredReview(resource); review != nil {
+			dto["review"] = review
+		}
+	}
 	if resource.Status == "Failed" {
 		message := resource.FailReason
 		if message == "" {

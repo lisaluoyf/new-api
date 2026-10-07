@@ -75,7 +75,7 @@ func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 			}
 			common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, pin)
 			c.Set("seedance_asset_key_fingerprint", asset.KeyFingerprint)
-			if asset.GroupType == "real_person" && c.Request.URL.Path != "/v1/videos/quote" {
+			if service.IsSeedancePortraitAsset(asset) && c.Request.URL.Path != "/v1/videos/quote" {
 				receipt, fresh, e := service.BeginSeedancePortraitVideo(c, fields, asset)
 				if e != nil {
 					seedanceRoutingError(c, e)

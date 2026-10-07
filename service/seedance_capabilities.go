@@ -32,14 +32,14 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 		}
 		mode, configured, reason := "unverified", false, "Portrait support has not been verified for this integration"
 		if isBytePlusSeedanceChannel(ch) {
-			mode, reason = "official_h5", "Account entitlement requires upstream confirmation; no live portrait acceptance test completed"
+			mode, reason = "official_h5", "Account entitlement requires upstream confirmation"
 			_, err := loadBytePlusAssetCredentials(ch.Id)
 			configured = err == nil
 			if !configured {
 				reason = "Separate asset API credentials are not configured"
 			}
 		} else if ch.Id == constant.VideoFeeSeedanceChannelID {
-			mode, reason = "unverified", "VideoFee material review exists; real-person authorization workflow has not been verified"
+			mode, configured, reason = "channel_material_review", ch.Status == 1 && ch.Key != "", "Channel portrait asset review is available; this integration does not provide official owner H5 verification"
 		} else if u, e := url.Parse(ch.GetBaseURL()); e == nil && (u.Hostname() == "apimart.ai" || strings.HasSuffix(u.Hostname(), ".apimart.ai") || u.Hostname() == "apib.ai" || strings.HasSuffix(u.Hostname(), ".apib.ai")) {
 			mode, reason = "virtual_or_ordinary", "Material library integration exists; this integration does not expose real-person H5 verification"
 		}

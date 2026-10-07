@@ -71,10 +71,13 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 		if err != nil {
 			return "", err
 		}
+		if asset.GroupType == "channel_portrait" && fields["model"] != asset.Model {
+			return "", seedanceError(409, "Channel portrait certification compatibility with the requested model is not confirmed", "asset_context_incompatible")
+		}
 		if pinned != nil && (pinned.ChannelID != asset.ChannelID || pinned.KeyFingerprint != asset.KeyFingerprint || pinned.ProjectName != asset.ProjectName || pinned.CredentialFingerprint != asset.CredentialFingerprint) {
 			return "", seedanceError(400, "All referenced assets must belong to the same media library")
 		}
-		if pinned == nil || asset.GroupType == "real_person" {
+		if pinned == nil || IsSeedancePortraitAsset(asset) {
 			pinned = asset
 		}
 		if !seen[id] {
@@ -136,4 +139,10 @@ func SeedanceRequestFields(c *gin.Context) (map[string]any, error) {
 		return nil, err
 	}
 	return fields, nil
+}
+
+// Channel material review is distinct from official owner verification, but
+// both require durable generation deduplication and a compatible pinned route.
+func IsSeedancePortraitAsset(asset *model.SeedanceResource) bool {
+	return asset.GroupType == "real_person" || asset.GroupType == "channel_portrait"
 }
