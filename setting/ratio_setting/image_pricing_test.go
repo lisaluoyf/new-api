@@ -111,3 +111,13 @@ func TestNanoBanana21BasePricing(t *testing.T) {
 		}
 	}
 }
+
+func TestImageOfficialPriceDoesNotFallbackToBaseForMissingVariant(t *testing.T) {
+	price, ok := GetImageModelOfficialPrice("gemini-3.1-flash-image", "8K")
+	require.False(t, ok)
+	require.Zero(t, price)
+
+	price, ok = GetImageModelOfficialPrice("gemini-3.1-flash-image", "2K")
+	require.True(t, ok)
+	require.InDelta(t, 0.101, price, 1e-9)
+}
