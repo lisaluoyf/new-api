@@ -46,6 +46,7 @@ export function isLogMediaImageModel(modelName: string): boolean {
     model === 'doubao-seedream-5-0-pro-260628' ||
     model === 'midjourney-v8.2' ||
     model === 'midjourney-niji-7' ||
+    model === 'gemini-nano-banana-2.1' ||
     model.includes('flash-image') ||
     model.startsWith('gemini-3-pro-image')
   )

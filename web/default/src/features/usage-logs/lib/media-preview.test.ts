@@ -37,6 +37,7 @@ describe('isLogMediaImageModel', () => {
       'midjourney-v8.2',
       'midjourney-niji-7',
       'grok-imagine-image-2.0',
+      'gemini-nano-banana-2.1',
     ]) {
       assert.equal(isLogMediaImageModel(model.toUpperCase()), true)
       const urls = [1, 2, 3, 4].map((n) => `https://apimaster.ai/imgs/${n}.png`)
