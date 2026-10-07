@@ -25,6 +25,9 @@ func settlementFixture(t *testing.T) *TextSettlement {
 
 func TestTextSettlementBalanceFailureRetriesOriginalLogOnce(t *testing.T) {
 	item := settlementFixture(t)
+	// Large JSON numbers must still identify the original pending log exactly.
+	require.NoError(t, DB.Model(&TextSettlement{}).Where("id = ?", item.Id).Update("id", 7000001).Error)
+	item.Id = 7000001
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", 1).Update("quota", 0).Error)
 	result, err := ApplyTextSettlement(item.Id)
 	require.ErrorIs(t, err, ErrSettlementBalance)

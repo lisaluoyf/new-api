@@ -2,9 +2,9 @@ package model
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/tidwall/gjson"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -235,8 +235,7 @@ func publishSettlementLog(db *gorm.DB, item *TextSettlement) error {
 		return err
 	}
 	for _, old := range existing {
-		meta, _ := common.StrToMap(old.Other)
-		if fmt.Sprint(meta["billing_settlement_id"]) == fmt.Sprint(item.Id) {
+		if gjson.Get(old.Other, "billing_settlement_id").Int() == int64(item.Id) {
 			log.Id = old.Id
 			return db.Save(&log).Error
 		}
