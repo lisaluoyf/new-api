@@ -59,7 +59,7 @@ func VerifyPayPalFullRefund(ctx context.Context, captureID, updated, amount, cur
 		}
 		for _, row := range response.Details {
 			v := row.Info
-			if v.Reference != captureID || v.ReferenceType != "TXN" || v.Code != "T1107" || v.Status != "S" {
+			if v.Reference != captureID || v.ReferenceType != "TXN" || !isPayPalRefundStatementCode(v.Code) || v.Status != "S" {
 				continue
 			}
 			if v.ID == "" || seen[v.ID] {
@@ -111,4 +111,11 @@ func VerifyPayPalFullRefund(ctx context.Context, captureID, updated, amount, cur
 		}
 	}
 	return "", errors.New("refund capture association unavailable")
+}
+
+// IPR reversals are accepted only with the same independent completed refund
+// resource and exact capture/amount checks as payment refunds.
+// https://developer.paypal.com/reports/reference/t-codes/
+func isPayPalRefundStatementCode(code string) bool {
+	return code == "T1107" || code == "T1116"
 }

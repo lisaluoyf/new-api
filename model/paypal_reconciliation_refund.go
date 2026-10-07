@@ -79,3 +79,27 @@ func VerifyPayPalSubscriptionRefundRecovery(trade string, userID int, amount flo
 		cycle.Status == "cancelled" && cycle.StartTime > 0 && cycle.EndTime >= cycle.StartTime &&
 		cycle.EndTime <= GetDBTimestamp(), nil
 }
+
+// VerifyPayPalUncreditedTopUp uses the persisted order's atomic settlement
+// fields. Successful wallet credits always set complete_time in the same
+// transaction as the balance update; a subscription mirror is not wallet proof.
+func VerifyPayPalUncreditedTopUp(top *TopUp) (bool, error) {
+	if top == nil || top.Id <= 0 || top.TradeNo == "" || top.UserId <= 0 || top.PaymentProvider != PaymentProviderPayPal || top.Money <= 0 {
+		return false, nil
+	}
+	var current TopUp
+	if err := DB.Where("id = ? AND trade_no = ? AND user_id = ?", top.Id, top.TradeNo, top.UserId).First(&current).Error; err != nil {
+		return false, err
+	}
+	if current.PaymentProvider != PaymentProviderPayPal || current.Money != top.Money ||
+		(current.Status != common.TopUpStatusPending && current.Status != common.TopUpStatusFailed && current.Status != common.TopUpStatusExpired) ||
+		current.CompleteTime != 0 || current.CreditedAmount != 0 || current.PayPalCaptureID != "" ||
+		current.RefundedAmount != 0 || current.RefundedQuota != 0 || current.RefundFrozenAmount != 0 || current.RefundFrozenQuota != 0 {
+		return false, nil
+	}
+	var subscriptions int64
+	if err := DB.Model(&SubscriptionOrder{}).Where("trade_no = ?", current.TradeNo).Count(&subscriptions).Error; err != nil {
+		return false, err
+	}
+	return subscriptions == 0, nil
+}

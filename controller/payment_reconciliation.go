@@ -37,6 +37,7 @@ type reconciliationProof struct {
 	id, status, currency, amount, problem  string
 	paid, known                            bool
 	refundVerified, refundRecoveryVerified bool
+	refundUncreditedVerified               bool
 }
 
 func reconciliationRange(start, end string) (time.Time, time.Time, error) {
@@ -398,7 +399,7 @@ func mergeReconciliationStatement(provider string, items []model.PaymentReconcil
 			if (trade != "" && i.TradeNo == trade) || (i.OfficialID != "" && i.OfficialID == payment.ID) {
 				// A successful statement entry is independent evidence even when
 				// a legacy order cannot be queried by its saved identifier.
-				if i.Result == "unverified" && i.Purpose != "coverage" && i.LocalStatus != "refunded" {
+				if i.Result == "unverified" && i.Purpose != "coverage" && i.LocalStatus != "refunded" && !payment.RefundOnly && !strings.Contains(strings.ToLower(i.OfficialStatus), "refund") {
 					items[index].OfficialPaid = true
 					items[index].OfficialID = payment.ID
 					items[index].OfficialStatus = payment.Status
@@ -407,7 +408,7 @@ func mergeReconciliationStatement(provider string, items []model.PaymentReconcil
 					if provider == "platega" {
 						items[index].OfficialAmount = ""
 					}
-					if !i.LocalPaid {
+					if !i.LocalPaid && provider != "paypal" {
 						items[index].Result = "difference"
 						items[index].Problem = "official_paid_local_not_success"
 					}
@@ -469,14 +470,14 @@ func mergeReconciliationStatement(provider string, items []model.PaymentReconcil
 							row.clinkSessionID = ref.QueryID
 						}
 					}
-					if provider == "platega" || provider == "clink" || (provider == "paypal" && row.status == "refunded") || payment.RefundOnly {
+					if provider == "platega" || provider == "clink" || provider == "paypal" || payment.RefundOnly {
 						ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 						proof = queryReconciliationOrder(ctx, row)
 						cancel()
 					}
 
 					i = classifyReconciliationOrder(row, proof)
-					if i.Verification == "refund_matched" && !payment.RefundOnly {
+					if i.Verification == "refund_matched" && row.status == "refunded" && !payment.RefundOnly {
 						// Original gross payment still belongs to this statement day.
 						i.LocalPaid = true
 						i.OfficialPaid = true
@@ -619,7 +620,7 @@ func classifyReconciliationOrder(r reconciliationCandidate, p reconciliationProo
 		return i
 	}
 	if r.status == "refunded" || strings.Contains(strings.ToLower(p.status), "refund") || strings.Contains(strings.ToLower(p.status), "chargeback") {
-		if r.provider == "paypal" && r.status == "refunded" && p.status == "REFUNDED" && p.refundVerified && p.refundRecoveryVerified && r.currency == p.currency && p.amount == decimal.NewFromFloat(r.money).String() {
+		if r.provider == "paypal" && p.status == "REFUNDED" && p.refundVerified && ((r.status == "refunded" && p.refundRecoveryVerified) || p.refundUncreditedVerified) && r.currency == p.currency && p.amount == decimal.NewFromFloat(r.money).String() {
 			i.LocalPaid = false
 			i.OfficialPaid = false
 			i.Verification = "refund_matched"
@@ -992,6 +993,10 @@ func verifyPayPalReconciliationRefund(ctx context.Context, r reconciliationCandi
 	}
 	if r.top == nil {
 		r.top = model.GetTopUpByTradeNo(r.trade)
+	}
+	p.refundUncreditedVerified, err = model.VerifyPayPalUncreditedTopUp(r.top)
+	if err != nil {
+		p.refundUncreditedVerified = false
 	}
 	p.refundRecoveryVerified, err = model.VerifyPayPalRefundRecovery(r.top)
 	if err != nil {
