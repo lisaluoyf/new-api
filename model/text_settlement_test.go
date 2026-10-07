@@ -1,7 +1,9 @@
 package model
 
 import (
+	"fmt"
 	"github.com/glebarez/sqlite"
+	"github.com/tidwall/gjson"
 	"gorm.io/gorm"
 	"testing"
 
@@ -139,4 +141,136 @@ func TestTextSettlementRejectsChangedQuotaForSameRequest(t *testing.T) {
 	var stored TextSettlement
 	require.NoError(t, DB.First(&stored, item.Id).Error)
 	require.Equal(t, 50, stored.Quota)
+}
+
+func freeCreditSettlementFixture(t *testing.T, planType string, used int64) *TextSettlement {
+	item := settlementFixture(t)
+	require.NoError(t, DB.AutoMigrate(&SubscriptionPlan{}))
+	require.NoError(t, DB.Create(&SubscriptionPlan{Id: 8, Title: "free credits", PlanType: planType, PriceAmount: 0}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{Id: 7, UserId: 1, PlanId: 8, AmountTotal: 30, AmountUsed: used}).Error)
+	require.NoError(t, DB.Create(&SubscriptionPreConsumeRecord{RequestId: item.RequestId, UserId: 1, UserSubscriptionId: 7, PreConsumed: 10}).Error)
+	require.NoError(t, DB.Model(item).Updates(map[string]interface{}{"funding_source": "subscription", "subscription_id": 7}).Error)
+	return item
+}
+
+func TestTextSettlementFreeCreditsUseWalletOnlyForUncoveredUsage(t *testing.T) {
+	for _, planType := range []string{SubscriptionPlanTypeGPTTrial, SubscriptionPlanTypeGPTReferralReward} {
+		for _, used := range []int64{10, 30} {
+			t.Run(planType+fmt.Sprint(used), func(t *testing.T) {
+				item := freeCreditSettlementFixture(t, planType, used)
+				require.NoError(t, PublishTextSettlementLog(item.Id))
+				var before Log
+				require.NoError(t, DB.First(&before).Error)
+				walletPart := int(used) + 10
+				for i := 0; i < 3; i++ {
+					result, err := ApplyTextSettlement(item.Id)
+					require.NoError(t, err)
+					require.Equal(t, "settled", result.Status)
+					require.Equal(t, walletPart, result.WalletSupplementQuota)
+				}
+				var user User
+				var token Token
+				var sub UserSubscription
+				var reservation SubscriptionPreConsumeRecord
+				var logs []Log
+				require.NoError(t, DB.First(&user, 1).Error)
+				require.NoError(t, DB.First(&token, 2).Error)
+				require.NoError(t, DB.First(&sub, 7).Error)
+				require.NoError(t, DB.First(&reservation).Error)
+				require.NoError(t, DB.Find(&logs).Error)
+				require.Equal(t, 100-walletPart, user.Quota)
+				require.Equal(t, 50, user.UsedQuota)
+				require.Equal(t, 1, user.RequestCount)
+				require.Equal(t, 60, token.RemainQuota)
+				require.Equal(t, 50, token.UsedQuota)
+				require.EqualValues(t, 30, sub.AmountUsed)
+				require.EqualValues(t, 50-walletPart, reservation.PreConsumed)
+				require.Len(t, logs, 1)
+				require.Equal(t, before.Id, logs[0].Id)
+				require.Equal(t, LogTypeConsume, logs[0].Type)
+				require.Equal(t, "frozen-prices", logs[0].AccountingSnapshot)
+				require.Equal(t, walletPart, logs[0].WalletSupplementQuota)
+				require.Equal(t, int64(walletPart), gjson.Get(logs[0].Other, "wallet_supplement_quota").Int())
+				require.Equal(t, int64(50-walletPart), gjson.Get(logs[0].Other, "subscription_settled_quota").Int())
+				pending, err := HasPendingTextSettlement(1)
+				require.NoError(t, err)
+				require.False(t, pending)
+			})
+		}
+	}
+}
+
+func TestTextSettlementWalletSupplementRollsBackOnFailure(t *testing.T) {
+	for _, failure := range []string{"wallet", "token", "log", "reservation"} {
+		t.Run(failure, func(t *testing.T) {
+			item := freeCreditSettlementFixture(t, SubscriptionPlanTypeGPTReferralReward, 10)
+			switch failure {
+			case "wallet":
+				require.NoError(t, DB.Model(&User{}).Where("id = ?", 1).Update("quota", 19).Error)
+			case "token":
+				require.NoError(t, DB.Model(&Token{}).Where("id = ?", 2).Update("remain_quota", 0).Error)
+			case "log":
+				require.NoError(t, DB.Migrator().DropTable(&Log{}))
+			case "reservation":
+				require.NoError(t, DB.Where("request_id = ?", item.RequestId).Delete(&SubscriptionPreConsumeRecord{}).Error)
+			}
+			result, err := ApplyTextSettlement(item.Id)
+			require.Error(t, err)
+			require.Equal(t, "pending", result.Status)
+			require.Zero(t, result.WalletSupplementQuota)
+			var user User
+			var sub UserSubscription
+			require.NoError(t, DB.First(&user, 1).Error)
+			require.NoError(t, DB.First(&sub, 7).Error)
+			expectedWallet := 100
+			if failure == "wallet" {
+				expectedWallet = 19
+			}
+			require.Equal(t, expectedWallet, user.Quota)
+			require.Zero(t, user.UsedQuota)
+			require.Zero(t, user.RequestCount)
+			require.EqualValues(t, 10, sub.AmountUsed)
+		})
+	}
+}
+
+func TestTextSettlementDoesNotSpendWalletForPaidOrSubscriptionOnly(t *testing.T) {
+	for _, kind := range []string{"paid", "subscription_only", "paid_snapshot"} {
+		t.Run(kind, func(t *testing.T) {
+			planType := SubscriptionPlanTypeGPTReferralReward
+			if kind == "paid" {
+				planType = SubscriptionPlanTypeGPTSubscription
+			}
+			item := freeCreditSettlementFixture(t, planType, 10)
+			if kind == "subscription_only" {
+				require.NoError(t, DB.Model(&User{}).Where("id = ?", 1).Update("setting", `{"billing_preference":"subscription_only"}`).Error)
+			}
+			if kind == "paid_snapshot" {
+				require.NoError(t, DB.Model(&UserSubscription{}).Where("id = ?", 7).Update("paid_amount_snapshot", 1).Error)
+			}
+			_, err := ApplyTextSettlement(item.Id)
+			require.ErrorIs(t, err, ErrSettlementBalance)
+			var user User
+			require.NoError(t, DB.First(&user, 1).Error)
+			require.Equal(t, 100, user.Quota)
+		})
+	}
+}
+
+func TestResolvePendingTextSettlementsUsesAvailableWalletImmediately(t *testing.T) {
+	item := freeCreditSettlementFixture(t, SubscriptionPlanTypeGPTReferralReward, 10)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", 1).Update("quota", 0).Error)
+	pending, err := ResolvePendingTextSettlements(1)
+	require.NoError(t, err)
+	require.True(t, pending)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", 1).Update("quota", 100).Error)
+	pending, err = ResolvePendingTextSettlements(1)
+	require.NoError(t, err)
+	require.False(t, pending)
+	var stored TextSettlement
+	require.NoError(t, DB.First(&stored, item.Id).Error)
+	require.Equal(t, "settled", stored.Status)
+	var user User
+	require.NoError(t, DB.First(&user, 1).Error)
+	require.Equal(t, 80, user.Quota)
 }

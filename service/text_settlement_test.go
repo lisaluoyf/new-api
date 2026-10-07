@@ -59,3 +59,32 @@ func TestTextSettlementPendingDoesNotRefundOrRecordFalseConsumption(t *testing.T
 	require.Equal(t, model.LogTypeConsume, log.Type)
 	require.Equal(t, 2000, log.Quota)
 }
+
+func TestNewBillingSessionSettlesFreeCreditOverflowAndUsesSameKeyWallet(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 100)
+	seedToken(t, 2, 1, "retry-billing-key", 100)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 94}).Error)
+	require.NoError(t, model.DB.Create(&model.SubscriptionPlan{Id: 8, Title: "Referral credits", PlanType: model.SubscriptionPlanTypeGPTReferralReward, PriceAmount: 0}).Error)
+	require.NoError(t, model.DB.Create(&model.UserSubscription{Id: 7, UserId: 1, PlanId: 8, AmountTotal: 30, AmountUsed: 10, Status: "active", StartTime: time.Now().Add(-time.Hour).Unix(), EndTime: time.Now().Add(time.Hour).Unix()}).Error)
+	item := &model.TextSettlement{RequestId: "free-overflow-before-next-call", UserId: 1, TokenId: 2, ChannelId: 94, FundingSource: BillingSourceSubscription, SubscriptionId: 7, PreConsumedQuota: 10, TokenConsumed: 10, Quota: 50}
+	require.NoError(t, model.DB.Create(&model.SubscriptionPreConsumeRecord{RequestId: item.RequestId, UserId: 1, UserSubscriptionId: 7, PreConsumed: 10}).Error)
+	require.NoError(t, model.FreezeTextSettlement(item, &model.Log{UserId: 1, RequestId: item.RequestId, Type: model.LogTypeConsume, Quota: 50, CreatedAt: common.GetTimestamp()}, model.AccountingLogFields{}))
+	info := retryBillingInfo(100)
+	info.RequestId = "next-call-same-key"
+	info.UserSetting.BillingPreference = "subscription_first"
+	info.ForcePreConsume = true
+	session, apiErr := NewBillingSession(retryBillingContext(), info, 10)
+	require.Nil(t, apiErr)
+	require.Equal(t, BillingSourceWallet, session.funding.Source())
+	require.Equal(t, 2, session.relayInfo.TokenId)
+	require.Equal(t, "retry-billing-key", session.relayInfo.TokenKey)
+	var stored model.TextSettlement
+	require.NoError(t, model.DB.First(&stored, item.Id).Error)
+	require.Equal(t, "settled", stored.Status)
+	require.Equal(t, 20, stored.WalletSupplementQuota)
+	require.NoError(t, session.RefundSync(retryBillingContext()))
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	require.Equal(t, 80, user.Quota)
+}

@@ -47,7 +47,7 @@ func (s *BillingSession) settleText(c *gin.Context, log *model.Log, accounting m
 	if result != nil && result.Status == "settled" {
 		s.settled, s.fundingSettled = true, true
 		if s.funding.Source() == BillingSourceSubscription {
-			s.relayInfo.SubscriptionPostDelta += int64(log.Quota - s.preConsumedQuota)
+			s.relayInfo.SubscriptionPostDelta += int64(log.Quota - s.preConsumedQuota - result.WalletSupplementQuota)
 		}
 	}
 	if err != nil {

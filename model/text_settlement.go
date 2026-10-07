@@ -23,14 +23,16 @@ type TextSettlement struct {
 	PreConsumedQuota int
 	TokenConsumed    int
 	Quota            int
-	IsPlayground     bool
-	Status           string `gorm:"type:varchar(32);index:idx_text_settlement_user_status,priority:2;index:idx_text_settlement_retry,priority:1"`
-	CreatedAt        int64
-	NextAttemptAt    int64 `gorm:"index:idx_text_settlement_retry,priority:2"`
-	SettledAt        int64
-	LastError        string `gorm:"type:text"`
-	LogPayload       string `gorm:"type:text"`
-	LogPublished     bool
+	// WalletSupplementQuota records the wallet-funded part of a frozen free-credit bill.
+	WalletSupplementQuota int
+	IsPlayground          bool
+	Status                string `gorm:"type:varchar(32);index:idx_text_settlement_user_status,priority:2;index:idx_text_settlement_retry,priority:1"`
+	CreatedAt             int64
+	NextAttemptAt         int64 `gorm:"index:idx_text_settlement_retry,priority:2"`
+	SettledAt             int64
+	LastError             string `gorm:"type:text"`
+	LogPayload            string `gorm:"type:text"`
+	LogPublished          bool
 }
 
 type settlementLogPayload struct {
@@ -105,13 +107,43 @@ func ApplyTextSettlement(id int) (*TextSettlement, error) {
 			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", item.SubscriptionId, item.UserId).First(&sub).Error; err != nil {
 				return err
 			}
-			if sub.AmountTotal > 0 && sub.AmountUsed+int64(delta) > sub.AmountTotal {
-				return ErrSettlementBalance
+			subscriptionDelta := int64(delta)
+			if sub.AmountTotal > 0 && sub.AmountUsed+subscriptionDelta > sub.AmountTotal {
+				// Only free promotional credits may overflow into the wallet.
+				// Keep the original usage/prices and debit just the uncovered part.
+				var plan SubscriptionPlan
+				if err := tx.First(&plan, sub.PlanId).Error; err != nil {
+					return err
+				}
+				if !IsGPTPromotionalSubscriptionPlan(&plan) || plan.PriceAmount != 0 || sub.PaidAmountSnapshot != 0 {
+					return ErrSettlementBalance
+				}
+				var user User
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, item.UserId).Error; err != nil {
+					return err
+				}
+				if common.NormalizeBillingPreference(user.GetSetting().BillingPreference) == "subscription_only" {
+					return ErrSettlementBalance
+				}
+				subscriptionDelta = sub.AmountTotal - sub.AmountUsed
+				if subscriptionDelta < 0 {
+					subscriptionDelta = 0
+				}
+				walletDelta := delta - int(subscriptionDelta)
+				res := tx.Model(&User{}).Where("id = ? AND quota >= ?", item.UserId, walletDelta).
+					Update("quota", gorm.Expr("quota - ?", walletDelta))
+				if res.Error != nil {
+					return res.Error
+				}
+				if res.RowsAffected != 1 {
+					return ErrSettlementBalance
+				}
+				item.WalletSupplementQuota = walletDelta
 			}
 			if sub.AmountUsed+int64(delta) < 0 {
 				return errors.New("subscription reservation no longer available")
 			}
-			if err := tx.Model(&sub).Update("amount_used", gorm.Expr("amount_used + ?", delta)).Error; err != nil {
+			if err := tx.Model(&sub).Update("amount_used", gorm.Expr("amount_used + ?", subscriptionDelta)).Error; err != nil {
 				return err
 			}
 			var reservation SubscriptionPreConsumeRecord
@@ -121,7 +153,7 @@ func ApplyTextSettlement(id int) (*TextSettlement, error) {
 			if reservation.UserSubscriptionId != item.SubscriptionId || reservation.PreConsumed != int64(item.PreConsumedQuota) {
 				return errors.New("subscription reservation mismatch")
 			}
-			if err := tx.Model(&reservation).Update("pre_consumed", item.Quota).Error; err != nil {
+			if err := tx.Model(&reservation).Update("pre_consumed", item.Quota-item.WalletSupplementQuota).Error; err != nil {
 				return err
 			}
 		}
@@ -208,6 +240,17 @@ func publishSettlementLog(db *gorm.DB, item *TextSettlement) error {
 	}
 	other["billing_settlement_id"] = item.Id
 	other["billing_settlement_status"] = item.Status
+	if item.Status == "settled" && item.WalletSupplementQuota > 0 {
+		log.WalletSupplementQuota = item.WalletSupplementQuota
+		other["subscription_consumed"] = item.Quota - item.WalletSupplementQuota
+		other["subscription_post_delta"] = item.Quota - item.WalletSupplementQuota - item.PreConsumedQuota
+		if total := gjson.Get(log.Other, "subscription_total").Int(); total > 0 {
+			other["subscription_used"] = total
+			other["subscription_remain"] = 0
+		}
+		other["wallet_supplement_quota"] = item.WalletSupplementQuota
+		other["subscription_settled_quota"] = item.Quota - item.WalletSupplementQuota
+	}
 	if item.Status != "settled" {
 		log.Type = LogTypeError
 		log.Quota = 0
@@ -273,6 +316,29 @@ func HasPendingTextSettlement(userID int) (bool, error) {
 	var count int64
 	err := DB.Model(&TextSettlement{}).Where("user_id = ? AND status = ?", userID, "pending").Count(&count).Error
 	return count > 0, err
+}
+
+// ResolvePendingTextSettlements retries a user's durable bills before a new
+// request is rejected. Row locks make this safe alongside background retries.
+func ResolvePendingTextSettlements(userID int) (bool, error) {
+	var items []TextSettlement
+	if err := DB.Where("user_id = ? AND status = ?", userID, "pending").Order("id").Limit(200).Find(&items).Error; err != nil {
+		return true, err
+	}
+	for _, item := range items {
+		result, err := ApplyTextSettlement(item.Id)
+		if err != nil {
+			// Log delivery can fail after the debit has already committed.
+			if result != nil && result.Status == "settled" {
+				continue
+			}
+			if errors.Is(err, ErrSettlementBalance) {
+				return true, nil
+			}
+			return true, err
+		}
+	}
+	return HasPendingTextSettlement(userID)
 }
 
 func RetryTextSettlements(now int64) error {

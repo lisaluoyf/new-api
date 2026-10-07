@@ -40,6 +40,7 @@ type Log struct {
 	RequestId        string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;index:idx_logs_user_request_type_id,priority:2;default:''"`
 	Other            string `json:"other"`
 
+	WalletSupplementQuota           int     `json:"wallet_supplement_quota,omitempty" gorm:"default:0"`
 	AccountingChannelCostAmountUSD  float64 `json:"-" gorm:"column:accounting_channel_cost_amount_usd;type:decimal(20,10);default:0;index"`
 	AccountingUserPriceAmountUSD    float64 `json:"-" gorm:"column:accounting_user_price_amount_usd;type:decimal(20,10);default:0;index"`
 	AccountingResellerCostAmountUSD float64 `json:"-" gorm:"column:accounting_reseller_cost_amount_usd;type:decimal(20,10);default:0;index"`

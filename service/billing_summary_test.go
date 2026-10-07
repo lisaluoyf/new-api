@@ -649,3 +649,45 @@ func TestGetBillingDailyCapsPaidSubscriptionToCurrentTime(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), totals.PaidSubscriptionUserCount)
 }
+
+func TestBillingSummarySplitsFreeCreditWalletSupplement(t *testing.T) {
+	truncate(t)
+	const userID, channelID = 12101, 12201
+	const baseTs int64 = 1_783_800_000
+	seedUser(t, userID, 0)
+	seedChannel(t, channelID)
+	seedConsumeLog(t, &model.Log{
+		UserId: userID, ChannelId: channelID, Type: model.LogTypeConsume,
+		CreatedAt: baseTs, ModelName: "gpt-free-wallet", Quota: 500_000,
+		WalletSupplementQuota: 200_000,
+		Other:                 common.MapToJsonStr(map[string]any{"billing_source": BillingSourceSubscription, "subscription_type": model.SubscriptionPlanTypeGPTReferralReward}),
+		AccountingStatus:      "ok", AccountingChannelCostAmountUSD: 0.2,
+		AccountingUserFinalAmountUSD: 1,
+	})
+	rows, err := model.GetBillingDailyFromRawLogs(baseTs-10, baseTs+10, "gpt-free-wallet", channelID, "", "", "")
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.InDelta(t, 1, rows[0].RevenueUSD, 1e-9)
+	assert.InDelta(t, 0.6, rows[0].ExperienceBillingUSD, 1e-9)
+	assert.InDelta(t, 0.12, rows[0].ExperienceCostUSD, 1e-9)
+	assert.Equal(t, int64(1), rows[0].WalletUserCount)
+	assert.Equal(t, int64(1), rows[0].ExperienceUserCount)
+	costs, err := model.GetBillingChannelDailyCostsFromRawLogs(baseTs-10, baseTs+10, []int{channelID})
+	require.NoError(t, err)
+	require.Len(t, costs, 1)
+	assert.InDelta(t, 0.12, costs[0].ExperienceCostUSD, 1e-9)
+	originalNow := billingSummaryNow
+	billingSummaryNow = func() time.Time { return time.Unix(baseTs+3600, 0) }
+	t.Cleanup(func() { billingSummaryNow = originalNow })
+	runBillingSummaryOnce()
+	var summary model.BillingHourlySummary
+	require.NoError(t, model.LOG_DB.Where("model_name = ?", "gpt-free-wallet").First(&summary).Error)
+	assert.InDelta(t, 1, summary.RevenueUSD, 1e-9)
+	assert.InDelta(t, 0.6, summary.SubscriptionBillingUSD, 1e-9)
+	assert.InDelta(t, 0.12, summary.SubscriptionCostUSD, 1e-9)
+	activities, err := model.BuildBillingDailyUserActivities(billingDayStart(baseTs), baseTs+3600)
+	require.NoError(t, err)
+	require.Len(t, activities, 1)
+	assert.EqualValues(t, 1, activities[0].Wallet)
+	assert.EqualValues(t, 1, activities[0].Experience)
+}

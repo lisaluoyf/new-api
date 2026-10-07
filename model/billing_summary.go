@@ -287,7 +287,7 @@ func billingPaidSubscriptionCondition() string {
 }
 
 func billingWalletCondition() string {
-	return `(COALESCE(other, '') LIKE '%"billing_source":"wallet"%' OR (COALESCE(other, '') NOT LIKE '%"billing_source":"subscription"%' AND NOT ` + billingExperienceSubscriptionCondition() + ` AND NOT ` + billingPaidSubscriptionCondition() + `))`
+	return `(COALESCE(wallet_supplement_quota, 0) > 0 OR COALESCE(other, '') LIKE '%"billing_source":"wallet"%' OR (COALESCE(other, '') NOT LIKE '%"billing_source":"subscription"%' AND NOT ` + billingExperienceSubscriptionCondition() + ` AND NOT ` + billingPaidSubscriptionCondition() + `))`
 }
 
 func billingDayStartUnix(unixSeconds int64) int64 {
@@ -589,8 +589,8 @@ func GetBillingDailyFromRawLogs(startTimestamp, endTimestamp int64, modelName st
 		Select(dayExpr+` as day,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN accounting_channel_cost_amount_usd ELSE 0 END) as cost_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE accounting_user_final_amount_usd END ELSE 0 END) as revenue_usd,
-			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingExperienceSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as experience_cost_usd,
-			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingExperienceSubscriptionCondition()+` THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as experience_billing_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingExperienceSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd * (quota - COALESCE(wallet_supplement_quota, 0)) * 1.0 / quota ELSE 0 END) as experience_cost_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingExperienceSubscriptionCondition()+` THEN (quota - COALESCE(wallet_supplement_quota, 0)) * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as experience_billing_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingGPTSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingGPTSubscriptionCondition()+` THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingCodingPlanCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as coding_plan_cost_usd,
@@ -650,7 +650,7 @@ func GetBillingChannelDailyCostsFromRawLogs(startTimestamp, endTimestamp int64, 
 		Select(dayExpr+` as day,
 			channel_id,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' THEN accounting_channel_cost_amount_usd ELSE 0 END) as cost_usd,
-			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingExperienceSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as experience_cost_usd,
+			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingExperienceSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd * (quota - COALESCE(wallet_supplement_quota, 0)) * 1.0 / quota ELSE 0 END) as experience_cost_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingGPTSubscriptionCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
 			SUM(CASE WHEN quota > 0 AND accounting_status = 'ok' AND `+billingCodingPlanCondition()+` THEN accounting_channel_cost_amount_usd ELSE 0 END) as coding_plan_cost_usd`).
 		Where("type = ?", LogTypeConsume)

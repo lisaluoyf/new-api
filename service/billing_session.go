@@ -893,9 +893,14 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
-	if pending, err := model.HasPendingTextSettlement(relayInfo.UserId); err != nil {
+	pending, err := model.HasPendingTextSettlement(relayInfo.UserId)
+	if err == nil && pending {
+		pending, err = model.ResolvePendingTextSettlements(relayInfo.UserId)
+	}
+	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
-	} else if pending {
+	}
+	if pending {
 		return nil, types.NewErrorWithStatusCode(fmt.Errorf("previous request has a pending billing settlement; restore wallet/key/subscription quota and retry"), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 	}
 
