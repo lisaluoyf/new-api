@@ -394,8 +394,12 @@ func listPayPalStatement(ctx context.Context, start, end time.Time) ([]Statement
 			if e != nil {
 				return nil, errors.New("invalid PayPal statement amount")
 			}
-			if v.Status == "S" && v.Code == "T1107" && a.Sign() < 0 && v.ReferenceType == "TXN" && v.ReferenceID != "" {
-				refunds[v.ReferenceID] = StatementPayment{ID: v.ReferenceID, Status: "REFUNDED", Amount: a.Abs().String(), Currency: strings.ToUpper(v.Amount.Currency), RefundOnly: true}
+			if v.Status == "S" && isPayPalRefundStatementCode(v.Code) && a.Sign() < 0 && v.ReferenceType == "TXN" && v.ReferenceID != "" {
+				trade := v.Custom
+				if trade == "" {
+					trade = v.Reference
+				}
+				refunds[v.ReferenceID] = StatementPayment{ID: v.ReferenceID, TradeNo: trade, Status: "REFUNDED", Amount: a.Abs().String(), Currency: strings.ToUpper(v.Amount.Currency), RefundOnly: true}
 				continue
 			}
 			if v.Status != "S" || !strings.HasPrefix(v.Code, "T00") || a.Sign() <= 0 {

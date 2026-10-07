@@ -27,6 +27,10 @@ func TestPayPalFullRefundRequiresIndependentAmountIdentityAndCompletedStatus(t *
 		ok                   bool
 	}{
 		{"full", report, refund, true},
+		{"IPR reversal", strings.Replace(report, "T1107", "T1116", 1), refund, true},
+		{"IPR partial reversal", strings.Replace(strings.Replace(report, "T1107", "T1116", 1), "-100.00", "-20.00", 1), refund, false},
+		{"hold release is not a refund", strings.Replace(report, "T1107", "T2106", 1), refund, false},
+		{"unverified chargeback", strings.Replace(report, "T1107", "T1201", 1), refund, false},
 		{"partial", strings.Replace(report, "-100.00", "-50.00", 1), refund, false},
 		{"currency", report, strings.Replace(refund, "USD", "EUR", 1), false},
 		{"amount", report, strings.Replace(refund, "100.00", "99.00", 1), false},

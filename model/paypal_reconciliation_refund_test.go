@@ -127,3 +127,45 @@ func TestPayPalSubscriptionRefundRequiresExactCancelledPurchaseCycle(t *testing.
 		require.False(t, ok)
 	})
 }
+
+func TestPayPalUncreditedTopUpRequiresPersistedSettlementEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		edit   func(*TopUp)
+		mirror bool
+		want   bool
+	}{
+		{"pending", func(*TopUp) {}, false, true},
+		{"failed", func(o *TopUp) { o.Status = "failed" }, false, true},
+		{"expired", func(o *TopUp) { o.Status = "expired" }, false, true},
+		{"success", func(o *TopUp) { o.Status = "success" }, false, false},
+		{"refunded", func(o *TopUp) { o.Status = "refunded" }, false, false},
+		{"completed", func(o *TopUp) { o.CompleteTime = 1 }, false, false},
+		{"credited", func(o *TopUp) { o.CreditedAmount = 100 }, false, false},
+		{"capture recorded", func(o *TopUp) { o.PayPalCaptureID = "capture" }, false, false},
+		{"refund recorded", func(o *TopUp) { o.RefundedAmount = 100 }, false, false},
+		{"refund quota", func(o *TopUp) { o.RefundedQuota = 1 }, false, false},
+		{"frozen refund", func(o *TopUp) { o.RefundFrozenAmount = 1 }, false, false},
+		{"frozen quota", func(o *TopUp) { o.RefundFrozenQuota = 1 }, false, false},
+		{"subscription mirror", func(*TopUp) {}, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupPaymentReconciliationTest(t)
+			top := TopUp{TradeNo: "uncredited", UserId: 1, PaymentProvider: PaymentProviderPayPal, Status: "pending", Money: 100, Amount: 100}
+			require.NoError(t, DB.Create(&top).Error)
+			before := top
+			tc.edit(&top)
+			require.NoError(t, DB.Save(&top).Error)
+			if tc.mirror {
+				require.NoError(t, DB.Create(&SubscriptionOrder{TradeNo: top.TradeNo, UserId: 1, Status: "pending", Money: 100}).Error)
+			}
+			// A stale pending snapshot must not hide a subsequent settlement.
+			ok, err := VerifyPayPalUncreditedTopUp(&before)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, ok)
+			var after TopUp
+			require.NoError(t, DB.First(&after, top.Id).Error)
+			require.Equal(t, top, after)
+		})
+	}
+}
