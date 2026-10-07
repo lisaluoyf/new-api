@@ -399,42 +399,46 @@ export function SubscriptionsMutateDrawer({
                 />
               </div>
 
-              {form.watch('plan_type') === 'gpt_subscription' ? (
+              {planType === 'gpt_subscription' || planType === 'gpt_trial' ? (
                 <div className='space-y-4 rounded-md border border-fuchsia-500/20 bg-fuchsia-500/5 p-3'>
                   <h4 className='text-sm font-medium'>
-                    {t('GPT Subscription Settings')}
+                    {planType === 'gpt_trial'
+                      ? t('GPT Trial')
+                      : t('GPT Subscription Settings')}
                   </h4>
-                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
-                    {(
-                      [
-                        'tier_level',
-                        'five_hour_amount',
-                        'seven_day_amount',
-                      ] as const
-                    ).map((name) => (
-                      <FormField
-                        key={name}
-                        control={form.control}
-                        name={name}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>{gptSettingLabels[name]}</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                type='number'
-                                min={0}
-                                onChange={(e) =>
-                                  field.onChange(Number(e.target.value) || 0)
-                                }
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    ))}
-                  </div>
+                  {planType === 'gpt_subscription' ? (
+                    <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
+                      {(
+                        [
+                          'tier_level',
+                          'five_hour_amount',
+                          'seven_day_amount',
+                        ] as const
+                      ).map((name) => (
+                        <FormField
+                          key={name}
+                          control={form.control}
+                          name={name}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{gptSettingLabels[name]}</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  type='number'
+                                  min={0}
+                                  onChange={(e) =>
+                                    field.onChange(Number(e.target.value) || 0)
+                                  }
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                   <FormField
                     control={form.control}
                     name='model_allowlist'
