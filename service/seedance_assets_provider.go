@@ -137,6 +137,11 @@ func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability fun
 		text, _ := specified.(string)
 		id, _ := strconv.Atoi(text)
 		ch, err = model.GetChannelById(id, true)
+		if err == nil && ch != nil && isBytePlusSeedanceChannel(ch) && (capability == nil || capability(ch)) && seedanceChannelAllowed(c, ch, name) {
+			if _, credentialErr := loadBytePlusAssetCredentials(ch.Id); credentialErr != nil {
+				return nil, credentialErr
+			}
+		}
 		if err == nil && !filter(ch) {
 			ch = nil
 		}

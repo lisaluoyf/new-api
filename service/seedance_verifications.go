@@ -70,6 +70,9 @@ func CreateSeedanceVerification(c *gin.Context, input SeedanceVerificationInput)
 	}
 	resource, err := selectSeedanceLibraryWithFilter(c, input.Model, isBytePlusSeedanceChannel)
 	if err != nil {
+		if apiErr, ok := err.(*SeedanceAPIError); ok && apiErr.Code == "credentials_not_configured" {
+			return nil, err
+		}
 		return nil, seedanceError(503, "Selected channel does not support configured official H5 verification; no alternative route was used", "channel_not_supported")
 	}
 	var recent int64

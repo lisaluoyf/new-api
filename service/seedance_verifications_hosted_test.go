@@ -263,12 +263,47 @@ func TestSeedanceVerificationFailureRateLimitAndNoCredentialRetention(t *testing
 
 func TestSeedanceOfficialAssetHostRecognition(t *testing.T) {
 	for _, base := range []string{"https://ark.cn-beijing.volces.com", "https://ark.cn-beijing.volces.com/", "https://ark.cn-beijing.volces.com/api/v3"} {
-		ch := &model.Channel{Type: constant.ChannelTypeDoubaoVideo, BaseURL: &base}
-		require.True(t, isVolcSeedanceChannel(ch))
-		require.True(t, isBytePlusSeedanceChannel(ch))
+		for _, channelType := range []int{constant.ChannelTypeDoubaoVideo, constant.ChannelTypeVolcEngine} {
+			ch := &model.Channel{Type: channelType, BaseURL: &base}
+			require.True(t, isVolcSeedanceChannel(ch))
+			require.True(t, isBytePlusSeedanceChannel(ch))
+		}
 	}
 	base := "https://ark.cn-beijing.volces.com.attacker.example"
 	require.False(t, isVolcSeedanceChannel(&model.Channel{Type: constant.ChannelTypeDoubaoVideo, BaseURL: &base}))
+	base = "https://ark.ap-southeast.bytepluses.com"
+	require.False(t, isBytePlusSeedanceChannel(&model.Channel{Type: constant.ChannelTypeVolcEngine, BaseURL: &base}))
+}
+
+func TestSeedanceOfficialVolcChannelCapabilitiesAndMissingCredentials(t *testing.T) {
+	db := seedanceTestDB(t)
+	t.Setenv("BYTEPLUS_ASSET_CREDENTIALS_DIR", t.TempDir())
+	t.Setenv("SEEDANCE_CALLBACK_ORIGIN", "https://apimaster.example")
+	base := "https://ark.cn-beijing.volces.com/api/v3"
+	ch := model.Channel{Id: 272, Type: constant.ChannelTypeVolcEngine, BaseURL: &base, Key: "inference-key", Status: 1, Group: "default", Models: "seedance-2.0,seedance-2.0-fast,seedance-2.0-mini,seedance-2.5"}
+	require.NoError(t, db.Create(&ch).Error)
+	for _, name := range strings.Split(ch.Models, ",") {
+		require.NoError(t, db.Create(&model.Ability{ChannelId: 272, Model: name, Group: "default", Enabled: true}).Error)
+	}
+	model.InitChannelCache()
+	for _, name := range strings.Split(ch.Models, ",") {
+		c := seedanceContext(1)
+		common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, "272")
+		rows, err := SeedancePortraitCapabilities(c, name)
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+		require.Equal(t, "official_h5", rows[0]["method"])
+		require.Equal(t, false, rows[0]["configured"])
+		c.Request.Header.Set("Idempotency-Key", "missing-volc-credentials")
+		_, err = CreateSeedanceVerification(c, SeedanceVerificationInput{Model: name, ChannelID: 272})
+		require.Error(t, err)
+		apiErr, ok := err.(*SeedanceAPIError)
+		require.True(t, ok)
+		require.Equal(t, "credentials_not_configured", apiErr.Code)
+	}
+	var count int64
+	require.NoError(t, db.Model(&model.SeedanceResource{}).Count(&count).Error)
+	require.Zero(t, count)
 }
 
 func TestSeedanceAbandonedSessionCredentialsExpireWithoutPolling(t *testing.T) {

@@ -34,7 +34,7 @@ type bytePlusAssetCredentials struct {
 }
 
 func isBytePlusSeedanceChannel(ch *model.Channel) bool {
-	if ch == nil || ch.Type != constant.ChannelTypeDoubaoVideo {
+	if ch == nil || (ch.Type != constant.ChannelTypeDoubaoVideo && ch.Type != constant.ChannelTypeVolcEngine) {
 		return false
 	}
 	parsed, err := url.Parse(ch.GetBaseURL())
@@ -42,7 +42,7 @@ func isBytePlusSeedanceChannel(ch *model.Channel) bool {
 		return false
 	}
 	host := strings.ToLower(parsed.Hostname())
-	return (strings.HasPrefix(host, "ark.") && strings.HasSuffix(host, ".bytepluses.com")) || host == "ark.cn-beijing.volces.com"
+	return (ch.Type == constant.ChannelTypeDoubaoVideo && strings.HasPrefix(host, "ark.") && strings.HasSuffix(host, ".bytepluses.com")) || host == "ark.cn-beijing.volces.com"
 }
 
 func loadBytePlusAssetCredentials(channelID int) (bytePlusAssetCredentials, error) {
@@ -53,7 +53,7 @@ func loadBytePlusAssetCredentials(channelID int) (bytePlusAssetCredentials, erro
 	}
 	f, err := os.Open(filepath.Join(dir, "channel-"+strconv.Itoa(channelID)+".json"))
 	if err != nil {
-		return result, seedanceError(503, "Selected media library credentials are not configured")
+		return result, seedanceError(503, "Selected media library credentials are not configured", "credentials_not_configured")
 	}
 	defer f.Close()
 	stat, err := f.Stat()
@@ -277,7 +277,7 @@ func seedanceControlFingerprint(c bytePlusAssetCredentials) string {
 }
 
 func isVolcSeedanceChannel(ch *model.Channel) bool {
-	if ch == nil || ch.Type != constant.ChannelTypeDoubaoVideo {
+	if ch == nil || (ch.Type != constant.ChannelTypeDoubaoVideo && ch.Type != constant.ChannelTypeVolcEngine) {
 		return false
 	}
 	parsed, err := url.Parse(ch.GetBaseURL())
