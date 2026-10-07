@@ -466,6 +466,12 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		}
 	}
 
+	if info.OriginModelName == "gemini-nano-banana-2.1" {
+		// Validate/count generated images without changing the Chat Completions response.
+		if _, err := normalizeNanoBanana21ImageResponse(c, info, responseBody); err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+		}
+	}
 	err = common.Unmarshal(responseBody, &simpleResponse)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
@@ -1312,6 +1318,12 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 	// Task envelopes replace the upstream payload but must not discard usage
 	// needed for settlement and logs on synchronous upstreams.
+	if nanoBanana21ImageBridge(info) {
+		responseBody, err = normalizeNanoBanana21ImageResponse(c, info, responseBody)
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+		}
+	}
 	upstreamResponseBody := responseBody
 
 	// Client async submit: mint our own public task_id (decoupled from the upstream's),

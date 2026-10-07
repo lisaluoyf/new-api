@@ -91,3 +91,23 @@ func TestImage25PricesCanBeChangedIndependently(t *testing.T) {
 		require.InDelta(t, expected, price, 1e-9, name)
 	}
 }
+
+func TestNanoBanana21BasePricing(t *testing.T) {
+	common.OptionMapRWMutex.Lock()
+	original, exists := common.OptionMap[ImageModelPricingOption]
+	delete(common.OptionMap, ImageModelPricingOption)
+	common.OptionMapRWMutex.Unlock()
+	defer func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if exists {
+			common.OptionMap[ImageModelPricingOption] = original
+		}
+	}()
+	for tier, want := range map[string]float64{"1K": .0336, "2K": .0504, "4K": .0756} {
+		got, ok := GetImageModelPrice("gemini-nano-banana-2.1", tier)
+		if !ok || got != want {
+			t.Fatalf("%s price = %v, configured=%v", tier, got, ok)
+		}
+	}
+}

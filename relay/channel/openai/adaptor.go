@@ -96,6 +96,9 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if nanoBanana21ImageBridge(info) {
+		return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, "/v1/chat/completions", info.ChannelType), nil
+	}
 	if info.RelayMode == relayconstant.RelayModeRealtime {
 		if strings.HasPrefix(info.ChannelBaseUrl, "https://") {
 			baseUrl := strings.TrimPrefix(info.ChannelBaseUrl, "https://")
@@ -483,6 +486,9 @@ func imageEditsViaGenerations(info *relaycommon.RelayInfo) bool {
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	if nanoBanana21ImageBridge(info) {
+		return convertNanoBanana21ImageRequest(c, info, request)
+	}
 	mode := info.RelayMode
 	if imageEditsViaGenerations(info) {
 		var err error

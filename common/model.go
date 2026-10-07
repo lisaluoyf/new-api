@@ -18,6 +18,7 @@ var (
 		"prefix:gpt-image-2", // gpt-image-2, gpt-image-2-official
 		"prefix:imagen-",
 		"prefix:gemini-3-pro-image",
+		"gemini-nano-banana-2.1",
 		"flux-",
 		"flux.1-",
 		"flash-image", // gemini-2.5-flash-image, gemini-3.1-flash-image-preview, …

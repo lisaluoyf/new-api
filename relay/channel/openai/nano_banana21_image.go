@@ -1,0 +1,140 @@
+package openai
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/gin-gonic/gin"
+)
+
+// The OpenRouter model returns images in chat messages. Keep image requests on
+// the existing per-image pricing and settlement path while adapting the wire format.
+func nanoBanana21ImageBridge(info *relaycommon.RelayInfo) bool {
+	return info != nil && info.OriginModelName == "gemini-nano-banana-2.1" &&
+		(info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits)
+}
+
+func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo, req dto.ImageRequest) (any, error) {
+	if req.N != nil && *req.N != 1 {
+		return nil, fmt.Errorf("Nano Banana 2.1 requires n=1")
+	}
+	var stream bool
+	if raw := req.Extra["stream"]; len(raw) > 0 {
+		if err := common.Unmarshal(raw, &stream); err != nil || stream {
+			return nil, fmt.Errorf("Nano Banana 2.1 Images API does not support stream")
+		}
+	}
+	if len(req.Mask) > 0 || len(req.Extra["mask_url"]) > 0 {
+		return nil, fmt.Errorf("mask is unsupported; provide an image reference and editing instructions")
+	}
+	if req.ResponseFormat != "" && req.ResponseFormat != "url" && req.ResponseFormat != "b64_json" {
+		return nil, fmt.Errorf("unsupported response_format")
+	}
+	c.Set("nano_banana21_response_format", req.ResponseFormat)
+	if info.RelayMode == relayconstant.RelayModeImagesEdits {
+		var err error
+		req, err = helper.ConvertImageEditsToGeneration(c, req)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(req.ImageUrls) > 14 {
+		return nil, fmt.Errorf("Nano Banana 2.1 accepts at most 14 image references")
+	}
+	tier := req.EffectiveResolutionTier()
+	if tier != "1K" && tier != "2K" && tier != "4K" {
+		return nil, fmt.Errorf("unsupported resolution %q", tier)
+	}
+	if req.Resolution != "" && !strings.EqualFold(strings.TrimSpace(req.Resolution), tier) {
+		return nil, fmt.Errorf("unsupported resolution %q", req.Resolution)
+	}
+	content := []any{map[string]any{"type": "text", "text": req.Prompt}}
+	for _, ref := range req.ImageUrls {
+		content = append(content, map[string]any{"type": "image_url", "image_url": map[string]string{"url": ref}})
+	}
+	config := map[string]string{"image_size": tier}
+	aspect := "1:1"
+	size := strings.ToLower(strings.TrimSpace(req.Size))
+	if strings.Contains(size, ":") {
+		aspect = size
+	} else if size != "" && size != "auto" {
+		parts := strings.Split(size, "x")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid image size")
+		}
+		w, errW := strconv.Atoi(parts[0])
+		h, errH := strconv.Atoi(parts[1])
+		if errW != nil || errH != nil || w <= 0 || h <= 0 {
+			return nil, fmt.Errorf("invalid image size")
+		}
+		a, b := w, h
+		for b != 0 {
+			a, b = b, a%b
+		}
+		aspect = fmt.Sprintf("%d:%d", w/a, h/a)
+	}
+	supported := map[string]bool{"1:1": true, "1:4": true, "1:8": true, "2:3": true, "3:2": true, "3:4": true, "4:1": true, "4:3": true, "4:5": true, "5:4": true, "8:1": true, "9:16": true, "16:9": true, "21:9": true}
+	if !supported[aspect] {
+		return nil, fmt.Errorf("unsupported aspect ratio %q; use size as an aspect ratio", aspect)
+	}
+	config["aspect_ratio"] = aspect
+	service.SetImageRequestDataOnContext(c, &req)
+	return map[string]any{"model": req.Model, "messages": []any{map[string]any{"role": "user", "content": content}}, "modalities": []string{"image", "text"}, "image_config": config, "stream": false}, nil
+}
+
+func normalizeNanoBanana21ImageResponse(c *gin.Context, info *relaycommon.RelayInfo, raw []byte) ([]byte, error) {
+	var response struct {
+		Choices []struct {
+			Message struct {
+				Images []struct {
+					ImageURL struct {
+						URL string `json:"url"`
+					} `json:"image_url"`
+				} `json:"images"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage *dto.Usage `json:"usage"`
+	}
+	if err := common.Unmarshal(raw, &response); err != nil {
+		return nil, err
+	}
+	data := []map[string]string{}
+	for _, choice := range response.Choices {
+		for _, img := range choice.Message.Images {
+			u := strings.TrimSpace(img.ImageURL.URL)
+			if u == "" {
+				continue
+			}
+			if strings.HasPrefix(u, "data:image/") {
+				parts := strings.SplitN(u, ",", 2)
+				if len(parts) != 2 || !strings.HasSuffix(parts[0], ";base64") {
+					return nil, fmt.Errorf("invalid upstream image data URI")
+				}
+				data = append(data, map[string]string{"b64_json": parts[1]})
+			} else if strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") {
+				data = append(data, map[string]string{"url": u})
+			} else {
+				return nil, fmt.Errorf("unsupported upstream image URL")
+			}
+		}
+	}
+	if len(data) == 0 {
+		return nil, fmt.Errorf("upstream returned no generated image")
+	}
+	info.PriceData.AddOtherRatio("n", float64(len(data)))
+	if requestData := service.ImageRequestDataFromContext(c); requestData != nil {
+		requestData["actual_image_count"] = len(data)
+	}
+	if c.GetString("nano_banana21_response_format") == "b64_json" {
+		c.Set("gpt_image2_client_response_format", "b64_json")
+	}
+	return common.Marshal(map[string]any{"created": time.Now().Unix(), "data": data, "usage": response.Usage})
+}

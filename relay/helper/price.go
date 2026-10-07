@@ -94,7 +94,34 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 	// Only fires when a channel pricing row resolves (>0); otherwise the
 	// configured fixed price / channel-ratio fallback below is unchanged.
 	if info.RelayMode == relayconstant.RelayModeImagesGenerations ||
-		info.RelayMode == relayconstant.RelayModeImagesEdits {
+		info.RelayMode == relayconstant.RelayModeImagesEdits ||
+		(info.OriginModelName == "gemini-nano-banana-2.1" && info.RelayMode == relayconstant.RelayModeChatCompletions) {
+		if info.OriginModelName == "gemini-nano-banana-2.1" && info.RelayMode == relayconstant.RelayModeChatCompletions {
+			req, ok := info.Request.(*dto.GeneralOpenAIRequest)
+			if !ok || req.IsStream(c) {
+				return types.PriceData{}, fmt.Errorf("Nano Banana 2.1 requires a non-streaming image request")
+			}
+			var config struct {
+				ImageSize string `json:"image_size"`
+			}
+			if len(req.ImageConfig) > 0 {
+				if err := common.Unmarshal(req.ImageConfig, &config); err != nil {
+					return types.PriceData{}, fmt.Errorf("invalid image_config")
+				}
+			}
+			tier := strings.ToUpper(strings.TrimSpace(config.ImageSize))
+			if tier == "" {
+				tier = "1K"
+			}
+			if tier != "1K" && tier != "2K" && tier != "4K" {
+				return types.PriceData{}, fmt.Errorf("unsupported image_size")
+			}
+			if meta == nil {
+				meta = &types.TokenCountMeta{}
+			}
+			meta.ImagePriceVariant = tier
+			service.SetImageRequestDataOnContext(c, &dto.ImageRequest{Model: info.OriginModelName, Resolution: tier})
+		}
 		if !useTrialPricing {
 			if imageBasePrice, configured := ratio_setting.GetImageModelBasePrice(info.OriginModelName); configured {
 				modelPrice = imageBasePrice

@@ -27,6 +27,7 @@ func TestIsImageGenerationModel_gptImage2(t *testing.T) {
 		"gemini-3.1-flash-image-preview": true,
 		"gemini-2.5-flash-image":         true,
 		"gemini-3-pro-image":             true,
+		"gemini-nano-banana-2.1":         true,
 		"claude-sonnet-4-6":              false,
 		"gpt-5.4":                        false,
 	}
