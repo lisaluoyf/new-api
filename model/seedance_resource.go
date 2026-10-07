@@ -5,6 +5,15 @@ import "gorm.io/gorm"
 // SeedanceResource separates each customer's media library from the shared
 // provider account. Provider identifiers and credentials never enter a DTO.
 type SeedanceResource struct {
+	VerificationTokenHash string `json:"-" gorm:"size:64"`
+	ProjectName           string `json:"-" gorm:"size:128"`
+	CredentialFingerprint string `json:"-" gorm:"size:64"`
+	GroupType             string `json:"-" gorm:"size:32"`
+	VerificationID        string `json:"-" gorm:"size:64"`
+	CallbackHash          string `json:"-" gorm:"size:64"`
+	ExpiresAt             int64  `json:"-"`
+	LinkConsumed          bool   `json:"-"`
+
 	MeasuredDurationSeconds float64        `json:"-" gorm:"default:0"`
 	DurationSeconds         int            `json:"-" gorm:"default:0"`
 	ID                      string         `json:"id" gorm:"primaryKey;size:64"`

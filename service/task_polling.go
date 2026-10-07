@@ -101,6 +101,9 @@ func TaskPollingLoop() {
 		ctx := context.TODO()
 		sweepTimedOutTasks(ctx)
 		ReconcileSeedanceBillingReceipts(ctx)
+		if err := ExpireSeedanceVerificationSessions(); err != nil {
+			common.SysLog("Portrait session expiration housekeeping failed")
+		}
 		allTasks := model.GetAllUnFinishSyncTasks(constant.TaskQueryLimit)
 		platformTask := make(map[constant.TaskPlatform][]*model.Task)
 		for _, t := range allTasks {

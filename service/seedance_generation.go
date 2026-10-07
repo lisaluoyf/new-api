@@ -414,7 +414,7 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 		return fmt.Errorf("video_urls must be an array of strings")
 	}
 	maximum, count := 30, 10
-	if name, _ := fields["model"].(string); IsSeedance20Variant(name) {
+	if name, _ := fields["model"].(string); IsSeedance20Variant(name) || name == "seedance-2.0" {
 		maximum, count = 15, 3
 	}
 	if len(urls) > count {

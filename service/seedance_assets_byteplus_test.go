@@ -136,6 +136,7 @@ func TestBytePlusLibraryBatchReviewRoutingAndCRUD(t *testing.T) {
 	require.False(t, db.Migrator().HasTable("logs"))
 }
 func TestBytePlusPortraitVerificationCreatesOwnedGroup(t *testing.T) {
+	t.Setenv("SEEDANCE_CALLBACK_ORIGIN", "https://example.com")
 	verified := false
 	calls := 0
 	db := bytePlusTestLibrary(t, func(w http.ResponseWriter, r *http.Request) {
@@ -143,7 +144,7 @@ func TestBytePlusPortraitVerificationCreatesOwnedGroup(t *testing.T) {
 		calls++
 		switch action {
 		case "CreateVisualValidateSession":
-			require.Equal(t, "https://example.com/done", fields["CallbackURL"])
+			require.Contains(t, fields["CallbackURL"], "https://example.com/v1/seedance2/private-avatar/callback/")
 			fmt.Fprint(w, `{"Result":{"BytedToken":"private-validation-token","H5Link":"https://www.byteplus.com/en/liveness-face-manage/authorization?pl=ephemeral"}}`)
 		case "GetVisualValidateResult":
 			require.Equal(t, "private-validation-token", fields["BytedToken"])
@@ -161,7 +162,8 @@ func TestBytePlusPortraitVerificationCreatesOwnedGroup(t *testing.T) {
 		}
 	})
 	c := seedanceContext(1)
-	v, err := CreateSeedanceVerification(c, SeedanceVerificationInput{Model: "seedance-2.5", CallbackURL: "https://example.com/done"})
+	c.Request.Header.Set("Idempotency-Key", "portrait-test")
+	v, err := CreateSeedanceVerification(c, SeedanceVerificationInput{Model: "seedance-2.5"})
 	require.NoError(t, err)
 	require.NoError(t, RefreshSeedanceVerification(c, v))
 	require.Equal(t, "pending", v.Status)
@@ -220,7 +222,7 @@ func TestBytePlusCredentialsErrorsAndRedirects(t *testing.T) {
 	require.Equal(t, 2, calls)
 	_, err = bytePlusAssetRequest(seedanceContext(1).Request.Context(), resource, "CreateAssetGroup", nil)
 	require.Error(t, err)
-	require.Equal(t, 503, err.(*SeedanceAPIError).Status)
+	require.Equal(t, 403, err.(*SeedanceAPIError).Status)
 	require.NotContains(t, err.Error(), "private subscription message")
 	require.Equal(t, 3, calls)
 	require.NoError(t, os.Remove(filepath.Join(os.Getenv("BYTEPLUS_ASSET_CREDENTIALS_DIR"), "channel-283.json")))

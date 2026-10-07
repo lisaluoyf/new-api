@@ -47,7 +47,17 @@ func seedanceOwnedAsset(c *gin.Context, id string) (*model.SeedanceResource, err
 		return nil, seedanceError(400, "Referenced asset was not found in your media library")
 	}
 	if asset.Status != "Active" || asset.UpstreamID == "" {
-		return nil, seedanceError(400, "Referenced asset has not passed review")
+		return nil, seedanceError(409, "Referenced asset has not passed review", "asset_not_active")
+	}
+	if asset.GroupType == "real_person" {
+		group, e := model.GetSeedanceResource(asset.UserID, "group", asset.GroupID)
+		if e != nil || group.VerificationID == "" {
+			return nil, seedanceError(409, "Owner verification is not confirmed")
+		}
+		verification, e := model.GetSeedanceResource(asset.UserID, "verification", group.VerificationID)
+		if e != nil || verification.Status != "completed" || verification.GroupID != group.ID {
+			return nil, seedanceError(409, "Owner verification is not confirmed")
+		}
 	}
 	return asset, nil
 }
@@ -61,10 +71,12 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 		if err != nil {
 			return "", err
 		}
-		if pinned != nil && (pinned.ChannelID != asset.ChannelID || pinned.KeyFingerprint != asset.KeyFingerprint) {
+		if pinned != nil && (pinned.ChannelID != asset.ChannelID || pinned.KeyFingerprint != asset.KeyFingerprint || pinned.ProjectName != asset.ProjectName || pinned.CredentialFingerprint != asset.CredentialFingerprint) {
 			return "", seedanceError(400, "All referenced assets must belong to the same media library")
 		}
-		pinned = asset
+		if pinned == nil || asset.GroupType == "real_person" {
+			pinned = asset
+		}
 		if !seen[id] {
 			publicURLs = append(publicURLs, "asset://"+id)
 			seen[id] = true
@@ -84,6 +96,12 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 	}
 	if _, _, err := SeedanceResourceKey(ch, pinned.KeyFingerprint); err != nil {
 		return nil, err
+	}
+	if pinned.ProjectName != "" && isBytePlusSeedanceChannel(ch) {
+		credentials, e := loadBytePlusAssetCredentials(ch.Id)
+		if e != nil || credentials.ProjectName != pinned.ProjectName || seedanceControlFingerprint(credentials) != pinned.CredentialFingerprint {
+			return nil, seedanceError(409, "Asset account or project is incompatible with this route")
+		}
 	}
 	c.Set("seedance_public_asset_urls", publicURLs)
 	return pinned, nil

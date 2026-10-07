@@ -26,12 +26,17 @@ const seedanceLibraryPath = "/v1/seedance2/private-avatar"
 type SeedanceAPIError struct {
 	Status  int
 	Message string
+	Code    string
 }
 
 func (e *SeedanceAPIError) Error() string { return e.Message }
 
-func seedanceError(status int, message string) error {
-	return &SeedanceAPIError{Status: status, Message: message}
+func seedanceError(status int, message string, code ...string) error {
+	value := "media_library_error"
+	if len(code) > 0 {
+		value = code[0]
+	}
+	return &SeedanceAPIError{Status: status, Message: message, Code: value}
 }
 
 func IsSeedance20Variant(name string) bool {
@@ -145,7 +150,15 @@ func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability fun
 	if keyErr != nil {
 		return nil, seedanceError(503, "Media library is temporarily unavailable")
 	}
-	return &model.SeedanceResource{UserID: c.GetInt("id"), ChannelID: ch.Id, KeyFingerprint: SeedanceKeyFingerprint(key), Model: name}, nil
+	resource := &model.SeedanceResource{UserID: c.GetInt("id"), ChannelID: ch.Id, KeyFingerprint: SeedanceKeyFingerprint(key), Model: name}
+	if isBytePlusSeedanceChannel(ch) {
+		credentials, e := loadBytePlusAssetCredentials(ch.Id)
+		if e != nil {
+			return nil, e
+		}
+		resource.ProjectName, resource.CredentialFingerprint = credentials.ProjectName, seedanceControlFingerprint(credentials)
+	}
+	return resource, nil
 }
 
 func seedanceProviderRequest(ctx context.Context, resource *model.SeedanceResource, method, path string, payload any) (map[string]any, error) {

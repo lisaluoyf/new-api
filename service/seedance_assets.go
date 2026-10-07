@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -101,31 +102,56 @@ func CreateSeedanceGroup(c *gin.Context, name string, input SeedanceGroupInput) 
 	}
 	resource.ID, resource.Kind, resource.Status = seedanceID("group"), "group", "Creating"
 	resource.Name, resource.Description = input.Name, input.Description
+	resource.GroupType = "virtual"
 	if resource.Name == "" {
 		resource.Name = "My media library"
 	}
 	// Create the durable owner mapping before any remote resource is created.
-	if err := model.DB.Create(resource).Error; err != nil {
+	if err := seedanceDB().Create(resource).Error; err != nil {
 		return nil, err
 	}
 	envelope, err := seedanceProviderRequest(c.Request.Context(), resource, http.MethodPost, seedanceLibraryPath+"/groups", map[string]any{"name": resource.Name, "description": resource.Description, "project_name": "default", "group_type": "AIGC"})
 	if err != nil {
-		model.DB.Delete(resource)
+		seedanceDB().Delete(resource)
 		return nil, err
 	}
 	resource.UpstreamID = seedanceString(seedanceResult(envelope), "Id", "id", "group_id")
 	if resource.UpstreamID == "" {
-		model.DB.Delete(resource)
+		seedanceDB().Delete(resource)
 		return nil, seedanceError(502, "Invalid media group response")
 	}
 	resource.Status = "Active"
-	if err := model.DB.Save(resource).Error; err != nil {
+	if err := seedanceDB().Save(resource).Error; err != nil {
 		return nil, err
 	}
 	return resource, nil
 }
 
 func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model.SeedanceResource, error) {
+	input.Assets = append([]SeedanceAssetInput(nil), input.Assets...)
+	idempotency := c.GetHeader("Idempotency-Key")
+	if input.GroupID != "" {
+		group, err := model.GetSeedanceResource(c.GetInt("id"), "group", input.GroupID)
+		if err == nil && group.GroupType == "real_person" && (len(idempotency) < 8 || len(idempotency) > 128) {
+			return nil, seedanceError(400, "Idempotency-Key of 8–128 characters is required for real-person assets")
+		}
+	}
+	request, _ := common.Marshal(input)
+	requestHash := SeedanceKeyFingerprint(string(request))
+	taskID := seedanceID("asset_task")
+	if idempotency != "" {
+		if len(idempotency) < 8 || len(idempotency) > 128 {
+			return nil, seedanceError(400, "Invalid Idempotency-Key")
+		}
+		taskID = "asset_task_" + SeedanceKeyFingerprint(strconv.Itoa(c.GetInt("id")) + ":" + idempotency)[:32]
+		if existing, e := model.GetSeedanceResource(c.GetInt("id"), "task", taskID); e == nil {
+			if existing.Description != requestHash {
+				return nil, seedanceError(409, "Idempotency-Key was used for a different request")
+			}
+			return existing, nil
+		}
+	}
+
 	if err := ValidateSeedanceAssetSubmission(&input); err != nil {
 		return nil, err
 	}
@@ -159,6 +185,12 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 		if err != nil {
 			return nil, seedanceError(404, "Media group not found")
 		}
+		if group.GroupType == "real_person" {
+			verification, e := model.GetSeedanceResource(group.UserID, "verification", group.VerificationID)
+			if e != nil || verification.Status != "completed" || verification.GroupID != group.ID {
+				return nil, seedanceError(409, "Owner verification is not confirmed")
+			}
+		}
 		if group.Status != "Active" || group.UpstreamID == "" {
 			return nil, seedanceError(409, "Media group is not ready")
 		}
@@ -176,22 +208,26 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 			return nil, err
 		}
 	}
-	task := &model.SeedanceResource{ID: seedanceID("asset_task"), Kind: "task", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, Model: input.Model, GroupID: group.ID, Status: "processing"}
+	task := &model.SeedanceResource{ID: taskID, Description: requestHash, Kind: "task", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, ProjectName: group.ProjectName, CredentialFingerprint: group.CredentialFingerprint, GroupType: group.GroupType, VerificationID: group.VerificationID, Model: input.Model, GroupID: group.ID, Status: "processing"}
 	assetIDs := make([]string, 0, len(input.Assets))
 	assets := make([]model.SeedanceResource, 0, len(input.Assets))
 	for i, item := range input.Assets {
-		asset := model.SeedanceResource{ID: seedanceID("asset"), Kind: "asset", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, Model: input.Model, GroupID: group.ID, Name: item.Name, SourceURL: item.URL, AssetType: input.AssetType, Status: "Pending", DurationSeconds: durations[i], MeasuredDurationSeconds: measuredDurations[i]}
+		asset := model.SeedanceResource{ID: seedanceID("asset"), Kind: "asset", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, ProjectName: group.ProjectName, CredentialFingerprint: group.CredentialFingerprint, GroupType: group.GroupType, VerificationID: group.VerificationID, Model: input.Model, GroupID: group.ID, Name: item.Name, SourceURL: item.URL, AssetType: input.AssetType, Status: "Pending", DurationSeconds: durations[i], MeasuredDurationSeconds: measuredDurations[i]}
 		assetIDs = append(assetIDs, asset.ID)
 		assets = append(assets, asset)
 	}
 	encoded, _ := common.Marshal(assetIDs)
 	task.RequestData = string(encoded)
-	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+	if err := seedanceDB().Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(task).Error; err != nil {
 			return err
 		}
 		return tx.Create(&assets).Error
 	}); err != nil {
+		existing, e := model.GetSeedanceResource(c.GetInt("id"), "task", taskID)
+		if e == nil && existing.Description == requestHash {
+			return existing, nil
+		}
 		return nil, err
 	}
 	providerAssets := make([]SeedanceAssetInput, len(input.Assets))
@@ -206,28 +242,40 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 	}
 	envelope, err := seedanceProviderRequest(c.Request.Context(), task, http.MethodPost, seedanceLibraryPath+"/assets", payload)
 	if err != nil {
-		_ = model.DB.Model(task).Updates(map[string]any{"status": "failed", "fail_reason": err.Error()}).Error
-		_ = model.DB.Model(&model.SeedanceResource{}).Where("user_id = ? AND id IN ?", task.UserID, assetIDs).Update("status", "Failed").Error
-		return nil, err
+		task.Status = "submission_unknown"
+		task.FailReason = "Submission could not be fully confirmed; query each asset and do not repeat upload"
+		if isBytePlusTask(task) {
+			task.UpstreamID = task.ID
+		}
+		_ = seedanceDB().Model(task).Updates(map[string]any{"status": task.Status, "upstream_id": task.UpstreamID, "fail_reason": task.FailReason}).Error
+		return task, nil
 	}
 	task.UpstreamID = seedanceString(seedanceResult(envelope), "id", "task_id")
 	if task.UpstreamID == "" {
-		_ = model.DB.Model(task).Updates(map[string]any{"status": "failed", "fail_reason": "No media review task was returned"}).Error
-		_ = model.DB.Model(&model.SeedanceResource{}).Where("user_id = ? AND id IN ?", task.UserID, assetIDs).Update("status", "Failed").Error
+		_ = seedanceDB().Model(task).Updates(map[string]any{"status": "failed", "fail_reason": "No media review task was returned"}).Error
+		_ = seedanceDB().Model(&model.SeedanceResource{}).Where("user_id = ? AND id IN ?", task.UserID, assetIDs).Update("status", "Failed").Error
 		return nil, seedanceError(502, "No media review task was returned")
 	}
-	if err := model.DB.Save(task).Error; err != nil {
+	if err := seedanceDB().Save(task).Error; err != nil {
 		return nil, err
 	}
 	return task, nil
 }
 
 func SeedanceAssetDTO(resource *model.SeedanceResource) map[string]any {
-	return map[string]any{"id": resource.ID, "asset_id": resource.ID, "asset_url": "asset://" + resource.ID, "name": resource.Name, "asset_type": resource.AssetType, "group_id": resource.GroupID, "status": resource.Status, "url": resource.SourceURL, "created_at": resource.CreatedAt, "updated_at": resource.UpdatedAt}
+	dto := map[string]any{"id": resource.ID, "asset_id": resource.ID, "asset_url": "asset://" + resource.ID, "name": resource.Name, "asset_type": resource.AssetType, "group_id": resource.GroupID, "status": resource.Status, "url": seedancePublicSourceURL(resource), "created_at": resource.CreatedAt, "updated_at": resource.UpdatedAt}
+	if resource.Status == "Failed" {
+		message := resource.FailReason
+		if message == "" {
+			message = "Material review failed; this asset cannot generate"
+		}
+		dto["error"] = map[string]any{"code": "asset_review_failed", "message": message, "trace_id": resource.ID}
+	}
+	return dto
 }
 
 func SeedanceGroupDTO(resource *model.SeedanceResource) map[string]any {
-	return map[string]any{"id": resource.ID, "name": resource.Name, "description": resource.Description, "created_at": resource.CreatedAt, "updated_at": resource.UpdatedAt}
+	return map[string]any{"id": resource.ID, "name": resource.Name, "description": resource.Description, "group_type": resource.GroupType, "created_at": resource.CreatedAt, "updated_at": resource.UpdatedAt}
 }
 
 func SeedanceTaskDTO(resource *model.SeedanceResource) map[string]any {
@@ -238,7 +286,7 @@ func SeedanceTaskDTO(resource *model.SeedanceResource) map[string]any {
 			data["result"] = result
 		}
 	}
-	if resource.Status == "failed" && resource.FailReason != "" {
+	if (resource.Status == "failed" || resource.Status == "submission_unknown") && resource.FailReason != "" {
 		data["error"] = map[string]any{"code": "task_failed", "message": resource.FailReason}
 	}
 	return data
@@ -258,7 +306,7 @@ func PollSeedanceAssetTask(c *gin.Context, task *model.SeedanceResource) error {
 		if n, ok := data["progress"].(float64); ok {
 			task.Progress = min(99, max(0, int(n)))
 		}
-		return model.DB.Model(task).Update("progress", task.Progress).Error
+		return seedanceDB().Model(task).Update("progress", task.Progress).Error
 	}
 	var ids []string
 	if err := common.UnmarshalJsonStr(task.RequestData, &ids); err != nil {
@@ -292,7 +340,7 @@ func PollSeedanceAssetTask(c *gin.Context, task *model.SeedanceResource) error {
 		}
 	}
 	publicAssets, usable, failed := make([]any, 0, len(ids)), make([]any, 0), make([]any, 0)
-	err = model.DB.Transaction(func(tx *gorm.DB) error {
+	err = seedanceDB().Transaction(func(tx *gorm.DB) error {
 		for i, id := range ids {
 			var asset model.SeedanceResource
 			// Deleted assets must never be revived by a late review result.
@@ -366,12 +414,15 @@ func RefreshSeedanceAsset(c *gin.Context, asset *model.SeedanceResource) error {
 	switch strings.ToLower(status) {
 	case "active":
 		asset.Status = "Active"
+	case "processing":
+		asset.Status = "Processing"
 	case "failed", "rejected":
 		asset.Status = "Failed"
 	default:
 		asset.Status = "Pending"
 	}
-	return model.DB.Model(asset).Update("status", asset.Status).Error
+	asset.FailReason = seedanceAssetReviewFailure(asset, seedanceResult(envelope))
+	return seedanceDB().Model(asset).Updates(map[string]any{"status": asset.Status, "fail_reason": asset.FailReason}).Error
 }
 
 func UpdateSeedanceResource(c *gin.Context, resource *model.SeedanceResource, name, description *string) error {
@@ -398,13 +449,13 @@ func UpdateSeedanceResource(c *gin.Context, resource *model.SeedanceResource, na
 	if err != nil {
 		return err
 	}
-	return model.DB.Model(resource).Updates(payload).Error
+	return seedanceDB().Model(resource).Updates(payload).Error
 }
 
 func DeleteSeedanceResource(c *gin.Context, resource *model.SeedanceResource) error {
 	if resource.Kind == "group" {
 		var count int64
-		if err := model.DB.Model(&model.SeedanceResource{}).Where("user_id = ? AND kind = ? AND group_id = ?", resource.UserID, "asset", resource.ID).Count(&count).Error; err != nil {
+		if err := seedanceDB().Model(&model.SeedanceResource{}).Where("user_id = ? AND kind = ? AND group_id = ?", resource.UserID, "asset", resource.ID).Count(&count).Error; err != nil {
 			return err
 		}
 		if count > 0 {
@@ -420,5 +471,36 @@ func DeleteSeedanceResource(c *gin.Context, resource *model.SeedanceResource) er
 			return err
 		}
 	}
-	return model.DB.Delete(resource).Error
+	return seedanceDB().Delete(resource).Error
+}
+
+func seedancePublicSourceURL(resource *model.SeedanceResource) string {
+	if resource.GroupType == "real_person" {
+		return ""
+	}
+	return resource.SourceURL
+}
+
+func isBytePlusTask(task *model.SeedanceResource) bool {
+	ch, err := model.GetChannelById(task.ChannelID, true)
+	return err == nil && isBytePlusSeedanceChannel(ch)
+}
+
+func seedanceAssetReviewFailure(asset *model.SeedanceResource, result map[string]any) string {
+	if !strings.EqualFold(seedanceString(result, "Status", "status"), "Failed") {
+		return ""
+	}
+	detail, _ := result["Error"].(map[string]any)
+	message := seedanceString(detail, "Message", "message")
+	if message == "" {
+		return "Material review failed; this asset cannot generate"
+	}
+	sensitive := []string{asset.SourceURL, asset.UpstreamID}
+	if credentials, e := loadBytePlusAssetCredentials(asset.ChannelID); e == nil {
+		sensitive = append(sensitive, credentials.AccessKeyID, credentials.SecretAccessKey, credentials.SessionToken)
+	}
+	if group, e := model.GetSeedanceResource(asset.UserID, "group", asset.GroupID); e == nil {
+		sensitive = append(sensitive, group.UpstreamID)
+	}
+	return sanitizeTaskFailure(message, sensitive...)
 }

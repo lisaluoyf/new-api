@@ -13,11 +13,13 @@ import (
 
 func seedanceLibraryError(c *gin.Context, err error) {
 	status, message := http.StatusInternalServerError, "Unable to process media library request"
+	code := "media_library_error"
 	var apiError *service.SeedanceAPIError
 	if errors.As(err, &apiError) {
 		status, message = apiError.Status, apiError.Message
+		code = apiError.Code
 	}
-	c.JSON(status, gin.H{"error": gin.H{"message": message, "type": "media_library_error"}})
+	c.JSON(status, gin.H{"error": gin.H{"message": message, "type": "media_library_error", "code": code, "trace_id": c.GetString(common.RequestIdKey)}})
 }
 
 func SubmitSeedanceAssets(c *gin.Context) {

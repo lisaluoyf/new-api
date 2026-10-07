@@ -56,7 +56,7 @@ func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 				common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, pin)
 			}
 		}
-		if name, _ := fields["model"].(string); service.IsSeedance20Variant(name) {
+		if name, _ := fields["model"].(string); service.IsSeedance20Variant(name) || name == "seedance-2.0" {
 			if err = service.ValidateSeedanceVideoInputs(c, fields); err != nil {
 				seedanceRoutingError(c, err)
 				return
@@ -75,6 +75,19 @@ func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 			}
 			common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, pin)
 			c.Set("seedance_asset_key_fingerprint", asset.KeyFingerprint)
+			if asset.GroupType == "real_person" && c.Request.URL.Path != "/v1/videos/quote" {
+				receipt, fresh, e := service.BeginSeedancePortraitVideo(c, fields, asset)
+				if e != nil {
+					seedanceRoutingError(c, e)
+					return
+				}
+				c.Header("X-Seedance-Request-Id", receipt.ID)
+				if !fresh {
+					c.AbortWithStatusJSON(202, gin.H{"code": 202, "data": service.SeedanceVideoRequestDTO(receipt)})
+					return
+				}
+				c.Set("seedance_portrait_video_receipt", receipt)
+			}
 		}
 		c.Next()
 	}

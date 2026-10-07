@@ -8,11 +8,17 @@ import (
 )
 
 func SetVideoRouter(router *gin.Engine) {
+	router.GET("/v1/seedance2/private-avatar/callback/:verification_id/:state", controller.SeedanceVerificationCallback)
+	router.GET("/v1/seedance2/private-avatar/files/:upload_id/:expires/:signature", controller.DownloadSeedancePortrait)
 	mediaLibrary := router.Group("/v1")
 	mediaLibrary.Use(middleware.RouteTag("relay"), middleware.TokenAuth(), middleware.ModelRequestRateLimit())
 	mediaLibrary.POST("/uploads/images", middleware.UploadRateLimit(), controller.UploadMediaImage)
 	library := mediaLibrary.Group("/seedance2/private-avatar")
 	library.POST("", middleware.UploadRateLimit(), controller.SubmitSeedanceAssets)
+	library.POST("/uploads", middleware.UploadRateLimit(), controller.UploadSeedancePortrait)
+	library.DELETE("/uploads/:upload_id", controller.DeleteSeedancePortraitUpload)
+	library.GET("/video-requests/:request_id", controller.GetSeedancePortraitVideoRequest)
+	library.GET("/capabilities", controller.GetSeedancePortraitCapabilities)
 	library.POST("/verifications", middleware.UploadRateLimit(), controller.CreateSeedanceVerification)
 	library.GET("/verifications/:verification_id", controller.GetSeedanceVerification)
 	library.POST("/assets", middleware.UploadRateLimit(), controller.SubmitSeedanceAssets)

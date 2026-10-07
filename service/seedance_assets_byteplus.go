@@ -42,7 +42,7 @@ func isBytePlusSeedanceChannel(ch *model.Channel) bool {
 		return false
 	}
 	host := strings.ToLower(parsed.Hostname())
-	return strings.HasPrefix(host, "ark.") && strings.HasSuffix(host, ".bytepluses.com")
+	return (strings.HasPrefix(host, "ark.") && strings.HasSuffix(host, ".bytepluses.com")) || host == "ark.cn-beijing.volces.com"
 }
 
 func loadBytePlusAssetCredentials(channelID int) (bytePlusAssetCredentials, error) {
@@ -66,11 +66,19 @@ func loadBytePlusAssetCredentials(channelID int) (bytePlusAssetCredentials, erro
 	}
 	if result.Region == "" {
 		result.Region = "ap-southeast-1"
+		ch, _ := model.GetChannelById(channelID, true)
+		if isVolcSeedanceChannel(ch) {
+			result.Region = "cn-beijing"
+		}
 	}
 	for _, r := range result.Region {
 		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
 			return result, seedanceError(503, "Invalid media library region configuration")
 		}
+	}
+	ch, _ := model.GetChannelById(channelID, true)
+	if isVolcSeedanceChannel(ch) && result.Region != "cn-beijing" {
+		return result, seedanceError(503, "Official Ark asset credentials require cn-beijing region")
 	}
 	if len(result.Region) > 64 {
 		return result, seedanceError(503, "Invalid media library region configuration")
@@ -89,6 +97,9 @@ func bytePlusAssetRequest(ctx context.Context, resource *model.SeedanceResource,
 	if err != nil {
 		return nil, err
 	}
+	if resource.ProjectName != "" && (resource.ProjectName != credentials.ProjectName || resource.CredentialFingerprint != seedanceControlFingerprint(credentials)) {
+		return nil, seedanceError(409, "Media library account or project changed; original context is required", "asset_context_incompatible")
+	}
 	fields := make(map[string]any, len(payload)+1)
 	for k, v := range payload {
 		fields[k] = v
@@ -98,7 +109,12 @@ func bytePlusAssetRequest(ctx context.Context, resource *model.SeedanceResource,
 	if err != nil {
 		return nil, err
 	}
-	endpoint := bytePlusAssetEndpoint(credentials.Region) + "?" + url.Values{"Action": {action}, "Version": {"2024-01-01"}}.Encode()
+	host := bytePlusAssetEndpoint(credentials.Region)
+	ch, _ := model.GetChannelById(resource.ChannelID, true)
+	if isVolcSeedanceChannel(ch) {
+		host = "https://ark.cn-beijing.volcengineapi.com/"
+	}
+	endpoint := host + "?" + url.Values{"Action": {action}, "Version": {"2024-01-01"}}.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
 	if err != nil {
 		return nil, seedanceError(502, "Unable to contact media library")
@@ -121,23 +137,13 @@ func bytePlusAssetRequest(ctx context.Context, resource *model.SeedanceResource,
 	detail, failed := metadata["Error"].(map[string]any)
 	if response.StatusCode < 200 || response.StatusCode >= 300 || failed || envelope["error"] != nil {
 		if seedanceString(detail, "Code") == "SubscriptionRequired" {
-			return nil, seedanceError(503, "Media library permissions are not enabled; contact support")
+			return nil, seedanceError(403, "Media library permissions are not enabled; contact support", "entitlement_required")
 		}
 		status := response.StatusCode
 		if status < 400 || status == 401 || status == 403 {
 			status = 502
 		}
-		message := seedanceString(detail, "Message")
-		if message == "" {
-			message = "Media library request failed"
-		}
-		sensitive := []string{credentials.AccessKeyID, credentials.SecretAccessKey, credentials.SessionToken, resource.UpstreamID}
-		for _, k := range []string{"Id", "GroupId", "BytedToken"} {
-			if value, ok := fields[k].(string); ok {
-				sensitive = append(sensitive, value)
-			}
-		}
-		return nil, seedanceError(status, sanitizeTaskFailure(message, sensitive...))
+		return nil, seedanceError(status, "Media library request could not be confirmed; query existing resources before retrying")
 	}
 	return envelope, nil
 }
@@ -185,6 +191,12 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 				if err != nil {
 					return nil, err
 				}
+				if asset.UpstreamID != "" || asset.Status != "Pending" {
+					continue
+				}
+				if err := seedanceDB().Model(asset).Update("status", "Submitting").Error; err != nil {
+					return nil, err
+				}
 				envelope, err := bytePlusAssetRequest(ctx, asset, "CreateAsset", map[string]any{"GroupId": group.UpstreamID, "URL": asset.SourceURL, "AssetType": asset.AssetType, "Name": asset.ID})
 				if err != nil {
 					return nil, err
@@ -193,7 +205,7 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 				if upstream == "" {
 					return nil, seedanceError(502, "Invalid media import response")
 				}
-				if err = model.DB.Model(asset).Update("upstream_id", upstream).Error; err != nil {
+				if err = seedanceDB().Model(asset).Updates(map[string]any{"upstream_id": upstream, "status": "Processing"}).Error; err != nil {
 					return nil, err
 				}
 			}
@@ -213,13 +225,17 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 					return nil, err
 				}
 				if asset.UpstreamID == "" {
-					return nil, seedanceError(502, "Media import is incomplete")
+					items = append(items, map[string]any{"status": "SubmissionUnknown", "raw_response": map[string]any{"Result": map[string]any{"Name": id}}})
+					continue
 				}
 				envelope, err := bytePlusAssetRequest(ctx, asset, "GetAsset", map[string]any{"Id": asset.UpstreamID})
 				if err != nil {
 					return nil, err
 				}
 				status := seedanceString(seedanceResult(envelope), "Status")
+				if e := seedanceDB().Model(asset).Updates(map[string]any{"status": status, "fail_reason": seedanceAssetReviewFailure(asset, seedanceResult(envelope))}).Error; e != nil {
+					return nil, e
+				}
 				if status == "Active" || status == "Failed" {
 					terminal++
 				}
@@ -254,4 +270,16 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 		}
 	}
 	return nil, fmt.Errorf("unsupported media library operation")
+}
+
+func seedanceControlFingerprint(c bytePlusAssetCredentials) string {
+	return SeedanceKeyFingerprint(c.AccessKeyID + "\x00" + c.ProjectName)
+}
+
+func isVolcSeedanceChannel(ch *model.Channel) bool {
+	if ch == nil || ch.Type != constant.ChannelTypeDoubaoVideo {
+		return false
+	}
+	parsed, err := url.Parse(ch.GetBaseURL())
+	return err == nil && parsed.Scheme == "https" && parsed.Hostname() == "ark.cn-beijing.volces.com"
 }

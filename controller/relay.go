@@ -1645,6 +1645,15 @@ func RelayTask(c *gin.Context) {
 		return
 	}
 
+	if value, ok := c.Get("seedance_portrait_video_receipt"); ok {
+		receipt := value.(*model.SeedanceResource)
+		relayInfo.PublicTaskID = receipt.UpstreamID
+		defer func() {
+			if _, found, e := model.GetByTaskId(receipt.UserID, receipt.UpstreamID); e == nil && found {
+				_ = model.DB.Model(receipt).Update("status", "accepted").Error
+			}
+		}()
+	}
 	if taskErr := relay.ResolveOriginTask(c, relayInfo); taskErr != nil {
 		respondTaskError(c, taskErr)
 		return
@@ -1666,7 +1675,11 @@ func RelayTask(c *gin.Context) {
 		Retry:      common.GetPointer(0),
 	}
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	maxTaskRetries := common.RetryTimes
+	if _, ok := c.Get("seedance_portrait_video_receipt"); ok {
+		maxTaskRetries = 0
+	}
+	for ; retryParam.GetRetry() <= maxTaskRetries; retryParam.IncreaseRetry() {
 		var channel *model.Channel
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
