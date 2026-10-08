@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -91,7 +90,12 @@ func NormalizeSeedanceMultipart(c *gin.Context) error {
 			if mime != "image/png" && mime != "image/jpeg" && mime != "image/webp" {
 				return fmt.Errorf("reference image must be PNG, JPEG, or WebP")
 			}
-			url := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
+			// Reuse the existing media-upload cache: APIMart requires public
+			// URLs here and rejects inline base64 image references.
+			url, err := StoreUploadedMediaImage(data, mime)
+			if err != nil {
+				return fmt.Errorf("cannot store reference image: %w", err)
+			}
 			if key == "first_frame_image" || key == "last_frame_image" {
 				fields[key] = url
 			} else {

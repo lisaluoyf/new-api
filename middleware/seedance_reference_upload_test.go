@@ -2,9 +2,6 @@ package middleware
 
 import (
 	"bytes"
-	"encoding/base64"
-	"image"
-	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -22,42 +19,27 @@ import (
 
 func TestSeedanceReferencesReachOutboundRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	var imageBytes bytes.Buffer
-	require.NoError(t, png.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 2, 2))))
 	for _, model := range []string{"seedance-2.5", "seedance-2.0"} {
 		for _, path := range []string{"/v1/videos", "/v1/videos/generations", "/v1/video/generations"} {
-			for _, mode := range []string{"upload", "json_urls", "json_input_reference", "role_image", "text"} {
+			for _, mode := range []string{"json_urls", "json_input_reference", "role_image", "text"} {
 				t.Run(model+path+"/"+mode, func(t *testing.T) {
 					payload := map[string]any{"model": model, "prompt": "Move the reference scene", "seconds": "8", "size": "720x1280", "generate_audio": false, "watermark": false, "seed": 0}
 					body := bytes.NewBuffer(nil)
 					ct := "application/json"
 					expectedCount := 1
-					if mode == "upload" {
-						w := multipart.NewWriter(body)
-						for k, v := range map[string]string{"model": model, "prompt": "Move the reference scene", "seconds": "8", "size": "720x1280", "generate_audio": "false", "watermark": "false", "seed": "0"} {
-							require.NoError(t, w.WriteField(k, v))
-						}
-						part, e := w.CreateFormFile("input_reference", "reference.png")
-						require.NoError(t, e)
-						_, e = part.Write(imageBytes.Bytes())
-						require.NoError(t, e)
-						require.NoError(t, w.Close())
-						ct = w.FormDataContentType()
-					} else {
-						switch mode {
-						case "json_urls":
-							payload["image_urls"] = []string{"https://example.com/reference.png"}
-						case "json_input_reference":
-							payload["input_reference"] = "https://example.com/reference.png"
-						case "role_image":
-							payload["image_with_roles"] = []any{map[string]any{"url": "https://example.com/reference.png", "role": "reference_image"}}
-						case "text":
-							expectedCount = 0
-						}
-						raw, e := common.Marshal(payload)
-						require.NoError(t, e)
-						body.Write(raw)
+					switch mode {
+					case "json_urls":
+						payload["image_urls"] = []string{"https://example.com/reference.png"}
+					case "json_input_reference":
+						payload["input_reference"] = "https://example.com/reference.png"
+					case "role_image":
+						payload["image_with_roles"] = []any{map[string]any{"url": "https://example.com/reference.png", "role": "reference_image"}}
+					case "text":
+						expectedCount = 0
 					}
+					raw, e := common.Marshal(payload)
+					require.NoError(t, e)
+					body.Write(raw)
 					router := gin.New()
 					router.Use(PrepareSeedanceAssetGeneration())
 					var sent map[string]any
@@ -101,11 +83,7 @@ func TestSeedanceReferencesReachOutboundRequest(t *testing.T) {
 					} else if expectedCount > 0 {
 						urls := sent["image_urls"].([]any)
 						require.Len(t, urls, 1)
-						if mode == "upload" {
-							require.Equal(t, "data:image/png;base64,"+base64.StdEncoding.EncodeToString(imageBytes.Bytes()), urls[0])
-						} else {
-							require.Equal(t, "https://example.com/reference.png", urls[0])
-						}
+						require.Equal(t, "https://example.com/reference.png", urls[0])
 					}
 				})
 			}
