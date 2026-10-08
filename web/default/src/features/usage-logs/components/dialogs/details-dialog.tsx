@@ -153,6 +153,7 @@ function BillingBreakdown(props: {
   const { log, other, isAdmin } = props
   const isDuration = isDurationBilling(other.billing_mode)
   const isPerCall = !isDuration && isPerCallBilling(other.model_price)
+  const isImageCount = other.billing_mode === 'image_count'
   const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const isSubscription = isSubscriptionUsageLog(other)
@@ -176,7 +177,13 @@ function BillingBreakdown(props: {
 
   if (imageBilling) {
     rows.push(
-      { label: t('Billing Mode'), value: t('Per-image') },
+      {
+        label: t('Billing Mode'),
+        value:
+          isSubscription && other.subscription_type !== 'coding_plan'
+            ? `${t('Per-image')} (${t('Official')})`
+            : t('Per-image'),
+      },
       {
         label: t('Image Operation'),
         value: imageBilling.isLayers
@@ -251,15 +258,35 @@ function BillingBreakdown(props: {
         timedPricing.currentOutput
       ),
     })
-  } else if (!isSubscription && isDuration) {
-    rows.push({ label: t('Billing Mode'), value: t('Per-second') })
+  } else if (isImageCount) {
+    rows.push({
+      label: t('Billing Mode'),
+      value:
+        isSubscription && other.subscription_type !== 'coding_plan'
+          ? `${t('Per-image')} (${t('Official')})`
+          : t('Per-image'),
+    })
+    if (other.model_price != null) {
+      rows.push({
+        label: t('Model Price'),
+        value: fmtPrice(other.model_price),
+      })
+    }
+  } else if (isDuration) {
+    rows.push({
+      label: t('Billing Mode'),
+      value:
+        isSubscription && other.subscription_type !== 'coding_plan'
+          ? `${t('Per-second')} (${t('Official')})`
+          : t('Per-second'),
+    })
     if (other.model_price != null) {
       rows.push({
         label: t('Model Price'),
         value: `${fmtPrice(other.model_price)}/s`,
       })
     }
-  } else if (!isSubscription && isPerCall) {
+  } else if (isPerCall && !isSubscription) {
     rows.push({ label: t('Billing Mode'), value: t('Per-call') })
     if (other.model_price != null) {
       rows.push({

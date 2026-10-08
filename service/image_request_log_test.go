@@ -3,9 +3,30 @@ package service
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/require"
 )
+
+func TestApplyImageBillingLogInfoUsesPerImageOfficialPrice(t *testing.T) {
+	oldOptions := common.OptionMap
+	t.Cleanup(func() { common.OptionMap = oldOptions })
+	common.OptionMap = map[string]string{ratio_setting.ImageModelPricingOption: ratio_setting.DefaultImageModelPricingJSON()}
+
+	other := map[string]interface{}{}
+	ok := ApplyImageBillingLogInfo(other, "gemini-3.1-flash-image", map[string]interface{}{
+		"actual_image_count":   2,
+		"effective_resolution": "2K",
+	})
+
+	require.True(t, ok)
+	require.Equal(t, accountingBillingModeImageCount, other["billing_mode"])
+	require.InDelta(t, 0.101, other["model_price"], 0.000001)
+	billing := other["image_billing"].(map[string]interface{})
+	require.Equal(t, 2, billing["generated_images"])
+	require.InDelta(t, 0.202, billing["base_amount_usd"], 0.000001)
+}
 
 func TestBuildImageRequestDataForLog(t *testing.T) {
 	t.Parallel()

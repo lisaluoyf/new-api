@@ -212,6 +212,7 @@ function buildDetailSegments(
   } else {
     const timedPricing = getDeepSeekV4TimedPricingDisplay(log, other)
     const isDuration = isDurationBilling(other.billing_mode)
+    const isImageCount = other.billing_mode === 'image_count'
     const isPerCall = !isDuration && isPerCallBilling(other.model_price)
     if (timedPricing) {
       segments.push({
@@ -223,11 +224,15 @@ function buildDetailSegments(
           true
         )}`,
       })
-    } else if (!isSubscription && isPerCall) {
+    } else if (isImageCount) {
+      segments.push({
+        text: `${t('Per-image')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
+      })
+    } else if (isPerCall && !isSubscription) {
       segments.push({
         text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
       })
-    } else if (!isSubscription && isDuration) {
+    } else if (isDuration) {
       segments.push({
         text: `${t('Per-second')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
       })

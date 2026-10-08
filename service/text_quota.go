@@ -642,6 +642,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 	if requestData := ImageRequestDataFromContext(ctx); len(requestData) > 0 {
 		other["request_data"] = requestData
+		if relayInfo.PriceDataSource != "wallet" {
+			ApplyImageBillingLogInfo(other, relayInfo.OriginModelName, requestData)
+		}
 	}
 	accountingInput := ConsumeAccountingInput{
 		UserId:                    relayInfo.UserId,

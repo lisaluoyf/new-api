@@ -33,6 +33,57 @@ func ImageRequestDataFromContext(c interface{ Get(string) (any, bool) }) map[str
 	return nil
 }
 
+// ApplyImageBillingLogInfo adds the settled media billing presentation for a
+// generic image request. The accounting snapshot remains the source of truth
+// for settlement; this only prevents image requests from being rendered as
+// token-priced logs when a subscription price path also carries tiered data.
+func ApplyImageBillingLogInfo(other map[string]interface{}, modelName string, requestData map[string]interface{}) bool {
+	if other == nil || len(requestData) == 0 {
+		return false
+	}
+	imageCount := coerceRequestInt(requestData["actual_image_count"])
+	if imageCount <= 0 {
+		return false
+	}
+
+	pricing, ok := GlobalImageMediaPricingUSD(modelName)
+	if !ok || pricing.BasePrice <= 0 {
+		return false
+	}
+	variant, _ := requestData["effective_resolution"].(string)
+	variant = strings.TrimSpace(variant)
+	if variant == "" {
+		variant = pricing.BaseVariant
+	}
+	unitPrice := pricing.BasePrice
+	for name, price := range pricing.Prices {
+		if strings.EqualFold(strings.TrimSpace(name), variant) && price > 0 {
+			unitPrice = price
+			variant = name
+			break
+		}
+	}
+	if unitPrice <= 0 {
+		return false
+	}
+
+	other["billing_mode"] = accountingBillingModeImageCount
+	if _, exists := other["image_billing"]; exists {
+		return true
+	}
+	other["model_price"] = unitPrice
+	other["image_billing"] = map[string]interface{}{
+		"base_variant":        variant,
+		"layer_decomposition": false,
+		"input_images":        0,
+		"generated_images":    imageCount,
+		"billable_counts":     map[string]int{variant: imageCount},
+		"base_prices":         pricing.Prices,
+		"base_amount_usd":     unitPrice * float64(imageCount),
+	}
+	return true
+}
+
 // BuildImageRequestDataForLog returns user-facing request fields for log preview.
 func BuildImageRequestDataForLog(req *dto.ImageRequest) map[string]interface{} {
 	if req == nil {
