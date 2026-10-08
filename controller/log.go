@@ -38,6 +38,7 @@ func GetAllLogs(c *gin.Context) {
 		return
 	}
 	service.EnrichLogsMediaURLs(logs)
+	service.EnrichUserTaskLogFailures(logs)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)

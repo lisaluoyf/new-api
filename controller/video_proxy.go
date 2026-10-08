@@ -50,6 +50,18 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
+	if task.Status == model.TaskStatusFailure {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "failed",
+			"task_id": task.TaskID,
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"code":    "task_failed",
+				"message": service.PublicTaskFailure(task),
+			},
+		})
+		return
+	}
 	if task.Status != model.TaskStatusSuccess {
 		videoProxyError(c, http.StatusBadRequest, "invalid_request_error",
 			fmt.Sprintf("Task is not completed yet, current status: %s", task.Status))

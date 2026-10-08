@@ -60,6 +60,32 @@ func TestTaskWebhookRollback(t *testing.T) {
 	require.Equal(t, TaskStatus(TaskStatusSubmitted), fresh.Status)
 }
 
+func TestTaskWebhookVideoFailureNotifiesOnce(t *testing.T) {
+	db := webhookTestDB(t)
+	task := Task{TaskID: GenerateTaskID(), UserId: 1, Platform: constant.TaskPlatformApimartVideo,
+		Status: TaskStatusSubmitted, Properties: Properties{OriginModelName: "seedance-2.0-mini"},
+		PrivateData: TaskPrivateData{Webhook: &TaskWebhookConfig{EndpointID: "endpoint"}}}
+	require.NoError(t, task.Insert())
+	task.Status = TaskStatusFailure
+	task.FailReason = "content safety review failed; Bearer private-secret"
+	won, err := task.UpdateWithStatus(TaskStatusSubmitted)
+	require.NoError(t, err)
+	require.True(t, won)
+	var rows []TaskWebhookEvent
+	require.NoError(t, db.Find(&rows).Error)
+	require.Len(t, rows, 1)
+	require.Contains(t, rows[0].Payload, `"type":"task.failed"`)
+	require.Contains(t, rows[0].Payload, `"status":"failed"`)
+	require.Contains(t, rows[0].Payload, "/v1/videos/"+task.TaskID)
+	require.NotContains(t, rows[0].Payload, "private-secret")
+	won, err = task.UpdateWithStatus(TaskStatusSubmitted)
+	require.NoError(t, err)
+	require.False(t, won)
+	var count int64
+	require.NoError(t, db.Model(&TaskWebhookEvent{}).Count(&count).Error)
+	require.EqualValues(t, 1, count)
+}
+
 func TestTaskWebhookSeedance20LastFrame(t *testing.T) {
 	for _, requested := range []bool{true, false} {
 		db := webhookTestDB(t)

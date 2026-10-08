@@ -56,3 +56,12 @@ func TestSanitizeOpenAIVideoTaskFailurePreservesPublicShape(t *testing.T) {
 	require.NotContains(t, string(result), "secret-token")
 	require.NotContains(t, string(result), "provider-code")
 }
+
+func TestRealtimeFetchDoesNotRequeryTerminalTasks(t *testing.T) {
+	for _, status := range []model.TaskStatus{model.TaskStatusSuccess, model.TaskStatusFailure} {
+		task := &model.Task{Status: status}
+		// No DB/channel is needed: terminal tasks must return before any query.
+		require.Nil(t, tryRealtimeFetch(task, true))
+		require.Equal(t, status, task.Status)
+	}
+}
