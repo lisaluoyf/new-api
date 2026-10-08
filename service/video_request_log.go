@@ -156,10 +156,12 @@ func EnrichVideoRequestData(data map[string]interface{}) map[string]interface{} 
 	} else if duration := coerceRequestInt(data["duration"]); duration > 0 {
 		data["duration"] = duration
 	}
-	if count := coerceRequestInt(data["actual_image_count"]); count > 0 {
+	if value, exists := data["actual_image_count"]; exists {
+		count := coerceRequestInt(value)
+		if count < 0 {
+			count = 0
+		}
 		data["actual_image_count"] = count
-	} else {
-		data["actual_image_count"] = 1
 	}
 
 	delete(data, "seconds")
@@ -218,12 +220,26 @@ func appendVideoDerivedFields(data map[string]interface{}, size string) {
 
 func videoActualImageCount(req *relaycommon.TaskSubmitReq) int {
 	if req == nil {
-		return 1
+		return 0
 	}
-	if req.HasImage() || strings.TrimSpace(req.Image) != "" || strings.TrimSpace(req.InputReference) != "" {
-		return 1
+	count := len(req.Images)
+	seen := make(map[string]bool, count)
+	for _, image := range req.Images {
+		seen[image] = true
 	}
-	return 1
+	for _, alias := range []string{req.Image, req.InputReference} {
+		if strings.TrimSpace(alias) == "" {
+			continue
+		}
+		if !seen[alias] {
+			count++
+			seen[alias] = true
+		}
+	}
+	if refs := coerceRequestInt(req.Metadata["reference_image_count"]); refs > count {
+		count = refs
+	}
+	return count
 }
 
 func normalizedVideoSize(size string) string {

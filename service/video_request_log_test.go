@@ -21,7 +21,7 @@ func TestBuildVideoRequestDataForLog(t *testing.T) {
 	require.Equal(t, "sora-2", data["model"])
 	require.Equal(t, "美丽的笑容", data["prompt"])
 	require.Equal(t, 4, data["duration"])
-	require.Equal(t, 1, data["actual_image_count"])
+	require.Equal(t, 0, data["actual_image_count"])
 	require.Equal(t, "16:9", data["aspect_ratio"])
 	require.Equal(t, "720p", data["resolution"])
 	require.Equal(t, "720P", data["effective_resolution"])
@@ -75,4 +75,23 @@ func TestVideoResolutionFromSizeRatio(t *testing.T) {
 	require.Equal(t, "720p", videoResolutionFromSizeRatio(1.0))
 	require.Equal(t, "1024p", videoResolutionFromSizeRatio(1.666667))
 	require.Equal(t, "1080p", videoResolutionFromSizeRatio(2.333333))
+}
+
+func TestVideoRequestImageCounts(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		req  relaycommon.TaskSubmitReq
+		want int
+	}{
+		{"text", relaycommon.TaskSubmitReq{Model: "seedance-2.5", Prompt: "scene"}, 0},
+		{"two_images", relaycommon.TaskSubmitReq{Model: "seedance-2.5", Images: []string{"a", "b"}}, 2},
+		{"deduplicate_alias", relaycommon.TaskSubmitReq{Model: "seedance-2.5", Images: []string{"a"}, InputReference: "a"}, 1},
+		{"role_references", relaycommon.TaskSubmitReq{Model: "seedance-2.5", Metadata: map[string]any{"reference_image_count": 2}}, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, BuildVideoRequestDataForLog(&tc.req)["actual_image_count"])
+		})
+	}
+	require.Equal(t, 0, EnrichVideoRequestData(map[string]any{"model": "seedance-2.5", "actual_image_count": 0})["actual_image_count"])
+	require.NotContains(t, EnrichVideoRequestData(map[string]any{"model": "seedance-2.5"}), "actual_image_count")
 }

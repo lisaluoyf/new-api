@@ -23,7 +23,17 @@ func seedanceRoutingError(c *gin.Context, err error) {
 
 func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.Request.Method != http.MethodPost || !strings.Contains(c.GetHeader("Content-Type"), "application/json") || (!strings.HasSuffix(c.Request.URL.Path, "/generations") && c.Request.URL.Path != "/v1/videos" && c.Request.URL.Path != "/v1/videos/quote") {
+		if c.Request.Method != http.MethodPost || (!strings.HasSuffix(c.Request.URL.Path, "/generations") && c.Request.URL.Path != "/v1/videos" && c.Request.URL.Path != "/v1/videos/quote") {
+			c.Next()
+			return
+		}
+		if strings.Contains(c.GetHeader("Content-Type"), "multipart/form-data") {
+			if err := service.NormalizeSeedanceMultipart(c); err != nil {
+				seedanceRoutingError(c, err)
+				return
+			}
+		}
+		if !strings.Contains(c.GetHeader("Content-Type"), "application/json") {
 			c.Next()
 			return
 		}

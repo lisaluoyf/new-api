@@ -12,8 +12,20 @@ import (
 
 // Both public generation aliases use the same model-aware JSON contract.
 func isGenerationJSON(c *gin.Context) bool {
-	return strings.HasPrefix(c.GetHeader("Content-Type"), "application/json") &&
-		(strings.HasSuffix(c.Request.URL.Path, "/video/generations") || strings.HasSuffix(c.Request.URL.Path, "/videos/generations"))
+	if !strings.HasPrefix(c.GetHeader("Content-Type"), "application/json") {
+		return false
+	}
+	if strings.HasSuffix(c.Request.URL.Path, "/video/generations") || strings.HasSuffix(c.Request.URL.Path, "/videos/generations") {
+		return true
+	}
+	if c.Request.URL.Path == "/v1/videos" {
+		var fields map[string]any
+		if common.UnmarshalBodyReusable(c, &fields) == nil {
+			name, _ := fields["model"].(string)
+			return service.IsSeedanceLibraryModel(name)
+		}
+	}
+	return false
 }
 
 func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {

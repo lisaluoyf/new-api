@@ -28,7 +28,7 @@ func TestBuildVideoRequestDataFromTask_BillingContext(t *testing.T) {
 	require.Equal(t, 8, data["duration"])
 	require.Equal(t, "720p", data["resolution"])
 	require.Equal(t, "720P", data["effective_resolution"])
-	require.Equal(t, 1, data["actual_image_count"])
+	require.NotContains(t, data, "actual_image_count")
 }
 
 func TestBuildVideoRequestDataFromTask_SkipsNilFields(t *testing.T) {

@@ -224,6 +224,13 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 		var fields map[string]any
 		_ = common.Unmarshal(raw, &fields)
 		store.Metadata["audio"] = fields["generate_audio"]
+		if roles, ok := fields["image_with_roles"]; ok {
+			roleCount := countImageRoles(roles)
+			store.Metadata["reference_image_count"] = len(body.ImageURLs) + roleCount
+			if roleCount > 0 {
+				action = constant.TaskActionGenerate
+			}
+		}
 		for _, key := range []string{"draft", "draft_task_id", "return_last_frame", "output_format", "omni_reference_task_type"} {
 			if value, exists := fields[key]; exists {
 				store.Metadata[key] = value
@@ -759,4 +766,17 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	}
 	service.AddSeedanceResultFields(task, out)
 	return common.Marshal(out)
+}
+
+// Role references are normalized arrays, independent of bare image_urls.
+func countImageRoles(value any) int {
+	raw, err := common.Marshal(value)
+	if err != nil {
+		return 0
+	}
+	var items []any
+	if common.Unmarshal(raw, &items) != nil {
+		return 0
+	}
+	return len(items)
 }
