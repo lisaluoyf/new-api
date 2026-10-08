@@ -76,8 +76,37 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 }
 
 func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, mode priceResolutionMode) (types.PriceData, error) {
+	if meta == nil {
+		meta = &types.TokenCountMeta{}
+	}
 	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
 	useTrialPricing := mode == priceResolutionModeGPTTrial
+	nativeNanoImage := info.OriginModelName == "gemini-nano-banana-2.1" && info.RelayMode == relayconstant.RelayModeGemini
+	if nativeNanoImage {
+		if err := nanoBanana21NativeImagePricing(c, info, meta); err != nil {
+			return types.PriceData{}, err
+		}
+	}
+	if info.OriginModelName == "gemini-nano-banana-2.1" {
+		if req, ok := info.Request.(*dto.ImageRequest); ok {
+			if req.N != nil && *req.N != 1 {
+				return types.PriceData{}, fmt.Errorf("Nano Banana 2.1 requires n=1")
+			}
+			if req.Resolution == "" {
+				switch strings.ToUpper(strings.TrimSpace(req.Quality)) {
+				case "1K", "2K", "4K":
+					req.Resolution = strings.ToUpper(strings.TrimSpace(req.Quality))
+				case "HD":
+					req.Resolution = "2K"
+				}
+			}
+			tier := req.EffectiveResolutionTier()
+			if req.Resolution != "" && !strings.EqualFold(strings.TrimSpace(req.Resolution), tier) {
+				return types.PriceData{}, fmt.Errorf("unsupported resolution")
+			}
+			meta.ImagePriceVariant = tier
+		}
+	}
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 	if useTrialPricing {
@@ -95,6 +124,7 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 	// configured fixed price / channel-ratio fallback below is unchanged.
 	if info.RelayMode == relayconstant.RelayModeImagesGenerations ||
 		info.RelayMode == relayconstant.RelayModeImagesEdits ||
+		nativeNanoImage ||
 		(info.OriginModelName == "gemini-nano-banana-2.1" && info.RelayMode == relayconstant.RelayModeChatCompletions) {
 		if info.OriginModelName == "gemini-nano-banana-2.1" && info.RelayMode == relayconstant.RelayModeChatCompletions {
 			req, ok := info.Request.(*dto.GeneralOpenAIRequest)

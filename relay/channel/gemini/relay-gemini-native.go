@@ -43,6 +43,14 @@ func GeminiTextGenerationHandler(c *gin.Context, info *relaycommon.RelayInfo, re
 
 	// 计算使用量（基于 UsageMetadata）
 	usage := buildUsageFromGeminiMetadata(geminiResponse.UsageMetadata, info.GetEstimatePromptTokens())
+	if info.OriginModelName == "gemini-nano-banana-2.1" && info.PriceData.UsePrice {
+		if err := recordGeminiImageOutput(c, info, &geminiResponse); err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+		}
+		// Keep the gateway request ID available for correlating the billed image.
+		resp.Header.Del("X-Request-Id")
+		resp.Header.Del("X-Oneapi-Request-Id")
+	}
 
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 

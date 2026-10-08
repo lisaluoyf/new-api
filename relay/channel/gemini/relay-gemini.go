@@ -1602,7 +1602,7 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 		})
 	}
 
-	jsonResponse, jsonErr := json.Marshal(openAIResponse)
+	jsonResponse, jsonErr := common.Marshal(openAIResponse)
 	if jsonErr != nil {
 		return nil, types.NewError(jsonErr, types.ErrorCodeBadResponseBody)
 	}
@@ -1706,7 +1706,7 @@ func GeminiImagineContentHandler(c *gin.Context, info *relaycommon.RelayInfo, re
 	var firstCachedURL string
 	for _, candidate := range geminiResponse.Candidates {
 		for _, part := range candidate.Content.Parts {
-			if part.InlineData != nil && strings.HasPrefix(part.InlineData.MimeType, "image") {
+			if !part.Thought && part.InlineData != nil && strings.HasPrefix(part.InlineData.MimeType, "image/") && part.InlineData.Data != "" {
 				item := dto.ImageData{RevisedPrompt: revisedPrompt}
 				// Cache b64 → CDN URL so admin log shows a thumbnail preview.
 				// ImageData.Url has json:"url" (no omitempty), so an empty url=""
@@ -1730,8 +1730,11 @@ func GeminiImagineContentHandler(c *gin.Context, info *relaycommon.RelayInfo, re
 	if len(openAIResponse.Data) == 0 {
 		return nil, types.NewOpenAIError(errors.New("no images generated"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	if err := recordGeminiImageOutput(c, info, &geminiResponse); err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
 
-	jsonResponse, jsonErr := json.Marshal(openAIResponse)
+	jsonResponse, jsonErr := common.Marshal(openAIResponse)
 	if jsonErr != nil {
 		return nil, types.NewError(jsonErr, types.ErrorCodeBadResponseBody)
 	}

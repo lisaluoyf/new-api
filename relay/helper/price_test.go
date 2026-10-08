@@ -253,7 +253,7 @@ func TestImagePriceUsesResolutionBaseAndAllChannelCoefficients(t *testing.T) {
 		modes := []int{relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits}
 		prices := map[string]float64{"1K": 0.25, "2K": 0.30, "4K": 0.60}
 		if modelName == "gemini-nano-banana-2.1" {
-			modes = append(modes, relayconstant.RelayModeChatCompletions)
+			modes = append(modes, relayconstant.RelayModeChatCompletions, relayconstant.RelayModeGemini)
 			prices = map[string]float64{"1K": .0336, "2K": .0504, "4K": .0756}
 		}
 		for _, mode := range modes {
@@ -262,9 +262,14 @@ func TestImagePriceUsesResolutionBaseAndAllChannelCoefficients(t *testing.T) {
 				if mode == relayconstant.RelayModeChatCompletions {
 					raw, _ := common.Marshal(map[string]string{"image_size": resolution})
 					info.Request = &dto.GeneralOpenAIRequest{ImageConfig: raw}
+				} else if mode == relayconstant.RelayModeGemini {
+					raw, _ := common.Marshal(map[string]string{"imageSize": resolution})
+					info.Request = &dto.GeminiChatRequest{GenerationConfig: dto.GeminiChatGenerationConfig{ImageConfig: raw}}
+					ctx.Request = httptest.NewRequest("POST", "/v1/models/gemini-nano-banana-2.1:generateContent", nil)
 				}
 				price, priceErr := ModelPriceHelper(ctx, info, 0, &types.TokenCountMeta{ImagePriceVariant: resolution})
 				require.NoError(t, priceErr, modelName+resolution)
+				require.True(t, price.UsePrice)
 				// channel group 0.2 × recharge 0.5 × APIMaster 2.0 = 0.2.
 				want := basePrice * 0.2
 				require.InDelta(t, want, price.ModelPrice, 1e-9, modelName+resolution)

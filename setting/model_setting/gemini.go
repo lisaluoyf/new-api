@@ -26,6 +26,7 @@ var defaultGeminiSettings = GeminiSettings{
 		"gemini-3.1-flash-image": "v1",
 	},
 	SupportedImagineModels: []string{
+		"gemini-nano-banana-2.1",
 		"gemini-2.0-flash-exp-image-generation",
 		"gemini-2.0-flash-exp",
 		"gemini-3-pro-image-preview",
@@ -70,6 +71,11 @@ func GetGeminiVersionSetting(key string) string {
 }
 
 func IsGeminiModelSupportImagine(model string) bool {
+	// Persisted operator lists predate this canonical image model. Its native
+	// generateContent capability must not depend on re-saving that old list.
+	if model == "gemini-nano-banana-2.1" {
+		return true
+	}
 	for _, v := range geminiSettings.SupportedImagineModels {
 		if v == model {
 			return true
