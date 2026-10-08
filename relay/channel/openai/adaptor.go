@@ -508,6 +508,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	switch mode {
 	case relayconstant.RelayModeImagesEdits:
 		if isJSONRequest(c) {
+			normalizeSubrouterGeminiImageRequest(info, &request)
 			return request, nil
 		}
 
@@ -652,6 +653,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		return &requestBody, nil
 
 	default:
+		normalizeSubrouterGeminiImageRequest(info, &request)
 		if !dto.IsGrokImage20(info.OriginModelName) && isAPIMartCompatibleBase(info.ChannelBaseUrl) &&
 			strings.TrimSpace(request.Webhook) == "" {
 			request.Webhook = service.SignedMediaTaskWebhookBase()
