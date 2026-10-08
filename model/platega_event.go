@@ -229,6 +229,7 @@ func ApplyVerifiedPlategaEvent(eventID int, proof VerifiedPlategaState) error {
 				order.PlategaStatus = PlategaStatusCanceled
 			}
 		case PlategaStatusChargeback:
+			order.PlategaStatus = PlategaStatusChargeback
 			if proof.CumulativeReversalRub == nil || strings.TrimSpace(proof.ReversalEvidence) == "" {
 				review("returned_funds_amount_unverified")
 				break

@@ -37,6 +37,14 @@ func processPlategaEvent(ctx context.Context, event *model.PlategaEvent) error {
 		return err
 	}
 	proof := model.VerifiedPlategaState{TransactionID: order.PlategaTransactionId, TradeNo: order.TradeNo, UserID: order.UserId, Status: status.Status, APIJSON: status.RawJSON}
+	// Platega supports whole-transaction refunds only (operator confirmed
+	// 2026-10-08). The callback amount includes fees; reverse the frozen base
+	// and original granted quota only after the authenticated API says completed.
+	if model.NormalizePlategaAPIStatus(status.Status) == model.PlategaStatusChargeback && status.RefundStatus != nil && *status.RefundStatus == "COMPLETED" {
+		base := order.RubAmount
+		proof.CumulativeReversalRub = &base
+		proof.ReversalEvidence = "authenticated Platega API: CHARGEBACKED/COMPLETED; operator-confirmed whole-transaction refund policy (2026-10-08)"
+	}
 	if event.Source == "admin-refund-evidence" {
 		var evidence plategaRefundEvidenceRequest
 		if common.UnmarshalJsonStr(event.PayloadJSON, &evidence) != nil || !validPlategaRefundEvidence(evidence) || model.NormalizePlategaAPIStatus(status.Status) != model.PlategaStatusChargeback {
@@ -46,9 +54,8 @@ func processPlategaEvent(ctx context.Context, event *model.PlategaEvent) error {
 		proof.CumulativeReversalRub = &evidence.CumulativeBaseRefundedRub
 		proof.ReversalEvidence = evidence.EvidenceReference + " sha256:" + evidence.EvidenceSHA256
 	}
-	// Current documented API gives a payment amount, not a proven refunded
-	// amount. A chargeback is audited for review until refund evidence supplies
-	// the cumulative BASE money returned; never substitute the invoice total.
+	// Incomplete or inconsistent refund states must not trigger an automatic
+	// reversal. Explicit historical receipt evidence remains supported above.
 	if status.RefundStatus != nil && *status.RefundStatus != "" && model.NormalizePlategaAPIStatus(status.Status) != model.PlategaStatusChargeback {
 		_ = model.RetryPlategaEvent(event.Id, "refund_status_requires_funds_review")
 		return nil
