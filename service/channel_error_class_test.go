@@ -150,7 +150,7 @@ func TestClassifyChannelError_genericBadRequestDoesNotDisable(t *testing.T) {
 	require.Equal(t, CategorySkip, ClassifyChannelError(err))
 }
 
-func TestEvaluateChannelHealthDeletedUpstreamGroup(t *testing.T) {
+func TestEvaluateChannelHealthUnavailableUpstreamGroup(t *testing.T) {
 	previous := common.AutomaticDisableChannelEnabled
 	common.AutomaticDisableChannelEnabled = true
 	t.Cleanup(func() {
@@ -162,6 +162,10 @@ func TestEvaluateChannelHealthDeletedUpstreamGroup(t *testing.T) {
 		`{"code":"GROUP_DELETED","message":"Group unavailable"}`,
 		`{"error":{"code":"GROUP_DELETED","message":"Group unavailable"}}`,
 		`{"message":"API Key 所属分组已删除"}`,
+		`{"error":{"message":"API Key 所属分组已停用","type":"bad_response_status_code","param":"","code":"bad_response_status_code"}}`,
+		`{"message":"API Key 所属分组已禁用"}`,
+		`{"code":"GROUP_DISABLED","message":"Group unavailable"}`,
+		`{"error":{"code":"group_disabled","message":"Group unavailable"}}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			err := RelayErrorHandler(context.Background(), &http.Response{
@@ -184,7 +188,7 @@ func TestEvaluateChannelHealthDeletedUpstreamGroup(t *testing.T) {
 	}
 }
 
-func TestClassifyChannelErrorDeletedGroupBoundaries(t *testing.T) {
+func TestClassifyChannelErrorUnavailableGroupBoundaries(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
 		name     string
@@ -198,6 +202,12 @@ func TestClassifyChannelErrorDeletedGroupBoundaries(t *testing.T) {
 		{"code mentioned in message is not a code", 403, `{"message":"unsupported parameter GROUP_DELETED"}`, CategorySkip},
 		{"bad parameter is not credential failure", 400, `{"code":"GROUP_DELETED","message":"invalid parameter"}`, CategorySkip},
 		{"transient failure stays in window", 503, `{"code":"GROUP_DELETED","message":"Service temporarily unavailable"}`, CategoryDisableWindow},
+		{"disabled group on unauthorized", 401, `{"error":{"message":"API Key 所属分组已停用","code":"bad_response_status_code"}}`, CategoryCredentialInvalid},
+		{"disabled group user quota takes precedence", 403, `{"code":"GROUP_DISABLED","message":"用户额度不足"}`, CategorySkip},
+		{"disabled group code mentioned as parameter", 403, `{"message":"unsupported parameter GROUP_DISABLED"}`, CategorySkip},
+		{"group policy is not a key diagnosis", 403, `{"message":"分组已停用该模型"}`, CategorySkip},
+		{"disabled group on bad request", 400, `{"message":"API Key 所属分组已停用"}`, CategorySkip},
+		{"disabled group on transient response", 503, `{"message":"API Key 所属分组已停用"}`, CategoryDisableWindow},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := RelayErrorHandler(context.Background(), &http.Response{

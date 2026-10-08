@@ -89,7 +89,7 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 	if isPlatformUserQuotaError(err) {
 		return CategorySkip
 	}
-	if isUpstreamGroupDeletedError(err) {
+	if isUpstreamGroupUnavailableError(err) {
 		return CategoryCredentialInvalid
 	}
 
@@ -153,11 +153,11 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 	return CategorySkip
 }
 
-func isUpstreamGroupDeletedError(err *types.NewAPIError) bool {
+func isUpstreamGroupUnavailableError(err *types.NewAPIError) bool {
 	if err == nil || (err.StatusCode != 401 && err.StatusCode != 403) {
 		return false
 	}
-	if strings.EqualFold(string(err.GetErrorCode()), "GROUP_DELETED") {
+	if isUnavailableGroupCode(string(err.GetErrorCode())) {
 		return true
 	}
 	// Some providers return a top-level code which RelayErrorHandler keeps
@@ -165,10 +165,21 @@ func isUpstreamGroupDeletedError(err *types.NewAPIError) bool {
 	var body struct {
 		Code string `json:"code"`
 	}
-	if common.UnmarshalJsonStr(err.UpstreamResponseBody, &body) == nil && strings.EqualFold(body.Code, "GROUP_DELETED") {
+	if common.UnmarshalJsonStr(err.UpstreamResponseBody, &body) == nil && isUnavailableGroupCode(body.Code) {
 		return true
 	}
-	return strings.Contains(err.Error(), "API Key 所属分组已删除")
+	// Relay stations may use a generic error code even when the key's group
+	// has been disabled. Match the explicit key-group diagnosis, not all 403s.
+	for _, message := range []string{"API Key 所属分组已删除", "API Key 所属分组已停用", "API Key 所属分组已禁用"} {
+		if strings.Contains(err.Error(), message) {
+			return true
+		}
+	}
+	return false
+}
+
+func isUnavailableGroupCode(code string) bool {
+	return strings.EqualFold(code, "GROUP_DELETED") || strings.EqualFold(code, "GROUP_DISABLED")
 }
 
 func isUpstreamRechargeError(err *types.NewAPIError) bool {
