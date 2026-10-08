@@ -160,12 +160,12 @@ func Distribute() func(c *gin.Context) {
 		if modelRequest.Model != "" {
 			trialToken := service.IsFreeTrialGroup(common.GetContextKeyString(c, constant.ContextKeyTokenGroup))
 			if trialToken {
-				_, allowed, accessErr := service.FreeTrialModelAccess(c.GetInt("id"), modelRequest.Model)
+				access, accessErr := service.FreeTrialRequestModelAccess(c.GetInt("id"), modelRequest.Model, common.GetContextKeyString(c, constant.ContextKeyTokenGroup))
 				if accessErr != nil {
 					abortWithOpenAiMessage(c, http.StatusInternalServerError, i18n.T(c, i18n.MsgDatabaseError))
 					return
 				}
-				if !allowed {
+				if access.Forbidden {
 					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTrialModelForbidden, map[string]any{"Model": modelRequest.Model}))
 					return
 				}

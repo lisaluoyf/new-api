@@ -74,7 +74,12 @@ func TestPreConsumeBillingIgnoresGPTTrialForNonEligibleModel(t *testing.T) {
 	seedSubscriptionPlan(t, 101, "APIMaster $20 GPT Trial", model.SubscriptionPlanTypeGPTTrial)
 	seedUserSubscriptionWithPlan(t, 201, 1, 101, 500, 0)
 
-	info := seedGPTTrialBillingInfo("claude-sonnet-5", "wallet_first")
+	info := seedGPTTrialBillingInfo("claude-opus-5-5", "wallet_first")
+	access, err := FreeTrialRequestModelAccess(info.UserId, info.OriginModelName, info.TokenGroup)
+	require.NoError(t, err)
+	require.True(t, access.HasTrial)
+	require.False(t, access.Forbidden)
+	info.TrialModelAllowed = access.Allowed
 	apiErr := PreConsumeBilling(retryBillingContext(), info.WalletPriceData.QuotaToPreConsume, info)
 	require.Nil(t, apiErr)
 	require.NotNil(t, info.Billing)
@@ -86,6 +91,9 @@ func TestPreConsumeBillingIgnoresGPTTrialForNonEligibleModel(t *testing.T) {
 	var user model.User
 	require.NoError(t, model.DB.First(&user, 1).Error)
 	require.Equal(t, 880, user.Quota)
+	var sub model.UserSubscription
+	require.NoError(t, model.DB.First(&sub, 201).Error)
+	require.Zero(t, sub.AmountUsed)
 }
 
 func TestPreConsumeBillingFallsBackToStandardSubscriptionAfterTrialInsufficient(t *testing.T) {

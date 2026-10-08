@@ -36,6 +36,27 @@ func FreeTrialModelAccess(userID int, modelName string) (hasTrial bool, allowed 
 	return model.GetActiveGPTTrialModelAccess(userID, modelName)
 }
 
+// Trial eligibility selects a funding source; it restricts model access only
+// when the caller explicitly uses a trial-only key. Ordinary keys continue
+// through normal wallet/subscription billing for models outside the trial.
+type FreeTrialRequestAccess struct {
+	HasTrial  bool
+	Allowed   bool
+	Forbidden bool
+}
+
+func FreeTrialRequestModelAccess(userID int, modelName, tokenGroup string) (FreeTrialRequestAccess, error) {
+	hasTrial, allowed, err := FreeTrialModelAccess(userID, modelName)
+	if err != nil {
+		return FreeTrialRequestAccess{}, err
+	}
+	return FreeTrialRequestAccess{
+		HasTrial:  hasTrial,
+		Allowed:   hasTrial && allowed,
+		Forbidden: IsFreeTrialGroup(tokenGroup) && !allowed,
+	}, nil
+}
+
 func FilterFreeTrialModelsForUser(userID int, models []string) ([]string, error) {
 	hasTrial, allowedModels, err := model.GetActiveGPTTrialModels(userID)
 	if err != nil {

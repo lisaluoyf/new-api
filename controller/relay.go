@@ -210,12 +210,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	trialModelAllowed := false
 	if relayInfo.UserId > 0 {
-		hasTrial, allowed, trialAccessErr := service.FreeTrialModelAccess(relayInfo.UserId, relayInfo.OriginModelName)
+		access, trialAccessErr := service.FreeTrialRequestModelAccess(relayInfo.UserId, relayInfo.OriginModelName, relayInfo.TokenGroup)
 		if trialAccessErr != nil {
 			newAPIError = types.NewError(trialAccessErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 			return
 		}
-		if hasTrial && !allowed {
+		if access.Forbidden {
 			newAPIError = types.NewErrorWithStatusCode(
 				fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorTrialModelForbidden, map[string]any{"Model": relayInfo.OriginModelName})),
 				types.ErrorCode("trial_model_forbidden"),
@@ -223,7 +223,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			)
 			return
 		}
-		trialModelAllowed = hasTrial && allowed
+		trialModelAllowed = access.Allowed
 	}
 
 	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
@@ -245,7 +245,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			return
 		}
 		relayInfo.HasActiveGPTTrial = hasTrial
-		if hasTrial {
+		if hasTrial && trialModelAllowed {
 			if _, err := helper.BuildGPTTrialPriceData(c, relayInfo, tokens, meta); err != nil {
 				newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 				return
@@ -265,7 +265,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			return
 		}
 		relayInfo.HasActiveGPTSubscription = hasPaidSubscription
-		if !relayInfo.HasActiveGPTTrial && (hasReferralReward || hasPaidSubscription) {
+		if !relayInfo.TrialModelAllowed && (hasReferralReward || hasPaidSubscription) {
 			if _, err := helper.BuildGPTTrialPriceData(c, relayInfo, tokens, meta); err != nil {
 				newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 				return

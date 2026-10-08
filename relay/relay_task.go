@@ -183,14 +183,15 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	info.OriginModelName = modelName
 	hasTrial := false
 	trialAllowed := false
+	trialForbidden := false
 	if info.UserId > 0 {
-		var trialAccessErr error
-		hasTrial, trialAllowed, trialAccessErr = service.FreeTrialModelAccess(info.UserId, modelName)
+		access, trialAccessErr := service.FreeTrialRequestModelAccess(info.UserId, modelName, info.TokenGroup)
 		if trialAccessErr != nil {
 			return nil, service.TaskErrorWrapper(trialAccessErr, "trial_access_check_failed", http.StatusInternalServerError)
 		}
+		hasTrial, trialAllowed, trialForbidden = access.HasTrial, access.Allowed, access.Forbidden
 	}
-	if hasTrial && !trialAllowed {
+	if trialForbidden {
 		return nil, service.TaskErrorWrapperLocal(
 			fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorTrialModelForbidden, map[string]any{"Model": modelName})),
 			"trial_model_forbidden",
@@ -198,12 +199,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		)
 	}
 	info.TrialModelAllowed = hasTrial && trialAllowed
-	if hasTrial {
+	if info.TrialModelAllowed {
 		c.Set("trial_official_pricing", true)
 	}
 	var priceData types.PriceData
 	var err error
-	if hasTrial {
+	if info.TrialModelAllowed {
 		priceData, err = helper.ModelPriceHelperPerCallForTrial(c, info)
 	} else {
 		priceData, err = helper.ModelPriceHelperPerCall(c, info)
