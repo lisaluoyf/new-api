@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -15,10 +16,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var nanoBanana21CacheReference = service.CacheImageBase64Locally
+
 // The OpenRouter model returns images in chat messages. Keep image requests on
 // the existing per-image pricing and settlement path while adapting the wire format.
 func nanoBanana21ImageBridge(info *relaycommon.RelayInfo) bool {
 	return info != nil && info.OriginModelName == "gemini-nano-banana-2.1" &&
+		!nanoBanana21NativeImages(info) &&
+		(info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits)
+}
+
+// OpenAI-compatible hubs exposing nano-banana-2.1 implement native Images APIs.
+// They require image/images on edits; image_urls on generations is ignored.
+func nanoBanana21NativeImages(info *relaycommon.RelayInfo) bool {
+	return info != nil && info.ChannelMeta != nil &&
+		info.OriginModelName == "gemini-nano-banana-2.1" &&
+		info.ChannelType == constant.ChannelTypeOpenAI && info.UpstreamModelName == "nano-banana-2.1" &&
 		(info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits)
 }
 
@@ -87,11 +100,37 @@ func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo
 	}
 	config["aspect_ratio"] = aspect
 	service.SetImageRequestDataOnContext(c, &req)
+	if nanoBanana21NativeImages(info) {
+		body := map[string]any{"model": req.Model, "prompt": req.Prompt, "n": 1, "size": req.Size, "resolution": tier, "response_format": "b64_json"}
+		if info.RelayMode == relayconstant.RelayModeImagesEdits {
+			refs := append([]string(nil), req.ImageUrls...)
+			for i, ref := range refs {
+				if strings.HasPrefix(ref, "data:image/") {
+					refs[i] = nanoBanana21CacheReference(ref)
+					if refs[i] == "" {
+						return nil, fmt.Errorf("could not store reference image for native image editing")
+					}
+				}
+			}
+			if len(refs) == 1 {
+				body["image"] = refs[0]
+			} else {
+				body["images"] = refs
+			}
+		} else if len(req.ImageUrls) > 0 || len(req.Image) > 0 || len(req.Images) > 0 {
+			return nil, fmt.Errorf("reference images require /v1/images/edits on this channel")
+		}
+		return body, nil
+	}
 	return map[string]any{"model": req.Model, "messages": []any{map[string]any{"role": "user", "content": content}}, "modalities": []string{"image", "text"}, "image_config": config, "stream": false}, nil
 }
 
 func normalizeNanoBanana21ImageResponse(c *gin.Context, info *relaycommon.RelayInfo, raw []byte) ([]byte, error) {
 	var response struct {
+		Data []struct {
+			URL string `json:"url"`
+			B64 string `json:"b64_json"`
+		} `json:"data"`
 		Choices []struct {
 			Message struct {
 				Images []struct {
@@ -107,6 +146,15 @@ func normalizeNanoBanana21ImageResponse(c *gin.Context, info *relaycommon.RelayI
 		return nil, err
 	}
 	data := []map[string]string{}
+	if nanoBanana21NativeImages(info) {
+		for _, img := range response.Data {
+			if img.B64 != "" {
+				data = append(data, map[string]string{"b64_json": img.B64})
+			} else if strings.HasPrefix(img.URL, "https://") || strings.HasPrefix(img.URL, "http://") {
+				data = append(data, map[string]string{"url": img.URL})
+			}
+		}
+	}
 	for _, choice := range response.Choices {
 		for _, img := range choice.Message.Images {
 			u := strings.TrimSpace(img.ImageURL.URL)

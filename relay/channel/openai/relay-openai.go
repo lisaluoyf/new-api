@@ -1318,7 +1318,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 	// Task envelopes replace the upstream payload but must not discard usage
 	// needed for settlement and logs on synchronous upstreams.
-	if nanoBanana21ImageBridge(info) {
+	if nanoBanana21ImageBridge(info) || nanoBanana21NativeImages(info) {
 		responseBody, err = normalizeNanoBanana21ImageResponse(c, info, responseBody)
 		if err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
