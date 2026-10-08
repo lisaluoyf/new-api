@@ -950,7 +950,11 @@ type Stat struct {
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, filterUserId int) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
+	// Refunded consume rows retain their original quota for the audit trail,
+	// but contribute zero to the amount charged. Request-rate metrics below
+	// still count the attempted requests.
+	tx := LOG_DB.Table("logs").Select("sum(quota) quota").
+		Where("COALESCE(accounting_status, '') <> ?", AccountingStatusRefunded)
 
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, sum(prompt_tokens) + sum(completion_tokens) tpm")
