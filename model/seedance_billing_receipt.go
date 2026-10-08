@@ -119,12 +119,16 @@ func SaveSeedanceBillingReceipt(receipt *SeedanceBillingReceipt, details any) er
 }
 
 func InsertSeedanceTaskWithReceipt(task *Task, receipt *SeedanceBillingReceipt) error {
-	return DB.Transaction(func(tx *gorm.DB) error {
+	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(task).Error; err != nil {
 			return err
 		}
 		return tx.Create(receipt).Error
 	})
+	if err == nil {
+		notifyVideoVerification(task)
+	}
+	return err
 }
 
 // Only completed tasks whose receipt was not finalized are recovery candidates.

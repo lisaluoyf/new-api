@@ -24,13 +24,15 @@ import (
 
 // DetectPoint is one entry in a per-channel history series for the model-data UI.
 type DetectPoint struct {
-	Status                  string     `json:"status"`      // 'pass' / 'suspicious' / 'notcomplete'
-	DetectTime              int64      `json:"detect_time"` // unix seconds
-	Note                    string     `json:"note,omitempty"`
-	GroupName               string     `json:"group_name,omitempty"`                // channel group at time of detection
-	FingerprintModelVersion string     `json:"fingerprint_model_version,omitempty"` // e.g. apimaster_fingerprint_cccli_v0.1
-	Top5                    []TopKItem `json:"top5,omitempty"`                      // fingerprint top-5 predictions (only on fingerprint history points)
-	Top1ScoreRaw            float64    `json:"top1_score_raw,omitempty"`            // raw top1 score before boost; non-zero only when boost was applied (admin only)
+	Kind                    string                        `json:"kind,omitempty"`
+	Checks                  []model.VideoFingerprintCheck `json:"checks,omitempty"`
+	Status                  string                        `json:"status"`      // 'pass' / 'suspicious' / 'notcomplete'
+	DetectTime              int64                         `json:"detect_time"` // unix seconds
+	Note                    string                        `json:"note,omitempty"`
+	GroupName               string                        `json:"group_name,omitempty"`                // channel group at time of detection
+	FingerprintModelVersion string                        `json:"fingerprint_model_version,omitempty"` // e.g. apimaster_fingerprint_cccli_v0.1
+	Top5                    []TopKItem                    `json:"top5,omitempty"`                      // fingerprint top-5 predictions (only on fingerprint history points)
+	Top1ScoreRaw            float64                       `json:"top1_score_raw,omitempty"`            // raw top1 score before boost; non-zero only when boost was applied (admin only)
 }
 
 // TopKItem is one prediction in the fingerprint top-5 list. Mirrors apimaster's
@@ -481,6 +483,10 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			byChannel[l.ChannelId] = h
 		}
 		point := DetectPoint{Status: l.Status, DetectTime: l.DetectTime, Note: l.Note, GroupName: l.GroupName, FingerprintModelVersion: l.FingerprintModelVersion}
+		if l.Source == "video" {
+			point.Kind = "video"
+			point.Checks = model.PublicVideoFingerprintChecks(l.VideoChecksJSON)
+		}
 		if l.Source == "uptime" {
 			if len(h.Uptime) < modelDataHistorySize {
 				h.Uptime = append(h.Uptime, point)
@@ -1207,9 +1213,11 @@ func applyGlobalModelPricingToRow(
 
 // PublicDetectPoint omits channel grouping and admin-only fingerprint metadata.
 type PublicDetectPoint struct {
-	Status     string     `json:"status"`
-	DetectTime int64      `json:"detect_time"`
-	Top5       []TopKItem `json:"top5,omitempty"`
+	Kind       string                        `json:"kind,omitempty"`
+	Checks     []model.VideoFingerprintCheck `json:"checks,omitempty"`
+	Status     string                        `json:"status"`
+	DetectTime int64                         `json:"detect_time"`
+	Top5       []TopKItem                    `json:"top5,omitempty"`
 }
 
 // PublicMarketplaceItem is the public-facing shape returned by GetPublicMarketplace.
@@ -1454,10 +1462,15 @@ func GetPublicMarketplace(c *gin.Context) {
 		channelIDs[i] = r.ChannelID
 	}
 	var logs []model.ChannelDetectLog
-	model.DB.
+	fingerprintQuery := model.DB.
 		Where("channel_id IN ?", channelIDs).
-		Where("claimed_model = ?", modelName).
-		Where("source <> ?", "uptime").
+		Where("source <> ?", "uptime")
+	if normalized := model.NormalizeVerifiedVideoModel(modelName); normalized != "" {
+		fingerprintQuery = fingerprintQuery.Where("source = ? AND claimed_model = ? AND status = ?", "video", normalized, "pass")
+	} else {
+		fingerprintQuery = fingerprintQuery.Where("claimed_model = ?", modelName)
+	}
+	fingerprintQuery.
 		Order("detect_time DESC").
 		Limit(len(channelIDs) * modelDataHistorySize).
 		Find(&logs)
@@ -1487,6 +1500,13 @@ func GetPublicMarketplace(c *gin.Context) {
 			byChannel[l.ChannelId] = h
 		}
 		point := PublicDetectPoint{Status: l.Status, DetectTime: l.DetectTime}
+		if l.Source == "video" {
+			point.Checks = model.PublicVideoFingerprintChecks(l.VideoChecksJSON)
+			if l.Status != "pass" || point.Checks == nil {
+				continue
+			}
+			point.Kind = "video"
+		}
 		if l.Source == "uptime" {
 			if len(h.Uptime) < modelDataHistorySize {
 				h.Uptime = append(h.Uptime, point)

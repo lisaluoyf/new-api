@@ -200,7 +200,8 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	privateData := TaskPrivateData{}
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {
 		if relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeGemini ||
-			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi {
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi ||
+			NormalizeVerifiedVideoModel(relayInfo.OriginModelName) != "" {
 			privateData.Key = relayInfo.ChannelMeta.ApiKey
 		}
 		if relayInfo.UpstreamModelName != "" {
@@ -416,6 +417,9 @@ func GetByTaskIds(userId int, taskIds []any) ([]*Task, error) {
 func (Task *Task) Insert() error {
 	var err error
 	err = DB.Create(Task).Error
+	if err == nil {
+		notifyVideoVerification(Task)
+	}
 	return err
 }
 
@@ -483,6 +487,9 @@ func (t *Task) UpdateWithStatus(fromStatus TaskStatus) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if won && fromStatus != TaskStatusSuccess && fromStatus != TaskStatusFailure {
+		notifyVideoVerification(t)
+	}
 	return won, nil
 }
 
@@ -494,7 +501,8 @@ func TaskBulkUpdateByID(ids []int64, params map[string]any) error {
 	return taskBulkWebhookUpdate(DB.Where("id in (?)", ids), params)
 }
 func taskBulkWebhookUpdate(query *gorm.DB, params map[string]any) error {
-	return query.Transaction(func(tx *gorm.DB) error {
+	var completed []Task
+	err := query.Transaction(func(tx *gorm.DB) error {
 		var tasks []Task
 		if err := tx.Find(&tasks).Error; err != nil {
 			return err
@@ -520,9 +528,16 @@ func taskBulkWebhookUpdate(query *gorm.DB, params map[string]any) error {
 			if err := fresh.enqueueWebhook(tx.Session(&gorm.Session{NewDB: true})); err != nil {
 				return err
 			}
+			completed = append(completed, fresh)
 		}
 		return nil
 	})
+	if err == nil {
+		for index := range completed {
+			notifyVideoVerification(&completed[index])
+		}
+	}
+	return err
 }
 
 type TaskQuotaUsage struct {

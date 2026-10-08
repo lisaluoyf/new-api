@@ -154,6 +154,7 @@ func main() {
 	service.StartCancellationObservationTask()
 	service.StartImagineTaskWorker()
 	service.StartTaskWebhookWorker()
+	service.StartVideoVerificationWorker()
 
 	// Platform billing hourly summary (平台账单)
 	service.StartBillingSummaryTask()
