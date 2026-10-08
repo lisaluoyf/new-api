@@ -324,6 +324,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		maxRetries = service.GetFreeModelSettings().MaxAttempts - 1
 	}
 	for ; retryParam.GetRetry() <= maxRetries; retryParam.IncreaseRetry() {
+		c.Set("channel_health_attempt_started_at", time.Time{})
+		c.Set("channel_health_attempt_channel_id", 0)
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		isFallbackAttempt := relayInfo.ChannelMeta != nil
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
@@ -372,8 +374,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		c.Request.Body = io.NopCloser(bodyStorage)
 
 		if policy, hedgeOk := shouldClientGoneHedge(c, relayInfo, relayFormat, retryParam.GetRetry()); hedgeOk {
+			c.Set("channel_health_hedged_request", true)
 			newAPIError = runClientGoneHedgedRelay(c, relayInfo, relayFormat, channel, retryParam, policy)
 		} else {
+			// Health observations use the dispatched attempt's duration, excluding
+			// earlier retries and local request preparation.
+			c.Set("channel_health_attempt_started_at", time.Now())
+			c.Set("channel_health_attempt_channel_id", channel.Id)
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				newAPIError = relay.WssHelper(c, relayInfo)

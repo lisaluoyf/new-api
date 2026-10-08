@@ -1,14 +1,40 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/types"
 )
+
+const ChannelNoResponseCancelThreshold = 120 * time.Second
+
+// A long client wait with no upstream output is a health observation, not
+// proof of an upstream fault. Only a failed independent probe may disable it.
+func EvaluateChannelNoResponseCancellation(channel types.ChannelError, target types.ChannelProbeTarget, elapsed time.Duration, receivedResponses int) (HealthAction, string) {
+	if !ChannelNoResponseCancellationEligible(target, elapsed, receivedResponses) {
+		return HealthSkip, ""
+	}
+	err := types.NewOpenAIError(errors.New("suspected upstream no response before client cancellation (wait >=120s)"), types.ErrorCode("upstream_no_response_before_cancel"), 502)
+	return EvaluateChannelHealth(channel, err, target)
+}
+
+func ChannelNoResponseCancellationEligible(target types.ChannelProbeTarget, elapsed time.Duration, receivedResponses int) bool {
+	if elapsed < ChannelNoResponseCancelThreshold || receivedResponses != 0 || !target.Valid() || !target.IsStream {
+		return false
+	}
+	switch target.EndpointType {
+	case constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse, constant.EndpointTypeAnthropic, constant.EndpointTypeGemini:
+		return true
+	default:
+		return false
+	}
+}
 
 const (
 	channelHealthWindow        = 10 * time.Minute
