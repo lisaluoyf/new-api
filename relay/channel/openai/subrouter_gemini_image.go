@@ -119,7 +119,8 @@ func convertSubrouterGeminiReferences(c *gin.Context, info *relaycommon.RelayInf
 			return nil, fmt.Errorf("reference image %d must be PNG, JPEG, WebP or GIF", index+1)
 		}
 		header := make(textproto.MIMEHeader)
-		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="reference-%d"`, index+1))
+		extension := map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}[mimeType]
+		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="reference-%d.%s"`, index+1, extension))
 		header.Set("Content-Type", mimeType)
 		part, err := writer.CreatePart(header)
 		if err != nil {
