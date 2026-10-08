@@ -1721,6 +1721,10 @@ func GeminiImagineContentHandler(c *gin.Context, info *relaycommon.RelayInfo, re
 				} else {
 					item.B64Json = part.InlineData.Data
 				}
+				if c.GetString("gpt_image2_client_response_format") == "b64_json" {
+					item.Url = ""
+					item.B64Json = part.InlineData.Data
+				}
 				openAIResponse.Data = append(openAIResponse.Data, item)
 			} else if part.Text != "" && !part.Thought {
 				revisedPrompt = part.Text
