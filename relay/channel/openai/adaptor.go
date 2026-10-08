@@ -493,6 +493,15 @@ func imageEditsViaGenerations(info *relaycommon.RelayInfo) bool {
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	c.Set("subrouter_gemini_native_edit", false)
+	if isSubrouterGeminiImage(info, request.Model) && isJSONRequest(c) &&
+		(len(request.ImageUrls) > 0 || (len(request.Image) > 0 && string(request.Image) != "null") || (len(request.Images) > 0 && string(request.Images) != "null")) {
+		body, err := convertSubrouterGeminiReferences(c, info, request)
+		if err != nil {
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		return body, nil
+	}
 	if nanoBanana21ImageBridge(info) || nanoBanana21NativeImages(info) {
 		return convertNanoBanana21ImageRequest(c, info, request)
 	}
@@ -827,6 +836,15 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if c.GetBool("subrouter_gemini_native_edit") {
+		originalContentType := c.Request.Header.Get("Content-Type")
+		c.Request.Header.Set("Content-Type", c.GetString("subrouter_gemini_edit_content_type"))
+		defer c.Request.Header.Set("Content-Type", originalContentType)
+		attempt := *info
+		attempt.RequestURLPath = "/v1/images/edits"
+		attempt.RelayMode = relayconstant.RelayModeImagesEdits
+		return channel.DoFormRequest(a, c, &attempt, requestBody)
+	}
 	if info.RelayMode == relayconstant.RelayModeAudioTranscription ||
 		info.RelayMode == relayconstant.RelayModeAudioTranslation ||
 		(info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c)) {
