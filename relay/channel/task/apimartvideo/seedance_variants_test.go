@@ -7,8 +7,34 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/require"
 	"io"
+	"strings"
 	"testing"
 )
+
+func TestSeedanceLongPromptsPreservedThroughSubmission(t *testing.T) {
+	for _, name := range []string{ModelSeedance20, ModelSeedance20Fast, ModelSeedance20Mini} {
+		for _, path := range []string{"/v1/video/generations", "/v1/videos/generations"} {
+			for _, prompt := range []string{strings.Repeat("a", 4001), strings.Repeat("景", 4001)} {
+				t.Run(name+path+string([]rune(prompt)[0]), func(t *testing.T) {
+					c := generationContext(path, common.MapToJsonStr(map[string]any{"model": name, "prompt": prompt, "duration": 4, "resolution": "480p"}))
+					info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: name}, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+					a := &TaskAdaptor{}
+					require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+					reader, err := a.BuildRequestBody(c, info)
+					require.NoError(t, err)
+					raw, err := io.ReadAll(reader)
+					require.NoError(t, err)
+					var sent map[string]any
+					require.NoError(t, common.Unmarshal(raw, &sent))
+					require.Equal(t, prompt, sent["prompt"])
+					req, err := relaycommon.GetTaskRequest(c)
+					require.NoError(t, err)
+					require.Equal(t, prompt, req.Prompt)
+				})
+			}
+		}
+	}
+}
 
 func TestSeedanceVariantsRejectUnsupportedSpecifications(t *testing.T) {
 	for _, name := range []string{ModelSeedance20Fast, ModelSeedance20Mini} {

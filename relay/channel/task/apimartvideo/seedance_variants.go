@@ -3,7 +3,6 @@ package apimartvideo
 import (
 	"fmt"
 	"strings"
-	"unicode/utf8"
 )
 
 func validateSeedanceVariantFields(fields map[string]any) error {
@@ -14,9 +13,6 @@ func validateSeedanceVariantFields(fields map[string]any) error {
 	prompt, ok := fields["prompt"].(string)
 	if !ok || strings.TrimSpace(prompt) == "" {
 		return fmt.Errorf("prompt is required")
-	}
-	if modelName == ModelSeedance20Fast && utf8.RuneCountInString(prompt) > 4000 {
-		return fmt.Errorf("prompt must not exceed 4000 characters")
 	}
 	counts := map[string]int{}
 	for key, limit := range map[string]int{"image_urls": 9, "video_urls": 3, "audio_urls": 3} {
