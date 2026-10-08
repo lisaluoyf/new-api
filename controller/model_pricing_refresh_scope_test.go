@@ -21,6 +21,13 @@ func TestRefreshModelPricingRestrictsExplicitChannelScope(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
+	// An in-memory SQLite database belongs to one connection. Both async
+	// refreshes must share the migrated fixture instead of opening empty DBs.
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+	t.Cleanup(func() { _ = sqlDB.Close() })
 	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.ChannelModelPricing{}))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
