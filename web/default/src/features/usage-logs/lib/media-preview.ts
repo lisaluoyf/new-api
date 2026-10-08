@@ -134,6 +134,9 @@ export function getLogMediaPreview(
   }
 
   if (isLogMediaVideoModel(modelName)) {
+    // A terminal failure has no playable output, even if an older log kept
+    // a result URL or the task id could otherwise produce a proxy URL.
+    if (taskFailReason || taskFailCode) return null
     // Always use the authenticated backend proxy when a task id is available.
     // Video generation logs are written at submit time and may legitimately
     // have use_time=0, while the upstream signed URL can be inaccessible to

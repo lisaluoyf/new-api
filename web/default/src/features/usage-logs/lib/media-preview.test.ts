@@ -136,4 +136,22 @@ describe('isLogMediaVideoModel', () => {
       })
     }
   })
+
+  test('failed videos never offer a preview even with a stale result URL', () => {
+    for (const model of ['seedance-2.0-mini', 'sora-2', 'kling-v3-omni']) {
+      for (const failure of [
+        { task_fail_reason: 'content safety review failed' },
+        { task_fail_code: 'task_failed' },
+      ]) {
+        assert.equal(
+          getLogMediaPreview({ type: 2, model_name: model } as never, {
+            task_id: 'task_failed',
+            result_url: '/v1/videos/task_failed/content',
+            ...failure,
+          }),
+          null
+        )
+      }
+    }
+  })
 })
