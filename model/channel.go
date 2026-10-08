@@ -1002,6 +1002,19 @@ func (channel *Channel) ValidateSettings() error {
 			return fmt.Errorf("cache_exclusive_models cannot contain an empty model name")
 		}
 	}
+	for clientModel, tiers := range channelParams.ImageResolutionModelMapping {
+		if strings.TrimSpace(clientModel) == "" || strings.TrimSpace(clientModel) != clientModel {
+			return fmt.Errorf("image_resolution_model_mapping requires trimmed, non-empty model names")
+		}
+		for resolution, upstream := range tiers {
+			if resolution != "1k" && resolution != "2k" && resolution != "4k" {
+				return fmt.Errorf("image_resolution_model_mapping resolution must be 1k, 2k or 4k")
+			}
+			if strings.TrimSpace(upstream) == "" || strings.TrimSpace(upstream) != upstream {
+				return fmt.Errorf("image_resolution_model_mapping requires trimmed, non-empty upstream models")
+			}
+		}
+	}
 	return nil
 }
 

@@ -60,6 +60,7 @@ export const channelFormSchema = z.object({
   strip_prefix_think_block: z.boolean().optional(),
   strip_prefix_think_models: z.string().optional(),
   cache_exclusive_models: z.string().optional(),
+  image_resolution_model_mapping: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   proxy: z.string().optional(),
   pass_through_body_enabled: z.boolean().optional(),
   system_prompt: z.string().optional(),
@@ -214,6 +215,7 @@ export function transformChannelToFormDefaults(
     strip_prefix_think_block: false,
     strip_prefix_think_models: '',
     cache_exclusive_models: '',
+    image_resolution_model_mapping: {} as Record<string, Record<string, string>>,
     proxy: '',
     pass_through_body_enabled: false,
     system_prompt: '',
@@ -239,6 +241,7 @@ export function transformChannelToFormDefaults(
         cache_exclusive_models: Array.isArray(parsed.cache_exclusive_models)
           ? parsed.cache_exclusive_models.join(',')
           : '',
+        image_resolution_model_mapping: parsed.image_resolution_model_mapping || {},
         proxy: parsed.proxy || '',
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
@@ -386,6 +389,7 @@ function buildSettingJSON(formData: ChannelFormValues): string {
       .split(',')
       .map((model) => model.trim())
       .filter(Boolean),
+    image_resolution_model_mapping: formData.image_resolution_model_mapping || {},
     proxy: formData.proxy || '',
     pass_through_body_enabled: formData.pass_through_body_enabled || false,
     system_prompt: formData.system_prompt || '',

@@ -220,3 +220,74 @@ func TestImage25NativeEditsPreservesReferenceAcrossRetries(t *testing.T) {
 		}
 	}
 }
+
+func TestImageHelperResolutionModelRoutingBeforeJSONAndMultipart(t *testing.T) {
+	service.InitHttpClient()
+	const original = "gemini-3.1-flash-image"
+	for _, multipartBody := range []bool{false, true} {
+		for _, tier := range []string{"1K", "2K", "4K"} {
+			var body bytes.Buffer
+			contentType := "application/json"
+			path := "/v1/images/generations/async"
+			mode := relayconstant.RelayModeImagesGenerations
+			if multipartBody {
+				path = "/v1/images/edits"
+				mode = relayconstant.RelayModeImagesEdits
+				writer := multipart.NewWriter(&body)
+				for k, v := range map[string]string{"model": original, "prompt": "test", "resolution": tier, "size": "1:1"} {
+					require.NoError(t, writer.WriteField(k, v))
+				}
+				part, err := writer.CreateFormFile("image", "reference.png")
+				require.NoError(t, err)
+				_, err = part.Write([]byte("original-image"))
+				require.NoError(t, err)
+				require.NoError(t, writer.Close())
+				contentType = writer.FormDataContentType()
+			} else {
+				_, err := fmt.Fprintf(&body, `{"model":"%s","prompt":"test","resolution":"%s","size":"1:1"}`, original, tier)
+				require.NoError(t, err)
+			}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", path, bytes.NewReader(body.Bytes()))
+			c.Request.Header.Set("Content-Type", contentType)
+			t.Cleanup(func() { common.CleanupBodyStorage(c) })
+			request, err := helper.GetAndValidOpenAIImageRequest(c, mode)
+			require.NoError(t, err)
+			gotModel := ""
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if multipartBody {
+					require.NoError(t, r.ParseMultipartForm(1<<20))
+					gotModel = r.FormValue("model")
+					r.MultipartForm.RemoveAll()
+				} else {
+					raw, err := io.ReadAll(r.Body)
+					require.NoError(t, err)
+					var sent dto.ImageRequest
+					require.NoError(t, common.Unmarshal(raw, &sent))
+					gotModel = sent.Model
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(503)
+				_, _ = io.WriteString(w, `{"error":{"message":"test retry","type":"upstream_error"}}`)
+			}))
+			common.SetContextKey(c, constant.ContextKeyChannelType, constant.ChannelTypeOpenAI)
+			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, upstream.URL)
+			common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: true, ImageResolutionModelMapping: map[string]map[string]string{original: {"1k": original, "2k": original, "4k": original + "-preview"}}})
+			c.Set("model_mapping", `{"gemini-3.1-flash-image":"gemini-3.1-flash-image-preview"}`)
+			info := &relaycommon.RelayInfo{OriginModelName: original, RelayMode: mode, RequestURLPath: path, Request: request}
+			relayErr := ImageHelper(c, info)
+			upstream.Close()
+			require.NotNil(t, relayErr)
+			require.Equal(t, 503, relayErr.StatusCode)
+			want := original
+			if tier == "4K" {
+				want += "-preview"
+			}
+			require.Equal(t, want, gotModel)
+			require.Equal(t, want, info.UpstreamModelName)
+			require.Equal(t, original, info.OriginModelName)
+			require.Equal(t, original, request.Model)
+			require.Equal(t, tier, request.Resolution)
+		}
+	}
+}

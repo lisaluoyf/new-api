@@ -37,3 +37,21 @@ func TestChannelValidateSettingsRejectsEmptyCacheExclusiveModel(t *testing.T) {
 		t.Fatal("expected empty cache-exclusive model name to be rejected")
 	}
 }
+
+func TestChannelValidateImageResolutionModelMapping(t *testing.T) {
+	for _, tc := range []struct {
+		setting string
+		valid   bool
+	}{
+		{`{"image_resolution_model_mapping":{"gemini-3.1-flash-image":{"1k":"gemini-3.1-flash-image","4k":"gemini-3.1-flash-image-preview"}}}`, true},
+		{`{"image_resolution_model_mapping":{"x":{"4K":"y"}}}`, false},
+		{`{"image_resolution_model_mapping":{"x":{"4k":" "}}}`, false},
+		{`{"image_resolution_model_mapping":{" x":{"1k":"y"}}}`, false},
+	} {
+		channel := &Channel{Setting: common.GetPointer(tc.setting)}
+		err := channel.ValidateSettings()
+		if (err == nil) != tc.valid {
+			t.Fatalf("validation for %s: %v", tc.setting, err)
+		}
+	}
+}

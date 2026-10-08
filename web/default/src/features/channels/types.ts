@@ -88,6 +88,7 @@ export interface ChannelSettings {
   strip_prefix_think_block?: boolean
   strip_prefix_think_models?: string[]
   cache_exclusive_models?: string[]
+  image_resolution_model_mapping?: Record<string, Record<string, string>>
   proxy?: string
   pass_through_body_enabled?: boolean
   system_prompt?: string
