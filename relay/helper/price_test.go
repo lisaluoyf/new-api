@@ -23,6 +23,32 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestUserModelDiscountFallbackRebuildsDiscountedPriceOnce(t *testing.T) {
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.ChannelModelPricing{}))
+	one := 1.0
+	for _, channelID := range []int{1, 2} {
+		require.NoError(t, db.Create(&model.Channel{Id: channelID, Name: "discount-retry", RechargeRate: &one, ApimasterPriceRatio: &one}).Error)
+		require.NoError(t, db.Create(&model.ChannelModelPricing{ChannelId: channelID, ModelName: "discount-retry-model", InputPrice: float64(channelID) * 2, OutputPrice: float64(channelID) * 4, GroupRatio: one}).Error)
+	}
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{OriginModelName: "discount-retry-model", UserGroup: "default", UsingGroup: "default", BillingSource: service.BillingSourceWallet, Billing: &service.BillingSession{}, UserSetting: dto.UserSetting{ModelDiscountRatios: map[string]float64{"discount-retry-model": .8}}}
+	for _, channelID := range []int{1, 2, 2} {
+		ctx.Set("channel_id", channelID)
+		price, err := RefreshModelPriceForRetry(ctx, info, 1000, &types.TokenCountMeta{})
+		require.NoError(t, err)
+		require.Equal(t, .8, price.GroupRatioInfo.UserModelDiscount)
+		require.InDelta(t, ratio_setting.GetGroupRatio("default")*.8, price.GroupRatioInfo.GroupRatio, 1e-12)
+		require.Equal(t, float64(channelID), price.ModelRatio)
+		require.Zero(t, info.WalletPriceData.GroupRatioInfo.UserModelDiscount)
+	}
+}
+
 func TestDeepSeekV4PriceUsesOfficialScheduleAndUserMultiplier(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ratio_setting.InitRatioSettings()

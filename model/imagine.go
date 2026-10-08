@@ -31,6 +31,7 @@ type ImagineBatch struct {
 	BaseUnitPrice      float64
 	BaseTotalCost      float64
 	FinalMultiplier    float64
+	UserModelDiscount  float64
 	UnitQuota          int
 	ReservedQuota      int
 	RefundedQuota      int
@@ -320,6 +321,9 @@ func ApplyImagineResult(taskID string, result ImagineTask) error {
 			"image_count": len(images), "status": result.Status, "created_at": result.CreatedAt, "completed_at": result.CompletedAt, "actual_time": result.ActualTime, "error_code": result.ErrorCode,
 			"admin_info":     map[string]any{"provider": task.Provider, "task_id": task.UpstreamID, "base_unit_price": batch.BaseUnitPrice, "base_total_cost": batch.BaseUnitPrice, "provider_actual_cost": result.ProviderCost, "credits_cost": result.CreditsCost, "error_message": result.ErrorMessage},
 			"billing_source": batch.BillingSource, "subscription_id": batch.SubscriptionID}
+		if batch.UserModelDiscount > 0 && batch.UserModelDiscount < 1 {
+			other["user_model_discount"] = batch.UserModelDiscount
+		}
 		var requestData map[string]any
 		if common.UnmarshalJsonStr(batch.RequestData, &requestData) == nil && len(requestData) > 0 {
 			delete(requestData, "webhook")

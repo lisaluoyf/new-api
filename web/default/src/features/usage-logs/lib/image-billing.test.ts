@@ -72,6 +72,20 @@ test('does not invent image charges for unrelated or incomplete logs', () => {
   assert.equal(getImageBillingBreakdown(missingPrice)!.calculatedCharge, null)
 })
 
+test('applies the recorded extra discount once without changing existing group ratios', () => {
+  for (const userGroup of [-1, 0.8]) {
+    const other = layerLog()
+    other.user_group_ratio = userGroup
+    other.user_model_discount = 0.9
+    const result = getImageBillingBreakdown(other)!
+    const baseGroup = userGroup === -1 ? 1.05 : 0.8
+    assert.equal(result.groupRatio, baseGroup)
+    assert(
+      Math.abs(result.calculatedCharge! - 0.1125 * baseGroup * 0.9) < 1e-10
+    )
+  }
+})
+
 test('Grok bills each reference once with the recorded variant and coefficients', () => {
   const result = getImageBillingBreakdown({
     model_price: 0.0768,

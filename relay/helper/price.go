@@ -369,6 +369,11 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		info.BillingRequestInput = nil
 	}
 	info.SetWalletPriceData(priceData)
+	if info != nil && info.Billing != nil && info.BillingSource == service.BillingSourceWallet {
+		priceData = service.ApplyUserModelDiscountToPriceData(priceData, info.UserSetting, info.OriginModelName)
+		info.TieredBillingSnapshot = service.ApplyUserModelDiscountToBillingSnapshot(info.TieredBillingSnapshot, info.UserSetting, info.OriginModelName)
+		info.PriceData = priceData
+	}
 	return priceData, nil
 }
 
@@ -613,6 +618,9 @@ func modelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo, useTri
 		UsePrice:       usePrice,
 		Quota:          quota,
 		GroupRatioInfo: groupRatioInfo,
+	}
+	if info != nil && !useTrialPricing && info.Billing != nil && info.BillingSource == service.BillingSourceWallet {
+		priceData = service.ApplyUserModelDiscountToPriceData(priceData, info.UserSetting, info.OriginModelName)
 	}
 	return priceData, nil
 }

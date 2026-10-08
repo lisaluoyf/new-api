@@ -136,6 +136,17 @@ func (user *User) SetSetting(setting dto.UserSetting) {
 	user.Setting = string(settingBytes)
 }
 
+func (user *User) UpdateSetting(setting dto.UserSetting) error {
+	user.SetSetting(setting)
+	if err := DB.Model(&User{}).Where("id = ?", user.Id).Update("setting", user.Setting).Error; err != nil {
+		return err
+	}
+	if err := DB.First(user, user.Id).Error; err != nil {
+		return err
+	}
+	return updateUserCache(*user)
+}
+
 func (user *User) ApplyDerivedFlags() {
 	if user == nil {
 		return

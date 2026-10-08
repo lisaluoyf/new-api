@@ -1785,13 +1785,14 @@ func RelayTask(c *gin.Context) {
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 		task.PrivateData.TokenId = relayInfo.TokenId
 		task.PrivateData.BillingContext = &model.TaskBillingContext{
-			SeedanceTariff:  service.IsSeedanceLibraryModel(relayInfo.OriginModelName),
-			ModelPrice:      relayInfo.PriceData.ModelPrice,
-			GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
-			ModelRatio:      relayInfo.PriceData.ModelRatio,
-			OtherRatios:     relayInfo.PriceData.OtherRatios,
-			OriginModelName: relayInfo.OriginModelName,
-			PerCallBilling:  service.IsTaskPerCallBilling(relayInfo.OriginModelName, relayInfo.PriceData),
+			SeedanceTariff:    service.IsSeedanceLibraryModel(relayInfo.OriginModelName),
+			ModelPrice:        relayInfo.PriceData.ModelPrice,
+			GroupRatio:        relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+			UserModelDiscount: relayInfo.PriceData.GroupRatioInfo.UserModelDiscount,
+			ModelRatio:        relayInfo.PriceData.ModelRatio,
+			OtherRatios:       relayInfo.PriceData.OtherRatios,
+			OriginModelName:   relayInfo.OriginModelName,
+			PerCallBilling:    service.IsTaskPerCallBilling(relayInfo.OriginModelName, relayInfo.PriceData),
 		}
 		if task.Platform == constant.TaskPlatformApimartVideo {
 			name := strings.ToLower(relayInfo.OriginModelName)

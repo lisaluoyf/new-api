@@ -112,6 +112,7 @@ type RelayInfo struct {
 	InputAudioFormat       string
 	OutputAudioFormat      string
 	RealtimeTools          []dto.RealTimeTool
+	RealtimeReservedQuota  int
 	IsFirstRequest         bool
 	AudioUsage             bool
 	ReasoningEffort        string

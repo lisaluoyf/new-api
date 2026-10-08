@@ -909,8 +909,27 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
-		if !relayInfo.ActivateWalletPriceData() && relayInfo.PriceDataSource == "" {
+		walletPreConsumedQuota := preConsumedQuota
+		appliedDiscount := relayInfo.PriceData.GroupRatioInfo.UserModelDiscount
+		if ResolveUserModelDiscount(relayInfo.UserSetting, relayInfo.OriginModelName) == 1 && !(appliedDiscount > 0 && appliedDiscount < 1) {
+			if !relayInfo.ActivateWalletPriceData() && relayInfo.PriceDataSource == "" {
+				relayInfo.PriceDataSource = BillingSourceWallet
+			}
+		} else {
+			basePriceData := relayInfo.PriceData
+			if relayInfo.WalletPriceData != nil {
+				basePriceData = *relayInfo.WalletPriceData
+			} else {
+				priceCopy := basePriceData
+				relayInfo.WalletPriceData = &priceCopy
+				relayInfo.WalletTieredBillingSnapshot = relayInfo.TieredBillingSnapshot
+			}
+			relayInfo.PriceData = ApplyUserModelDiscountToPriceData(basePriceData, relayInfo.UserSetting, relayInfo.OriginModelName)
+			relayInfo.TieredBillingSnapshot = ApplyUserModelDiscountToBillingSnapshot(relayInfo.WalletTieredBillingSnapshot, relayInfo.UserSetting, relayInfo.OriginModelName)
 			relayInfo.PriceDataSource = BillingSourceWallet
+			if basePriceData.GroupRatioInfo.UserModelDiscount == 0 {
+				walletPreConsumedQuota = ApplyUserModelDiscountToQuota(preConsumedQuota, relayInfo.UserSetting, relayInfo.OriginModelName)
+			}
 		}
 		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
 		if err != nil {
@@ -926,17 +945,17 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog(),
 				types.ErrOptionWithClientMessage(i18n.MsgQuotaInsufficientBalance, map[string]any{"Remaining": logger.FormatQuota(userQuota)}))
 		}
-		if userQuota-preConsumedQuota < 0 {
+		if userQuota-walletPreConsumedQuota < 0 {
 			if paidRollingLimitErr != nil {
 				return nil, newGPTSubscriptionRollingLimitAPIError(c, relayInfo, paidRollingLimitErr, userQuota, true)
 			}
 			return nil, types.NewErrorWithStatusCode(
-				fmt.Errorf("user quota is insufficient, remaining quota: %s, required quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(preConsumedQuota)),
+				fmt.Errorf("user quota is insufficient, remaining quota: %s, required quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(walletPreConsumedQuota)),
 				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
 				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog(),
 				types.ErrOptionWithClientMessage(i18n.MsgQuotaRequestExceedsBalance, map[string]any{
 					"Remaining": logger.FormatQuota(userQuota),
-					"Required":  logger.FormatQuota(preConsumedQuota),
+					"Required":  logger.FormatQuota(walletPreConsumedQuota),
 				}))
 		}
 		relayInfo.UserQuota = userQuota
@@ -945,7 +964,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 			relayInfo: relayInfo,
 			funding:   &WalletFunding{userId: relayInfo.UserId},
 		}
-		if apiErr := session.preConsume(c, preConsumedQuota); apiErr != nil {
+		if apiErr := session.preConsume(c, walletPreConsumedQuota); apiErr != nil {
 			return nil, apiErr
 		}
 		return session, nil

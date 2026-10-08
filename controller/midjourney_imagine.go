@@ -73,6 +73,15 @@ func RelayImagine(c *gin.Context) {
 		imagineError(c, apiErr.StatusCode, "Insufficient available quota for this generation")
 		return
 	}
+	if discount := info.PriceData.GroupRatioInfo.UserModelDiscount; discount > 0 && discount < 1 {
+		priceData = info.PriceData
+		unitQuota = int(math.Round(userPrice * common.QuotaPerUnit * priceData.GroupRatioInfo.GroupRatio))
+		if err := info.Billing.Reserve(unitQuota * request.Repeat); err != nil {
+			info.Billing.Refund(c)
+			imagineError(c, 403, "Insufficient available quota for this generation")
+			return
+		}
+	}
 	secret, err := common.GenerateRandomCharsKey(64)
 	if err != nil {
 		info.Billing.Refund(c)
@@ -82,7 +91,7 @@ func RelayImagine(c *gin.Context) {
 	batch := &model.ImagineBatch{Webhook: GetTaskWebhookConfig(c), ID: "imagine_batch_" + strings.TrimPrefix(model.GenerateTaskID(), "task_"), RequestID: info.RequestId, CallbackToken: secret,
 		UserID: info.UserId, TokenID: info.TokenId, TokenName: c.GetString("token_name"), ChannelID: info.ChannelId, Model: request.Model, Speed: request.Speed, Version: request.Payload["version"].(string), Niji: request.Model == "midjourney-niji-7",
 		Size: request.Payload["size"].(string), Repeat: request.Repeat, BaseUnitPrice: basePrice, FinalMultiplier: userPrice / basePrice * priceData.GroupRatioInfo.GroupRatio, UnitQuota: unitQuota,
-		ReservedQuota: info.Billing.GetPreConsumedQuota(), BillingSource: info.BillingSource, SubscriptionID: info.SubscriptionId, Group: info.UsingGroup, Status: "submitting", CreatedAt: time.Now().Unix(), RequestData: string(body)}
+		ReservedQuota: info.Billing.GetPreConsumedQuota(), UserModelDiscount: priceData.GroupRatioInfo.UserModelDiscount, BillingSource: info.BillingSource, SubscriptionID: info.SubscriptionId, Group: info.UsingGroup, Status: "submitting", CreatedAt: time.Now().Unix(), RequestData: string(body)}
 	if err := model.DB.Create(batch).Error; err != nil {
 		info.Billing.Refund(c)
 		imagineError(c, 500, "Could not persist image task")

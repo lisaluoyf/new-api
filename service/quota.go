@@ -92,6 +92,27 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if relayInfo.UsePrice {
 		return nil
 	}
+	if discount := relayInfo.PriceData.GroupRatioInfo.UserModelDiscount; relayInfo.Billing != nil && relayInfo.BillingSource == BillingSourceWallet && discount > 0 && discount < 1 {
+		quota := calculateAudioQuota(QuotaInfo{
+			InputDetails: TokenDetails{
+				TextTokens:  usage.InputTokenDetails.TextTokens,
+				AudioTokens: usage.InputTokenDetails.AudioTokens,
+			},
+			OutputDetails: TokenDetails{
+				TextTokens:  usage.OutputTokenDetails.TextTokens,
+				AudioTokens: usage.OutputTokenDetails.AudioTokens,
+			},
+			ModelName:  relayInfo.OriginModelName,
+			ModelRatio: relayInfo.PriceData.ModelRatio,
+			GroupRatio: relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+		})
+		targetQuota := relayInfo.RealtimeReservedQuota + quota
+		if err := relayInfo.Billing.Reserve(targetQuota); err != nil {
+			return err
+		}
+		relayInfo.RealtimeReservedQuota = targetQuota
+		return nil
+	}
 	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
 	if err != nil {
 		return err
@@ -121,6 +142,16 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	userGroupRatio, ok := ratio_setting.GetGroupGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup)
 	if ok {
 		actualGroupRatio = userGroupRatio
+	}
+	discountApplied := false
+	if relayInfo.Billing == nil && !relayInfo.PriceData.FreeModel && relayInfo.BillingSource != BillingSourceSubscription {
+		groupInfo := ApplyUserModelDiscountToGroupRatio(
+			types.GroupRatioInfo{GroupRatio: actualGroupRatio, GroupSpecialRatio: userGroupRatio, HasSpecialRatio: ok},
+			relayInfo.UserSetting,
+			modelName,
+		)
+		actualGroupRatio = groupInfo.GroupRatio
+		discountApplied = groupInfo.UserModelDiscount > 0 && groupInfo.UserModelDiscount < 1
 	}
 
 	quotaInfo := QuotaInfo{
@@ -152,12 +183,19 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if err != nil {
 		return err
 	}
+	if discountApplied {
+		relayInfo.FinalPreConsumedQuota += quota
+	}
 	logger.LogInfo(ctx, "realtime streaming consume quota success, quota: "+fmt.Sprintf("%d", quota))
 	return nil
 }
 
 func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, modelName string,
 	usage *dto.RealtimeUsage, extraContent string) {
+	if relayInfo.PriceData.GroupRatioInfo.UserModelDiscount == 0 && relayInfo.BillingSource != BillingSourceSubscription {
+		relayInfo.PriceData = ApplyUserModelDiscountToPriceData(relayInfo.PriceData, relayInfo.UserSetting, relayInfo.OriginModelName)
+		relayInfo.TieredBillingSnapshot = ApplyUserModelDiscountToBillingSnapshot(relayInfo.TieredBillingSnapshot, relayInfo.UserSetting, relayInfo.OriginModelName)
+	}
 
 	var tieredResult *billingexpr.TieredResult
 	tokenUsage := &dto.Usage{PromptTokens: usage.InputTokens, CompletionTokens: usage.OutputTokens, PromptTokensDetails: usage.InputTokenDetails, CompletionTokenDetails: usage.OutputTokenDetails}
@@ -249,6 +287,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		InputTokens:            usage.InputTokens,
 		OutputTokens:           usage.OutputTokens,
 		GroupRatio:             groupRatio,
+		UserModelDiscount:      relayInfo.PriceData.GroupRatioInfo.UserModelDiscount,
 		Quota:                  quota,
 		UseQuotaForUserAmounts: tieredOk && relayInfo.PriceDataSource == "wallet",
 		BillingAt:              relayInfo.StartTime,
@@ -383,6 +422,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		CacheReadTokens:        usage.PromptTokensDetails.CachedTokens,
 		CacheWriteTokens:       usage.PromptTokensDetails.CachedCreationTokens,
 		GroupRatio:             groupRatio,
+		UserModelDiscount:      relayInfo.PriceData.GroupRatioInfo.UserModelDiscount,
 		Quota:                  quota,
 		UseQuotaForUserAmounts: tieredOk && relayInfo.PriceDataSource == "wallet",
 		BillingAt:              relayInfo.StartTime,

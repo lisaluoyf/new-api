@@ -87,6 +87,10 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
 		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
 	}
+	if info.PriceData.GroupRatioInfo.UserModelDiscount > 0 && info.PriceData.GroupRatioInfo.UserModelDiscount != 1 {
+		other["user_model_discount"] = info.PriceData.GroupRatioInfo.UserModelDiscount
+		other["group_ratio"] = UserModelDiscountLogGroupRatio(info.PriceData.GroupRatioInfo)
+	}
 	if info.IsModelMapped {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
@@ -100,11 +104,12 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		}
 	}
 	accountingInput := ConsumeAccountingInput{
-		UserId:     info.UserId,
-		ChannelId:  info.ChannelId,
-		ModelName:  info.OriginModelName,
-		GroupRatio: info.PriceData.GroupRatioInfo.GroupRatio,
-		Quota:      info.PriceData.Quota,
+		UserId:            info.UserId,
+		ChannelId:         info.ChannelId,
+		ModelName:         info.OriginModelName,
+		GroupRatio:        info.PriceData.GroupRatioInfo.GroupRatio,
+		UserModelDiscount: info.PriceData.GroupRatioInfo.UserModelDiscount,
+		Quota:             info.PriceData.Quota,
 	}
 	if requestData, ok := other["request_data"].(map[string]interface{}); ok && len(requestData) > 0 {
 		if duration := coerceRequestInt(requestData["duration"]); duration > 0 {
@@ -311,6 +316,10 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 			other["model_ratio"] = bc.ModelRatio
 		}
 		other["group_ratio"] = bc.GroupRatio
+		if bc.UserModelDiscount > 0 && bc.UserModelDiscount < 1 {
+			other["user_model_discount"] = bc.UserModelDiscount
+			other["group_ratio"] = bc.GroupRatio / bc.UserModelDiscount
+		}
 		if len(bc.OtherRatios) > 0 {
 			for k, v := range bc.OtherRatios {
 				other[k] = v
@@ -353,6 +362,9 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 
 	// 3. 冲销用户已用额度（提交任务时已计入 used_quota）
 	model.DecreaseUserUsedQuota(task.UserId, quota)
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.UserModelDiscount > 0 && bc.UserModelDiscount < 1 && !taskIsSubscription(task) {
+		model.UpdateChannelUsedQuota(task.ChannelId, -quota)
+	}
 
 	// 4. 将原消费日志标记为已退款，避免失败任务继续计入平台收入和渠道成本。
 	if err := model.MarkTaskConsumeLogRefunded(task.UserId, task.TaskID); err != nil {
@@ -388,6 +400,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	quotaDelta := actualQuota - preConsumedQuota
 
 	if quotaDelta == 0 {
+		syncTaskDiscountAccounting(ctx, task)
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 预扣费准确（%s，%s）",
 			task.TaskID, logger.LogQuota(actualQuota), reason))
 		return true
@@ -428,6 +441,9 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta
 		model.DecreaseUserUsedQuota(task.UserId, logQuota)
+		if bc := task.PrivateData.BillingContext; bc != nil && bc.UserModelDiscount > 0 && bc.UserModelDiscount < 1 && !taskIsSubscription(task) {
+			model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
+		}
 	}
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
@@ -444,7 +460,18 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		Group:     task.Group,
 		Other:     other,
 	})
+	syncTaskDiscountAccounting(ctx, task)
 	return true
+}
+
+func syncTaskDiscountAccounting(ctx context.Context, task *model.Task) {
+	bc := task.PrivateData.BillingContext
+	if bc == nil || bc.UserModelDiscount <= 0 || bc.UserModelDiscount >= 1 || taskIsSubscription(task) {
+		return
+	}
+	if err := model.UpdateTaskDiscountAccounting(task.UserId, task.TaskID, task.Quota, bc.GroupRatio); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("failed to update discounted task accounting %s: %v", task.TaskID, err))
+	}
 }
 
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。
@@ -456,9 +483,15 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	}
 
 	modelName := taskModelName(task)
+	billingContext := task.PrivateData.BillingContext
+	useDiscountSnapshot := billingContext != nil && billingContext.UserModelDiscount > 0 && billingContext.UserModelDiscount < 1 && !taskIsSubscription(task)
 
 	// 获取模型价格和倍率
 	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
+	if useDiscountSnapshot && billingContext.ModelRatio > 0 {
+		modelRatio = billingContext.ModelRatio
+		hasRatioSetting = true
+	}
 	// 只有配置了倍率(非固定价格)时才按 token 重新计费
 	if !hasRatioSetting || modelRatio <= 0 {
 		return
@@ -472,7 +505,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 			group = user.Group
 		}
 	}
-	if group == "" {
+	if group == "" && !useDiscountSnapshot {
 		return
 	}
 
@@ -489,6 +522,9 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	// 计算 OtherRatios 乘积（视频折扣、时长等）
 	otherMultiplier := 1.0
 	if bc := task.PrivateData.BillingContext; bc != nil {
+		if useDiscountSnapshot {
+			finalGroupRatio = bc.GroupRatio
+		}
 		for _, r := range bc.OtherRatios {
 			if r != 1.0 && r > 0 {
 				otherMultiplier *= r

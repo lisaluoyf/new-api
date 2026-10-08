@@ -350,6 +350,18 @@ function BillingBreakdown(props: {
     })
   }
 
+  if (
+    other.user_model_discount != null &&
+    Number.isFinite(other.user_model_discount) &&
+    other.user_model_discount > 0 &&
+    other.user_model_discount < 1
+  ) {
+    rows.push({
+      label: t('User Extra Discount'),
+      value: `-${formatRatio((1 - other.user_model_discount) * 100)}%`,
+    })
+  }
+
   if (imageBilling) {
     if (imageBilling.calculatedCharge != null) {
       rows.push({

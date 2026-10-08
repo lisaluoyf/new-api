@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
@@ -161,7 +162,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor channel.TaskAdaptor, cha
 		}
 
 		// 如果返回了 total_tokens 并且配置了模型倍率(非固定价格),则重新计费
-		if taskResult.TotalTokens > 0 {
+		if bc := task.PrivateData.BillingContext; bc != nil && bc.UserModelDiscount > 0 && bc.UserModelDiscount < 1 && task.PrivateData.BillingSource != service.BillingSourceSubscription {
+			service.SettleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+		} else if taskResult.TotalTokens > 0 {
 			// 获取模型名称
 			var taskData map[string]interface{}
 			if err := json.Unmarshal(task.Data, &taskData); err == nil {
@@ -279,6 +282,10 @@ func updateVideoSingleTask(ctx context.Context, adaptor channel.TaskAdaptor, cha
 	}
 
 	if shouldRefund {
+		if bc := task.PrivateData.BillingContext; bc != nil && bc.UserModelDiscount > 0 && bc.UserModelDiscount < 1 && task.PrivateData.BillingSource != service.BillingSourceSubscription {
+			service.RefundTaskQuota(ctx, task, task.FailReason)
+			return nil
+		}
 		// 任务失败且之前状态不是失败才退还额度，防止重复退还
 		if err := model.IncreaseUserQuota(task.UserId, quota, false); err != nil {
 			logger.LogWarn(ctx, "Failed to increase user quota: "+err.Error())

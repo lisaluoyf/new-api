@@ -33,6 +33,27 @@ export const userFormSchema = z.object({
   quota_dollars: z.number().min(0).optional(),
   group: z.string().optional(),
   remark: z.string().optional(),
+  model_discount_rules: z
+    .array(
+      z.object({
+        model: z.string().trim().min(1),
+        discount: z.number().min(0.000001).max(1),
+      })
+    )
+    .superRefine((rules, context) => {
+      const models = new Set<string>()
+      rules.forEach((rule, index) => {
+        if (models.has(rule.model)) {
+          context.addIssue({
+            code: 'custom',
+            path: [index, 'model'],
+            message: 'Duplicate model name',
+          })
+        }
+        models.add(rule.model)
+      })
+    })
+    .optional(),
   aff_ratio_override: z
     .string()
     .regex(
@@ -58,6 +79,7 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   quota_dollars: 0,
   group: DEFAULT_GROUP,
   remark: '',
+  model_discount_rules: [],
   aff_ratio_override: '',
   is_reseller: false,
   reseller_user_id: 0,
@@ -93,6 +115,12 @@ export function transformFormDataToPayload(
         ? null
         : Number(data.aff_ratio_override)
     payload.id = userId
+    const ratios: Record<string, number> = {}
+    for (const row of data.model_discount_rules || []) {
+      const model = row.model.trim()
+      if (model) ratios[model] = row.discount
+    }
+    payload.model_discount_ratios = ratios
   }
 
   return payload
@@ -110,6 +138,9 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     quota_dollars: quotaUnitsToDollars(user.quota),
     group: user.group || DEFAULT_GROUP,
     remark: user.remark || '',
+    model_discount_rules: Object.entries(user.model_discount_ratios || {}).map(
+      ([model, discount]) => ({ model, discount })
+    ),
     aff_ratio_override:
       user.aff_ratio_override === null || user.aff_ratio_override === undefined
         ? ''

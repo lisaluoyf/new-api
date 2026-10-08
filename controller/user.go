@@ -367,6 +367,7 @@ func GetUser(c *gin.Context) {
 		return
 	}
 	model.EnrichUsersTrialRiskAllowlist([]*model.User{user})
+	userSetting := user.GetSetting()
 	// Keep the legacy new-api aff_code untouched, but expose the APIMaster
 	// referral code used by the Affiliate page when the mapping is available.
 	referralCode := lookupApimasterReferralCode(user.Username)
@@ -375,10 +376,12 @@ func GetUser(c *gin.Context) {
 		"message": "",
 		"data": struct {
 			*model.User
-			ReferralCode string `json:"referral_code,omitempty"`
+			ReferralCode        string             `json:"referral_code,omitempty"`
+			ModelDiscountRatios map[string]float64 `json:"model_discount_ratios,omitempty"`
 		}{
-			User:         user,
-			ReferralCode: referralCode,
+			User:                user,
+			ReferralCode:        referralCode,
+			ModelDiscountRatios: userSetting.ModelDiscountRatios,
 		},
 	})
 	return
@@ -818,6 +821,19 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	rawAffRatioOverride, hasAffRatioOverride := rawFields["aff_ratio_override"]
+	rawModelDiscountRatios, hasModelDiscountRatios := rawFields["model_discount_ratios"]
+	var requestedModelDiscountRatios map[string]float64
+	if hasModelDiscountRatios {
+		if err := common.Unmarshal(rawModelDiscountRatios, &requestedModelDiscountRatios); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		if err := service.ValidateUserModelDiscountRatios(requestedModelDiscountRatios); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		requestedModelDiscountRatios = service.SanitizeUserModelDiscountRatios(requestedModelDiscountRatios)
+	}
 	var requestedAffRatioOverride *int
 	if hasAffRatioOverride {
 		var override *int
@@ -860,6 +876,14 @@ func UpdateUser(c *gin.Context) {
 	if err := updatedUser.Edit(updatePassword); err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if hasModelDiscountRatios {
+		setting := originUser.GetSetting()
+		setting.ModelDiscountRatios = requestedModelDiscountRatios
+		if err := originUser.UpdateSetting(setting); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	if hasAffRatioOverride {
 		adminInfo := map[string]interface{}{
@@ -1784,6 +1808,7 @@ func UpdateUserSetting(c *gin.Context) {
 		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
 		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
 		RecordIpLog:                      req.RecordIpLog,
+		ModelDiscountRatios:              existingSettings.ModelDiscountRatios,
 	}
 
 	// 如果是webhook类型,添加webhook相关设置

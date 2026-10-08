@@ -373,6 +373,17 @@ function buildDetailSegments(
     }
   }
 
+  if (
+    other.user_model_discount != null &&
+    Number.isFinite(other.user_model_discount) &&
+    other.user_model_discount > 0 &&
+    other.user_model_discount < 1
+  ) {
+    segments.push({
+      text: `${t('User Extra Discount')} -${formatRatioCompact((1 - other.user_model_discount) * 100)}%`,
+    })
+  }
+
   if (other.is_system_prompt_overwritten) {
     segments.push({
       text: t('System Prompt Override'),

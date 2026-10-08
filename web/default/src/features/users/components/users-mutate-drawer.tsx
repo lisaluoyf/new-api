@@ -76,6 +76,7 @@ import {
 } from '../lib'
 import { type User } from '../types'
 import { ResellerRulesPanel } from './reseller-rules-panel'
+import { UserModelDiscountEditor } from './user-model-discount-editor'
 import { UserQuotaDialog } from './user-quota-dialog'
 import { useUsers } from './users-provider'
 
@@ -127,20 +128,29 @@ export function UsersMutateDrawer({
 
   // Load existing data when updating
   useEffect(() => {
+    let active = true
     if (open && isUpdate && currentRow) {
+      setLoadedUser(null)
       // For update, fetch fresh data
-      getUser(currentRow.id).then((result) => {
-        if (result.success && result.data) {
-          setLoadedUser(result.data)
-          form.reset(transformUserToFormDefaults(result.data))
-        }
-      })
+      getUser(currentRow.id)
+        .then((result) => {
+          if (active && result.success && result.data) {
+            setLoadedUser(result.data)
+            form.reset(transformUserToFormDefaults(result.data))
+          }
+        })
+        .catch(() => {
+          if (active) toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+        })
     } else if (open && !isUpdate) {
       // For create, reset to defaults
       setLoadedUser(null)
       form.reset(USER_FORM_DEFAULT_VALUES)
     }
-  }, [open, isUpdate, currentRow, form])
+    return () => {
+      active = false
+    }
+  }, [open, isUpdate, currentRow, form, t])
 
   const { meta: currencyMeta } = getCurrencyDisplay()
   const currencyLabel = getCurrencyLabel()
@@ -166,7 +176,10 @@ export function UsersMutateDrawer({
               : Number(data.reseller_user_id || 0),
           })
           if (!resellerResult.success) {
-            toast.error(resellerResult.message || t('Failed to save reseller relationship'))
+            toast.error(
+              resellerResult.message ||
+                t('Failed to save reseller relationship')
+            )
             return
           }
         }
@@ -338,6 +351,13 @@ export function UsersMutateDrawer({
               </div>
 
               {/* Group & Quota Settings (Update only) */}
+              {isUpdate && (
+                <div className='space-y-4'>
+                  <h3 className='text-sm font-medium'>{t('User Discount')}</h3>
+                  <UserModelDiscountEditor control={form.control} />
+                </div>
+              )}
+
               {isUpdate && (
                 <div className='space-y-4'>
                   <h3 className='text-sm font-medium'>{t('Group & Quota')}</h3>
@@ -522,7 +542,9 @@ export function UsersMutateDrawer({
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={t('Select parent reseller email')} />
+                              <SelectValue
+                                placeholder={t('Select parent reseller email')}
+                              />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent alignItemWithTrigger={false}>
@@ -589,7 +611,13 @@ export function UsersMutateDrawer({
             <SheetClose render={<Button variant='outline' />}>
               {t('Close')}
             </SheetClose>
-            <Button form='user-form' type='submit' disabled={isSubmitting}>
+            <Button
+              form='user-form'
+              type='submit'
+              disabled={
+                isSubmitting || (isUpdate && loadedUser?.id !== currentRow?.id)
+              }
+            >
               {isSubmitting ? t('Saving...') : t('Save changes')}
             </Button>
           </SheetFooter>

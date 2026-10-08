@@ -660,6 +660,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		CacheWriteTokens1h:        summary.CacheCreationTokens1h,
 		CacheWritePriceMultiplier: cacheWriteAccountingMultiplier(summary),
 		GroupRatio:                summary.GroupRatio,
+		UserModelDiscount:         relayInfo.PriceData.GroupRatioInfo.UserModelDiscount,
 		Quota:                     summary.Quota,
 		ZeroUserCharge:            IsFreeModel(relayInfo.OriginModelName),
 		UseQuotaForUserAmounts: (tieredBillingApplied && relayInfo.PriceDataSource == "wallet") ||

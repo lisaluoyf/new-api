@@ -26,7 +26,13 @@ func TestImagineSubmissionMapsModelAndChargesActualTasks(t *testing.T) {
 	}
 }
 
-func testImagineSubmission(t *testing.T, upstreamStatus int) {
+func TestUserModelDiscountImagineChargesAndRefundsDiscountedUnit(t *testing.T) {
+	for _, status := range []int{200, 422} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) { testImagineSubmission(t, status, .947368) })
+	}
+}
+
+func testImagineSubmission(t *testing.T, upstreamStatus int, discounts ...float64) {
 	oldDB, oldOptions, oldRedis := model.DB, common.OptionMap, common.RedisEnabled
 	oldCallback := operation_setting.CustomCallbackAddress
 	t.Cleanup(func() {
@@ -84,7 +90,11 @@ func testImagineSubmission(t *testing.T, upstreamStatus int) {
 	common.SetContextKey(ctx, constant.ContextKeyTokenKey, token.Key)
 	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
 	common.SetContextKey(ctx, constant.ContextKeyUsingGroup, "default")
-	common.SetContextKey(ctx, constant.ContextKeyUserSetting, dto.UserSetting{BillingPreference: "wallet_only"})
+	setting := dto.UserSetting{BillingPreference: "wallet_only"}
+	if len(discounts) > 0 {
+		setting.ModelDiscountRatios = map[string]float64{"midjourney-niji-7": discounts[0]}
+	}
+	common.SetContextKey(ctx, constant.ContextKeyUserSetting, setting)
 	common.SetContextKey(ctx, constant.ContextKeyChannelId, channel.Id)
 	common.SetContextKey(ctx, constant.ContextKeyChannelType, 1)
 	common.SetContextKey(ctx, constant.ContextKeyChannelBaseUrl, upstream.URL)
@@ -124,7 +134,14 @@ func testImagineSubmission(t *testing.T, upstreamStatus int) {
 	require.Equal(t, 1, batch.ActualTaskCount)
 	require.InDelta(t, 0.05504, batch.BaseUnitPrice, 1e-9)
 	multiplier := 2 * ratio_setting.GetGroupRatio("default")
+	if len(discounts) > 0 {
+		multiplier *= discounts[0]
+		require.Equal(t, discounts[0], batch.UserModelDiscount)
+	}
 	require.InDelta(t, multiplier, batch.FinalMultiplier, 1e-9)
 	require.NoError(t, db.First(&user, user.Id).Error)
 	require.Equal(t, 1000000-int(math.Round(0.05504*multiplier*common.QuotaPerUnit)), user.Quota)
+	var finalToken model.Token
+	require.NoError(t, db.First(&finalToken, token.Id).Error)
+	require.Equal(t, user.Quota, finalToken.RemainQuota)
 }

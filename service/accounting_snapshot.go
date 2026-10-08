@@ -35,6 +35,7 @@ type ConsumeAccountingInput struct {
 	DurationUnitPrice         float64
 	DurationSeconds           int
 	GroupRatio                float64
+	UserModelDiscount         float64
 	Quota                     int
 	ZeroUserCharge            bool
 	UseQuotaForUserAmounts    bool
@@ -63,6 +64,7 @@ type consumeAccountingSnapshot struct {
 	ResellerRuleId           int                `json:"reseller_rule_id,omitempty"`
 	ResellerDiscountRatio    float64            `json:"reseller_discount_ratio,omitempty"`
 	GroupRatio               float64            `json:"group_ratio"`
+	UserModelDiscount        float64            `json:"user_model_discount,omitempty"`
 	Quota                    int                `json:"quota"`
 	BillingMode              string             `json:"billing_mode,omitempty"`
 	InputTokensIncludeCache  bool               `json:"input_tokens_include_cache"`
@@ -96,6 +98,9 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 	if input.GroupRatio <= 0 {
 		input.GroupRatio = 1
 	}
+	if input.UserModelDiscount > 0 && input.UserModelDiscount < 1 {
+		input.UseQuotaForUserAmounts = true
+	}
 	// Match image relay pricing: the configured media base price is authoritative,
 	// including resolution weights, even if upstream token-price rows are absent.
 	imagePricing, useImagePricing := GlobalImageMediaPricingUSD(input.ModelName)
@@ -113,6 +118,7 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		ChannelId:                input.ChannelId,
 		ModelName:                input.ModelName,
 		GroupRatio:               input.GroupRatio,
+		UserModelDiscount:        input.UserModelDiscount,
 		Quota:                    input.Quota,
 		BillingMode:              normalizedAccountingBillingMode(input),
 		InputTokensIncludeCache:  input.InputTokensIncludeCache,
@@ -292,6 +298,13 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 			snap.AmountsUSD["user_price"] = fields.UserPriceAmountUSD
 			snap.Prices["user_amount_source"] = "settled_quota"
 		}
+	}
+	if input.UserModelDiscount > 0 && input.UserModelDiscount < 1 && !input.ZeroUserCharge {
+		fields.UserFinalAmountUSD = quotaAmountUSD(input.Quota)
+		fields.UserPriceAmountUSD = fields.UserFinalAmountUSD / input.GroupRatio
+		snap.AmountsUSD["user_final"] = fields.UserFinalAmountUSD
+		snap.AmountsUSD["user_price"] = fields.UserPriceAmountUSD
+		snap.Prices["user_amount_source"] = "settled_quota"
 	}
 	fields.GroupRatio = input.GroupRatio
 	fields.Status = status

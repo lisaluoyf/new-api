@@ -48,9 +48,17 @@ export function getImageBillingBreakdown(other: LogOtherData | null) {
   const isUserRatio =
     userRatio != null && Number.isFinite(userRatio) && userRatio !== -1
   const groupRatio = isUserRatio ? userRatio : other?.group_ratio
+  const discount = other?.user_model_discount
+  const extraRatio =
+    discount != null &&
+    Number.isFinite(discount) &&
+    discount > 0 &&
+    discount <= 1
+      ? discount
+      : 1
   const calculatedCharge =
     channelRatio != null && groupRatio != null && Number.isFinite(groupRatio)
-      ? billing.base_amount_usd * channelRatio * groupRatio
+      ? billing.base_amount_usd * channelRatio * groupRatio * extraRatio
       : null
 
   return {
