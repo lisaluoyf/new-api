@@ -786,12 +786,26 @@ func buildDefaultTestRequest(model string, endpointType string, channel *model.C
 			}
 		case constant.EndpointTypeImageGeneration:
 			// 返回 ImageRequest
-			return &dto.ImageRequest{
+			request := &dto.ImageRequest{
 				Model:  model,
 				Prompt: "a cute cat",
 				N:      lo.ToPtr(uint(1)),
 				Size:   "1024x1024",
 			}
+			if channel != nil && service.IsGptImage2Family(model) {
+				capabilities := channel.GetOtherSettings().GptImage2Capabilities
+				// Prefer the declared size contract. APIMart channels predate
+				// that configuration and also require aspect ratio + resolution.
+				aspectRatio := channel.Id == 59 || channel.Id == 81
+				if capabilities != nil && capabilities.SizeFormat != "" {
+					aspectRatio = capabilities.SizeFormat == dto.GptImage2SizeFormatAspectRatioWithResolution
+				}
+				if aspectRatio {
+					request.Size = "1:1"
+					request.Resolution = "1k"
+				}
+			}
+			return request
 		case constant.EndpointTypeJinaRerank:
 			// 返回 RerankRequest
 			return &dto.RerankRequest{
