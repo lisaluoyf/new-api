@@ -101,7 +101,8 @@ func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo
 	config["aspect_ratio"] = aspect
 	service.SetImageRequestDataOnContext(c, &req)
 	if nanoBanana21NativeImages(info) {
-		body := map[string]any{"model": req.Model, "prompt": req.Prompt, "n": 1, "size": req.Size, "resolution": tier, "response_format": "b64_json"}
+		// These hubs use quality for imageSize; resolution alone is ignored.
+		body := map[string]any{"model": req.Model, "prompt": req.Prompt, "n": 1, "size": req.Size, "resolution": tier, "quality": tier, "response_format": "b64_json"}
 		if info.RelayMode == relayconstant.RelayModeImagesEdits {
 			refs := append([]string(nil), req.ImageUrls...)
 			for i, ref := range refs {

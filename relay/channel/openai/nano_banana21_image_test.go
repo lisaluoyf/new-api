@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -73,10 +74,17 @@ func TestNanoBanana21NativeImages(t *testing.T) {
 		body := wire.(map[string]any)
 		require.Equal(t, "nano-banana-2.1", body["model"])
 		require.Equal(t, "1K", body["resolution"])
+		require.Equal(t, "1K", body["quality"])
 		require.NotContains(t, body, "messages")
 		require.NotContains(t, body, "image_urls")
 		if mode == relayconstant.RelayModeImagesEdits {
 			require.Equal(t, req.ImageUrls[0], body["image"])
+			for _, tier := range []string{"2K", "4K"} {
+				req.Resolution = tier
+				wire, err := (&Adaptor{}).ConvertImageRequest(c, info, req)
+				require.NoError(t, err)
+				require.Equal(t, tier, wire.(map[string]any)["quality"])
+			}
 		}
 		normalized, err := normalizeNanoBanana21ImageResponse(c, info, []byte(`{"data":[{"b64_json":"aGVsbG8="}]}`))
 		require.NoError(t, err)
@@ -110,6 +118,7 @@ func TestNanoBanana21NativeMultipartReference(t *testing.T) {
 	writer := multipart.NewWriter(&body)
 	require.NoError(t, writer.WriteField("model", "gemini-nano-banana-2.1"))
 	require.NoError(t, writer.WriteField("prompt", "change background"))
+	require.NoError(t, writer.WriteField("response_format", "b64_json"))
 	file, err := writer.CreateFormFile("image", "reference.png")
 	require.NoError(t, err)
 	_, err = file.Write([]byte("reference"))
@@ -120,7 +129,11 @@ func TestNanoBanana21NativeMultipartReference(t *testing.T) {
 	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
 	info := &relaycommon.RelayInfo{OriginModelName: "gemini-nano-banana-2.1", RelayMode: relayconstant.RelayModeImagesEdits,
 		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenAI, UpstreamModelName: "nano-banana-2.1"}}
-	wire, err := convertNanoBanana21ImageRequest(c, info, dto.ImageRequest{Model: "nano-banana-2.1", ResponseFormat: "b64_json"})
+	req, err := helper.GetAndValidOpenAIImageRequest(c, relayconstant.RelayModeImagesEdits)
+	require.NoError(t, err)
+	require.Equal(t, "b64_json", req.ResponseFormat)
+	req.Model = "nano-banana-2.1"
+	wire, err := convertNanoBanana21ImageRequest(c, info, *req)
 	require.NoError(t, err)
 	require.Equal(t, "nano-banana-2.1", wire.(map[string]any)["model"])
 	require.Equal(t, "https://apimaster.ai/imgs/reference.png", wire.(map[string]any)["image"])

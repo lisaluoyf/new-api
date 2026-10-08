@@ -200,6 +200,7 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 			imageRequest.Quality = firstFormValue(form, "quality")
 			imageRequest.Size = firstFormValue(form, "size")
 			imageRequest.Resolution = firstFormValue(form, "resolution")
+			imageRequest.ResponseFormat = firstFormValue(form, "response_format")
 			if imageValue := firstFormValue(form, "image"); imageValue != "" {
 				imageRequest.Image, _ = common.Marshal(imageValue)
 			}
