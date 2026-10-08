@@ -67,6 +67,7 @@ import {
   getSubscriptionSourceLabel,
 } from '../../lib/format'
 import { getImageBillingBreakdown } from '../../lib/image-billing'
+import { isRefundedConsumeLog } from '../../lib/task-refund'
 import {
   getLogTypeConfig,
   isPerCallBilling,
@@ -151,6 +152,23 @@ function BillingBreakdown(props: {
 }) {
   const { t } = useTranslation()
   const { log, other, isAdmin } = props
+  if (isRefundedConsumeLog(log, other)) {
+    return (
+      <DetailSection label={t('Refund Details')}>
+        <DetailRow
+          label={t('Pre-consumed')}
+          value={formatLogQuota(log.quota)}
+          mono
+        />
+        <DetailRow
+          label={t('Refunded')}
+          value={formatLogQuota(log.quota)}
+          mono
+        />
+        <DetailRow label={t('Total Cost')} value={formatLogQuota(0)} mono />
+      </DetailSection>
+    )
+  }
   const isDuration = isDurationBilling(other.billing_mode)
   const isPerCall = !isDuration && isPerCallBilling(other.model_price)
   const isImageCount = other.billing_mode === 'image_count'
@@ -541,6 +559,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
   const typeConfig = getLogTypeConfig(props.log.type)
+  const refunded = isRefundedConsumeLog(props.log, other)
 
   const isViolation = isViolationFeeLog(other)
   const isRefund = props.log.type === 6
@@ -642,8 +661,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
           <DialogTitle className='flex items-center gap-2 text-base'>
             {t('Log Details')}
             <StatusBadge
-              label={t(typeConfig.label)}
-              variant={typeConfig.color as StatusBadgeProps['variant']}
+              label={t(refunded ? 'Refunded' : typeConfig.label)}
+              variant={
+                refunded
+                  ? 'warning'
+                  : (typeConfig.color as StatusBadgeProps['variant'])
+              }
               size='sm'
               copyable={false}
             />

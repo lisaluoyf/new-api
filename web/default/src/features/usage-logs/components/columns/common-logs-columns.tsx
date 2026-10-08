@@ -54,6 +54,7 @@ import {
 } from '../../lib/format'
 import { getImageBillingBreakdown } from '../../lib/image-billing'
 import { getLogMediaPreview } from '../../lib/media-preview'
+import { isRefundedConsumeLog } from '../../lib/task-refund'
 import {
   isDisplayableLogType,
   isTimingLogType,
@@ -466,6 +467,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         const timestamp = row.getValue('created_at') as number
         const config = getLogTypeConfig(log.type)
+        const refunded = isRefundedConsumeLog(log, parseLogOther(log.other))
 
         return (
           <div className='flex flex-col gap-0.5'>
@@ -473,8 +475,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               {formatTimestampToDate(timestamp)}
             </span>
             <StatusBadge
-              label={t(config.label)}
-              variant={config.color as StatusBadgeProps['variant']}
+              label={t(refunded ? 'Refunded' : config.label)}
+              variant={
+                refunded
+                  ? 'warning'
+                  : (config.color as StatusBadgeProps['variant'])
+              }
               size='sm'
               copyable={false}
             />
@@ -971,6 +977,19 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const quota = row.getValue('quota') as number
         const other = parseLogOther(log.other)
         const isSubscription = isSubscriptionUsageLog(other)
+
+        if (isRefundedConsumeLog(log, other)) {
+          return (
+            <div className='flex flex-col gap-0.5 text-xs'>
+              <span className='font-mono font-semibold tabular-nums'>
+                {t('Total Cost')}: {formatLogQuota(0)}
+              </span>
+              <span className='text-muted-foreground'>
+                {t('Refunded')}: {formatLogQuota(quota)}
+              </span>
+            </div>
+          )
+        }
 
         if (isSubscription) {
           const sourceLabel = getSubscriptionSourceLabel(other, t)
