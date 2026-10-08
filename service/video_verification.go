@@ -35,12 +35,28 @@ func StartVideoVerificationWorker() {
 		}
 		queue := make(chan model.VideoVerificationEvent, 256)
 		model.SetVideoVerificationQueue(queue)
-		go publishVideoVerificationEvents(queue)
+		go superviseVideoVerification(func() { publishVideoVerificationEvents(queue) })
 		if common.IsMasterNode {
-			go consumeVideoVerificationEvents()
-			go deliverVideoVerificationAlerts()
+			go superviseVideoVerification(consumeVideoVerificationEvents)
+			go superviseVideoVerification(deliverVideoVerificationAlerts)
 		}
 	})
+}
+
+func superviseVideoVerification(worker func()) {
+	for {
+		runVideoVerificationSafely(worker)
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func runVideoVerificationSafely(worker func()) {
+	defer func() {
+		if recover() != nil {
+			common.SysError("video verification worker panic contained; restarting")
+		}
+	}()
+	worker()
 }
 
 func publishVideoVerificationEvents(queue <-chan model.VideoVerificationEvent) {

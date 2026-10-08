@@ -24,6 +24,12 @@ func videoVerificationTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func TestVideoVerificationWorkerPanicDoesNotEscape(t *testing.T) {
+	require.NotPanics(t, func() {
+		runVideoVerificationSafely(func() { panic("private error must not escape or be logged") })
+	})
+}
+
 func TestVideoVerificationCooldownAndDeduplication(t *testing.T) {
 	db := videoVerificationTestDB(t)
 	ctx := context.Background()
