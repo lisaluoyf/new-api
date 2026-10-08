@@ -258,3 +258,24 @@ Token expressions imported with a channel pricing row are now executed as comple
 The request freezes expression, multiplier, selected channel, and evaluation time. Fallback refreshes the channel snapshots. Actual usage drives settlement and exact procurement accounting; static base tuples are retained only as metadata. Audit logs include the rule, matched tier, and amount. Cache-exclusive usage includes unpriced cache categories in p, aggregate cache writes without TTL details remain accounted for, and an expression with cc but no cc1h prices all writes through cc.
 
 No historical supplier multiplier migration or retroactive customer debit is performed by this release.
+
+## Explicit channel retail schedules (2026-10-08)
+
+`channels.setting.model_retail_billing_exprs` is an optional map of client model
+names to token billing expressions. Wallet pre-consumption, retry refresh and
+settlement use this explicit retail policy before a supplier expression. Its
+coefficients are unmultiplied USD/1M; the selected pricing row's effective group
+ratio, recharge rate and model markup are applied once, and the snapshot stays
+frozen for the request. Upstream model mappings do not pick a different public
+model's override. A configured expression requires channel pricing evidence;
+invalid matching expressions fail rather than silently charge a supplier rule.
+
+Procurement continues using the supplier expression. Upstream pricing refreshes
+update supplier snapshots without modifying these settings. Trial/subscription
+policies are unchanged. To remove a retail override, delete its map entry.
+
+Claude 4.6 and later (except Haiku 5.5) have standard rates across 1M context.
+Supported Opus fast mode requires both `param("speed") == "fast"` and the beta
+header; Opus 4.6/4.7 do not support premium fast mode. Official references:
+https://platform.claude.com/docs/en/about-claude/pricing and
+https://platform.claude.com/docs/en/build-with-claude/fast-mode.

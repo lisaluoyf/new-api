@@ -37,6 +37,23 @@ func ResolveTokenBillingExpression(channelID int, modelName string, procurement 
 			ExprHash: billingexpr.ExprHashString(expression), ExprVersion: billingexpr.ExprVersion(expression),
 			GroupRatio: 1, QuotaPerUnit: common.QuotaPerUnit, PricingChannelID: channelID, EvaluatedAtUnix: at.Unix(), Source: source}
 	}
+	// Explicit retail schedules survive upstream pricing refreshes. Procurement
+	// retains the supplier's own expression so customer policy cannot rewrite cost.
+	if !procurement {
+		expression, err := channelRetailBillingExpression(ch.Setting, modelName)
+		if err != nil {
+			return nil, err
+		}
+		if expression != "" {
+			if row == nil {
+				return nil, fmt.Errorf("retail billing override requires channel price evidence for %s", modelName)
+			}
+			snap := newSnapshot(expression, "channel_retail_override")
+			multiplier := row.GroupRatio * ch.RechargeRate * ch.EffectivePriceRatio(modelName)
+			snap.AmountMultiplier = &multiplier
+			return snap, nil
+		}
+	}
 	if row != nil && row.BillingMode == "tiered_expr" && strings.TrimSpace(row.BillingExpr) != "" {
 		// Check token identifiers before compiling: expressions for images/video
 		// may use a different upstream dialect (e.g. fixed()).
@@ -142,4 +159,31 @@ func IsTokenBillingExpression(expression string) bool {
 		}
 	}
 	return token(word)
+}
+
+// Keys are client-facing models, with the same alias candidates as global
+// pricing. Upstream mappings must not silently change the customer's policy.
+func channelRetailBillingExpression(setting *string, modelName string) (string, error) {
+	if setting == nil || strings.TrimSpace(*setting) == "" {
+		return "", nil
+	}
+	var settings struct {
+		Expressions map[string]string `json:"model_retail_billing_exprs"`
+	}
+	if err := common.UnmarshalJsonStr(*setting, &settings); err != nil {
+		return "", nil // Preserve legacy behavior for unrelated malformed settings.
+	}
+	for _, name := range ModelNameCandidates(modelName) {
+		if expression, exists := settings.Expressions[name]; exists {
+			expression = strings.TrimSpace(expression)
+			if !IsTokenBillingExpression(expression) {
+				return "", fmt.Errorf("invalid retail token billing override for %s", name)
+			}
+			if _, err := billingexpr.CompileFromCache(expression); err != nil {
+				return "", fmt.Errorf("retail token billing override for %s: %w", name, err)
+			}
+			return expression, nil
+		}
+	}
+	return "", nil
 }

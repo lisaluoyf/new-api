@@ -226,7 +226,7 @@ const PRESET_GROUPS: PresetGroup[] = [
     presets: [
       {
         key: 'claude-opus-fast',
-        label: 'Claude Opus 4.6 Fast',
+        label: 'Claude Opus 4.8 / 5 Fast',
         expr: 'tier("base", p * 5 + c * 25 + cr * 0.5 + cc * 6.25 + cc1h * 10)',
         requestRules: [
           {
@@ -237,8 +237,14 @@ const PRESET_GROUPS: PresetGroup[] = [
                 mode: MATCH_CONTAINS,
                 value: 'fast-mode-2026-02-01',
               },
+              {
+                source: SOURCE_PARAM as 'param',
+                path: 'speed',
+                mode: MATCH_EQ,
+                value: 'fast',
+              },
             ],
-            multiplier: '6',
+            multiplier: '2',
           },
         ],
       },

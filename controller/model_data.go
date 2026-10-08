@@ -1722,15 +1722,28 @@ func GetFRTSummary(c *gin.Context) {
 // immediately with the count — actual upserts land in channel_model_pricings
 // over the next ~15s. UI should reload the table after a short delay.
 //
-// POST /api/admin/model-data/refresh-pricing  body: {"model": "<model_name>"|"all"|""}
+// POST /api/admin/channel-data/refresh-pricing: model and optional channel_ids scope.
 func RefreshModelPricing(c *gin.Context) {
 	var req struct {
-		Model string `json:"model"`
+		Model      string `json:"model"`
+		ChannelIDs []int  `json:"channel_ids"`
 	}
-	_ = common.DecodeJson(c.Request.Body, &req)
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid pricing refresh request"})
+		return
+	}
 	modelFilter := strings.TrimSpace(req.Model)
 
 	q := model.DB.Where("status IN (1, 2, 3) AND base_url IS NOT NULL AND base_url <> ''")
+	if len(req.ChannelIDs) > 0 {
+		for _, id := range req.ChannelIDs {
+			if id <= 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid channel id"})
+				return
+			}
+		}
+		q = q.Where("id IN ?", req.ChannelIDs)
+	}
 
 	if modelFilter != "" && modelFilter != "all" {
 		candidates := service.ModelNameCandidates(modelFilter)
