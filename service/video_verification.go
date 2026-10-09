@@ -51,7 +51,7 @@ func runVideoVerificationSafely(worker func()) {
 
 // Poll only the indexed durable outbox, never the customer task table.
 func consumeVideoVerificationEvents() {
-	common.SysLog("video verification worker ready: every completed Seedance video, durable outbox")
+	common.SysLog("video verification worker ready: every completed Seedance 2.0/2.5 video, durable outbox")
 	for {
 		var runs []model.VideoVerificationRun
 		now := time.Now().Unix()
@@ -127,7 +127,7 @@ func handleVideoVerificationEvent(taskID, completedAt int64) bool {
 		}
 		return false
 	}
-	normalized := model.NormalizeVerifiedVideoModel(task.Properties.OriginModelName)
+	normalized := model.NormalizeAutomaticVerifiedVideoModel(task.Properties.OriginModelName)
 	if task.Status != model.TaskStatusSuccess || normalized == "" || task.ChannelId <= 0 {
 		model.DB.Model(&model.VideoVerificationRun{}).Where("task_id = ?", taskID).Updates(map[string]any{"status": "skipped", "lease_until": 0})
 		return true
@@ -185,7 +185,7 @@ func finishVideoVerification(ctx context.Context, state *model.VideoVerification
 		if err := tx.Create(&entry).Error; err != nil {
 			return err
 		}
-		if status != "pass" {
+		if status != "pass" && model.NormalizeAutomaticVerifiedVideoModel(state.Model) != "" {
 			alert := model.VideoVerificationAlert{TaskID: task.ID, ChannelID: task.ChannelId, Model: state.Model, Reason: reason, VideoChecksJSON: string(encoded), DetectedAt: now, NextAt: now, Status: "pending"}
 			return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&alert).Error
 		}
@@ -211,6 +211,13 @@ func deliverDueVideoVerificationAlerts() error {
 		return err
 	}
 	for _, alert := range alerts {
+		if model.NormalizeAutomaticVerifiedVideoModel(alert.Model) == "" {
+			if err := model.DB.WithContext(ctx).Model(&alert).Where("status = ? AND lease_until <= ?", "pending", now).
+				Updates(map[string]any{"status": "skipped", "next_at": 0, "lease_until": 0}).Error; err != nil {
+				return err
+			}
+			continue
+		}
 		lease := time.Now().Add(5 * time.Minute).Unix()
 		result := model.DB.Model(&alert).Where("status = ? AND lease_until <= ?", "pending", now).Update("lease_until", lease)
 		if result.Error != nil {
@@ -247,10 +254,24 @@ var sendVideoVerificationAlert = func(alert *model.VideoVerificationAlert) error
 	if channel, err := model.GetChannelById(alert.ChannelID, false); err == nil {
 		channelName = channel.Name
 	}
-	return common.SendFeishuInteractiveCard(videoVerificationChat, videoVerificationAlertCard(alert, channelName))
+	email, err := videoVerificationAlertUserEmail(alert.TaskID)
+	if err != nil {
+		return errors.New("video verification account lookup failed")
+	}
+	return common.SendFeishuInteractiveCard(videoVerificationChat, videoVerificationAlertCard(alert, channelName, email))
 }
 
-func videoVerificationAlertCard(alert *model.VideoVerificationAlert, channelName string) map[string]any {
+func videoVerificationAlertUserEmail(taskID int64) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var email string
+	err := model.DB.WithContext(ctx).Model(&model.User{}).Select("email").Where("id = (?)",
+		model.DB.Model(&model.Task{}).Select("user_id").Where("id = ?", taskID),
+	).Find(&email).Error
+	return strings.TrimSpace(email), err
+}
+
+func videoVerificationAlertCard(alert *model.VideoVerificationAlert, channelName, email string) map[string]any {
 	title, color := "Seedance · 检测未完成", "orange"
 	reason := "检测未能得出完整结论，请检查检测记录。"
 	switch alert.Reason {
@@ -286,8 +307,12 @@ func videoVerificationAlertCard(alert *model.VideoVerificationAlert, channelName
 		channelLabel = fmt.Sprintf("%s · #%d", channelName, alert.ChannelID)
 	}
 	detectedAt := time.Unix(alert.DetectedAt, 0).In(time.FixedZone("UTC+8", 8*60*60)).Format("2006-01-02 15:04:05")
+	email = strings.TrimSpace(email)
+	if email == "" {
+		email = "未获取"
+	}
 	elements := []any{
-		map[string]any{"tag": "markdown", "content": fmt.Sprintf("**渠道**　%s\n**声明模型**　%s", channelLabel, alert.Model)},
+		map[string]any{"tag": "markdown", "content": fmt.Sprintf("**用户邮箱**　%s\n**渠道**　%s\n**声明模型**　%s", email, channelLabel, alert.Model)},
 		map[string]any{"tag": "hr"},
 		map[string]any{"tag": "markdown", "content": "**原因**\n" + reason + "\n`" + alert.Reason + "`"},
 	}

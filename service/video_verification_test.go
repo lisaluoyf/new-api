@@ -107,3 +107,67 @@ func TestVideoVerificationAlertIsDurableAndRetryable(t *testing.T) {
 	require.NoError(t, db.First(&alert).Error)
 	require.Equal(t, "sent", alert.Status)
 }
+
+func TestVideoVerificationSkipsQueuedMiniAndFast(t *testing.T) {
+	for _, name := range []string{"seedance-2.0-mini", "seedance-2.0-fast", "doubao-seedance-2.0-mini", "doubao-seedance-2.0-fast"} {
+		for _, status := range []string{"pending", "processing"} {
+			t.Run(name+"/"+status, func(t *testing.T) {
+				db := videoVerificationTestDB(t)
+				require.NoError(t, db.AutoMigrate(&model.Task{}))
+				task := model.Task{ID: 1, ChannelId: 153, Status: model.TaskStatusSuccess, Properties: model.Properties{OriginModelName: name}}
+				require.NoError(t, db.Create(&task).Error)
+				run := model.VideoVerificationRun{TaskID: task.ID, ChannelID: task.ChannelId, Model: name, Status: status}
+				require.NoError(t, db.Create(&run).Error)
+				require.True(t, handleVideoVerificationEvent(task.ID, 1000))
+				require.NoError(t, db.First(&run).Error)
+				require.Equal(t, "skipped", run.Status)
+				require.Zero(t, run.LeaseUntil)
+				var count int64
+				for _, table := range []any{&model.VideoVerificationState{}, &model.ChannelDetectLog{}, &model.VideoVerificationAlert{}} {
+					require.NoError(t, db.Model(table).Count(&count).Error)
+					require.Zero(t, count)
+				}
+			})
+		}
+	}
+}
+
+func TestVideoVerificationDoesNotNotifyQueuedMiniAndFast(t *testing.T) {
+	db := videoVerificationTestDB(t)
+	previous := sendVideoVerificationAlert
+	t.Cleanup(func() { sendVideoVerificationAlert = previous })
+	var sent []string
+	sendVideoVerificationAlert = func(alert *model.VideoVerificationAlert) error {
+		sent = append(sent, alert.Model)
+		return nil
+	}
+	names := []string{"seedance-2.0-mini", "seedance-2.0-fast", "doubao-seedance-2.0-mini", "doubao-seedance-2.0-fast", "seedance-2.0", "seedance-2.5"}
+	for index, name := range names {
+		alert := model.VideoVerificationAlert{TaskID: int64(index + 1), Model: name, Reason: "incomplete_evidence", Status: "pending"}
+		require.NoError(t, db.Create(&alert).Error)
+	}
+	require.NoError(t, deliverDueVideoVerificationAlerts())
+	require.NoError(t, deliverDueVideoVerificationAlerts())
+	require.Equal(t, []string{"seedance-2.0", "seedance-2.5"}, sent)
+	var alerts []model.VideoVerificationAlert
+	require.NoError(t, db.Order("id ASC").Find(&alerts).Error)
+	for _, alert := range alerts[:4] {
+		require.Equal(t, "skipped", alert.Status)
+		require.Zero(t, alert.Attempts)
+		require.Zero(t, alert.LeaseUntil)
+	}
+}
+
+func TestVideoVerificationDoesNotCreateMiniOrFastAlertOnCompletion(t *testing.T) {
+	db := videoVerificationTestDB(t)
+	for index, name := range []string{"seedance-2.0-mini", "seedance-2.0-fast"} {
+		task := &model.Task{ID: int64(index + 1), ChannelId: 153, Properties: model.Properties{OriginModelName: name}}
+		state, claimed, err := claimVideoVerification(context.Background(), task, name, 1000, 1000)
+		require.NoError(t, err)
+		require.True(t, claimed)
+		require.NoError(t, finishVideoVerification(context.Background(), state, task, "notcomplete", "incomplete_evidence", nil, 1001))
+	}
+	var count int64
+	require.NoError(t, db.Model(&model.VideoVerificationAlert{}).Count(&count).Error)
+	require.Zero(t, count)
+}

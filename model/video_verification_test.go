@@ -23,6 +23,18 @@ func TestNormalizeVerifiedVideoModel(t *testing.T) {
 	require.Equal(t, "seedance-2.0-fast", NormalizeVerifiedVideoModel("seedance-2.0-fast"))
 }
 
+func TestNormalizeAutomaticVerifiedVideoModel(t *testing.T) {
+	for _, name := range []string{"seedance-2.0", "doubao-seedance-2.0", " Seedance-2.0 "} {
+		require.Equal(t, "seedance-2.0", NormalizeAutomaticVerifiedVideoModel(name))
+	}
+	for _, name := range []string{"seedance-2.5", "doubao-seedance-2.5", " Seedance-2.5 "} {
+		require.Equal(t, "seedance-2.5", NormalizeAutomaticVerifiedVideoModel(name))
+	}
+	for _, name := range []string{"seedance-2.0-fast", "doubao-seedance-2.0-fast", "seedance-2.0-mini", "doubao-seedance-2.0-mini", " Seedance-2.0-MINI ", "sora-2", ""} {
+		require.Empty(t, NormalizeAutomaticVerifiedVideoModel(name), name)
+	}
+}
+
 func TestVideoVerificationStoresActualProviderKeyPrivately(t *testing.T) {
 	task := InitTask(constant.TaskPlatformApimartVideo, &relaycommon.RelayInfo{OriginModelName: "seedance-2.0", ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 7, ChannelType: constant.ChannelTypeOpenAI, ApiKey: "actual-used-key"}})
 	require.Equal(t, "actual-used-key", task.PrivateData.Key)
@@ -45,7 +57,7 @@ func TestVideoVerificationDurableCompletionAndRollback(t *testing.T) {
 	require.False(t, won)
 	require.NoError(t, db.Model(&VideoVerificationRun{}).Count(&count).Error)
 	require.EqualValues(t, 1, count)
-	second := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSubmitted, Properties: Properties{OriginModelName: "seedance-2.0-fast"}}
+	second := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSubmitted, Properties: Properties{OriginModelName: "seedance-2.0"}}
 	require.NoError(t, second.Insert())
 	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("reject_video_outbox", func(tx *gorm.DB) {
 		if tx.Statement.Table == "video_verification_runs" {
@@ -76,9 +88,26 @@ func TestVideoVerificationDurableBulkAndImmediate(t *testing.T) {
 	require.NoError(t, TaskBulkUpdateByID(ids, map[string]any{"status": TaskStatusSuccess}))
 	var count int64
 	require.NoError(t, db.Model(&VideoVerificationRun{}).Count(&count).Error)
-	require.EqualValues(t, 4, count)
+	require.EqualValues(t, 2, count)
 	immediate := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSuccess, Properties: Properties{OriginModelName: "seedance-2.5"}}
 	require.NoError(t, immediate.Insert())
 	require.NoError(t, db.Model(&VideoVerificationRun{}).Count(&count).Error)
-	require.EqualValues(t, 5, count)
+	require.EqualValues(t, 3, count)
+}
+
+func TestVideoVerificationDoesNotEnqueueMiniOrFast(t *testing.T) {
+	db := webhookTestDB(t)
+	for _, name := range []string{"seedance-2.0-mini", "seedance-2.0-fast", "doubao-seedance-2.0-mini", "doubao-seedance-2.0-fast"} {
+		immediate := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSuccess, Properties: Properties{OriginModelName: name}}
+		require.NoError(t, immediate.Insert())
+		task := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSubmitted, Properties: Properties{OriginModelName: name}}
+		require.NoError(t, task.Insert())
+		task.Status = TaskStatusSuccess
+		won, err := task.UpdateWithStatus(TaskStatusSubmitted)
+		require.NoError(t, err)
+		require.True(t, won)
+	}
+	var count int64
+	require.NoError(t, db.Model(&VideoVerificationRun{}).Count(&count).Error)
+	require.Zero(t, count)
 }

@@ -101,13 +101,13 @@ func TestSeedanceResolutionFallbackBeforePriority(t *testing.T) {
 func TestVideoVerificationTechnicalFailureAlsoAlerts(t *testing.T) {
 	db := videoVerificationTestDB(t)
 	task := &model.Task{ID: 81, ChannelId: 7}
-	state, claimed, err := claimVideoVerification(t.Context(), task, "seedance-2.0-mini", 1000, 1000)
+	state, claimed, err := claimVideoVerification(t.Context(), task, "seedance-2.0", 1000, 1000)
 	require.NoError(t, err)
 	require.True(t, claimed)
 	require.NoError(t, finishVideoVerification(t.Context(), state, task, "notcomplete", "video_download_failed", nil, 1001))
 	var alert model.VideoVerificationAlert
 	require.NoError(t, db.First(&alert).Error)
 	require.Equal(t, "video_download_failed", alert.Reason)
-	require.Equal(t, "seedance-2.0-mini", alert.Model)
+	require.Equal(t, "seedance-2.0", alert.Model)
 	require.EqualValues(t, 1001, alert.DetectedAt)
 }

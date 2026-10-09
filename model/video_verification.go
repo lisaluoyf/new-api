@@ -57,6 +57,14 @@ func NormalizeVerifiedVideoModel(name string) string {
 	}
 }
 
+func NormalizeAutomaticVerifiedVideoModel(name string) string {
+	normalized := NormalizeVerifiedVideoModel(name)
+	if normalized == "seedance-2.0" || normalized == "seedance-2.5" {
+		return normalized
+	}
+	return ""
+}
+
 type VideoVerificationState struct {
 	ID             int64  `gorm:"primaryKey"`
 	ChannelID      int    `gorm:"uniqueIndex:video_verification_route"`
@@ -94,7 +102,7 @@ type VideoVerificationAlert struct {
 }
 
 func (task *Task) enqueueVideoVerification(tx *gorm.DB) error {
-	name := NormalizeVerifiedVideoModel(task.Properties.OriginModelName)
+	name := NormalizeAutomaticVerifiedVideoModel(task.Properties.OriginModelName)
 	if task.Status != TaskStatusSuccess || task.ChannelId <= 0 || name == "" {
 		return nil
 	}

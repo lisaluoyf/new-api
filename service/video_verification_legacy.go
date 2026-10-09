@@ -36,7 +36,7 @@ func importLegacyVideoVerificationEvents() {
 						if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 							continue
 						}
-						name := model.NormalizeVerifiedVideoModel(task.Properties.OriginModelName)
+						name := model.NormalizeAutomaticVerifiedVideoModel(task.Properties.OriginModelName)
 						if err == nil && task.Status == model.TaskStatusSuccess && name != "" {
 							run := model.VideoVerificationRun{TaskID: id, ChannelID: task.ChannelId, Model: name, CompletedAt: at, Status: "pending"}
 							if model.DB.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&run).Error != nil {
