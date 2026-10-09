@@ -341,7 +341,7 @@ func videoVerificationAlertEvidence(raw string) string {
 	for _, check := range checks {
 		byID[check.ID] = check
 	}
-	labels := map[string]string{"claim": "声明版本", "dimensions": "视频尺寸", "family": "容器指纹", "x264": "x264 编码", "frames": "视频帧数"}
+	labels := map[string]string{"claim": "声明版本", "dimensions": "视频尺寸", "family": "容器指纹", "x264": "编码指纹", "frames": "视频帧数"}
 	statuses := map[string]string{"pass": "✅ 通过", "fail": "❌ 不通过", "warn": "⚠️ 待确认", "skip": "⏸ 未判定"}
 	lines := []string{"**逐项检测**"}
 	passed := 0

@@ -99,7 +99,7 @@ func TestVideoVerificationIncompleteEvidenceIsPreservedInAlert(t *testing.T) {
 	card := videoVerificationAlertCard(&alert, "Apimart_seedance", "owner@example.com")
 	content := fmt.Sprint(card)
 	require.Contains(t, content, "4/5 通过")
-	for _, expected := range []string{"声明版本", "视频尺寸", "容器指纹", "x264 编码", "SD2.0", "864x496", "Lavf58.76.100", "superfast · crf 20.0", "未判定", "193（基线：97 / 121）"} {
+	for _, expected := range []string{"声明版本", "视频尺寸", "容器指纹", "编码指纹", "SD2.0", "864x496", "Lavf58.76.100", "superfast · crf 20.0", "未判定", "193（基线：97 / 121）"} {
 		require.Contains(t, content, expected)
 	}
 	var log model.ChannelDetectLog
