@@ -4849,5 +4849,7 @@
   "1K low": "1K qualité basse",
   "1K medium": "1K qualité moyenne",
   "2K low": "2K qualité basse",
-  "2K medium": "2K qualité moyenne"
+  "2K medium": "2K qualité moyenne",
+  "Fingerprint version": "Version de l’empreinte",
+  "Detector version": "Version du détecteur"
 }

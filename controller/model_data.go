@@ -24,6 +24,7 @@ import (
 
 // DetectPoint is one entry in a per-channel history series for the model-data UI.
 type DetectPoint struct {
+	DetectorVersion         string                        `json:"detector_version,omitempty"`
 	Kind                    string                        `json:"kind,omitempty"`
 	Checks                  []model.VideoFingerprintCheck `json:"checks,omitempty"`
 	Status                  string                        `json:"status"`      // 'pass' / 'suspicious' / 'notcomplete'
@@ -494,7 +495,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			h = &histories{}
 			byChannel[l.ChannelId] = h
 		}
-		point := DetectPoint{Status: l.Status, DetectTime: l.DetectTime, Note: l.Note, GroupName: l.GroupName, FingerprintModelVersion: l.FingerprintModelVersion}
+		point := DetectPoint{Status: l.Status, DetectTime: l.DetectTime, Note: l.Note, GroupName: l.GroupName, FingerprintModelVersion: l.FingerprintModelVersion, DetectorVersion: l.DetectorVersion}
 		if l.Source == "video" {
 			point.Kind = "video"
 			point.Checks = model.PublicVideoFingerprintChecks(l.VideoChecksJSON)
@@ -1233,11 +1234,13 @@ func applyGlobalModelPricingToRow(
 
 // PublicDetectPoint omits channel grouping and admin-only fingerprint metadata.
 type PublicDetectPoint struct {
-	Kind       string                        `json:"kind,omitempty"`
-	Checks     []model.VideoFingerprintCheck `json:"checks,omitempty"`
-	Status     string                        `json:"status"`
-	DetectTime int64                         `json:"detect_time"`
-	Top5       []TopKItem                    `json:"top5,omitempty"`
+	FingerprintModelVersion string                        `json:"fingerprint_model_version,omitempty"`
+	DetectorVersion         string                        `json:"detector_version,omitempty"`
+	Kind                    string                        `json:"kind,omitempty"`
+	Checks                  []model.VideoFingerprintCheck `json:"checks,omitempty"`
+	Status                  string                        `json:"status"`
+	DetectTime              int64                         `json:"detect_time"`
+	Top5                    []TopKItem                    `json:"top5,omitempty"`
 }
 
 // PublicMarketplaceItem is the public-facing shape returned by GetPublicMarketplace.
@@ -1520,6 +1523,10 @@ func GetPublicMarketplace(c *gin.Context) {
 			byChannel[l.ChannelId] = h
 		}
 		point := PublicDetectPoint{Status: l.Status, DetectTime: l.DetectTime}
+		if l.Source == "video" {
+			point.FingerprintModelVersion = l.FingerprintModelVersion
+			point.DetectorVersion = l.DetectorVersion
+		}
 		if l.Source == "video" {
 			point.Checks = model.PublicVideoFingerprintChecks(l.VideoChecksJSON)
 			if l.Status != "pass" || point.Checks == nil {

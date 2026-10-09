@@ -5202,5 +5202,7 @@
   "1K low": "1K 低质量",
   "1K medium": "1K 中等质量",
   "2K low": "2K 低质量",
-  "2K medium": "2K 中等质量"
+  "2K medium": "2K 中等质量",
+  "Fingerprint version": "指纹版本",
+  "Detector version": "检测程序版本"
 }

@@ -5164,5 +5164,7 @@
   "1K low": "1K low",
   "1K medium": "1K medium",
   "2K low": "2K low",
-  "2K medium": "2K medium"
+  "2K medium": "2K medium",
+  "Fingerprint version": "Fingerprint version",
+  "Detector version": "Detector version"
 }

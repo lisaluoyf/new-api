@@ -70,6 +70,7 @@ interface DetectPoint {
   detect_time: number // unix seconds
   note?: string
   group_name?: string // key_group at time of detection
+  detector_version?: string
   fingerprint_model_version?: string // e.g. apimaster_fingerprint_cccli_v0.1
   top5?: TopKItem[]
   top1_score_raw?: number // raw top1 score before boost; non-zero only when boost was applied
@@ -508,6 +509,22 @@ function DotGrid({
                             )}
                           </div>
                         )}
+                      {p.fingerprint_model_version?.startsWith('seedance-') && (
+                        <div className='border-t border-white/10 pt-1 text-[11px]'>
+                          {t('Fingerprint version')}:{' '}
+                          <span className='font-mono'>
+                            {p.fingerprint_model_version}
+                          </span>
+                          {p.detector_version && (
+                            <div>
+                              {t('Detector version')}:{' '}
+                              <span className='font-mono'>
+                                {p.detector_version}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {p.top5 && p.top5.length > 0 && (
                         <div className='mt-0.5 space-y-0.5 border-t border-white/10 pt-1'>
                           <div className='text-[10px] tracking-wide uppercase opacity-50'>
