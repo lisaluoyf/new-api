@@ -154,10 +154,10 @@ func handleVideoVerificationEvent(taskID, completedAt int64) bool {
 	if !claimed {
 		return true
 	}
-	status, reason, checks := verifyDeliveredVideo(ctx, &task, normalized)
+	status, reason, checks, provenance := verifyDeliveredVideoWithProvenance(ctx, &task, normalized)
 	persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer persistCancel()
-	if err := finishVideoVerification(persistCtx, state, &task, status, reason, checks, time.Now().Unix()); err != nil {
+	if err := finishVideoVerification(persistCtx, state, &task, status, reason, checks, time.Now().Unix(), provenance); err != nil {
 		common.SysError("video verification result persistence failed")
 		return false
 	}
@@ -165,7 +165,11 @@ func handleVideoVerificationEvent(taskID, completedAt int64) bool {
 	return true
 }
 
-func finishVideoVerification(ctx context.Context, state *model.VideoVerificationState, task *model.Task, status, reason string, checks []model.VideoFingerprintCheck, now int64) error {
+func finishVideoVerification(ctx context.Context, state *model.VideoVerificationState, task *model.Task, status, reason string, checks []model.VideoFingerprintCheck, now int64, versions ...videoVerificationProvenance) error {
+	provenance := videoVerificationProvenance{}
+	if len(versions) > 0 {
+		provenance = versions[0]
+	}
 	return model.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(state).Where("active_task_id = ? AND lease_until = ?", task.ID, state.LeaseUntil).Updates(map[string]interface{}{"last_task_id": task.ID, "active_task_id": 0, "lease_until": 0, "next_at": 0, "last_status": status, "last_detected_at": now})
 		if result.Error != nil {
@@ -174,19 +178,19 @@ func finishVideoVerification(ctx context.Context, state *model.VideoVerification
 		if result.RowsAffected != 1 {
 			return errors.New("video verification lease lost")
 		}
-		if err := tx.Model(&model.VideoVerificationRun{}).Where("task_id = ? AND status = ?", task.ID, "processing").Updates(map[string]interface{}{"status": status, "lease_until": 0}).Error; err != nil {
+		if err := tx.Model(&model.VideoVerificationRun{}).Where("task_id = ? AND status = ?", task.ID, "processing").Updates(map[string]interface{}{"status": status, "lease_until": 0, "fingerprint_model_version": provenance.FingerprintModelVersion, "detector_version": provenance.DetectorVersion, "baseline_sha256": provenance.BaselineSHA256}).Error; err != nil {
 			return err
 		}
 		encoded, err := common.Marshal(checks)
 		if err != nil {
 			return err
 		}
-		entry := model.ChannelDetectLog{ChannelId: task.ChannelId, Source: "video", Status: status, ClaimedModel: state.Model, VideoChecksJSON: string(encoded), DetectTime: now, Note: reason}
+		entry := model.ChannelDetectLog{ChannelId: task.ChannelId, Source: "video", Status: status, ClaimedModel: state.Model, VideoChecksJSON: string(encoded), FingerprintModelVersion: provenance.FingerprintModelVersion, DetectorVersion: provenance.DetectorVersion, BaselineSHA256: provenance.BaselineSHA256, DetectTime: now, Note: reason}
 		if err := tx.Create(&entry).Error; err != nil {
 			return err
 		}
 		if status != "pass" && model.NormalizeAutomaticVerifiedVideoModel(state.Model) != "" {
-			alert := model.VideoVerificationAlert{TaskID: task.ID, ChannelID: task.ChannelId, Model: state.Model, Reason: reason, VideoChecksJSON: string(encoded), DetectedAt: now, NextAt: now, Status: "pending"}
+			alert := model.VideoVerificationAlert{TaskID: task.ID, ChannelID: task.ChannelId, Model: state.Model, Reason: reason, VideoChecksJSON: string(encoded), FingerprintModelVersion: provenance.FingerprintModelVersion, DetectorVersion: provenance.DetectorVersion, BaselineSHA256: provenance.BaselineSHA256, DetectedAt: now, NextAt: now, Status: "pending"}
 			return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&alert).Error
 		}
 		return nil
@@ -315,6 +319,9 @@ func videoVerificationAlertCard(alert *model.VideoVerificationAlert, channelName
 		map[string]any{"tag": "markdown", "content": fmt.Sprintf("**用户邮箱**　%s\n**渠道**　%s\n**声明模型**　%s", email, channelLabel, alert.Model)},
 		map[string]any{"tag": "hr"},
 		map[string]any{"tag": "markdown", "content": "**原因**\n" + reason + "\n`" + alert.Reason + "`"},
+	}
+	if alert.FingerprintModelVersion != "" {
+		elements = append(elements, map[string]any{"tag": "markdown", "content": "**指纹版本**　" + alert.FingerprintModelVersion + "\n**检测程序**　" + alert.DetectorVersion})
 	}
 	if evidence := videoVerificationAlertEvidence(alert.VideoChecksJSON); evidence != "" {
 		elements = append(elements, map[string]any{"tag": "markdown", "content": evidence})

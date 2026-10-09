@@ -1,6 +1,8 @@
 package model
 
 import (
+	"os"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -53,6 +55,10 @@ func NormalizeVerifiedVideoModel(name string) string {
 	case "seedance-2.5", "doubao-seedance-2.5":
 		return "seedance-2.5"
 	default:
+		name = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(name)), "doubao-")
+		if regexp.MustCompile(`^seedance-[0-9]+\.[0-9]+(-[a-z0-9]+)*$`).MatchString(name) {
+			return name
+		}
 		return ""
 	}
 }
@@ -61,6 +67,11 @@ func NormalizeAutomaticVerifiedVideoModel(name string) string {
 	normalized := NormalizeVerifiedVideoModel(name)
 	if normalized == "seedance-2.0" || normalized == "seedance-2.5" {
 		return normalized
+	}
+	for _, enabled := range strings.Split(os.Getenv("SEEDANCE_AUTO_VERIFIED_MODELS"), ",") {
+		if normalized != "" && normalized == strings.TrimSpace(enabled) {
+			return normalized
+		}
 	}
 	return ""
 }
@@ -78,27 +89,33 @@ type VideoVerificationState struct {
 }
 
 type VideoVerificationRun struct {
-	ID          int64 `gorm:"primaryKey"`
-	TaskID      int64 `gorm:"uniqueIndex"`
-	ChannelID   int
-	Model       string `gorm:"type:varchar(64)"`
-	CompletedAt int64
-	Status      string `gorm:"type:varchar(16);index"`
-	LeaseUntil  int64  `gorm:"index"`
+	FingerprintModelVersion string `gorm:"type:varchar(128)"`
+	DetectorVersion         string `gorm:"type:varchar(128)"`
+	BaselineSHA256          string `gorm:"type:text"`
+	ID                      int64  `gorm:"primaryKey"`
+	TaskID                  int64  `gorm:"uniqueIndex"`
+	ChannelID               int
+	Model                   string `gorm:"type:varchar(64)"`
+	CompletedAt             int64
+	Status                  string `gorm:"type:varchar(16);index"`
+	LeaseUntil              int64  `gorm:"index"`
 }
 
 type VideoVerificationAlert struct {
-	ID              int64 `gorm:"primaryKey"`
-	TaskID          int64 `gorm:"uniqueIndex"`
-	ChannelID       int
-	Model           string `gorm:"type:varchar(64)"`
-	Reason          string `gorm:"type:varchar(64)"`
-	VideoChecksJSON string `gorm:"type:text"`
-	DetectedAt      int64
-	Attempts        int
-	NextAt          int64 `gorm:"index"`
-	LeaseUntil      int64
-	Status          string `gorm:"type:varchar(16);index"`
+	FingerprintModelVersion string `gorm:"type:varchar(128)"`
+	DetectorVersion         string `gorm:"type:varchar(128)"`
+	BaselineSHA256          string `gorm:"type:text"`
+	ID                      int64  `gorm:"primaryKey"`
+	TaskID                  int64  `gorm:"uniqueIndex"`
+	ChannelID               int
+	Model                   string `gorm:"type:varchar(64)"`
+	Reason                  string `gorm:"type:varchar(64)"`
+	VideoChecksJSON         string `gorm:"type:text"`
+	DetectedAt              int64
+	Attempts                int
+	NextAt                  int64 `gorm:"index"`
+	LeaseUntil              int64
+	Status                  string `gorm:"type:varchar(16);index"`
 }
 
 func (task *Task) enqueueVideoVerification(tx *gorm.DB) error {

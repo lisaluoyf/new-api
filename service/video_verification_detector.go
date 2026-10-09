@@ -18,15 +18,25 @@ import (
 
 const videoVerificationMaxBytes int64 = 500 * 1024 * 1024
 
+type videoVerificationProvenance struct {
+	FingerprintModelVersion string
+	DetectorVersion         string
+	BaselineSHA256          string
+}
+
 type videoVerificationResult struct {
-	Claimed  string `json:"claimed"`
-	Verdict  string `json:"verdict"`
-	Reason   string `json:"reason"`
-	Pipeline string `json:"pipeline"`
-	Family   string `json:"family"`
-	Baseline struct {
-		Expires string `json:"expires"`
-		Stale   *bool  `json:"stale"`
+	FingerprintModelVersion string `json:"fingerprint_model_version"`
+	DetectorVersion         string `json:"detector_version"`
+	Claimed                 string `json:"claimed"`
+	Verdict                 string `json:"verdict"`
+	Reason                  string `json:"reason"`
+	Pipeline                string `json:"pipeline"`
+	Family                  string `json:"family"`
+	Baseline                struct {
+		Expires        string            `json:"expires"`
+		ClaimedModel   string            `json:"claimed_model"`
+		ArtifactSHA256 map[string]string `json:"artifact_sha256"`
+		Stale          *bool             `json:"stale"`
 	} `json:"baseline"`
 	Checks []model.VideoFingerprintCheck `json:"checks"`
 }
@@ -40,10 +50,17 @@ func classifyVerifiedVideo(result videoVerificationResult, normalized string, no
 	if err != nil || result.Baseline.Stale == nil || *result.Baseline.Stale || !now.Before(expires.Add(24*time.Hour)) {
 		return "notcomplete", "baseline_unavailable_or_expired", nil
 	}
+	knownPipeline := result.Pipeline == "SD2.0" || result.Pipeline == "SD2.5"
+	if normalized != "seedance-2.5" && normalized != "seedance-2.0" && normalized != "seedance-2.0-fast" && normalized != "seedance-2.0-mini" {
+		if result.Baseline.ClaimedModel != normalized || result.FingerprintModelVersion == "" || !strings.HasPrefix(result.Claimed, "SD") {
+			return "notcomplete", "unexpected_claim", nil
+		}
+		expected = result.Claimed
+		knownPipeline = strings.HasPrefix(result.Pipeline, "SD")
+	}
 	if result.Claimed != expected {
 		return "notcomplete", "unexpected_claim", nil
 	}
-	knownPipeline := result.Pipeline == "SD2.0" || result.Pipeline == "SD2.5"
 	if result.Family != "ark" || !knownPipeline {
 		return "notcomplete", "unknown_fingerprint", nil
 	}
@@ -69,25 +86,27 @@ func classifyVerifiedVideo(result videoVerificationResult, normalized string, no
 	return "pass", "match", checks
 }
 
-func verifyDeliveredVideo(ctx context.Context, task *model.Task, normalized string) (string, string, []model.VideoFingerprintCheck) {
+func verifyDeliveredVideoWithProvenance(ctx context.Context, task *model.Task, normalized string) (string, string, []model.VideoFingerprintCheck, videoVerificationProvenance) {
 	channel, err := model.CacheGetChannel(task.ChannelId)
 	if err != nil {
-		return "notcomplete", "channel_unavailable", nil
+		return "notcomplete", "channel_unavailable", nil, videoVerificationProvenance{}
 	}
 	if strings.TrimSpace(channel.GetSetting().Proxy) != "" {
-		return "notcomplete", "proxy_download_not_supported", nil
+		return "notcomplete", "proxy_download_not_supported", nil, videoVerificationProvenance{}
 	}
 	mediaURL, key := videoVerificationMediaURL(task, channel)
 	file, err := downloadVerificationVideo(ctx, mediaURL, key)
 	if err != nil {
-		return "notcomplete", "video_download_failed", nil
+		return "notcomplete", "video_download_failed", nil, videoVerificationProvenance{}
 	}
 	defer func() { file.Close(); os.Remove(file.Name()) }()
 	result, err := requestVideoVerification(ctx, file, normalized)
 	if err != nil {
-		return "notcomplete", "detector_unavailable", nil
+		return "notcomplete", "detector_unavailable", nil, videoVerificationProvenance{}
 	}
-	return classifyVerifiedVideo(result, normalized, time.Now().UTC())
+	status, reason, checks := classifyVerifiedVideo(result, normalized, time.Now().UTC())
+	raw, _ := common.Marshal(result.Baseline.ArtifactSHA256)
+	return status, reason, checks, videoVerificationProvenance{FingerprintModelVersion: result.FingerprintModelVersion, DetectorVersion: result.DetectorVersion, BaselineSHA256: string(raw)}
 }
 
 func videoVerificationMediaURL(task *model.Task, channel *model.Channel) (string, string) {
@@ -182,6 +201,9 @@ func requestVideoVerification(ctx context.Context, file *os.File, normalized str
 			claim = "sd25"
 		}
 		err := multipartWriter.WriteField("claim", claim)
+		if err == nil {
+			err = multipartWriter.WriteField("model", normalized)
+		}
 		if err == nil {
 			var part io.Writer
 			part, err = multipartWriter.CreateFormFile("files", "verification.mp4")

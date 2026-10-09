@@ -4,6 +4,8 @@ package model
 // source='sync' means the result was read from apimaster PG (detection_sync task).
 // source='auto' means new-api triggered the detection itself (auto_detect task).
 type ChannelDetectLog struct {
+	DetectorVersion         string  `json:"detector_version,omitempty" gorm:"type:varchar(128)"`
+	BaselineSHA256          string  `json:"baseline_sha256,omitempty" gorm:"type:text"`
 	VideoChecksJSON         string  `json:"video_checks_json,omitempty" gorm:"type:text"`
 	Id                      int64   `json:"id"`
 	ChannelId               int     `json:"channel_id" gorm:"index;not null"`

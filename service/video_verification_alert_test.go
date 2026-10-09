@@ -145,3 +145,28 @@ func TestVideoVerificationAlertUserEmail(t *testing.T) {
 	_, err = videoVerificationAlertUserEmail(1)
 	require.Error(t, err)
 }
+
+func TestVideoVerificationHistoryStoresImmutableVersion(t *testing.T) {
+	db := videoVerificationTestDB(t)
+	task := &model.Task{ID: 777, ChannelId: 272}
+	state := &model.VideoVerificationState{ChannelID: 272, Model: "seedance-2.0", ActiveTaskID: 777, LeaseUntil: 999}
+	require.NoError(t, db.Create(state).Error)
+	require.NoError(t, db.Create(&model.VideoVerificationRun{TaskID: 777, Status: "processing"}).Error)
+	meta := videoVerificationProvenance{FingerprintModelVersion: "seedance-2.0-fp-v1", DetectorVersion: "seedance-detector-v2", BaselineSHA256: "immutable-digest"}
+	require.NoError(t, finishVideoVerification(context.Background(), state, task, "notcomplete", "incomplete_evidence", nil, 123, meta))
+	var history model.ChannelDetectLog
+	require.NoError(t, db.First(&history).Error)
+	require.Equal(t, meta.FingerprintModelVersion, history.FingerprintModelVersion)
+	require.Equal(t, meta.DetectorVersion, history.DetectorVersion)
+	require.Equal(t, meta.BaselineSHA256, history.BaselineSHA256)
+	var run model.VideoVerificationRun
+	require.NoError(t, db.First(&run).Error)
+	require.Equal(t, meta.FingerprintModelVersion, run.FingerprintModelVersion)
+	var alert model.VideoVerificationAlert
+	require.NoError(t, db.First(&alert).Error)
+	require.Equal(t, meta.FingerprintModelVersion, alert.FingerprintModelVersion)
+	raw, err := common.Marshal(videoVerificationAlertCard(&alert, "official", ""))
+	require.NoError(t, err)
+	require.Contains(t, string(raw), meta.FingerprintModelVersion)
+	require.Contains(t, string(raw), meta.DetectorVersion)
+}
