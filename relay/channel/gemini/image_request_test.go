@@ -43,9 +43,11 @@ func TestGeminiImageEditsPassReferencesAndPreserveClientFormat(t *testing.T) {
 		} else {
 			req.Image, _ = common.Marshal("data:image/png;base64," + base64.StdEncoding.EncodeToString(pngData.Bytes()))
 		}
-		info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeImagesEdits, OriginModelName: req.Model}
-		converted, err := convertGeminiImagineImageRequest(c, info, req)
+		info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeImagesEdits, OriginModelName: req.Model,
+			ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gemini-nano-banana-2.1-b"}}
+		result, err := (&Adaptor{}).ConvertImageRequest(c, info, req)
 		require.NoError(t, err)
+		converted := result.(*dto.GeminiChatRequest)
 		require.Len(t, converted.Contents[0].Parts, 2)
 		require.Equal(t, base64.StdEncoding.EncodeToString(pngData.Bytes()), converted.Contents[0].Parts[1].InlineData.Data)
 		require.Equal(t, "image/png", converted.Contents[0].Parts[1].InlineData.MimeType)
@@ -55,6 +57,31 @@ func TestGeminiImageEditsPassReferencesAndPreserveClientFormat(t *testing.T) {
 		require.NoError(t, common.Unmarshal(converted.GenerationConfig.ImageConfig, &config))
 		require.Equal(t, "2K", config["imageSize"])
 		require.Equal(t, "1:1", config["aspectRatio"])
+	}
+}
+
+func TestGeminiMappedImageGenerationPreservesAliasAndResolution(t *testing.T) {
+	for _, tier := range []string{"1K", "2K", "4K"} {
+		t.Run(tier, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/v1/images/generations", nil)
+			req := dto.ImageRequest{Model: "gemini-nano-banana-2.1", Prompt: "teapot", Resolution: tier, Size: "1:1"}
+			info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeImagesGenerations, OriginModelName: req.Model,
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gemini-nano-banana-2.1-b", ChannelBaseUrl: "https://upstream.example"}}
+			adaptor := &Adaptor{}
+			result, err := adaptor.ConvertImageRequest(c, info, req)
+			require.NoError(t, err)
+			converted := result.(*dto.GeminiChatRequest)
+			require.Equal(t, []string{"TEXT", "IMAGE"}, converted.GenerationConfig.ResponseModalities)
+			var config map[string]string
+			require.NoError(t, common.Unmarshal(converted.GenerationConfig.ImageConfig, &config))
+			require.Equal(t, tier, config["imageSize"])
+			require.Equal(t, "1:1", config["aspectRatio"])
+			url, err := adaptor.GetRequestURL(info)
+			require.NoError(t, err)
+			require.Equal(t, "https://upstream.example/v1beta/models/gemini-nano-banana-2.1-b:generateContent", url)
+			require.Equal(t, req.Model, info.OriginModelName)
+		})
 	}
 }
 

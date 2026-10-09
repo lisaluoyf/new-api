@@ -71,9 +71,9 @@ func GetGeminiVersionSetting(key string) string {
 }
 
 func IsGeminiModelSupportImagine(model string) bool {
-	// Persisted operator lists predate this canonical image model. Its native
-	// generateContent capability must not depend on re-saving that old list.
-	if model == "gemini-nano-banana-2.1" {
+	// Persisted operator lists predate this image model and its verified upstream
+	// alias. Both use generateContent; preserve the alias in the upstream URL.
+	if model == "gemini-nano-banana-2.1" || model == "gemini-nano-banana-2.1-b" {
 		return true
 	}
 	for _, v := range geminiSettings.SupportedImagineModels {
