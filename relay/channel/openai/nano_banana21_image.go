@@ -75,9 +75,24 @@ func nanoBanana21ImageBridge(info *relaycommon.RelayInfo) bool {
 		(info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits)
 }
 
+// Apimart serves this alias through Images, including reference editing on
+// generations. Chat reports an unrelated model price error; edits is Grok-only.
+func nanoBanana21ApimartImages(info *relaycommon.RelayInfo) bool {
+	if info == nil || info.ChannelMeta == nil || info.ChannelType != constant.ChannelTypeOpenAI ||
+		info.OriginModelName != "gemini-nano-banana-2.1" || info.UpstreamModelName != "gemini-nano-banana-2.1-ext" ||
+		(info.RelayMode != relayconstant.RelayModeImagesGenerations && info.RelayMode != relayconstant.RelayModeImagesEdits) {
+		return false
+	}
+	base, err := url.Parse(info.ChannelBaseUrl)
+	return err == nil && (strings.EqualFold(base.Hostname(), "api.apib.ai") || strings.EqualFold(base.Hostname(), "api.apimart.ai"))
+}
+
 // OpenAI-compatible hubs exposing nano-banana-2.1 implement native Images APIs.
 // They require image/images on edits; image_urls on generations is ignored.
 func nanoBanana21NativeImages(info *relaycommon.RelayInfo) bool {
+	if nanoBanana21ApimartImages(info) {
+		return true
+	}
 	return info != nil && info.ChannelMeta != nil &&
 		info.OriginModelName == "gemini-nano-banana-2.1" &&
 		info.ChannelType == constant.ChannelTypeOpenAI && info.UpstreamModelName == "nano-banana-2.1" &&
@@ -178,6 +193,16 @@ func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo
 			"generationConfig": map[string]any{"responseModalities": []string{"TEXT", "IMAGE"}, "imageConfig": map[string]string{"imageSize": tier, "aspectRatio": aspect}},
 		}, nil
 	}
+	if nanoBanana21ApimartImages(info) {
+		body := map[string]any{"model": req.Model, "prompt": req.Prompt, "n": 1, "size": aspect, "resolution": tier, "quality": tier, "response_format": "b64_json"}
+		if len(req.ImageUrls) > 0 {
+			body["image_urls"] = append([]string(nil), req.ImageUrls...)
+		}
+		if req.ResponseFormat == "b64_json" {
+			c.Set("gpt_image2_client_response_format", "b64_json")
+		}
+		return body, nil
+	}
 	if nanoBanana21NativeImages(info) {
 		// These hubs use quality for imageSize; resolution alone is ignored.
 		body := map[string]any{"model": req.Model, "prompt": req.Prompt, "n": 1, "size": req.Size, "resolution": tier, "quality": tier, "response_format": "b64_json"}
@@ -204,6 +229,17 @@ func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo
 }
 
 func normalizeNanoBanana21ImageResponse(c *gin.Context, info *relaycommon.RelayInfo, raw []byte) ([]byte, error) {
+	if nanoBanana21ApimartImages(info) {
+		var submitted struct {
+			Data []struct {
+				TaskID string `json:"task_id"`
+			} `json:"data"`
+		}
+		if common.Unmarshal(raw, &submitted) == nil && len(submitted.Data) > 0 && submitted.Data[0].TaskID != "" {
+			// A task is not an image. Preserve it for polling without recording a count.
+			return raw, nil
+		}
+	}
 	var response struct {
 		Data []struct {
 			URL string `json:"url"`

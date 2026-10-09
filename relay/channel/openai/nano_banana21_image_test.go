@@ -353,3 +353,51 @@ func TestNanoBanana21GenerationReferencesUseAttemptLocalEdit(t *testing.T) {
 		})
 	}
 }
+
+func TestNanoBanana21ApimartImages(t *testing.T) {
+	for _, host := range []string{"api.apib.ai", "api.apimart.ai"} {
+		for _, mode := range []int{relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits} {
+			for _, tier := range []string{"1K", "2K", "4K"} {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest("POST", "/v1/images/edits/async", strings.NewReader("{}"))
+				c.Request.Header.Set("Content-Type", "application/json")
+				info := &relaycommon.RelayInfo{OriginModelName: "gemini-nano-banana-2.1", RelayMode: mode, RequestURLPath: c.Request.URL.Path,
+					ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenAI, UpstreamModelName: "gemini-nano-banana-2.1-ext", ChannelBaseUrl: "https://" + host}, PriceData: types.PriceData{}}
+				require.True(t, nanoBanana21NativeImages(info))
+				require.False(t, nanoBanana21ImageBridge(info))
+				url, err := (&Adaptor{}).GetRequestURL(info)
+				require.NoError(t, err)
+				require.Equal(t, "https://"+host+"/v1/images/generations", url)
+				refs := []string{"https://example.com/reference-A.png", "data:image/png;base64,cmVm"}
+				req := dto.ImageRequest{Model: info.UpstreamModelName, Prompt: "preserve references", Resolution: tier, Size: "16:9", ImageUrls: refs, ResponseFormat: "b64_json"}
+				wire, err := (&Adaptor{}).ConvertImageRequest(c, info, req)
+				require.NoError(t, err)
+				body := wire.(map[string]any)
+				require.Equal(t, refs, body["image_urls"])
+				require.Equal(t, tier, body["resolution"])
+				require.Equal(t, "16:9", body["size"])
+				require.Equal(t, info.UpstreamModelName, body["model"])
+				require.NotContains(t, body, "messages")
+				require.NotContains(t, body, "image")
+				require.False(t, c.GetBool("nano_banana21_native_edit"))
+				require.Equal(t, mode, info.RelayMode)
+				delete(service.ImageRequestDataFromContext(c), "actual_image_count")
+				submitted := []byte(`{"code":200,"data":[{"status":"submitted","task_id":"upstream-task"}]}`)
+				raw, err := normalizeNanoBanana21ImageResponse(c, info, submitted)
+				require.NoError(t, err)
+				require.Equal(t, submitted, raw)
+				require.NotContains(t, service.ImageRequestDataFromContext(c), "actual_image_count")
+				_, err = normalizeNanoBanana21ImageResponse(c, info, []byte(`{"data":[{"task_id":""}]}`))
+				require.Error(t, err)
+				completed := []byte(`{"data":[{"url":"https://example.com/result.png"}]}`)
+				_, err = normalizeNanoBanana21ImageResponse(c, info, completed)
+				require.NoError(t, err)
+				require.Equal(t, 1, service.ImageRequestDataFromContext(c)["actual_image_count"])
+				require.Equal(t, "b64_json", service.GptImage2ClientResponseFormat(c))
+				info.ChannelBaseUrl = "https://example.com"
+				require.False(t, nanoBanana21ApimartImages(info))
+				require.True(t, nanoBanana21ImageBridge(info))
+			}
+		}
+	}
+}

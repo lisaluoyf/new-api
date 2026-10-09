@@ -103,7 +103,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	}
 	if nanoBanana21NativeImages(info) {
 		path := "/v1/images/generations"
-		if info.RelayMode == relayconstant.RelayModeImagesEdits {
+		if info.RelayMode == relayconstant.RelayModeImagesEdits && !nanoBanana21ApimartImages(info) {
 			path = "/v1/images/edits"
 		}
 		return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, path, info.ChannelType), nil

@@ -1426,6 +1426,12 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		}
 	}
 
+	if nanoBanana21ApimartImages(info) && !isClientAsyncImagePath(c) {
+		responseBody, err = normalizeNanoBanana21ImageResponse(c, info, responseBody)
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+		}
+	}
 	var usageResp dto.SimpleResponse
 	usageBody := responseBody
 	if isClientAsyncImagePath(c) {
