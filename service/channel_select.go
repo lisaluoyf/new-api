@@ -115,6 +115,10 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 	pickFilter := ChannelPickFilter(param.Ctx, param.ModelName)
+	var providerScope *model.ChannelPickScope
+	if policy := ProviderPolicyForModel(param.Ctx, param.ModelName); policy != nil {
+		providerScope = &model.ChannelPickScope{Include: policy.Mode == "include", IDs: policy.ChannelIDs}
+	}
 	if param.Ctx.GetString("seedance_draft_key_fingerprint") != "" {
 		return nil, selectGroup, errors.New("Draft cannot be retried automatically; retry with the same draft_task_id later")
 	}
@@ -192,7 +196,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry, pickFilter)
+			channel, _ = model.GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry, pickFilter, providerScope)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -230,7 +234,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry(), pickFilter)
+		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry(), pickFilter, providerScope)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

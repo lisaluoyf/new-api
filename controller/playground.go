@@ -44,14 +44,6 @@ func Playground(c *gin.Context) {
 
 	userId := c.GetInt("id")
 
-	// Write user context to ensure acceptUnsetRatio is available
-	userCache, err := model.GetUserCache(userId)
-	if err != nil {
-		newAPIError = types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
-		return
-	}
-	userCache.WriteContext(c)
-
 	tempToken := &model.Token{
 		UserId: userId,
 		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),

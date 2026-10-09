@@ -1018,7 +1018,7 @@ func startImageRaceHedge(c *gin.Context, info *relaycommon.RelayInfo) (target se
 //
 // Runs fully detached from the original request: must not touch the original *gin.Context
 // (Gin recycles it once the response has been written) or derive an HTTP context from it.
-func scheduleAsyncImageRaceHedge(publicTaskID, modelName string, requestBody []byte, triggerDelay time.Duration) {
+func scheduleAsyncImageRaceHedge(publicTaskID, modelName string, requestBody []byte, triggerDelay time.Duration, providerPolicy *dto.ProviderSetting) {
 	if !common.GptImage2RaceFallbackEnabled || len(requestBody) == 0 {
 		return
 	}
@@ -1056,10 +1056,11 @@ func scheduleAsyncImageRaceHedge(publicTaskID, modelName string, requestBody []b
 			return // resolved between submit and now — nothing to hedge
 		}
 
-		channelB, err := service.SelectCheapestEnabledChannelExcludingWithFilter(
+		channelB, err := service.SelectCheapestEnabledChannelInScope(
 			service.NormalizeGptImage2ModelName(modelName),
 			[]int{task.ChannelId},
 			service.GptImage2ChannelPickFilterForTask(modelName, requestBody),
+			providerPolicy,
 		)
 		if err != nil || channelB == nil {
 			return
@@ -1350,7 +1351,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 			if publicTaskID != upstreamTaskID && info.RelayMode != relayconstant.RelayModeImagesEdits {
 				if rawBody, exists := c.Get(imageRequestBodyContextKey); exists {
 					if bodyBytes, ok := rawBody.([]byte); ok && len(bodyBytes) > 0 {
-						scheduleAsyncImageRaceHedge(publicTaskID, info.OriginModelName, bodyBytes, imageRaceTriggerFromContext(c))
+						scheduleAsyncImageRaceHedge(publicTaskID, info.OriginModelName, bodyBytes, imageRaceTriggerFromContext(c), service.ProviderPolicyForModel(c, info.OriginModelName))
 					}
 				}
 			}

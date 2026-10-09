@@ -114,6 +114,9 @@ func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability fun
 		return nil, err
 	}
 	filter := func(ch *model.Channel) bool {
+		if ch == nil || !ProviderChannelAllowed(ProviderPolicyForModel(c, name), ch.Id) {
+			return false
+		}
 		parsed, e := url.Parse(ch.GetBaseURL())
 		if e != nil {
 			return false
@@ -146,7 +149,7 @@ func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability fun
 			ch = nil
 		}
 	} else {
-		ch, err = SelectCheapestEnabledChannelExcludingWithFilter(name, nil, filter)
+		ch, err = SelectCheapestEnabledChannelInScope(name, nil, filter, ProviderPolicyForModel(c, name))
 	}
 	if err != nil || ch == nil {
 		return nil, seedanceError(503, "Media library is temporarily unavailable")

@@ -96,10 +96,10 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func GetRandomSatisfiedChannel(group string, model string, retry int, filter ChannelPickFilter) (*Channel, error) {
+func GetRandomSatisfiedChannel(group string, model string, retry int, filter ChannelPickFilter, scopes ...*ChannelPickScope) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		return GetChannel(group, model, retry, filter)
+		return GetChannel(group, model, retry, filter, scopes...)
 	}
 
 	channelSyncLock.RLock()
@@ -116,6 +116,18 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, filter Cha
 
 	if len(channels) == 0 {
 		return nil, nil
+	}
+	if len(scopes) > 0 && scopes[0] != nil {
+		filtered := make([]int, 0, len(channels))
+		for _, channelID := range channels {
+			if scopes[0].Contains(channelID) {
+				filtered = append(filtered, channelID)
+			}
+		}
+		channels = filtered
+		if len(channels) == 0 {
+			return nil, nil
+		}
 	}
 
 	if len(channels) == 1 {

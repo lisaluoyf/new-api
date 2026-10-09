@@ -996,6 +996,9 @@ func shouldUseOfficialFallback(c *gin.Context, info *relaycommon.RelayInfo, retr
 	if !ok {
 		return model_setting.OfficialFallbackPolicy{}, false
 	}
+	if !service.ProviderChannelAllowed(service.ProviderPolicyForModel(c, info.OriginModelName), policy.OfficialChannelID) {
+		return model_setting.OfficialFallbackPolicy{}, false
+	}
 	if retryParam.GetRetry() < policy.FallbackAfter+1 {
 		return model_setting.OfficialFallbackPolicy{}, false
 	}
@@ -1220,6 +1223,9 @@ func shouldRetryForOfficialFallback(c *gin.Context, retryIndex int) bool {
 	if !ok {
 		return false
 	}
+	if !service.ProviderChannelAllowed(service.ProviderPolicyForModel(c, c.GetString("original_model")), policy.OfficialChannelID) {
+		return false
+	}
 	if retryIndex < policy.FallbackAfter {
 		return false
 	}
@@ -1235,7 +1241,8 @@ func shouldRetryForOfficialFallbackModel(c *gin.Context, retryIndex int) bool {
 	if c == nil || c.GetBool("official_fallback_triggered") {
 		return false
 	}
-	if _, ok := model_setting.FindOfficialFallbackPolicy(c.GetString("original_model")); !ok {
+	policy, ok := model_setting.FindOfficialFallbackPolicy(c.GetString("original_model"))
+	if !ok || !service.ProviderChannelAllowed(service.ProviderPolicyForModel(c, c.GetString("original_model")), policy.OfficialChannelID) {
 		return false
 	}
 	if retryIndex != 0 {

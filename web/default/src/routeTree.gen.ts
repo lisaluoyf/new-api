@@ -43,6 +43,7 @@ import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedRegistrationChannelsIndexRouteImport } from './routes/_authenticated/registration-channels/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
+import { Route as AuthenticatedProviderSettingsIndexRouteImport } from './routes/_authenticated/provider-settings/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedPaymentReconciliationIndexRouteImport } from './routes/_authenticated/payment-reconciliation/index'
@@ -251,6 +252,12 @@ const AuthenticatedRedemptionCodesIndexRoute =
   AuthenticatedRedemptionCodesIndexRouteImport.update({
     id: '/redemption-codes/',
     path: '/redemption-codes/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedProviderSettingsIndexRoute =
+  AuthenticatedProviderSettingsIndexRouteImport.update({
+    id: '/provider-settings/',
+    path: '/provider-settings/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedProfileIndexRoute =
@@ -500,6 +507,7 @@ export interface FileRoutesByFullPath {
   '/payment-reconciliation/': typeof AuthenticatedPaymentReconciliationIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
+  '/provider-settings/': typeof AuthenticatedProviderSettingsIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/registration-channels/': typeof AuthenticatedRegistrationChannelsIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
@@ -567,6 +575,7 @@ export interface FileRoutesByTo {
   '/payment-reconciliation': typeof AuthenticatedPaymentReconciliationIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
+  '/provider-settings': typeof AuthenticatedProviderSettingsIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/registration-channels': typeof AuthenticatedRegistrationChannelsIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
@@ -638,6 +647,7 @@ export interface FileRoutesById {
   '/_authenticated/payment-reconciliation/': typeof AuthenticatedPaymentReconciliationIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
+  '/_authenticated/provider-settings/': typeof AuthenticatedProviderSettingsIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/registration-channels/': typeof AuthenticatedRegistrationChannelsIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
@@ -708,6 +718,7 @@ export interface FileRouteTypes {
     | '/payment-reconciliation/'
     | '/playground/'
     | '/profile/'
+    | '/provider-settings/'
     | '/redemption-codes/'
     | '/registration-channels/'
     | '/subscriptions/'
@@ -775,6 +786,7 @@ export interface FileRouteTypes {
     | '/payment-reconciliation'
     | '/playground'
     | '/profile'
+    | '/provider-settings'
     | '/redemption-codes'
     | '/registration-channels'
     | '/subscriptions'
@@ -845,6 +857,7 @@ export interface FileRouteTypes {
     | '/_authenticated/payment-reconciliation/'
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
+    | '/_authenticated/provider-settings/'
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/registration-channels/'
     | '/_authenticated/subscriptions/'
@@ -1129,6 +1142,13 @@ declare module '@tanstack/react-router' {
       path: '/redemption-codes'
       fullPath: '/redemption-codes/'
       preLoaderRoute: typeof AuthenticatedRedemptionCodesIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/provider-settings/': {
+      id: '/_authenticated/provider-settings/'
+      path: '/provider-settings'
+      fullPath: '/provider-settings/'
+      preLoaderRoute: typeof AuthenticatedProviderSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/profile/': {
@@ -1475,6 +1495,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPaymentReconciliationIndexRoute: typeof AuthenticatedPaymentReconciliationIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
+  AuthenticatedProviderSettingsIndexRoute: typeof AuthenticatedProviderSettingsIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
   AuthenticatedRegistrationChannelsIndexRoute: typeof AuthenticatedRegistrationChannelsIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
@@ -1507,6 +1528,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedPaymentReconciliationIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
+  AuthenticatedProviderSettingsIndexRoute:
+    AuthenticatedProviderSettingsIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
   AuthenticatedRegistrationChannelsIndexRoute:

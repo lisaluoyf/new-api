@@ -152,6 +152,7 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, err.Error(), types.ErrorCodeInvalidRequest)
 			return
 		}
+		c.Set("provider_settings_request_model", modelRequest.Model)
 		modelRequest.Model = service.PrepareGptImage2ModelRequest(c, modelRequest.Model)
 		if modelRequest.Model != "" && common.IsImageGenerationModel(modelRequest.Model) && isTextCompletionPath(c.Request.URL.Path) {
 			abortImageModelOnTextEndpoint(c, modelRequest.Model)
@@ -247,7 +248,7 @@ func Distribute() func(c *gin.Context) {
 				if usingGroup != service.AutoCheapestGroup && !service.IsFreeTrialGroup(usingGroup) {
 					if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 						preferred, err := model.CacheGetChannel(preferredChannelID)
-						if err == nil && preferred != nil {
+						if err == nil && preferred != nil && service.ProviderChannelAllowed(service.ProviderPolicyForModel(c, modelRequest.Model), preferred.Id) {
 							if preferred.Status != common.ChannelStatusEnabled {
 								if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 									abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorAffinityChannelDisabled))
@@ -310,6 +311,10 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 			}
+		}
+		if shouldSelectChannel && channel != nil && !service.ProviderChannelAllowed(service.ProviderPolicyForModel(c, modelRequest.Model), channel.Id) {
+			abortWithOpenAiMessage(c, http.StatusServiceUnavailable, "No available channel within your provider settings", types.ErrorCodeModelNotFound)
+			return
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)

@@ -133,6 +133,10 @@ func ChannelMatchesClientPolicy(setting *string, clientType ClientType, _ string
 func ChannelPickFilter(c *gin.Context, modelName string) model.ChannelPickFilter {
 	var filters []model.ChannelPickFilter
 
+	if providerFilter := ProviderChannelPickFilter(c, modelName); providerFilter != nil {
+		filters = append(filters, providerFilter)
+	}
+
 	if RequiresClientExclusivePolicy(modelName) {
 		InitClientPolicyContext(c, modelName)
 		clientType := clientTypeFromContext(c)

@@ -1809,6 +1809,7 @@ func UpdateUserSetting(c *gin.Context) {
 		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
 		RecordIpLog:                      req.RecordIpLog,
 		ModelDiscountRatios:              existingSettings.ModelDiscountRatios,
+		ProviderSettings:                 existingSettings.ProviderSettings,
 	}
 
 	// 如果是webhook类型,添加webhook相关设置

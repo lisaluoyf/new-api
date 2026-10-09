@@ -40,6 +40,7 @@ func authHelper(c *gin.Context, minRole int) {
 	id := session.Get("id")
 	status := session.Get("status")
 	useAccessToken := false
+	var authenticatedUser *model.User
 	if username == nil {
 		// Check access token
 		accessToken := c.Request.Header.Get("Authorization")
@@ -83,6 +84,7 @@ func authHelper(c *gin.Context, minRole int) {
 			id = user.Id
 			status = user.Status
 			useAccessToken = true
+			authenticatedUser = user
 		} else {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -120,6 +122,7 @@ func authHelper(c *gin.Context, minRole int) {
 		}
 		status = current.Status
 		role = current.Role
+		authenticatedUser = current
 	}
 	// New-Api-User header is advisory only. For browser-originated requests it
 	// may be absent or stale (localStorage), so the session/token user id (set
@@ -162,6 +165,7 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("group", session.Get("group"))
 	c.Set("user_group", session.Get("group"))
 	c.Set("use_access_token", useAccessToken)
+	authenticatedUser.ToBaseUser().WriteContext(c)
 
 	c.Next()
 }

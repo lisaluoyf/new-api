@@ -481,6 +481,9 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			if channel.Status != common.ChannelStatusEnabled {
 				return service.MidjourneyErrorWrapper(constant.MjRequestError, "该任务所属渠道已被禁用")
 			}
+			if !service.ProviderChannelAllowed(service.ProviderPolicyForModel(c, relayInfo.OriginModelName), channel.Id) {
+				return service.MidjourneyErrorWrapper(constant.MjRequestError, "the origin task channel is not allowed by your provider settings")
+			}
 			c.Set("base_url", channel.GetBaseURL())
 			c.Set("channel_id", originTask.ChannelId)
 			c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", channel.Key))

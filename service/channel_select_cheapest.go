@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/cachex"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -89,6 +90,7 @@ func RoutingRetryFromHeader(c *gin.Context) int {
 func SelectCheapestEnabledChannel(c *gin.Context, modelName string) (*model.Channel, error) {
 	bannedIDs := bannedChannelIDsFromContext(c)
 	filter := ChannelPickFilter(c, modelName)
+	providerPolicy := ProviderPolicyForModel(c, modelName)
 	for _, id := range bannedIDs {
 		recordImageRoutingEvent(c, map[string]interface{}{
 			"stage": "exclusion", "channel_id": id, "reason": "already_attempted",
@@ -97,7 +99,9 @@ func SelectCheapestEnabledChannel(c *gin.Context, modelName string) (*model.Chan
 	const maxAttempts = 32
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		var pickedID int
-		if imageRoutingTrace(c) != nil {
+		if providerPolicy != nil {
+			pickedID = selectPricedChannelIDFromDBScoped(modelName, bannedIDs, true, nil, providerPolicy)
+		} else if imageRoutingTrace(c) != nil {
 			observe := func(id int, price float64, priced bool) {
 				recordImageRoutingEvent(c, map[string]interface{}{
 					"stage": "price", "attempt": attempt, "channel_id": id,
@@ -150,10 +154,19 @@ func SelectCheapestEnabledChannelExcluding(modelName string, excludeChannelIDs [
 // SelectCheapestEnabledChannelExcludingWithFilter applies an optional channel filter when
 // picking the next cheapest candidate (async race hedge).
 func SelectCheapestEnabledChannelExcludingWithFilter(modelName string, excludeChannelIDs []int, filter model.ChannelPickFilter) (*model.Channel, error) {
+	return SelectCheapestEnabledChannelInScope(modelName, excludeChannelIDs, filter, nil)
+}
+
+func SelectCheapestEnabledChannelInScope(modelName string, excludeChannelIDs []int, filter model.ChannelPickFilter, providerPolicy *dto.ProviderSetting) (*model.Channel, error) {
 	const maxAttempts = 32
 	bannedIDs := append([]int(nil), excludeChannelIDs...)
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		pickedID := selectCheapestChannelID(modelName, bannedIDs)
+		var pickedID int
+		if providerPolicy != nil {
+			pickedID = selectPricedChannelIDFromDBScoped(modelName, bannedIDs, true, nil, providerPolicy)
+		} else {
+			pickedID = selectCheapestChannelID(modelName, bannedIDs)
+		}
 		if pickedID == 0 {
 			return nil, ErrNoCheapestChannel
 		}
@@ -184,7 +197,12 @@ func SelectMostExpensiveEnabledChannel(c *gin.Context, modelName string) (*model
 	filter := ChannelPickFilter(c, modelName)
 	const maxAttempts = 32
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		pickedID := selectMostExpensiveChannelID(modelName, bannedIDs)
+		var pickedID int
+		if policy := ProviderPolicyForModel(c, modelName); policy != nil {
+			pickedID = selectPricedChannelIDFromDBScoped(modelName, bannedIDs, false, nil, policy)
+		} else {
+			pickedID = selectMostExpensiveChannelID(modelName, bannedIDs)
+		}
 		if pickedID == 0 {
 			return nil, ErrNoMostExpensiveChannel
 		}
@@ -259,6 +277,10 @@ func selectPricedChannelIDFromDB(modelName string, bannedIDs []int, ascending bo
 }
 
 func selectPricedChannelIDFromDBObserved(modelName string, bannedIDs []int, ascending bool, observe func(int, float64, bool)) int {
+	return selectPricedChannelIDFromDBScoped(modelName, bannedIDs, ascending, observe, nil)
+}
+
+func selectPricedChannelIDFromDBScoped(modelName string, bannedIDs []int, ascending bool, observe func(int, float64, bool), providerPolicy *dto.ProviderSetting) int {
 	globalInputUSD, _, _, _, hasGlobal := GlobalModelPricingUSD(modelName)
 	if !hasGlobal || globalInputUSD <= 0 {
 		globalInputUSD = 0
@@ -309,6 +331,16 @@ func selectPricedChannelIDFromDBObserved(modelName string, bannedIDs []int, asce
 
 	if len(bannedIDs) > 0 {
 		q = q.Where("c.id NOT IN ?", bannedIDs)
+	}
+	if providerPolicy != nil {
+		if providerPolicy.Mode == "include" {
+			if len(providerPolicy.ChannelIDs) == 0 {
+				return 0
+			}
+			q = q.Where("c.id IN ?", providerPolicy.ChannelIDs)
+		} else if len(providerPolicy.ChannelIDs) > 0 {
+			q = q.Where("c.id NOT IN ?", providerPolicy.ChannelIDs)
+		}
 	}
 
 	if err := q.Scan(&rows).Error; err != nil || len(rows) == 0 {

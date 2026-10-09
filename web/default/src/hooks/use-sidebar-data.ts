@@ -135,6 +135,11 @@ export function useSidebarData(): SidebarData {
             configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
             icon: ListTodo,
           },
+          {
+            title: t('Provider setting'),
+            url: '/provider-settings',
+            icon: Settings,
+          },
         ],
       },
       {
