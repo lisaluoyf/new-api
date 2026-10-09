@@ -401,3 +401,51 @@ func TestNanoBanana21ApimartImages(t *testing.T) {
 		}
 	}
 }
+
+func TestNanoBanana21ApimartSubmittedTaskCompletesBeforeNormalization(t *testing.T) {
+	service.InitHttpClient()
+	var pngData bytes.Buffer
+	require.NoError(t, png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 2))))
+	var pollCalls int
+	var upstream *httptest.Server
+	upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/tasks/provider-task":
+			pollCalls++
+			require.Equal(t, "Bearer provider-key", r.Header.Get("Authorization"))
+			payload, err := common.Marshal(map[string]any{"code": 200, "data": map[string]any{"status": "completed", "progress": 100, "result": map[string]any{"images": []any{map[string]any{"url": []string{upstream.URL + "/result.png"}}}}}})
+			require.NoError(t, err)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(payload)
+		case "/result.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(pngData.Bytes())
+		default:
+			t.Errorf("Unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest("POST", "/v1/images/generations", strings.NewReader("{}"))
+	c.Set(string(constant.ContextKeyChannelBaseUrl), upstream.URL)
+	c.Set(string(constant.ContextKeyChannelKey), "provider-key")
+	c.Set("nano_banana21_response_format", "url")
+	service.SetImageRequestDataOnContext(c, &dto.ImageRequest{Model: "gemini-nano-banana-2.1", Resolution: "1K"})
+	info := &relaycommon.RelayInfo{OriginModelName: "gemini-nano-banana-2.1", RelayMode: relayconstant.RelayModeImagesGenerations,
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenAI, UpstreamModelName: "gemini-nano-banana-2.1-ext", ChannelBaseUrl: "https://api.apib.ai"}, PriceData: types.PriceData{}}
+	resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"code":200,"data":[{"status":"submitted","task_id":"provider-task"}]}`))}
+	_, apiErr := OpenaiHandlerWithUsage(c, info, resp)
+	require.Nil(t, apiErr)
+	require.Greater(t, pollCalls, 0)
+	var output struct {
+		Data []struct {
+			URL string `json:"url"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(rec.Body.Bytes(), &output))
+	require.Len(t, output.Data, 1)
+	require.Contains(t, output.Data[0].URL, "/result.png")
+	require.Equal(t, 1, service.ImageRequestDataFromContext(c)["actual_image_count"])
+}
