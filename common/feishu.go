@@ -102,11 +102,6 @@ func SendFeishuCard(chatID, title string, lines []string) error {
 	if FeishuAppID() == "" || FeishuAppSecret() == "" || chatID == "" {
 		return nil
 	}
-	token, err := getFeishuToken()
-	if err != nil {
-		return err
-	}
-
 	mdContent := "**" + title + "**\n" + strings.Join(lines, "\n")
 	card := map[string]any{
 		"schema": "2.0",
@@ -116,14 +111,31 @@ func SendFeishuCard(chatID, title string, lines []string) error {
 			},
 		},
 	}
-	cardJSON, _ := json.Marshal(card)
+	return SendFeishuInteractiveCard(chatID, card)
+}
+
+func SendFeishuInteractiveCard(chatID string, card map[string]any) error {
+	if FeishuAppID() == "" || FeishuAppSecret() == "" || chatID == "" {
+		return nil
+	}
+	token, err := getFeishuToken()
+	if err != nil {
+		return err
+	}
+	cardJSON, err := Marshal(card)
+	if err != nil {
+		return err
+	}
 
 	payload := map[string]any{
 		"receive_id": chatID,
 		"msg_type":   "interactive",
 		"content":    string(cardJSON),
 	}
-	payloadJSON, _ := json.Marshal(payload)
+	payloadJSON, err := Marshal(payload)
+	if err != nil {
+		return err
+	}
 
 	req, err := http.NewRequest(
 		"POST",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -185,7 +186,7 @@ func finishVideoVerification(ctx context.Context, state *model.VideoVerification
 			return err
 		}
 		if status != "pass" {
-			alert := model.VideoVerificationAlert{TaskID: task.ID, ChannelID: task.ChannelId, Model: state.Model, Reason: reason, DetectedAt: now, NextAt: now, Status: "pending"}
+			alert := model.VideoVerificationAlert{TaskID: task.ID, ChannelID: task.ChannelId, Model: state.Model, Reason: reason, VideoChecksJSON: string(encoded), DetectedAt: now, NextAt: now, Status: "pending"}
 			return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&alert).Error
 		}
 		return nil
@@ -246,8 +247,98 @@ var sendVideoVerificationAlert = func(alert *model.VideoVerificationAlert) error
 	if channel, err := model.GetChannelById(alert.ChannelID, false); err == nil {
 		channelName = channel.Name
 	}
-	return common.SendFeishuCard(videoVerificationChat, common.FeishuNotificationTitle("Seedance 视频指纹验证失败"), []string{
-		fmt.Sprintf("渠道：%s (#%d)", channelName, alert.ChannelID), "声明模型：" + alert.Model, "结果：验真未通过（指纹不匹配或检测未完成）", "原因：" + alert.Reason,
-		"检测时间：" + time.Unix(alert.DetectedAt, 0).UTC().Format(time.RFC3339), "仅内部监测，不影响用户视频交付、计费或渠道路由。",
-	})
+	return common.SendFeishuInteractiveCard(videoVerificationChat, videoVerificationAlertCard(alert, channelName))
+}
+
+func videoVerificationAlertCard(alert *model.VideoVerificationAlert, channelName string) map[string]any {
+	title, color := "Seedance · 检测未完成", "orange"
+	reason := "检测未能得出完整结论，请检查检测记录。"
+	switch alert.Reason {
+	case "version_mismatch":
+		title, color = "Seedance · 指纹不匹配", "red"
+		reason = "识别出的编码版本与声明模型不一致。"
+	case "known_fingerprint_failed":
+		title, color = "Seedance · 指纹不匹配", "red"
+		reason = "已知指纹的关键检测项未通过。"
+	case "incomplete_evidence":
+		reason = "必要检测项尚未全部通过，暂不能确认完整验真结果。"
+	case "channel_unavailable":
+		reason = "无法读取渠道配置，检测未执行。"
+	case "baseline_unavailable_or_expired":
+		reason = "检测基线不可用或已过期。"
+	case "unexpected_claim":
+		reason = "检测器返回的声明模型与请求不一致。"
+	case "unknown_fingerprint":
+		reason = "未识别出受支持的编码指纹。"
+	case "inconclusive_verdict":
+		reason = "检测器未能给出明确的匹配结论。"
+	case "invalid_evidence":
+		reason = "检测证据格式异常。"
+	case "proxy_download_not_supported":
+		reason = "当前检测下载流程不支持该渠道的代理配置。"
+	case "video_download_failed":
+		reason = "无法下载视频，检测未完成。"
+	case "detector_unavailable":
+		reason = "检测服务不可用或响应异常。"
+	}
+	channelLabel := fmt.Sprintf("#%d", alert.ChannelID)
+	if channelName != channelLabel {
+		channelLabel = fmt.Sprintf("%s · #%d", channelName, alert.ChannelID)
+	}
+	detectedAt := time.Unix(alert.DetectedAt, 0).In(time.FixedZone("UTC+8", 8*60*60)).Format("2006-01-02 15:04:05")
+	elements := []any{
+		map[string]any{"tag": "markdown", "content": fmt.Sprintf("**渠道**　%s\n**声明模型**　%s", channelLabel, alert.Model)},
+		map[string]any{"tag": "hr"},
+		map[string]any{"tag": "markdown", "content": "**原因**\n" + reason + "\n`" + alert.Reason + "`"},
+	}
+	if evidence := videoVerificationAlertEvidence(alert.VideoChecksJSON); evidence != "" {
+		elements = append(elements, map[string]any{"tag": "markdown", "content": evidence})
+	}
+	elements = append(elements, map[string]any{"tag": "markdown", "content": "检测时间　" + detectedAt + "（北京时间）"})
+	return map[string]any{
+		"schema": "2.0",
+		"header": map[string]any{
+			"template": color,
+			"title":    map[string]any{"tag": "plain_text", "content": common.FeishuNotificationTitle(title)},
+		},
+		"body": map[string]any{
+			"elements": elements,
+		},
+	}
+}
+
+func videoVerificationAlertEvidence(raw string) string {
+	var checks []model.VideoFingerprintCheck
+	if common.Unmarshal([]byte(raw), &checks) != nil || len(checks) == 0 {
+		return ""
+	}
+	byID := make(map[string]model.VideoFingerprintCheck, len(checks))
+	for _, check := range checks {
+		byID[check.ID] = check
+	}
+	labels := map[string]string{"claim": "声明版本", "dimensions": "视频尺寸", "family": "容器指纹", "x264": "x264 编码", "frames": "视频帧数"}
+	statuses := map[string]string{"pass": "✅ 通过", "fail": "❌ 不通过", "warn": "⚠️ 待确认", "skip": "⏸ 未判定"}
+	lines := []string{"**逐项检测**"}
+	passed := 0
+	for _, checkID := range model.VideoFingerprintCheckIDs {
+		check, exists := byID[checkID]
+		if !exists {
+			lines = append(lines, "⏸ 未判定 · **"+labels[checkID]+"**：未返回检测结果")
+			continue
+		}
+		status := statuses[check.Status]
+		if check.Status == "pass" {
+			passed++
+		}
+		if status == "" {
+			status = "⏸ 未判定"
+		}
+		line := fmt.Sprintf("%s · **%s**：%s", status, labels[checkID], check.Value)
+		if check.Status != "pass" && check.Expected != "" {
+			line += "（基线：" + check.Expected + "）"
+		}
+		lines = append(lines, line)
+	}
+	lines[0] = fmt.Sprintf("**逐项检测 · %d/%d 通过**", passed, len(model.VideoFingerprintCheckIDs))
+	return strings.Join(lines, "\n")
 }

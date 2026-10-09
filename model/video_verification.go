@@ -11,9 +11,10 @@ import (
 )
 
 type VideoFingerprintCheck struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Value  string `json:"value"`
+	ID       string `json:"id"`
+	Status   string `json:"status"`
+	Value    string `json:"value"`
+	Expected string `json:"expected,omitempty"`
 }
 
 var VideoFingerprintCheckIDs = []string{"claim", "dimensions", "family", "x264", "frames"}
@@ -79,16 +80,17 @@ type VideoVerificationRun struct {
 }
 
 type VideoVerificationAlert struct {
-	ID         int64 `gorm:"primaryKey"`
-	TaskID     int64 `gorm:"uniqueIndex"`
-	ChannelID  int
-	Model      string `gorm:"type:varchar(64)"`
-	Reason     string `gorm:"type:varchar(64)"`
-	DetectedAt int64
-	Attempts   int
-	NextAt     int64 `gorm:"index"`
-	LeaseUntil int64
-	Status     string `gorm:"type:varchar(16);index"`
+	ID              int64 `gorm:"primaryKey"`
+	TaskID          int64 `gorm:"uniqueIndex"`
+	ChannelID       int
+	Model           string `gorm:"type:varchar(64)"`
+	Reason          string `gorm:"type:varchar(64)"`
+	VideoChecksJSON string `gorm:"type:text"`
+	DetectedAt      int64
+	Attempts        int
+	NextAt          int64 `gorm:"index"`
+	LeaseUntil      int64
+	Status          string `gorm:"type:varchar(16);index"`
 }
 
 func (task *Task) enqueueVideoVerification(tx *gorm.DB) error {

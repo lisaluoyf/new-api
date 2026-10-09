@@ -67,7 +67,7 @@ func TestClassifyVerifiedVideoDoesNotAlertUnknownOrIncompleteEvidence(t *testing
 		result.Baseline.Stale = &fresh
 		status, _, checks := classifyVerifiedVideo(result, "seedance-2.0", time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC))
 		require.Equal(t, "notcomplete", status)
-		require.Nil(t, checks)
+		require.Equal(t, result.Checks, checks)
 	}
 }
 

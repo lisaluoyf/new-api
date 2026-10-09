@@ -48,14 +48,14 @@ func classifyVerifiedVideo(result videoVerificationResult, normalized string, no
 		return "notcomplete", "unknown_fingerprint", nil
 	}
 	if result.Verdict == "mismatch" && result.Pipeline != expected {
-		return "suspicious", "version_mismatch", nil
+		return "suspicious", "version_mismatch", result.Checks
 	}
 	if result.Verdict != "match" || result.Pipeline != expected {
 		return "notcomplete", "inconclusive_verdict", nil
 	}
 	for _, check := range result.Checks {
 		if check.Status == "fail" && (check.ID == "claim" || check.ID == "family" || check.ID == "x264") {
-			return "suspicious", "known_fingerprint_failed", nil
+			return "suspicious", "known_fingerprint_failed", result.Checks
 		}
 	}
 	encoded, err := common.Marshal(result.Checks)
@@ -64,7 +64,7 @@ func classifyVerifiedVideo(result videoVerificationResult, normalized string, no
 	}
 	checks := model.PublicVideoFingerprintChecks(string(encoded))
 	if checks == nil {
-		return "notcomplete", "incomplete_evidence", nil
+		return "notcomplete", "incomplete_evidence", result.Checks
 	}
 	return "pass", "match", checks
 }
