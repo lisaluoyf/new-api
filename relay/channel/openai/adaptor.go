@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -96,6 +97,10 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if nanoBanana21GeminiBridge(info) {
+		base := strings.TrimSuffix(strings.TrimRight(info.ChannelBaseUrl, "/"), "/v1")
+		return base + "/v1beta/models/" + url.PathEscape(info.UpstreamModelName) + ":generateContent", nil
+	}
 	if nanoBanana21NativeImages(info) {
 		path := "/v1/images/generations"
 		if info.RelayMode == relayconstant.RelayModeImagesEdits {
@@ -503,7 +508,11 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		return body, nil
 	}
 	if nanoBanana21ImageBridge(info) || nanoBanana21NativeImages(info) {
-		return convertNanoBanana21ImageRequest(c, info, request)
+		body, err := convertNanoBanana21ImageRequest(c, info, request)
+		if err != nil {
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		return body, nil
 	}
 	mode := info.RelayMode
 	if imageEditsViaGenerations(info) {
@@ -836,7 +845,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
-	if nanoBanana21NativeImages(info) {
+	if nanoBanana21NativeImages(info) || nanoBanana21GeminiBridge(info) {
 		// ConvertImageRequest produces JSON even for multipart client edits.
 		// Change only this upstream attempt; retain client mode/path for retries
 		// and billing logs.

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,10 +17,22 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
 var nanoBanana21CacheReference = service.CacheImageBase64Locally
+
+// This provider ignores image_config on Chat Completions. Its native Gemini
+// endpoint honors imageSize and accepts inline references at every tier.
+func nanoBanana21GeminiBridge(info *relaycommon.RelayInfo) bool {
+	if info == nil || info.ChannelMeta == nil || info.ChannelType != constant.ChannelTypeOpenAI || info.OriginModelName != "gemini-nano-banana-2.1" ||
+		(info.RelayMode != relayconstant.RelayModeImagesGenerations && info.RelayMode != relayconstant.RelayModeImagesEdits) {
+		return false
+	}
+	base, err := url.Parse(info.ChannelBaseUrl)
+	return err == nil && strings.EqualFold(base.Hostname(), "subrouter.ai")
+}
 
 // Some OpenAI-compatible image providers return Markdown in message.content
 // rather than the OpenRouter message.images field. Only image markup counts;
@@ -83,7 +96,7 @@ func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo
 			return nil, fmt.Errorf("Nano Banana 2.1 Images API does not support stream")
 		}
 	}
-	if len(req.Mask) > 0 || len(req.Extra["mask_url"]) > 0 {
+	if len(req.Mask) > 0 || req.MaskUrl != "" || len(req.Extra["mask_url"]) > 0 {
 		return nil, fmt.Errorf("mask is unsupported; provide an image reference and editing instructions")
 	}
 	if req.ResponseFormat != "" && req.ResponseFormat != "url" && req.ResponseFormat != "b64_json" {
@@ -139,6 +152,32 @@ func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo
 	}
 	config["aspect_ratio"] = aspect
 	service.SetImageRequestDataOnContext(c, &req)
+	if nanoBanana21GeminiBridge(info) {
+		parts := []any{map[string]any{"text": req.Prompt}}
+		for _, ref := range req.ImageUrls {
+			var source types.FileSource
+			if strings.HasPrefix(ref, "data:image/") {
+				mime, data, err := service.DecodeBase64FileData(ref)
+				if err != nil {
+					return nil, fmt.Errorf("invalid reference image data URI")
+				}
+				source = types.NewBase64FileSource(data, mime)
+			} else if strings.HasPrefix(ref, "https://") || strings.HasPrefix(ref, "http://") {
+				source = types.NewURLFileSource(ref)
+			} else {
+				return nil, fmt.Errorf("reference image must be an HTTP URL or image data URI")
+			}
+			data, mime, err := service.GetBase64Data(c, source, "Nano Banana image reference")
+			if err != nil || !strings.HasPrefix(mime, "image/") {
+				return nil, fmt.Errorf("could not read reference image")
+			}
+			parts = append(parts, map[string]any{"inlineData": map[string]string{"mimeType": mime, "data": data}})
+		}
+		return map[string]any{
+			"contents":         []any{map[string]any{"role": "user", "parts": parts}},
+			"generationConfig": map[string]any{"responseModalities": []string{"TEXT", "IMAGE"}, "imageConfig": map[string]string{"imageSize": tier, "aspectRatio": aspect}},
+		}, nil
+	}
 	if nanoBanana21NativeImages(info) {
 		// These hubs use quality for imageSize; resolution alone is ignored.
 		body := map[string]any{"model": req.Model, "prompt": req.Prompt, "n": 1, "size": req.Size, "resolution": tier, "quality": tier, "response_format": "b64_json"}
@@ -186,6 +225,32 @@ func normalizeNanoBanana21ImageResponse(c *gin.Context, info *relaycommon.RelayI
 		return nil, err
 	}
 	data := []map[string]string{}
+	if nanoBanana21GeminiBridge(info) {
+		var gemini dto.GeminiChatResponse
+		if err := common.Unmarshal(raw, &gemini); err != nil {
+			return nil, err
+		}
+		for _, candidate := range gemini.Candidates {
+			for _, part := range candidate.Content.Parts {
+				if part.Thought || part.InlineData == nil || !strings.HasPrefix(part.InlineData.MimeType, "image/") || part.InlineData.Data == "" {
+					continue
+				}
+				config, _, _, err := service.DecodeBase64ImageData(part.InlineData.Data)
+				if err != nil {
+					return nil, fmt.Errorf("invalid upstream generated image")
+				}
+				if requestData := service.ImageRequestDataFromContext(c); requestData != nil {
+					tier, _ := requestData["effective_resolution"].(string)
+					minimum := map[string]int{"1K": 1024, "2K": 2048, "4K": 4096}[tier]
+					if max(config.Width, config.Height) < minimum {
+						return nil, fmt.Errorf("upstream image is smaller than requested resolution")
+					}
+				}
+				data = append(data, map[string]string{"b64_json": part.InlineData.Data})
+			}
+		}
+		response.Usage = &dto.Usage{PromptTokens: gemini.UsageMetadata.PromptTokenCount, CompletionTokens: gemini.UsageMetadata.CandidatesTokenCount, TotalTokens: gemini.UsageMetadata.TotalTokenCount}
+	}
 	if nanoBanana21NativeImages(info) {
 		for _, img := range response.Data {
 			if img.B64 != "" {
@@ -202,7 +267,7 @@ func normalizeNanoBanana21ImageResponse(c *gin.Context, info *relaycommon.RelayI
 		}
 		// Prefer structured images to avoid counting a Markdown representation
 		// of the same image twice in settlement.
-		if len(imageURLs) == 0 && !nanoBanana21NativeImages(info) {
+		if len(imageURLs) == 0 && !nanoBanana21NativeImages(info) && !nanoBanana21GeminiBridge(info) {
 			imageURLs = nanoBanana21ContentImages(choice.Message.Content)
 		}
 		for _, imageURL := range imageURLs {
