@@ -2,11 +2,12 @@ package model
 
 import (
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type VideoFingerprintCheck struct {
@@ -44,42 +45,14 @@ func NormalizeVerifiedVideoModel(name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "seedance-2.0", "doubao-seedance-2.0":
 		return "seedance-2.0"
-	case "seedance-2.5":
+	case "seedance-2.0-fast", "doubao-seedance-2.0-fast":
+		return "seedance-2.0-fast"
+	case "seedance-2.0-mini", "doubao-seedance-2.0-mini":
+		return "seedance-2.0-mini"
+	case "seedance-2.5", "doubao-seedance-2.5":
 		return "seedance-2.5"
 	default:
 		return ""
-	}
-}
-
-type VideoVerificationEvent struct {
-	TaskID      int64
-	CompletedAt int64
-}
-
-var videoVerificationSink struct {
-	sync.RWMutex
-	queue chan<- VideoVerificationEvent
-}
-
-func SetVideoVerificationQueue(queue chan<- VideoVerificationEvent) {
-	videoVerificationSink.Lock()
-	defer videoVerificationSink.Unlock()
-	videoVerificationSink.queue = queue
-}
-
-func notifyVideoVerification(task *Task) {
-	if task.Status != TaskStatusSuccess || task.ChannelId <= 0 || NormalizeVerifiedVideoModel(task.Properties.OriginModelName) == "" {
-		return
-	}
-	videoVerificationSink.RLock()
-	defer videoVerificationSink.RUnlock()
-	if videoVerificationSink.queue == nil {
-		return
-	}
-	select {
-	case videoVerificationSink.queue <- VideoVerificationEvent{TaskID: task.ID, CompletedAt: time.Now().Unix()}:
-	default:
-		common.SysError("video verification event dropped: queue full")
 	}
 }
 
@@ -102,7 +75,7 @@ type VideoVerificationRun struct {
 	Model       string `gorm:"type:varchar(64)"`
 	CompletedAt int64
 	Status      string `gorm:"type:varchar(16);index"`
-	LeaseUntil  int64
+	LeaseUntil  int64  `gorm:"index"`
 }
 
 type VideoVerificationAlert struct {
@@ -116,4 +89,13 @@ type VideoVerificationAlert struct {
 	NextAt     int64 `gorm:"index"`
 	LeaseUntil int64
 	Status     string `gorm:"type:varchar(16);index"`
+}
+
+func (task *Task) enqueueVideoVerification(tx *gorm.DB) error {
+	name := NormalizeVerifiedVideoModel(task.Properties.OriginModelName)
+	if task.Status != TaskStatusSuccess || task.ChannelId <= 0 || name == "" {
+		return nil
+	}
+	run := VideoVerificationRun{TaskID: task.ID, ChannelID: task.ChannelId, Model: name, CompletedAt: time.Now().Unix(), Status: "pending"}
+	return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&run).Error
 }

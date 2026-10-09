@@ -191,6 +191,10 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, policyErr.Error())
 				return
 			}
+			if resolutionErr := service.ValidateSeedanceResolutionChannel(c, channel, modelRequest.Model); resolutionErr != nil {
+				abortWithOpenAiMessage(c, http.StatusForbidden, resolutionErr.Error())
+				return
+			}
 			if tierErr := service.ValidateGptImage2Channel(c, channel, modelRequest.Model); tierErr != nil {
 				abortWithOpenAiMessage(c, http.StatusForbidden, tierErr.Error())
 				return
@@ -248,7 +252,7 @@ func Distribute() func(c *gin.Context) {
 				if usingGroup != service.AutoCheapestGroup && !service.IsFreeTrialGroup(usingGroup) {
 					if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 						preferred, err := model.CacheGetChannel(preferredChannelID)
-						if err == nil && preferred != nil && service.ProviderChannelAllowed(service.ProviderPolicyForModel(c, modelRequest.Model), preferred.Id) {
+						if err == nil && preferred != nil && service.ProviderChannelAllowed(service.ProviderPolicyForModel(c, modelRequest.Model), preferred.Id) && service.ValidateSeedanceResolutionChannel(c, preferred, modelRequest.Model) == nil {
 							if preferred.Status != common.ChannelStatusEnabled {
 								if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 									abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorAffinityChannelDisabled))

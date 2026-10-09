@@ -95,6 +95,9 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	if !service.ProviderChannelAllowed(service.ProviderPolicyForModel(c, info.OriginModelName), ch.Id) {
 		return service.TaskErrorWrapperLocal(errors.New("the origin task channel is not allowed by your provider settings"), "provider_channel_not_allowed", http.StatusForbidden)
 	}
+	if err := service.ValidateSeedanceResolutionChannel(c, ch, info.OriginModelName); err != nil {
+		return service.TaskErrorWrapperLocal(err, "seedance_resolution_not_allowed", http.StatusForbidden)
+	}
 	info.LockedChannel = ch
 
 	if originTask.ChannelId != info.ChannelId {

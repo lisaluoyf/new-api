@@ -330,6 +330,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			adminRoute.GET("/exchange-rate", controller.GetExchangeRate)
 			adminRoute.GET("/channel-data", controller.GetModelData)
+			adminRoute.PUT("/channel-data/resolutions", controller.SaveSeedanceChannelResolutions)
 			adminRoute.GET("/free-model/settings", controller.GetFreeModelSettings)
 			adminRoute.PUT("/free-model/settings", controller.SaveFreeModelSettings)
 			adminRoute.PUT("/free-model/channels/:channel_id/route-price", controller.SaveFreeModelRoutePrice)

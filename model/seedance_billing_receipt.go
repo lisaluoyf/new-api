@@ -125,9 +125,6 @@ func InsertSeedanceTaskWithReceipt(task *Task, receipt *SeedanceBillingReceipt) 
 		}
 		return tx.Create(receipt).Error
 	})
-	if err == nil {
-		notifyVideoVerification(task)
-	}
 	return err
 }
 

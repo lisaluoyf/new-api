@@ -52,13 +52,15 @@ func includePublicDetectHistoryStatus(status string) bool {
 }
 
 type ModelDataItem struct {
-	ChannelID       int    `json:"channel_id"`
-	ChannelName     string `json:"channel_name"`
-	UpstreamModel   string `json:"upstream_model,omitempty"`
-	Priority        int64  `json:"priority"`
-	Group           string `json:"group"`
-	KeyGroup        string `json:"key_group"`
-	ClientExclusive string `json:"client_exclusive"` // "" | codex | claude_code
+	ResolutionOptions []string `json:"resolution_options,omitempty"`
+	Resolutions       []string `json:"resolutions"`
+	ChannelID         int      `json:"channel_id"`
+	ChannelName       string   `json:"channel_name"`
+	UpstreamModel     string   `json:"upstream_model,omitempty"`
+	Priority          int64    `json:"priority"`
+	Group             string   `json:"group"`
+	KeyGroup          string   `json:"key_group"`
+	ClientExclusive   string   `json:"client_exclusive"` // "" | codex | claude_code
 	// Pricing fields: nil = no pricing row (upstream 401/404 / cookie-only auth / no endpoint).
 	// Frontend renders nil as "—".
 	ModelPrice                 *float64                   `json:"model_price"`                  // 渠道原价/计费基准价 ($/1M); nil = unknown
@@ -438,6 +440,16 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		return []ModelDataItem{}, false, 0, 0
 	}
 
+	resolutionOptions := model.SeedanceResolutionOptions(modelName)
+	resolutionSelections := map[int][]string{}
+	if len(resolutionOptions) > 0 {
+		var err error
+		resolutionSelections, err = model.SeedanceResolutionSelections(modelName)
+		if err != nil {
+			common.SysError("Seedance resolution configuration read failed")
+			resolutionSelections = map[int][]string{}
+		}
+	}
 	// Batch fetch recent detect logs for these channels, filtered to this model.
 	// Pull enough rows for both fingerprint and uptime series per channel.
 	channelIDs := make([]int, len(rows))
@@ -752,7 +764,15 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			freeHealth = &FreeModelHealthView{Status: status, CooldownRemainingMS: max(int64(0), health.CooldownUntil-nowMS), CircuitRemainingMS: max(int64(0), health.CircuitOpenUntil-nowMS), QuarantineRemainingMS: max(int64(0), health.QuarantineUntil-nowMS), LastFailureReason: health.LastFailureReason, ConsecutiveFailures: health.ConsecutiveFailure, RecentSuccessRate: health.SuccessRate(), LatencyMS: health.EWLatencyMS}
 		}
 
+		resolutions, configured := resolutionSelections[r.ChannelID]
+		if !configured {
+			resolutions = resolutionOptions
+		}
+		if resolutions == nil && len(resolutionOptions) > 0 {
+			resolutions = []string{}
+		}
 		items = append(items, ModelDataItem{
+			ResolutionOptions: resolutionOptions, Resolutions: resolutions,
 			ChannelID:     r.ChannelID,
 			ChannelName:   r.ChannelName,
 			UpstreamModel: upstreamModel,

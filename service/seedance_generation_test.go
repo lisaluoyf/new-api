@@ -34,7 +34,7 @@ func TestSeedance25DefaultsAliasesAndEdit(t *testing.T) {
 
 func TestSeedanceDraftOwnershipExpirationInheritanceAndAffinity(t *testing.T) {
 	db := seedanceTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.Task{}))
+	require.NoError(t, db.AutoMigrate(&model.Task{}, &model.VideoVerificationRun{}))
 	ch := model.Channel{Id: 9, Type: 1, Status: common.ChannelStatusEnabled, Key: "private-key", Models: "seedance-2.5", Group: "default"}
 	require.NoError(t, db.Create(&ch).Error)
 	require.NoError(t, db.Create(&model.Ability{ChannelId: 9, Group: "default", Model: "seedance-2.5", Enabled: true}).Error)

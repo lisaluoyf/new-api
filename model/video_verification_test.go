@@ -20,7 +20,7 @@ func TestPublicVideoFingerprintChecksRequireCompletePassEvidence(t *testing.T) {
 func TestNormalizeVerifiedVideoModel(t *testing.T) {
 	require.Equal(t, "seedance-2.0", NormalizeVerifiedVideoModel("doubao-seedance-2.0"))
 	require.Equal(t, "seedance-2.5", NormalizeVerifiedVideoModel(" Seedance-2.5 "))
-	require.Empty(t, NormalizeVerifiedVideoModel("seedance-2.0-fast"))
+	require.Equal(t, "seedance-2.0-fast", NormalizeVerifiedVideoModel("seedance-2.0-fast"))
 }
 
 func TestVideoVerificationStoresActualProviderKeyPrivately(t *testing.T) {
@@ -29,57 +29,56 @@ func TestVideoVerificationStoresActualProviderKeyPrivately(t *testing.T) {
 	require.Equal(t, 7, task.ChannelId)
 }
 
-func TestVideoVerificationNotificationOnlyAfterCommittedSuccess(t *testing.T) {
+func TestVideoVerificationDurableCompletionAndRollback(t *testing.T) {
 	db := webhookTestDB(t)
-	queue := make(chan VideoVerificationEvent, 8)
-	SetVideoVerificationQueue(queue)
-	t.Cleanup(func() { SetVideoVerificationQueue(nil) })
-	task := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSubmitted, Properties: Properties{OriginModelName: "seedance-2.0"}}
+	task := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSubmitted, Properties: Properties{OriginModelName: "seedance-2.5"}}
 	require.NoError(t, task.Insert())
-	require.Empty(t, queue)
+	var count int64
+	require.NoError(t, db.Model(&VideoVerificationRun{}).Count(&count).Error)
+	require.Zero(t, count)
 	task.Status = TaskStatusSuccess
 	won, err := task.UpdateWithStatus(TaskStatusSubmitted)
 	require.NoError(t, err)
 	require.True(t, won)
-	require.Len(t, queue, 1)
-	event := <-queue
-	var persisted Task
-	require.NoError(t, db.First(&persisted, event.TaskID).Error)
-	require.Equal(t, TaskStatus(TaskStatusSuccess), persisted.Status)
 	won, err = task.UpdateWithStatus(TaskStatusSubmitted)
 	require.NoError(t, err)
 	require.False(t, won)
-	require.Empty(t, queue)
-
-	failed := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSubmitted, Properties: Properties{OriginModelName: "seedance-2.0"}, PrivateData: TaskPrivateData{Webhook: &TaskWebhookConfig{EndpointID: "endpoint"}}}
-	require.NoError(t, failed.Insert())
-	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("reject_video_webhook", func(tx *gorm.DB) {
-		if tx.Statement.Table == "task_webhook_events" {
-			tx.AddError(errors.New("webhook transaction failed"))
+	require.NoError(t, db.Model(&VideoVerificationRun{}).Count(&count).Error)
+	require.EqualValues(t, 1, count)
+	second := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSubmitted, Properties: Properties{OriginModelName: "seedance-2.0-fast"}}
+	require.NoError(t, second.Insert())
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("reject_video_outbox", func(tx *gorm.DB) {
+		if tx.Statement.Table == "video_verification_runs" {
+			tx.AddError(errors.New("outbox failure"))
 		}
 	}))
-	failed.Status = TaskStatusSuccess
-	_, err = failed.UpdateWithStatus(TaskStatusSubmitted)
+	second.Status = TaskStatusSuccess
+	_, err = second.UpdateWithStatus(TaskStatusSubmitted)
 	require.Error(t, err)
-	require.Empty(t, queue)
+	var persisted Task
+	require.NoError(t, db.First(&persisted, second.ID).Error)
+	require.Equal(t, TaskStatus(TaskStatusSubmitted), persisted.Status)
 }
 
-func TestVideoVerificationNotificationBulkAndQueueFull(t *testing.T) {
-	webhookTestDB(t)
-	queue := make(chan VideoVerificationEvent, 1)
-	SetVideoVerificationQueue(queue)
-	t.Cleanup(func() { SetVideoVerificationQueue(nil) })
-	first := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSubmitted, Properties: Properties{OriginModelName: "seedance-2.0"}}
-	second := first
-	second.TaskID = GenerateTaskID()
-	require.NoError(t, first.Insert())
-	require.NoError(t, second.Insert())
-	require.NoError(t, TaskBulkUpdateByID([]int64{first.ID, second.ID}, map[string]any{"status": TaskStatusSuccess}))
-	require.Len(t, queue, 1)
-	<-queue
-	require.NoError(t, TaskBulkUpdateByID([]int64{first.ID, second.ID}, map[string]any{"status": TaskStatusSuccess}))
-	require.Empty(t, queue)
-	variant := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSuccess, Properties: Properties{OriginModelName: "seedance-2.0-fast"}}
-	require.NoError(t, variant.Insert())
-	require.Empty(t, queue)
+func TestVideoVerificationDurableBulkAndImmediate(t *testing.T) {
+	db := webhookTestDB(t)
+	tasks := []Task{}
+	for _, name := range []string{"seedance-2.0", "seedance-2.5", "seedance-2.0-fast", "seedance-2.0-mini"} {
+		task := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSubmitted, Properties: Properties{OriginModelName: name}}
+		require.NoError(t, task.Insert())
+		tasks = append(tasks, task)
+	}
+	ids := []int64{}
+	for _, task := range tasks {
+		ids = append(ids, task.ID)
+	}
+	require.NoError(t, TaskBulkUpdateByID(ids, map[string]any{"status": TaskStatusSuccess}))
+	require.NoError(t, TaskBulkUpdateByID(ids, map[string]any{"status": TaskStatusSuccess}))
+	var count int64
+	require.NoError(t, db.Model(&VideoVerificationRun{}).Count(&count).Error)
+	require.EqualValues(t, 4, count)
+	immediate := Task{TaskID: GenerateTaskID(), ChannelId: 7, Status: TaskStatusSuccess, Properties: Properties{OriginModelName: "seedance-2.5"}}
+	require.NoError(t, immediate.Insert())
+	require.NoError(t, db.Model(&VideoVerificationRun{}).Count(&count).Error)
+	require.EqualValues(t, 5, count)
 }

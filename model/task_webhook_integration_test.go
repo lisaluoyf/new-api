@@ -20,7 +20,7 @@ func TestTaskWebhookPostgresTransactionConcurrency(t *testing.T) {
 	DB = db
 	sql, _ := db.DB()
 	t.Cleanup(func() { DB = old; sql.Close() })
-	require.NoError(t, db.AutoMigrate(&Task{}, &TaskWebhookEvent{}, &TaskWebhookEndpoint{}, &TaskWebhookAttempt{}, &ImagineBatch{}, &ImagineTask{}))
+	require.NoError(t, db.AutoMigrate(&Task{}, &VideoVerificationRun{}, &TaskWebhookEvent{}, &TaskWebhookEndpoint{}, &TaskWebhookAttempt{}, &ImagineBatch{}, &ImagineTask{}))
 	task := Task{TaskID: GenerateTaskID(), Status: TaskStatusSubmitted, UserId: 1, PrivateData: TaskPrivateData{Webhook: &TaskWebhookConfig{EndpointID: "ep"}}}
 	require.NoError(t, task.Insert())
 	var wg sync.WaitGroup

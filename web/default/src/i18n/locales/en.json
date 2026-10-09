@@ -5150,5 +5150,9 @@
   "1K low": "1K low",
   "1K medium": "1K medium",
   "2K low": "2K low",
-  "2K medium": "2K medium"
+  "2K medium": "2K medium",
+  "Seedance resolution selection": "Seedance resolution selection",
+  "All resolutions": "All resolutions",
+  "No resolutions": "No resolutions",
+  "Unchecked resolutions fall back to another channel. Input means reference video.": "Unchecked resolutions fall back to another channel. Input means reference video."
 }

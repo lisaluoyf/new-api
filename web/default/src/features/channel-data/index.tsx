@@ -53,6 +53,7 @@ import {
   modelMatchesCategory,
   type ModelCategoryKey,
 } from './model-classification'
+import { SeedanceResolutions } from './seedance-resolutions'
 import { sortChannelData } from './sort-channel-data'
 import { StatusHistory } from './status-history'
 
@@ -75,6 +76,8 @@ interface DetectPoint {
 }
 
 interface ModelDataItem {
+  resolution_options?: string[]
+  resolutions?: string[]
   channel_id: number
   channel_name: string
   upstream_model?: string
@@ -1804,13 +1807,22 @@ export function ChannelDataPage() {
                 <th className='px-3 py-2.5 text-center text-xs font-semibold tracking-wide text-gray-400 uppercase'>
                   {t('Actions')}
                 </th>
+                {data.some((item) => item.resolution_options?.length) && (
+                  <th className='px-3 py-2.5 text-left text-xs font-semibold text-gray-400'>
+                    {t('Resolution')}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className='divide-y divide-gray-50'>
               {loading && (
                 <tr>
                   <td
-                    colSpan={19}
+                    colSpan={
+                      data.some((item) => item.resolution_options?.length)
+                        ? 20
+                        : 19
+                    }
                     className='px-5 py-12 text-center text-sm text-gray-400'
                   >
                     {t('Loading…')}
@@ -1820,7 +1832,11 @@ export function ChannelDataPage() {
               {!loading && data.length === 0 && (
                 <tr>
                   <td
-                    colSpan={19}
+                    colSpan={
+                      data.some((item) => item.resolution_options?.length)
+                        ? 20
+                        : 19
+                    }
                     className='px-5 py-12 text-center text-sm text-gray-400'
                   >
                     {t(
@@ -2438,6 +2454,26 @@ export function ChannelDataPage() {
                         </button>
                       </div>
                     </td>
+                    {item.resolution_options?.length ? (
+                      <td className='px-3 py-2.5'>
+                        <SeedanceResolutions
+                          key={`${activeModel}-${item.channel_id}`}
+                          channelId={item.channel_id}
+                          model={activeModel}
+                          options={item.resolution_options}
+                          selected={item.resolutions ?? item.resolution_options}
+                          onSaved={(resolutions) =>
+                            setData((rows) =>
+                              rows.map((row) =>
+                                row.channel_id === item.channel_id
+                                  ? { ...row, resolutions }
+                                  : row
+                              )
+                            )
+                          }
+                        />
+                      </td>
+                    ) : null}
                   </tr>
                 )
               })}

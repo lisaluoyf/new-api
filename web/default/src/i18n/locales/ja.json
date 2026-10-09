@@ -4816,5 +4816,9 @@
   "1K low": "1K 低品質",
   "1K medium": "1K 中品質",
   "2K low": "2K 低品質",
-  "2K medium": "2K 中品質"
+  "2K medium": "2K 中品質",
+  "Seedance resolution selection": "Seedance resolution selection",
+  "All resolutions": "All resolutions",
+  "No resolutions": "No resolutions",
+  "Unchecked resolutions fall back to another channel. Input means reference video.": "Unchecked resolutions fall back to another channel. Input means reference video."
 }

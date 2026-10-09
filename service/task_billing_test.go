@@ -40,7 +40,7 @@ func TestMain(m *testing.M) {
 	ratio_setting.InitRatioSettings()
 
 	if err := db.AutoMigrate(
-		&model.Task{},
+		&model.Task{}, &model.VideoVerificationRun{},
 		&model.SeedanceBillingReceipt{},
 		&model.User{},
 		&model.Token{},

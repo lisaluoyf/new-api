@@ -130,7 +130,12 @@ func enqueueTaskWebhook(tx *gorm.DB, config *TaskWebhookConfig, resource, taskID
 	return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&e).Error
 }
 
-func (t *Task) AfterCreate(tx *gorm.DB) error { return t.enqueueWebhook(tx) }
+func (t *Task) AfterCreate(tx *gorm.DB) error {
+	if err := t.enqueueWebhook(tx); err != nil {
+		return err
+	}
+	return t.enqueueVideoVerification(tx.Session(&gorm.Session{NewDB: true}))
+}
 func (t *Task) enqueueWebhook(tx *gorm.DB) error {
 	if t.PrivateData.Webhook == nil || (t.Status != TaskStatusSuccess && t.Status != TaskStatusFailure) {
 		return nil

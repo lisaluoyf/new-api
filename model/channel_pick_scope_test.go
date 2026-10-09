@@ -50,7 +50,11 @@ func TestProviderScopeFiltersBeforePrioritySelection(t *testing.T) {
 			require.NotNil(t, channel)
 			require.Equal(t, 3, channel.Id)
 		}
-		channel, err := GetRandomSatisfiedChannel("scope-group", "scope-test", 0, nil, &ChannelPickScope{Include: true, IDs: []int{99}})
+		channel, err := GetRandomSatisfiedChannel("scope-group", "scope-test", 0, nil, &ChannelPickScope{Include: true, IDs: []int{1, 2, 3}}, &ChannelPickScope{Include: false, IDs: []int{1, 2}})
+		require.NoError(t, err)
+		require.NotNil(t, channel)
+		require.Equal(t, 3, channel.Id)
+		channel, err = GetRandomSatisfiedChannel("scope-group", "scope-test", 0, nil, &ChannelPickScope{Include: true, IDs: []int{99}})
 		require.NoError(t, err)
 		require.Nil(t, channel)
 		channel, err = GetRandomSatisfiedChannel("scope-group", "scope-test", 0, nil)

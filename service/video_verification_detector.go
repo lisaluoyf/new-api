@@ -217,3 +217,34 @@ func requestVideoVerification(ctx context.Context, file *os.File, normalized str
 	}
 	return payload.Results[0], nil
 }
+
+type SeedanceVerificationResponse struct {
+	Model      string                  `json:"model"`
+	Status     string                  `json:"status"`
+	Reason     string                  `json:"reason"`
+	DetectedAt int64                   `json:"detected_at"`
+	Result     videoVerificationResult `json:"result"`
+}
+
+func VerifySeedanceVideoFile(ctx context.Context, file *os.File, name string) (*SeedanceVerificationResponse, error) {
+	name = model.NormalizeVerifiedVideoModel(name)
+	if name == "" {
+		return nil, fmt.Errorf("Unsupported Seedance model")
+	}
+	result, err := requestVideoVerification(ctx, file, name)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	status, reason, _ := classifyVerifiedVideo(result, name, now)
+	return &SeedanceVerificationResponse{Model: name, Status: status, Reason: reason, DetectedAt: now.Unix(), Result: result}, nil
+}
+
+func VerifySeedanceVideoURL(ctx context.Context, mediaURL, name string) (*SeedanceVerificationResponse, error) {
+	file, err := downloadVerificationVideo(ctx, mediaURL, "")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { file.Close(); os.Remove(file.Name()) }()
+	return VerifySeedanceVideoFile(ctx, file, name)
+}

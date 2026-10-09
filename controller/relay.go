@@ -958,6 +958,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		if !common.StringsContains(channel.GetModels(), info.OriginModelName) {
 			return nil, types.NewError(fmt.Errorf("官方兜底渠道 #%d 不支持模型 %s", policy.OfficialChannelID, info.OriginModelName), types.ErrorCodeGetChannelFailed)
 		}
+		if err := service.ValidateSeedanceResolutionChannel(c, channel, info.OriginModelName); err != nil {
+			return nil, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		}
 		markOfficialFallbackChannel(c, channel)
 		newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
 		if newAPIError != nil {
@@ -980,6 +983,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	}
 	if policy, ok := model_setting.FindOfficialFallbackPolicy(info.OriginModelName); ok &&
 		retryParam.GetRetry() > 0 && channel.Id == policy.OfficialChannelID {
+		if err := service.ValidateSeedanceResolutionChannel(c, channel, info.OriginModelName); err != nil {
+			return nil, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		}
 		markOfficialFallbackChannel(c, channel)
 	}
 	return channel, nil

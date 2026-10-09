@@ -5188,5 +5188,9 @@
   "1K low": "1K 低质量",
   "1K medium": "1K 中等质量",
   "2K low": "2K 低质量",
-  "2K medium": "2K 中等质量"
+  "2K medium": "2K 中等质量",
+  "Seedance resolution selection": "Seedance 分辨率选择",
+  "All resolutions": "全部分辨率",
+  "No resolutions": "未选分辨率",
+  "Unchecked resolutions fall back to another channel. Input means reference video.": "未选分辨率会 fallback 至其他渠道。input 表示带参考视频。"
 }

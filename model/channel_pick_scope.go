@@ -20,18 +20,19 @@ func (scope *ChannelPickScope) Contains(channelID int) bool {
 }
 
 func applyChannelPickScope(query *gorm.DB, scopes []*ChannelPickScope) *gorm.DB {
-	if len(scopes) == 0 || scopes[0] == nil {
-		return query
-	}
-	scope := scopes[0]
-	if scope.Include {
-		if len(scope.IDs) == 0 {
-			return query.Where("1 = 0")
+	for _, scope := range scopes {
+		if scope == nil {
+			continue
 		}
-		return query.Where("channel_id IN ?", scope.IDs)
-	}
-	if len(scope.IDs) > 0 {
-		return query.Where("channel_id NOT IN ?", scope.IDs)
+		if scope.Include {
+			if len(scope.IDs) == 0 {
+				query = query.Where("1 = 0")
+			} else {
+				query = query.Where("channel_id IN ?", scope.IDs)
+			}
+		} else if len(scope.IDs) > 0 {
+			query = query.Where("channel_id NOT IN ?", scope.IDs)
+		}
 	}
 	return query
 }

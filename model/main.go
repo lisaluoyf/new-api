@@ -297,6 +297,7 @@ func migrateDB() error {
 		&Channel{},
 		&FreeModelMember{},
 		&ChannelDetectLog{},
+		&SeedanceChannelResolution{},
 		&VideoVerificationState{},
 		&VideoVerificationRun{},
 		&VideoVerificationAlert{},
@@ -411,6 +412,7 @@ func migrateDBFast() error {
 	}{
 		{&Channel{}, "Channel"},
 		{&ChannelDetectLog{}, "ChannelDetectLog"},
+		{&SeedanceChannelResolution{}, "SeedanceChannelResolution"},
 		{&VideoVerificationState{}, "VideoVerificationState"},
 		{&VideoVerificationRun{}, "VideoVerificationRun"},
 		{&VideoVerificationAlert{}, "VideoVerificationAlert"},

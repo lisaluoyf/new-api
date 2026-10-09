@@ -17,7 +17,7 @@ func webhookTestDB(t *testing.T) *gorm.DB {
 	sql.SetMaxOpenConns(1)
 	DB = db
 	t.Cleanup(func() { DB = old; sql.Close() })
-	require.NoError(t, db.AutoMigrate(&Task{}, &TaskWebhookEvent{}))
+	require.NoError(t, db.AutoMigrate(&Task{}, &TaskWebhookEvent{}, &VideoVerificationRun{}))
 	return db
 }
 func TestTaskWebhookSeedanceAtomic(t *testing.T) {

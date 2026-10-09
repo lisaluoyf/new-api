@@ -117,10 +117,13 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, filter Cha
 	if len(channels) == 0 {
 		return nil, nil
 	}
-	if len(scopes) > 0 && scopes[0] != nil {
+	for _, scope := range scopes {
+		if scope == nil {
+			continue
+		}
 		filtered := make([]int, 0, len(channels))
 		for _, channelID := range channels {
-			if scopes[0].Contains(channelID) {
+			if scope.Contains(channelID) {
 				filtered = append(filtered, channelID)
 			}
 		}

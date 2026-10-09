@@ -77,6 +77,7 @@ func SetRelayRouter(router *gin.Engine) {
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
 	relayV1Router.Use(middleware.TokenAuth(), middleware.TaskWebhookNotifications())
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
+	relayV1Router.POST("/videos/seedance-verify", controller.VerifySeedanceVideo)
 	relayV1Router.GET("/tasks/:task_id", middleware.DistributeUnlessSeedanceAssetTask(), controller.RelayImageTask)
 	{
 		// WebSocket 路由（统一到 Relay）

@@ -21,7 +21,7 @@ func TestSeedanceLastFrameOwnershipAndUnavailableMedia(t *testing.T) {
 	oldDB, oldMemory := model.DB, common.MemoryCacheEnabled
 	db, e := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, e)
-	require.NoError(t, db.AutoMigrate(&model.Task{}, &model.Channel{}, &model.User{}))
+	require.NoError(t, db.AutoMigrate(&model.Task{}, &model.VideoVerificationRun{}, &model.Channel{}, &model.User{}))
 	model.DB = db
 	common.MemoryCacheEnabled = false
 	setting := system_setting.GetFetchSetting()

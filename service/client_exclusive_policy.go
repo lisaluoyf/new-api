@@ -132,6 +132,9 @@ func ChannelMatchesClientPolicy(setting *string, clientType ClientType, _ string
 // ChannelPickFilter returns a filter when client-exclusive or gpt-image-2 routing applies.
 func ChannelPickFilter(c *gin.Context, modelName string) model.ChannelPickFilter {
 	var filters []model.ChannelPickFilter
+	if resolutionFilter := SeedanceResolutionPickFilter(c, modelName); resolutionFilter != nil {
+		filters = append(filters, resolutionFilter)
+	}
 
 	if providerFilter := ProviderChannelPickFilter(c, modelName); providerFilter != nil {
 		filters = append(filters, providerFilter)

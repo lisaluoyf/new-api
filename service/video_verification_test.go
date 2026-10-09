@@ -30,7 +30,7 @@ func TestVideoVerificationWorkerPanicDoesNotEscape(t *testing.T) {
 	})
 }
 
-func TestVideoVerificationCooldownAndDeduplication(t *testing.T) {
+func TestVideoVerificationEveryVideoAndDeduplication(t *testing.T) {
 	db := videoVerificationTestDB(t)
 	ctx := context.Background()
 	task := &model.Task{ID: 100, ChannelId: 7, Properties: model.Properties{OriginModelName: "seedance-2.0"}}
@@ -43,9 +43,10 @@ func TestVideoVerificationCooldownAndDeduplication(t *testing.T) {
 	require.False(t, claimed)
 
 	task.ID = 101
-	_, claimed, err = claimVideoVerification(ctx, task, "seedance-2.0", 1600, 2000)
+	state, claimed, err = claimVideoVerification(ctx, task, "seedance-2.0", 1600, 2000)
 	require.NoError(t, err)
-	require.False(t, claimed, "a queued event from inside the cooldown must not run when processed later")
+	require.True(t, claimed, "every completed video must be checked even within ten minutes")
+	require.NoError(t, finishVideoVerification(ctx, state, task, "notcomplete", "unknown_fingerprint", nil, 2001))
 
 	task.ID = 99
 	state, claimed, err = claimVideoVerification(ctx, task, "seedance-2.0", 1601, 2000)
@@ -54,7 +55,7 @@ func TestVideoVerificationCooldownAndDeduplication(t *testing.T) {
 	require.NoError(t, finishVideoVerification(ctx, state, task, "notcomplete", "download_failed", nil, 2001))
 	var count int64
 	require.NoError(t, db.Model(&model.VideoVerificationRun{}).Count(&count).Error)
-	require.EqualValues(t, 2, count, "cooldown skips must not insert a run for every request")
+	require.EqualValues(t, 3, count, "one durable run per completed video")
 }
 
 func TestVideoVerificationRouteIsolationAndLeaseRecovery(t *testing.T) {

@@ -4,24 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/go-redis/redis/v8"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-const VideoVerificationInterval = 10 * time.Minute
 const videoVerificationTimeout = 180 * time.Second
 const videoVerificationLease = 300 * time.Second
-const videoVerificationStream = "apimaster:video-verification:v1"
-const videoVerificationGroup = "verification"
-const videoVerificationConsumer = "master"
 const videoVerificationLock = "apimaster:video-verification:global-lease"
 const videoVerificationChat = "oc_9b0726dbd589af84fcee8544538c95b0"
 
@@ -29,14 +22,10 @@ var videoVerificationStart sync.Once
 
 func StartVideoVerificationWorker() {
 	videoVerificationStart.Do(func() {
-		if !common.RedisEnabled || common.RDB == nil {
-			common.SysError("video verification disabled: Redis unavailable")
-			return
-		}
-		queue := make(chan model.VideoVerificationEvent, 256)
-		model.SetVideoVerificationQueue(queue)
-		go superviseVideoVerification(func() { publishVideoVerificationEvents(queue) })
 		if common.IsMasterNode {
+			if common.RedisEnabled && common.RDB != nil {
+				go superviseVideoVerification(importLegacyVideoVerificationEvents)
+			}
 			go superviseVideoVerification(consumeVideoVerificationEvents)
 			go superviseVideoVerification(deliverVideoVerificationAlerts)
 		}
@@ -59,67 +48,23 @@ func runVideoVerificationSafely(worker func()) {
 	worker()
 }
 
-func publishVideoVerificationEvents(queue <-chan model.VideoVerificationEvent) {
-	for event := range queue {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		err := common.RDB.XAdd(ctx, &redis.XAddArgs{Stream: videoVerificationStream, MaxLenApprox: 10000, Values: map[string]interface{}{"task_db_id": event.TaskID, "completed_at": event.CompletedAt}}).Err()
-		cancel()
-		if err != nil {
-			common.SysError("video verification event dropped: Redis publish failed")
-		}
-	}
-}
-
+// Poll only the indexed durable outbox, never the customer task table.
 func consumeVideoVerificationEvents() {
+	common.SysLog("video verification worker ready: every completed Seedance video, durable outbox")
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		err := common.RDB.XGroupCreateMkStream(ctx, videoVerificationStream, videoVerificationGroup, "0").Err()
-		cancel()
-		if err == nil || strings.Contains(err.Error(), "BUSYGROUP") {
-			break
+		var runs []model.VideoVerificationRun
+		now := time.Now().Unix()
+		err := model.DB.Where("status IN ? AND lease_until <= ?", []string{"pending", "processing"}, now).Order("id ASC").Limit(10).Find(&runs).Error
+		if err != nil {
+			common.SysError("video verification outbox read failed")
 		}
-		common.SysError("video verification stream initialization failed")
-		time.Sleep(5 * time.Second)
-	}
-	common.SysLog("video verification worker ready: event-driven, interval=10m, concurrency=1")
-	for {
-		messages, err := readVideoVerificationEvents("0", -1)
-		if err == nil && len(messages) == 0 {
-			messages, err = readVideoVerificationEvents(">", 30*time.Second)
-		}
-		if err != nil && !errors.Is(err, redis.Nil) {
-			common.SysError("video verification stream read failed")
-			time.Sleep(5 * time.Second)
-			continue
-		}
-		for _, message := range messages {
-			taskID, parseErr := strconv.ParseInt(fmt.Sprint(message.Values["task_db_id"]), 10, 64)
-			completedAt, timeErr := strconv.ParseInt(fmt.Sprint(message.Values["completed_at"]), 10, 64)
-			if parseErr != nil || timeErr != nil || taskID <= 0 || completedAt <= 0 || handleVideoVerificationEvent(taskID, completedAt) {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				ackErr := common.RDB.XAck(ctx, videoVerificationStream, videoVerificationGroup, message.ID).Err()
-				cancel()
-				if ackErr != nil {
-					common.SysError("video verification stream acknowledgement failed")
-				}
-			} else {
-				time.Sleep(5 * time.Second)
+		for _, run := range runs {
+			if !handleVideoVerificationEvent(run.TaskID, run.CompletedAt) {
+				break
 			}
 		}
+		time.Sleep(2 * time.Second)
 	}
-}
-
-func readVideoVerificationEvents(offset string, block time.Duration) ([]redis.XMessage, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
-	defer cancel()
-	streams, err := common.RDB.XReadGroup(ctx, &redis.XReadGroupArgs{Group: videoVerificationGroup, Consumer: videoVerificationConsumer, Streams: []string{videoVerificationStream, offset}, Count: 1, Block: block}).Result()
-	if err != nil {
-		return nil, err
-	}
-	if len(streams) == 0 {
-		return nil, nil
-	}
-	return streams[0].Messages, nil
 }
 
 func claimVideoVerification(ctx context.Context, task *model.Task, normalized string, completedAt, now int64) (*model.VideoVerificationState, bool, error) {
@@ -131,7 +76,7 @@ func claimVideoVerification(ctx context.Context, task *model.Task, normalized st
 			return err
 		}
 		if run.ID != 0 {
-			if run.Status != "processing" {
+			if run.Status != "processing" && run.Status != "pending" {
 				return nil
 			}
 			if run.LeaseUntil > now {
@@ -143,12 +88,6 @@ func claimVideoVerification(ctx context.Context, task *model.Task, normalized st
 		}
 		if err := tx.Where("channel_id = ? AND model = ?", task.ChannelId, normalized).First(&state).Error; err != nil {
 			return err
-		}
-		if state.NextAt > completedAt || state.NextAt > now || state.LastTaskID == task.ID {
-			if run.ID != 0 {
-				return tx.Model(&run).Updates(map[string]interface{}{"status": "skipped", "lease_until": 0}).Error
-			}
-			return nil
 		}
 		lease := now + int64(videoVerificationLease/time.Second)
 		result := tx.Model(&state).Where("lease_until <= ?", now).Updates(map[string]interface{}{"active_task_id": task.ID, "lease_until": lease})
@@ -164,7 +103,7 @@ func claimVideoVerification(ctx context.Context, task *model.Task, normalized st
 				return err
 			}
 		} else {
-			if err := tx.Model(&run).Updates(map[string]interface{}{"lease_until": lease}).Error; err != nil {
+			if err := tx.Model(&run).Updates(map[string]interface{}{"lease_until": lease, "status": "processing"}).Error; err != nil {
 				return err
 			}
 		}
@@ -181,24 +120,31 @@ func handleVideoVerificationEvent(taskID, completedAt int64) bool {
 	defer cancel()
 	var task model.Task
 	if err := model.DB.WithContext(ctx).First(&task, taskID).Error; err != nil {
-		return errors.Is(err, gorm.ErrRecordNotFound)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			model.DB.Model(&model.VideoVerificationRun{}).Where("task_id = ?", taskID).Updates(map[string]any{"status": "skipped", "lease_until": 0})
+			return true
+		}
+		return false
 	}
 	normalized := model.NormalizeVerifiedVideoModel(task.Properties.OriginModelName)
 	if task.Status != model.TaskStatusSuccess || normalized == "" || task.ChannelId <= 0 {
+		model.DB.Model(&model.VideoVerificationRun{}).Where("task_id = ?", taskID).Updates(map[string]any{"status": "skipped", "lease_until": 0})
 		return true
 	}
-	owner := model.GenerateTaskID()
-	locked, err := common.RDB.SetNX(ctx, videoVerificationLock, owner, videoVerificationLease).Result()
-	if err != nil || !locked {
-		return false
-	}
-	defer func() {
-		releaseCtx, release := context.WithTimeout(context.Background(), 2*time.Second)
-		defer release()
-		if common.RDB.Eval(releaseCtx, `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`, []string{videoVerificationLock}, owner).Err() != nil {
-			common.SysError("video verification lease release failed")
+	if common.RedisEnabled && common.RDB != nil {
+		owner := model.GenerateTaskID()
+		locked, err := common.RDB.SetNX(ctx, videoVerificationLock, owner, videoVerificationLease).Result()
+		if err != nil || !locked {
+			return false
 		}
-	}()
+		defer func() {
+			releaseCtx, release := context.WithTimeout(context.Background(), 2*time.Second)
+			defer release()
+			if common.RDB.Eval(releaseCtx, `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`, []string{videoVerificationLock}, owner).Err() != nil {
+				common.SysError("video verification lease release failed")
+			}
+		}()
+	}
 	state, claimed, err := claimVideoVerification(ctx, &task, normalized, completedAt, time.Now().Unix())
 	if err != nil {
 		common.SysError("video verification state claim failed")
@@ -220,7 +166,7 @@ func handleVideoVerificationEvent(taskID, completedAt int64) bool {
 
 func finishVideoVerification(ctx context.Context, state *model.VideoVerificationState, task *model.Task, status, reason string, checks []model.VideoFingerprintCheck, now int64) error {
 	return model.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(state).Where("active_task_id = ? AND lease_until = ?", task.ID, state.LeaseUntil).Updates(map[string]interface{}{"last_task_id": task.ID, "active_task_id": 0, "lease_until": 0, "next_at": now + int64(VideoVerificationInterval/time.Second), "last_status": status, "last_detected_at": now})
+		result := tx.Model(state).Where("active_task_id = ? AND lease_until = ?", task.ID, state.LeaseUntil).Updates(map[string]interface{}{"last_task_id": task.ID, "active_task_id": 0, "lease_until": 0, "next_at": 0, "last_status": status, "last_detected_at": now})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -238,7 +184,7 @@ func finishVideoVerification(ctx context.Context, state *model.VideoVerification
 		if err := tx.Create(&entry).Error; err != nil {
 			return err
 		}
-		if status == "suspicious" {
+		if status != "pass" {
 			alert := model.VideoVerificationAlert{TaskID: task.ID, ChannelID: task.ChannelId, Model: state.Model, Reason: reason, DetectedAt: now, NextAt: now, Status: "pending"}
 			return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&alert).Error
 		}
@@ -296,8 +242,12 @@ var sendVideoVerificationAlert = func(alert *model.VideoVerificationAlert) error
 	if common.FeishuAppID() == "" || common.FeishuAppSecret() == "" {
 		return errors.New("Feishu credentials unavailable")
 	}
+	channelName := fmt.Sprintf("#%d", alert.ChannelID)
+	if channel, err := model.GetChannelById(alert.ChannelID, false); err == nil {
+		channelName = channel.Name
+	}
 	return common.SendFeishuCard(videoVerificationChat, common.FeishuNotificationTitle("Seedance 视频指纹验证失败"), []string{
-		fmt.Sprintf("渠道：%d", alert.ChannelID), "声明模型：" + alert.Model, "结果：明确指纹/版本不匹配", "原因：" + alert.Reason,
+		fmt.Sprintf("渠道：%s (#%d)", channelName, alert.ChannelID), "声明模型：" + alert.Model, "结果：验真未通过（指纹不匹配或检测未完成）", "原因：" + alert.Reason,
 		"检测时间：" + time.Unix(alert.DetectedAt, 0).UTC().Format(time.RFC3339), "仅内部监测，不影响用户视频交付、计费或渠道路由。",
 	})
 }
