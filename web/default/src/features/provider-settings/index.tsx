@@ -7,7 +7,6 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { handleServerError } from '@/lib/handle-server-error'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -41,7 +40,7 @@ import {
 } from './api'
 import { ChannelPicker } from './components/channel-picker'
 import {
-  providerSettingsSchema,
+  createProviderSettingsSchema,
   type ProviderSettingsValues,
 } from './lib/schema'
 
@@ -53,7 +52,7 @@ export function ProviderSettings() {
     queryFn: getProviderSettings,
   })
   const form = useForm<ProviderSettingsValues>({
-    resolver: zodResolver(providerSettingsSchema),
+    resolver: zodResolver(createProviderSettingsSchema(t)),
     defaultValues: { rules: [] },
   })
   const rows = useFieldArray({ control: form.control, name: 'rules' })
@@ -105,13 +104,6 @@ export function ProviderSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Alert className='mb-6'>
-              <AlertDescription>
-                {t(
-                  'These rules only filter eligible channels. Pricing, health checks, feedback, retries and fallbacks remain unchanged within the allowed channels. If none are available, the request fails. FreeModel is not affected.'
-                )}
-              </AlertDescription>
-            </Alert>
             {query.isError && (
               <Button
                 type='button'
@@ -187,6 +179,7 @@ export function ProviderSettings() {
                                 }
                               }}
                               placeholder={t('Select a model')}
+                              emptyText={t('No matching models')}
                             />
                           </FormControl>
                           <FormMessage />

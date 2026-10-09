@@ -117,12 +117,14 @@ export function ChannelPicker(props: ChannelPickerProps) {
                       <>
                         {t('Available')}
                         {channel.user_price != null &&
-                          ` · $${Number(channel.user_price.toPrecision(6))}/${channel.media_pricing?.unit ?? '1M input tokens'}`}
+                          ` · $${Number(channel.user_price.toPrecision(6))}/${t(channel.media_pricing?.unit ?? '1M input tokens')}`}
                         {discount != null &&
                           discount > 0 &&
-                          ` · ${discount}% ${t('off')}`}
-                        {channel.client_exclusive &&
-                          ` · ${channel.client_exclusive}`}
+                          ` · ${t('{{discount}}% off', { discount })}`}
+                        {channel.client_exclusive === 'codex' &&
+                          ` · ${t('Codex-only channel')}`}
+                        {channel.client_exclusive === 'claude_code' &&
+                          ` · ${t('Claude Code-only channel')}`}
                       </>
                     ) : (
                       t('Unavailable — saved selection retained')
