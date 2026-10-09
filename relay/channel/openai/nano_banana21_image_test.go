@@ -2,7 +2,9 @@ package openai
 
 import (
 	"bytes"
+	"io"
 	"mime/multipart"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -98,8 +100,10 @@ func TestNanoBanana21NativeImages(t *testing.T) {
 		require.Error(t, err)
 		if mode == relayconstant.RelayModeImagesGenerations {
 			req.ImageUrls = []string{"https://example.com/reference.png"}
-			_, err = (&Adaptor{}).ConvertImageRequest(c, info, req)
-			require.ErrorContains(t, err, "/v1/images/edits")
+			wire, err = (&Adaptor{}).ConvertImageRequest(c, info, req)
+			require.NoError(t, err)
+			require.Equal(t, req.ImageUrls[0], wire.(map[string]any)["image"])
+			require.True(t, c.GetBool("nano_banana21_native_edit"))
 		}
 		info.ChannelType = constant.ChannelTypeOpenRouter
 		require.False(t, nanoBanana21NativeImages(info))
@@ -108,6 +112,16 @@ func TestNanoBanana21NativeImages(t *testing.T) {
 }
 
 func TestNanoBanana21NativeMultipartReference(t *testing.T) {
+	service.InitHttpClient()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/images/edits", r.URL.Path)
+		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		var body map[string]any
+		require.NoError(t, common.DecodeJson(r.Body, &body))
+		require.Equal(t, "https://apimaster.ai/imgs/reference.png", body["image"])
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer upstream.Close()
 	oldCache := nanoBanana21CacheReference
 	t.Cleanup(func() { nanoBanana21CacheReference = oldCache })
 	nanoBanana21CacheReference = func(ref string) string {
@@ -128,7 +142,7 @@ func TestNanoBanana21NativeMultipartReference(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/v1/images/edits", &body)
 	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
 	info := &relaycommon.RelayInfo{OriginModelName: "gemini-nano-banana-2.1", RelayMode: relayconstant.RelayModeImagesEdits,
-		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenAI, UpstreamModelName: "nano-banana-2.1"}}
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenAI, UpstreamModelName: "nano-banana-2.1", ChannelBaseUrl: upstream.URL}}
 	req, err := helper.GetAndValidOpenAIImageRequest(c, relayconstant.RelayModeImagesEdits)
 	require.NoError(t, err)
 	require.Equal(t, "b64_json", req.ResponseFormat)
@@ -137,7 +151,76 @@ func TestNanoBanana21NativeMultipartReference(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "nano-banana-2.1", wire.(map[string]any)["model"])
 	require.Equal(t, "https://apimaster.ai/imgs/reference.png", wire.(map[string]any)["image"])
+	raw, err := common.Marshal(wire)
+	require.NoError(t, err)
+	a := &Adaptor{}
+	a.Init(info)
+	resp, err := a.DoRequest(c, info, bytes.NewReader(raw))
+	require.NoError(t, err)
+	resp.(*http.Response).Body.Close()
+	require.Equal(t, writer.FormDataContentType(), c.GetHeader("Content-Type"))
 	_, err = normalizeNanoBanana21ImageResponse(c, info, []byte(`{"data":[{"b64_json":"aGVsbG8="}]}`))
 	require.NoError(t, err)
 	require.Equal(t, "b64_json", service.GptImage2ClientResponseFormat(c))
+}
+
+func TestNanoBanana21GenerationReferencesUseAttemptLocalEdit(t *testing.T) {
+	service.InitHttpClient()
+	oldCache := nanoBanana21CacheReference
+	t.Cleanup(func() { nanoBanana21CacheReference = oldCache })
+	nanoBanana21CacheReference = func(string) string { return "https://example.com/cached.png" }
+	for _, field := range []string{"image_urls", "image", "images"} {
+		t.Run(field, func(t *testing.T) {
+			refs := []string{"https://example.com/a.png", "https://example.com/b.png", "https://example.com/c.png", "https://example.com/d.png", "https://example.com/e.png", "data:image/png;base64,cmVm"}
+			var path string
+			var received map[string]any
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				path = r.URL.Path
+				require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				received = nil
+				require.NoError(t, common.DecodeJson(r.Body, &received))
+				_, _ = io.WriteString(w, `{}`)
+			}))
+			defer upstream.Close()
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/v1/images/generations", strings.NewReader("{}"))
+			c.Request.Header.Set("Content-Type", "application/json")
+			info := &relaycommon.RelayInfo{OriginModelName: "gemini-nano-banana-2.1", RelayMode: relayconstant.RelayModeImagesGenerations, RequestURLPath: c.Request.URL.Path,
+				ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenAI, UpstreamModelName: "nano-banana-2.1", ChannelBaseUrl: upstream.URL}}
+			payload, err := common.Marshal(map[string]any{"model": "nano-banana-2.1", "prompt": "preserve all reference objects", "resolution": "1K", field: refs})
+			require.NoError(t, err)
+			var req dto.ImageRequest
+			require.NoError(t, common.Unmarshal(payload, &req))
+			a := &Adaptor{}
+			a.Init(info)
+			wire, err := a.ConvertImageRequest(c, info, req)
+			require.NoError(t, err)
+			raw, err := common.Marshal(wire)
+			require.NoError(t, err)
+			resp, err := a.DoRequest(c, info, bytes.NewReader(raw))
+			require.NoError(t, err)
+			resp.(*http.Response).Body.Close()
+			require.Equal(t, "/v1/images/edits", path)
+			refs[5] = "https://example.com/cached.png"
+			var got []string
+			encoded, err := common.Marshal(received["images"])
+			require.NoError(t, err)
+			require.NoError(t, common.Unmarshal(encoded, &got))
+			require.Equal(t, refs, got)
+			require.NotContains(t, received, "image_urls")
+			require.Equal(t, relayconstant.RelayModeImagesGenerations, info.RelayMode)
+			require.Equal(t, "/v1/images/generations", info.RequestURLPath)
+			require.Equal(t, info.RequestURLPath, c.Request.URL.Path)
+			// A native text-only retry must still use generations.
+			wire, err = a.ConvertImageRequest(c, info, dto.ImageRequest{Model: "nano-banana-2.1", Prompt: "no references"})
+			require.NoError(t, err)
+			raw, err = common.Marshal(wire)
+			require.NoError(t, err)
+			resp, err = a.DoRequest(c, info, bytes.NewReader(raw))
+			require.NoError(t, err)
+			resp.(*http.Response).Body.Close()
+			require.Equal(t, "/v1/images/generations", path)
+			require.NotContains(t, received, "images")
+		})
+	}
 }

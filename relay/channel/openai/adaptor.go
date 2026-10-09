@@ -836,6 +836,20 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if nanoBanana21NativeImages(info) {
+		// ConvertImageRequest produces JSON even for multipart client edits.
+		// Change only this upstream attempt; retain client mode/path for retries
+		// and billing logs.
+		originalContentType := c.Request.Header.Get("Content-Type")
+		c.Request.Header.Set("Content-Type", "application/json")
+		defer c.Request.Header.Set("Content-Type", originalContentType)
+		attempt := *info
+		if c.GetBool("nano_banana21_native_edit") {
+			attempt.RelayMode = relayconstant.RelayModeImagesEdits
+			attempt.RequestURLPath = "/v1/images/edits"
+		}
+		return channel.DoApiRequest(a, c, &attempt, requestBody)
+	}
 	if c.GetBool("subrouter_gemini_native_edit") {
 		originalContentType := c.Request.Header.Get("Content-Type")
 		c.Request.Header.Set("Content-Type", c.GetString("subrouter_gemini_edit_content_type"))

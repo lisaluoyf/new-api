@@ -36,6 +36,8 @@ func nanoBanana21NativeImages(info *relaycommon.RelayInfo) bool {
 }
 
 func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo, req dto.ImageRequest) (any, error) {
+	// Reset on each attempt so a retry cannot inherit another channel's path.
+	c.Set("nano_banana21_native_edit", false)
 	if req.N != nil && *req.N != 1 {
 		return nil, fmt.Errorf("Nano Banana 2.1 requires n=1")
 	}
@@ -52,7 +54,8 @@ func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo
 		return nil, fmt.Errorf("unsupported response_format")
 	}
 	c.Set("nano_banana21_response_format", req.ResponseFormat)
-	if info.RelayMode == relayconstant.RelayModeImagesEdits {
+	hasReferences := len(req.ImageUrls) > 0 || (len(req.Image) > 0 && string(req.Image) != "null") || (len(req.Images) > 0 && string(req.Images) != "null")
+	if info.RelayMode == relayconstant.RelayModeImagesEdits || hasReferences {
 		var err error
 		req, err = helper.ConvertImageEditsToGeneration(c, req)
 		if err != nil {
@@ -103,7 +106,7 @@ func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo
 	if nanoBanana21NativeImages(info) {
 		// These hubs use quality for imageSize; resolution alone is ignored.
 		body := map[string]any{"model": req.Model, "prompt": req.Prompt, "n": 1, "size": req.Size, "resolution": tier, "quality": tier, "response_format": "b64_json"}
-		if info.RelayMode == relayconstant.RelayModeImagesEdits {
+		if len(req.ImageUrls) > 0 {
 			refs := append([]string(nil), req.ImageUrls...)
 			for i, ref := range refs {
 				if strings.HasPrefix(ref, "data:image/") {
@@ -118,8 +121,7 @@ func convertNanoBanana21ImageRequest(c *gin.Context, info *relaycommon.RelayInfo
 			} else {
 				body["images"] = refs
 			}
-		} else if len(req.ImageUrls) > 0 || len(req.Image) > 0 || len(req.Images) > 0 {
-			return nil, fmt.Errorf("reference images require /v1/images/edits on this channel")
+			c.Set("nano_banana21_native_edit", true)
 		}
 		return body, nil
 	}
