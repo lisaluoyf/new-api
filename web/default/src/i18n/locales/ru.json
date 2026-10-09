@@ -4777,7 +4777,11 @@
     "Order Number": "Order Number",
     "Reconciled refunds": "Сверенные возвраты",
     "Verified prior-date payments credited today": "Проверенные прошлые платежи, зачисленные за день",
-    "Reconciliation Platega creation date notice": "Platega statements use the order creation date. Payments created earlier and credited on the selected day are checked against their original statement and listed separately from the selected day’s totals."
+    "Reconciliation Platega creation date notice": "Platega statements use the order creation date. Payments created earlier and credited on the selected day are checked against their original statement and listed separately from the selected day’s totals.",
+    "Seedance resolution selection": "Выбор разрешения Seedance",
+    "All resolutions": "Все разрешения",
+    "No resolutions": "Нет разрешений",
+    "Unchecked resolutions fall back to another channel. Input means reference video.": "Для невыбранных разрешений используется другой канал. Input означает наличие видеообразца."
   },
   "在线使用": "Песочница",
   "推广有礼": "Партнёрам",
@@ -4818,9 +4822,5 @@
   "1K low": "1K низкое качество",
   "1K medium": "1K среднее качество",
   "2K low": "2K низкое качество",
-  "2K medium": "2K среднее качество",
-  "Seedance resolution selection": "Seedance resolution selection",
-  "All resolutions": "All resolutions",
-  "No resolutions": "No resolutions",
-  "Unchecked resolutions fall back to another channel. Input means reference video.": "Unchecked resolutions fall back to another channel. Input means reference video."
+  "2K medium": "2K среднее качество"
 }

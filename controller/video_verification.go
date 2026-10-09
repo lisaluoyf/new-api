@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -31,11 +32,15 @@ func VerifySeedanceVideo(c *gin.Context) {
 			return
 		}
 		upload, header, uploadErr := c.Request.FormFile("file")
-		if uploadErr != nil || header.Size > maxBytes {
+		if uploadErr != nil {
 			c.JSON(400, gin.H{"error": "A video file no larger than 500 MB is required"})
 			return
 		}
 		defer upload.Close()
+		if header.Size > maxBytes {
+			c.JSON(413, gin.H{"error": "Video file must be no larger than 500 MB"})
+			return
+		}
 		file, fileErr := os.CreateTemp("", "apm-verify-api-*.mp4")
 		if fileErr != nil {
 			c.JSON(503, gin.H{"error": "Temporary storage unavailable"})
@@ -56,7 +61,7 @@ func VerifySeedanceVideo(c *gin.Context) {
 			Model    string `json:"model"`
 			VideoURL string `json:"video_url"`
 		}
-		if c.ShouldBindJSON(&request) != nil || model.NormalizeVerifiedVideoModel(request.Model) == "" || request.VideoURL == "" {
+		if common.UnmarshalBodyReusable(c, &request) != nil || model.NormalizeVerifiedVideoModel(request.Model) == "" || request.VideoURL == "" {
 			c.JSON(400, gin.H{"error": "model and video_url are required"})
 			return
 		}

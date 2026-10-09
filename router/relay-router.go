@@ -72,12 +72,16 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 	}
+	// Verification is analysis, not generation: it must not enter generation
+	// webhook middleware or consume the body before its streaming upload handler.
+	verificationRouter := router.Group("/v1", middleware.RouteTag("relay"), middleware.SystemPerformanceCheck(), middleware.TokenAuth(), middleware.ModelRequestRateLimit())
+	verificationRouter.POST("/videos/seedance-verify", controller.VerifySeedanceVideo)
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
 	relayV1Router.Use(middleware.TokenAuth(), middleware.TaskWebhookNotifications())
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
-	relayV1Router.POST("/videos/seedance-verify", controller.VerifySeedanceVideo)
+
 	relayV1Router.GET("/tasks/:task_id", middleware.DistributeUnlessSeedanceAssetTask(), controller.RelayImageTask)
 	{
 		// WebSocket 路由（统一到 Relay）

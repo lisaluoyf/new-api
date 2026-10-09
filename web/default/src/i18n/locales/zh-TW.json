@@ -4796,7 +4796,11 @@
     "Confirm matched": "確認相符",
     "Order manually confirmed as matched": "已人工確認該筆對帳成功",
     "Manual reconciliation confirmation notice": "我已人工核對該訂單，確認對帳成功。確認後將記錄核對人和時間，該筆計入對帳成功；訂單金額和錢包餘額保持不變。",
-    "Manually matched orders": "人工確認相符"
+    "Manually matched orders": "人工確認相符",
+    "Seedance resolution selection": "Seedance 解析度選擇",
+    "All resolutions": "所有解析度",
+    "No resolutions": "未選解析度",
+    "Unchecked resolutions fall back to another channel. Input means reference video.": "未選解析度會 fallback 至其他渠道。input 表示帶參考影片。"
   },
   "User Balance": "用戶餘額",
   "No active subscription": "目前沒有可用訂閱",

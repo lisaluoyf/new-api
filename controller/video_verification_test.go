@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -60,7 +61,15 @@ func TestSeedanceVerificationAPIRejectsInvalidModelsAndPrivateURLs(t *testing.T)
 		c, _ := gin.CreateTestContext(recorder)
 		c.Request = httptest.NewRequest("POST", "/v1/videos/seedance-verify", strings.NewReader(body))
 		c.Request.Header.Set("Content-Type", "application/json")
-		VerifySeedanceVideo(c)
-		require.GreaterOrEqual(t, recorder.Code, 400)
+		// Reproduce the existing webhook middleware's JSON pre-read.
+		router := gin.New()
+		router.Use(middleware.TaskWebhookNotifications())
+		router.POST("/v1/videos/seedance-verify", VerifySeedanceVideo)
+		router.ServeHTTP(recorder, c.Request)
+		if strings.Contains(body, "127.0.0.1") {
+			require.Equal(t, 502, recorder.Code)
+		} else {
+			require.Equal(t, 400, recorder.Code)
+		}
 	}
 }
