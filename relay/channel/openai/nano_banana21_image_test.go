@@ -53,6 +53,62 @@ func TestNanoBanana21ImageBridge(t *testing.T) {
 	}
 }
 
+func TestNanoBanana21MarkdownImageResponses(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content any
+		images  []any
+		want    []map[string]string
+	}{
+		{"subrouter jpeg", "![image](data:image/jpeg;base64,aGVsbG8=)", nil, []map[string]string{{"b64_json": "aGVsbG8="}}},
+		{"png with surrounding text", "Here is your image:\n![result](<data:image/png;base64,aGVsbG8=>)\nDone.", nil, []map[string]string{{"b64_json": "aGVsbG8="}}},
+		{"two outputs", "![one](https://example.com/a.png)\n![two](data:image/png;base64,aGVsbG8=)", nil, []map[string]string{{"url": "https://example.com/a.png"}, {"b64_json": "aGVsbG8="}}},
+		{"duplicate markup", "![one](https://example.com/a.png)\n![again](https://example.com/a.png)", nil, []map[string]string{{"url": "https://example.com/a.png"}}},
+		{"typed text content", []any{map[string]any{"type": "text", "text": "![image](data:image/png;base64,aGVsbG8=)"}}, nil, []map[string]string{{"b64_json": "aGVsbG8="}}},
+		{"structured wins", "![image](https://example.com/a.png)", []any{map[string]any{"image_url": map[string]string{"url": "https://example.com/a.png"}}}, []map[string]string{{"url": "https://example.com/a.png"}}},
+		{"text only", "I cannot generate an image.", nil, nil},
+		{"ordinary link", "[image](https://example.com/a.png)", nil, nil},
+		{"bare data URI", "data:image/png;base64,aGVsbG8=", nil, nil},
+		{"non image data", "![file](data:text/plain;base64,aGVsbG8=)", nil, nil},
+		{"invalid base64", "![image](data:image/png;base64,abc=def=)", nil, nil},
+		{"empty payload", "![image](data:image/png;base64,)", nil, nil},
+		{"unsupported scheme", "![image](file:///tmp/image.png)", nil, nil},
+		{"null content", nil, nil, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/v1/images/generations", strings.NewReader("{}"))
+			info := &relaycommon.RelayInfo{OriginModelName: "gemini-nano-banana-2.1", RelayMode: relayconstant.RelayModeImagesGenerations, PriceData: types.PriceData{}}
+			_, err := convertNanoBanana21ImageRequest(c, info, dto.ImageRequest{Model: info.OriginModelName, Resolution: "1K", ResponseFormat: "b64_json"})
+			require.NoError(t, err)
+			message := map[string]any{"content": tc.content}
+			if tc.images != nil {
+				message["images"] = tc.images
+			}
+			raw, err := common.Marshal(map[string]any{"choices": []any{map[string]any{"message": message}}, "usage": map[string]any{"prompt_tokens": 17, "completion_tokens": 100}})
+			require.NoError(t, err)
+			body, err := normalizeNanoBanana21ImageResponse(c, info, raw)
+			if tc.want == nil {
+				require.Error(t, err)
+				require.NotContains(t, info.PriceData.OtherRatios, "n")
+				return
+			}
+			require.NoError(t, err)
+			var response struct {
+				Data  []map[string]string `json:"data"`
+				Usage dto.Usage           `json:"usage"`
+			}
+			require.NoError(t, common.Unmarshal(body, &response))
+			require.Equal(t, tc.want, response.Data)
+			require.Equal(t, 17, response.Usage.PromptTokens)
+			require.Equal(t, 100, response.Usage.CompletionTokens)
+			require.Equal(t, float64(len(tc.want)), info.PriceData.OtherRatios["n"])
+			require.Equal(t, len(tc.want), service.ImageRequestDataFromContext(c)["actual_image_count"])
+			require.Equal(t, "b64_json", service.GptImage2ClientResponseFormat(c))
+		})
+	}
+}
+
 func TestNanoBanana21NativeImages(t *testing.T) {
 	for _, mode := range []int{relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits} {
 		info := &relaycommon.RelayInfo{OriginModelName: "gemini-nano-banana-2.1", RelayMode: mode,

@@ -1,7 +1,10 @@
 package openai
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +20,39 @@ import (
 )
 
 var nanoBanana21CacheReference = service.CacheImageBase64Locally
+
+// Some OpenAI-compatible image providers return Markdown in message.content
+// rather than the OpenRouter message.images field. Only image markup counts;
+// ordinary text and links must not be treated as successful image generation.
+var nanoBanana21MarkdownImage = regexp.MustCompile(`!\[[^\]\r\n]*\]\(\s*<?(data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=\r\n]+|https?://[^\s<>()]+)>?\s*\)`)
+
+func nanoBanana21ContentImages(raw json.RawMessage) []string {
+	var text string
+	if common.Unmarshal(raw, &text) != nil {
+		var parts []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if common.Unmarshal(raw, &parts) != nil {
+			return nil
+		}
+		for _, part := range parts {
+			if part.Type == "text" {
+				text += "\n" + part.Text
+			}
+		}
+	}
+	var images []string
+	seen := make(map[string]bool)
+	for _, match := range nanoBanana21MarkdownImage.FindAllStringSubmatch(text, -1) {
+		imageURL := match[1]
+		if !seen[imageURL] {
+			seen[imageURL] = true
+			images = append(images, imageURL)
+		}
+	}
+	return images
+}
 
 // The OpenRouter model returns images in chat messages. Keep image requests on
 // the existing per-image pricing and settlement path while adapting the wire format.
@@ -136,7 +172,8 @@ func normalizeNanoBanana21ImageResponse(c *gin.Context, info *relaycommon.RelayI
 		} `json:"data"`
 		Choices []struct {
 			Message struct {
-				Images []struct {
+				Content json.RawMessage `json:"content"`
+				Images  []struct {
 					ImageURL struct {
 						URL string `json:"url"`
 					} `json:"image_url"`
@@ -159,8 +196,17 @@ func normalizeNanoBanana21ImageResponse(c *gin.Context, info *relaycommon.RelayI
 		}
 	}
 	for _, choice := range response.Choices {
+		var imageURLs []string
 		for _, img := range choice.Message.Images {
-			u := strings.TrimSpace(img.ImageURL.URL)
+			imageURLs = append(imageURLs, img.ImageURL.URL)
+		}
+		// Prefer structured images to avoid counting a Markdown representation
+		// of the same image twice in settlement.
+		if len(imageURLs) == 0 && !nanoBanana21NativeImages(info) {
+			imageURLs = nanoBanana21ContentImages(choice.Message.Content)
+		}
+		for _, imageURL := range imageURLs {
+			u := strings.TrimSpace(imageURL)
 			if u == "" {
 				continue
 			}
@@ -168,6 +214,10 @@ func normalizeNanoBanana21ImageResponse(c *gin.Context, info *relaycommon.RelayI
 				parts := strings.SplitN(u, ",", 2)
 				if len(parts) != 2 || !strings.HasSuffix(parts[0], ";base64") {
 					return nil, fmt.Errorf("invalid upstream image data URI")
+				}
+				decoded, err := base64.StdEncoding.DecodeString(parts[1])
+				if err != nil || len(decoded) == 0 {
+					return nil, fmt.Errorf("invalid upstream image base64")
 				}
 				data = append(data, map[string]string{"b64_json": parts[1]})
 			} else if strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") {
