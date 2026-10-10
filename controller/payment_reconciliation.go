@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -604,6 +605,25 @@ func classifyReconciliationOrder(r reconciliationCandidate, p reconciliationProo
 	if r.provider == model.PaymentProviderEpay && r.purpose == "subscription" {
 		r, amountProblem = reconciliationEpaySubscriptionAmount(r)
 	}
+	if amountProblem == "" {
+		charged := service.PaymentChargeAmount(r.provider, r.money)
+		if r.provider == model.PaymentProviderStripe && r.purpose == "subscription" && strings.TrimSpace(r.payload) != "" {
+			snapshot, err := readSubscriptionStripePaymentSnapshot(r.payload)
+			if err != nil {
+				amountProblem = "invalid_stripe_payment_snapshot"
+			} else {
+				charged = float64(snapshot.ChargeAmount) / 100
+			}
+		}
+		if math.IsNaN(charged) || math.IsInf(charged, 0) {
+			amountProblem = "invalid_local_amount"
+			if math.IsNaN(r.money) || math.IsInf(r.money, 0) {
+				r.money = 0
+			}
+		} else {
+			r.money = charged
+		}
+	}
 	i := model.PaymentReconciliationItem{TradeNo: r.trade, UserID: r.user, Purpose: r.purpose, LocalStatus: r.status, LocalPaid: r.status == "success", LocalAmount: decimal.NewFromFloat(r.money).String(), Currency: r.currency, OfficialID: p.id, OfficialStatus: p.status, OfficialPaid: p.paid, OfficialAmount: p.amount, OfficialCurrency: p.currency, Result: "matched", CheckedAt: time.Now().Unix()}
 	if amountProblem != "" {
 		i.LocalAmount = ""
@@ -665,11 +685,6 @@ func classifyReconciliationOrder(r reconciliationCandidate, p reconciliationProo
 	if p.amount != "" {
 		a, e := decimal.NewFromString(p.amount)
 		b := decimal.NewFromFloat(r.money)
-		if r.provider == model.PaymentProviderPayPal {
-			// Match the exact two-decimal charge sent to PayPal for legacy
-			// prorated orders, as the live capture validator does.
-			b, _ = decimal.NewFromString(service.FormatPayPalAmount(r.money))
-		}
 		if e != nil || a.LessThanOrEqual(decimal.Zero) {
 			i.Result = "unverified"
 			i.Problem = "invalid_official_amount"

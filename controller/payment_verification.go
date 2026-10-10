@@ -22,13 +22,7 @@ func verifiedPaymentAmountMatches(provider string, expected, paid float64) bool 
 	if expected <= 0 || math.IsNaN(expected) || math.IsInf(expected, 0) {
 		return false
 	}
-	if provider == model.PaymentProviderPayPal {
-		// Legacy upgrade quotes contain prorated fractions of a cent. Compare
-		// against the exact amount sent to PayPal, not a widened tolerance.
-		charged, err := strconv.ParseFloat(service.FormatPayPalAmount(expected), 64)
-		return err == nil && math.Abs(charged-paid) <= 0.000001
-	}
-	return math.Abs(expected-paid) <= 0.000001
+	return service.PaymentChargeMatches(provider, expected, paid)
 }
 
 func validateVerifiedPaymentPrice(trade, provider, currency string, paid float64) error {
@@ -36,6 +30,13 @@ func validateVerifiedPaymentPrice(trade, provider, currency string, paid float64
 		return errors.New("invalid verified payment identity, currency or amount")
 	}
 	if order := model.GetSubscriptionOrderByTradeNo(trade); order != nil {
+		if provider == model.PaymentProviderStripe && order.PaymentProvider == provider && strings.TrimSpace(order.ProviderPayload) != "" {
+			snapshot, err := readSubscriptionStripePaymentSnapshot(order.ProviderPayload)
+			if err != nil || snapshot.ChargeCurrency != currency || math.Abs(float64(snapshot.ChargeAmount)/100-paid) > 0.000001 {
+				return errors.New("subscription Stripe frozen charge mismatch")
+			}
+			return nil
+		}
 		if order.PaymentProvider != provider || !verifiedPaymentAmountMatches(provider, order.Money, paid) {
 			return errors.New("subscription provider or amount mismatch")
 		}

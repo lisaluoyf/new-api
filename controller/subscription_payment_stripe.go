@@ -43,10 +43,29 @@ func newSubscriptionStripePaymentSnapshot(payable float64, currency string) (sub
 	}, nil
 }
 
-func verifySubscriptionStripePaymentSnapshot(snapshotJSON, amountTotal, currency string) error {
+func readSubscriptionStripePaymentSnapshot(payload string) (subscriptionStripePaymentSnapshot, error) {
 	var snapshot subscriptionStripePaymentSnapshot
-	if err := common.UnmarshalJsonStr(snapshotJSON, &snapshot); err != nil {
-		return fmt.Errorf("invalid subscription Stripe payment snapshot: %w", err)
+	var wrapper struct {
+		PaymentSnapshot *subscriptionStripePaymentSnapshot `json:"payment_snapshot"`
+	}
+	if err := common.UnmarshalJsonStr(payload, &wrapper); err != nil {
+		return snapshot, err
+	}
+	if wrapper.PaymentSnapshot != nil {
+		snapshot = *wrapper.PaymentSnapshot
+	} else if err := common.UnmarshalJsonStr(payload, &snapshot); err != nil {
+		return snapshot, err
+	}
+	if snapshot.ChargeAmount <= 0 || snapshot.ChargeCurrency != "USD" {
+		return snapshot, fmt.Errorf("missing or invalid subscription Stripe payment snapshot")
+	}
+	return snapshot, nil
+}
+
+func verifySubscriptionStripePaymentSnapshot(snapshotJSON, amountTotal, currency string) error {
+	snapshot, err := readSubscriptionStripePaymentSnapshot(snapshotJSON)
+	if err != nil {
+		return err
 	}
 	actualAmount, err := strconv.ParseInt(strings.TrimSpace(amountTotal), 10, 64)
 	if err != nil {
@@ -132,6 +151,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 			return
 		}
 		providerPayload = common.GetJsonString(paymentSnapshot)
+		terms.Payable = float64(paymentSnapshot.ChargeAmount) / 100
 	}
 
 	if plan.MaxPurchasePerUser > 0 {
@@ -201,7 +221,7 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 			Quantity: stripe.Int64(1),
 			PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
 				Currency:    stripe.String(strings.ToLower(plan.Currency)),
-				UnitAmount:  stripe.Int64(int64(payable*100 + 0.5)),
+				UnitAmount:  stripe.Int64(int64(math.Round(payable * 100))),
 				ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{Name: stripe.String(plan.Title)},
 			},
 		}}

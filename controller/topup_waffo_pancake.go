@@ -181,7 +181,11 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		}
 		payMoney = getWaffoPancakePayMoney(req.Amount, group, id)
 	}
-	if payMoney < 0.01 {
+	payMoney = service.PaymentChargeAmount("waffo_pancake", payMoney)
+	if plan != nil {
+		terms.Payable = payMoney
+	}
+	if !(payMoney >= 0.01) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Top-up amount is too low"})
 		return
 	}

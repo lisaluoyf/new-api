@@ -1586,7 +1586,9 @@ func NotifyPaymentSuccess(userId int, quotaAdded int, paymentMethod string, trad
 		if paymentContext.IsSubscription {
 			title = fmt.Sprintf("💎 订阅付款成功（第 %d 次）", payCount)
 		}
-		_ = common.SendFeishuCard(chatID, title, lines)
+		if err := common.SendFeishuCard(chatID, title, lines); err != nil {
+			common.SysLog(fmt.Sprintf("NotifyPaymentSuccess: Feishu delivery failed trade_no=%s: %v", tradeNo, err))
+		}
 	}()
 }
 

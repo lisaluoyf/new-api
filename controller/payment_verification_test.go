@@ -52,8 +52,8 @@ func TestPayPalVerificationMatchesFrozenCentAmount(t *testing.T) {
 	require.NoError(t, db.Create(&model.TopUp{TradeNo: "fractional-wallet", Money: 10.066003086419753, PaymentProvider: "paypal", Status: "pending"}).Error)
 	require.NoError(t, validateVerifiedPaymentPrice("fractional-wallet", "paypal", "USD", 10.07))
 	require.Error(t, validateVerifiedPaymentPrice("fractional-wallet", "paypal", "USD", 10.06))
-	// Other providers retain their existing exact frozen-price validation.
-	require.False(t, verifiedPaymentAmountMatches("stripe", 10.066003086419753, 10.07))
+	// Stripe also compares the charge in integer cents.
+	require.True(t, verifiedPaymentAmountMatches("stripe", 10.066003086419753, 10.07))
 }
 
 func TestStripeCallbackRequiresVerifiedPaidSession(t *testing.T) {

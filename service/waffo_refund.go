@@ -284,12 +284,12 @@ func resolveVerifiedWaffoTradeNo(ctx context.Context, payment waffoRefundPayment
 	}
 	if topUp == nil && !bind {
 		order := model.GetSubscriptionOrderByTradeNo(tradeNo)
-		if order == nil || order.PaymentProvider != model.PaymentProviderWaffoPancake || math.Abs(order.Money-subtotal) > 0.000001 {
+		if order == nil || order.PaymentProvider != model.PaymentProviderWaffoPancake || !PaymentChargeMatches("waffo_pancake", order.Money, subtotal) {
 			return "", errors.New("subscription differs from upstream payment")
 		}
 		return tradeNo, nil
 	}
-	if topUp == nil || topUp.PaymentProvider != model.PaymentProviderWaffoPancake || math.Abs(topUp.Money-subtotal) > 0.005 {
+	if topUp == nil || topUp.PaymentProvider != model.PaymentProviderWaffoPancake || !PaymentChargeMatches("waffo_pancake", topUp.Money, subtotal) {
 		return "", errors.New("local order amount differs from upstream payment")
 	}
 	if bind {

@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -334,8 +333,5 @@ func ClinkAmountForValidation(amountSubtotal, amountTotal float64, originalCurre
 }
 
 func ClinkAmountsMatch(expected, actual float64) bool {
-	if expected <= 0 || actual <= 0 {
-		return false
-	}
-	return math.Abs(expected-actual) <= 0.05
+	return PaymentChargeMatches("clink", expected, actual)
 }

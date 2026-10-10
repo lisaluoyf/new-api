@@ -120,7 +120,11 @@ func RequestClinkPay(c *gin.Context) {
 	} else {
 		chargedMoney = GetChargedAmountWithTierDiscount(req.Amount, *user) * firstTopupPromoFactor(id, req.Amount)
 	}
-	if chargedMoney <= 0.01 {
+	chargedMoney = service.PaymentChargeAmount(model.PaymentProviderClink, chargedMoney)
+	if plan != nil {
+		terms.Payable = chargedMoney
+	}
+	if !(chargedMoney > 0.01) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgTopupAmountTooLow)})
 		return
 	}

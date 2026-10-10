@@ -375,7 +375,7 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 			logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单套餐查询失败 trade_no=%s plan_id=%d event_type=%s client_ip=%s error=%q", referenceId, order.PlanId, string(event.Type), callerIp, planErr.Error()))
 			return errors.New("Stripe subscription settlement failed")
 		}
-		if model.IsGPTPaidSubscriptionPlan(plan) && order.Status != common.TopUpStatusSuccess {
+		if (model.IsGPTPaidSubscriptionPlan(plan) || model.IsCodingPlan(plan)) && order.Status != common.TopUpStatusSuccess {
 			if err := verifySubscriptionStripePaymentSnapshot(
 				order.ProviderPayload,
 				event.GetObjectValue("amount_total"),
