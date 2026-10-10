@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relay/channel/task/apimartvideo"
+	"github.com/QuantumNous/new-api/relay/channel/task/videofee"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -24,11 +25,15 @@ func TestSeedance20SelectsApimartBeforeModelMapping(t *testing.T) {
 
 func TestVideoFeeScopeIsChannel273AndEnabledModelsOnly(t *testing.T) {
 	for _, id := range []int{273, 272, 999} {
-		for _, name := range []string{"seedance-2.0", "seedance-2.5", "seedance-2.0-mini", "MiniMax-H3", "sora-2"} {
+		for _, name := range []string{"seedance-2.0", "seedance-2.5", "seedance-2.0-fast", "seedance-2.0-mini", "MiniMax-H3", "sora-2"} {
 			info := &relaycommon.RelayInfo{OriginModelName: name, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: id, ChannelBaseUrl: "https://seedance2026.vip", ChannelType: constant.ChannelTypeOpenAI}}
 			c, _ := gin.CreateTestContext(nil)
 			platform := ResolveTaskPlatform(c, "1", info)
-			require.Equal(t, id == 273 && (name == "seedance-2.0" || name == "seedance-2.5"), platform == constant.TaskPlatformVideoFee)
+			want := id == 273 && (name == "seedance-2.0" || name == "seedance-2.5" || name == "seedance-2.0-fast" || name == "seedance-2.0-mini")
+			require.Equal(t, want, platform == constant.TaskPlatformVideoFee)
+			if want {
+				require.IsType(t, &videofee.TaskAdaptor{}, ResolveTaskAdaptor(c, "1", info))
+			}
 		}
 	}
 }

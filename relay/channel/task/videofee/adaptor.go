@@ -30,7 +30,14 @@ type TaskAdaptor struct {
 	apiKey  string
 }
 
-func IsModel(name string) bool { return name == "seedance-2.0" || name == "seedance-2.5" }
+func IsModel(name string) bool {
+	switch name {
+	case "seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini", "seedance-2.5":
+		return true
+	default:
+		return false
+	}
+}
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.TaskAdaptor.Init(info)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -63,6 +64,16 @@ func TestSeedanceLastFrameOwnershipAndUnavailableMedia(t *testing.T) {
 	require.Equal(t, "image/png", w.Header().Get("Content-Type"))
 	require.Equal(t, "private, no-store", w.Header().Get("Cache-Control"))
 	require.Equal(t, 1, hits)
+	// VideoFee returns a root-relative image URL. Ownership and URL validation
+	// must still run, while the response must not expose provider credentials.
+	require.NoError(t, db.Create(&model.Channel{Id: constant.VideoFeeSeedanceChannelID, Type: 1, Key: "private-secret", BaseURL: &source.URL}).Error)
+	task.ChannelId = constant.VideoFeeSeedanceChannelID
+	task.Data = []byte(`{"data":{"last_frame_url":"/v1/videos/provider-id/last-frame"}}`)
+	require.NoError(t, db.Model(&task).Updates(map[string]any{"channel_id": task.ChannelId, "data": task.Data}).Error)
+	w = invoke(1)
+	require.Equal(t, 200, w.Code)
+	require.Equal(t, "image fixture", w.Body.String())
+	require.Equal(t, 2, hits)
 	remoteStatus = 404
 	w = invoke(1)
 	require.Equal(t, 410, w.Code)
@@ -72,5 +83,5 @@ func TestSeedanceLastFrameOwnershipAndUnavailableMedia(t *testing.T) {
 	require.NoError(t, db.Model(&task).Update("private_data", task.PrivateData).Error)
 	w = invoke(1)
 	require.Equal(t, 404, w.Code)
-	require.Equal(t, 2, hits)
+	require.Equal(t, 3, hits)
 }

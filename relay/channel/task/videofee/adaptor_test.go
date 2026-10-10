@@ -17,10 +17,10 @@ import (
 )
 
 func TestPublicSeedanceMappingAndTransport(t *testing.T) {
-	for _, name := range []string{"seedance-2.0", "seedance-2.5"} {
+	for _, name := range []string{"seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini", "seedance-2.5"} {
 		for _, path := range []string{"/v1/video/generations", "/v1/videos/generations"} {
 			t.Run(name+path, func(t *testing.T) {
-				raw := `{"model":"` + name + `","prompt":"paper boat","duration":4,"resolution":"480p","aspect_ratio":"adaptive","generate_audio":false,"watermark":false,"seed":0,"image_with_roles":[{"url":"https://example.com/first.png","role":"first_frame"}],"video_urls":["https://example.com/ref.mp4"],"audio_urls":["https://example.com/ref.mp3"],"output_format":"mp4"}`
+				raw := `{"model":"` + name + `","prompt":"paper boat","duration":4,"resolution":"480p","aspect_ratio":"adaptive","generate_audio":false,"watermark":false,"seed":0,"image_with_roles":[{"url":"https://example.com/first.png","role":"reference_image"}],"video_urls":["https://example.com/ref.mp4"],"audio_urls":["https://example.com/ref.mp3"],"output_format":"mp4"}`
 				c, _ := gin.CreateTestContext(httptest.NewRecorder())
 				c.Request = httptest.NewRequest("POST", path, strings.NewReader(raw))
 				c.Request.Header.Set("Content-Type", "application/json")
@@ -48,7 +48,7 @@ func TestPublicSeedanceMappingAndTransport(t *testing.T) {
 				require.Equal(t, map[string]any{"type": "text", "text": "paper boat"}, content[0])
 				require.Equal(t, "reference_video", content[1].(map[string]any)["role"])
 				require.Equal(t, "reference_audio", content[2].(map[string]any)["role"])
-				require.Equal(t, "first_frame", content[3].(map[string]any)["role"])
+				require.Equal(t, "reference_image", content[3].(map[string]any)["role"])
 				req := httptest.NewRequest("POST", "http://example.com", nil)
 				require.NoError(t, a.BuildRequestHeader(c, req, info))
 				require.Equal(t, "apimaster-task_public", req.Header.Get("Idempotency-Key"))

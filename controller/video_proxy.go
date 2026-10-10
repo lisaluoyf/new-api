@@ -132,6 +132,13 @@ func VideoProxy(c *gin.Context) {
 			videoProxyError(c, 404, "invalid_request_error", "Last frame is not available for this task")
 			return
 		}
+		// Providers may return a relative last-frame path. Resolve it against
+		// the configured channel before the existing URL/SSRF validation.
+		if source, parseErr := url.Parse(videoURL); parseErr == nil && !source.IsAbs() {
+			if base, baseErr := url.Parse(strings.TrimRight(baseURL, "/") + "/"); baseErr == nil {
+				videoURL = base.ResolveReference(source).String()
+			}
+		}
 		req.Header.Del("Authorization")
 		req.Header.Del("x-goog-api-key")
 	}
