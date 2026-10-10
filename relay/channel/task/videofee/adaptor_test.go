@@ -79,6 +79,44 @@ func TestDefaultRolesAndConflicts(t *testing.T) {
 	}
 }
 
+func TestDraftUpgradeUsesNativeReferenceWithoutInheritedBillingFields(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/videos/generations", nil)
+	c.Request.Header.Set("Content-Type", "application/json")
+	// Normalization derives duration/audio for the gateway's own billing.
+	// These values must never become overrides in the provider upgrade request.
+	c.Set("apimart_normalized_request", map[string]any{
+		"model": "seedance-2.5", "draft_task_id": "task_public_draft",
+		"duration": 4, "generate_audio": false, "aspect_ratio": "16:9", "seed": 0,
+		"omni_reference_task_type": "auto", "nsfw_check": false,
+		"resolution": "1080p", "output_format": "mp4", "return_last_frame": true, "watermark": false,
+	})
+	c.Set("task_request", relaycommon.TaskSubmitReq{Model: "seedance-2.5", Duration: 4})
+	c.Set("seedance_draft_task", &model.Task{
+		TaskID: "task_public_draft", PrivateData: model.TaskPrivateData{UpstreamTaskID: "provider-draft-id"},
+	})
+	info := &relaycommon.RelayInfo{
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelId: 273, UpstreamModelName: "doubao-seedance-2-5"},
+	}
+	a := &TaskAdaptor{}
+	a.Init(info)
+	reader, err := a.BuildRequestBody(c, info)
+	require.NoError(t, err)
+	raw, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	var out map[string]any
+	require.NoError(t, common.Unmarshal(raw, &out))
+	require.Equal(t, map[string]any{
+		"model": "doubao-seedance-2-5", "resolution": "1080p", "output_format": "mp4",
+		"return_last_frame": true, "watermark": false,
+		"content": []any{map[string]any{"type": "draft_task", "draft_task": map[string]any{"id": "provider-draft-id"}}},
+	}, out)
+	req, err := relaycommon.GetTaskRequest(c)
+	require.NoError(t, err)
+	require.Equal(t, 4, req.Duration)
+}
+
 func TestStatusesAndBillingIsolation(t *testing.T) {
 	a := &TaskAdaptor{}
 	for raw, want := range map[string]string{

@@ -223,8 +223,12 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, err
 	}
-	if _, upgrade := fields["draft_task_id"]; upgrade {
-		delete(out, "content")
+	_, upgrade := fields["draft_task_id"]
+	if upgrade {
+		// This provider uses the native content transport. The public draft ID
+		// has already been resolved to its original provider task above.
+		out["content"] = []any{map[string]any{"type": "draft_task", "draft_task": map[string]any{"id": fields["draft_task_id"]}}}
+		delete(out, "draft_task_id")
 		delete(out, "ratio")
 	}
 	if content, ok := out["content"].([]any); ok {
@@ -233,7 +237,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		}
 	}
 	out["model"] = info.UpstreamModelName
-	if _, ok := out["duration"]; !ok {
+	if _, ok := out["duration"]; !ok && !upgrade {
 		req, e := relaycommon.GetTaskRequest(c)
 		if e != nil {
 			return nil, e
