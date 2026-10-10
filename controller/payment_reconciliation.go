@@ -25,6 +25,7 @@ import (
 var reconciliationTimezone = time.FixedZone("UTC+8", 8*3600)
 var reconciliationOnce sync.Once
 var queryClinkReconciliationOrder = service.GetClinkOrder
+var queryWaffoReconciliationPayment = service.QueryWaffoReconciliationPayment
 
 type reconciliationCandidate struct {
 	trade, provider, method, purpose, status, queryID, currency, payload string
@@ -593,7 +594,14 @@ func loadReconciliationCandidates(start, end int64, provider string) ([]reconcil
 	return result, nil
 }
 func classifyReconciliationOrder(r reconciliationCandidate, p reconciliationProof) model.PaymentReconciliationItem {
+	var amountProblem string
+	if r.provider == model.PaymentProviderEpay && r.purpose == "subscription" {
+		r, amountProblem = reconciliationEpaySubscriptionAmount(r)
+	}
 	i := model.PaymentReconciliationItem{TradeNo: r.trade, UserID: r.user, Purpose: r.purpose, LocalStatus: r.status, LocalPaid: r.status == "success", LocalAmount: decimal.NewFromFloat(r.money).String(), Currency: r.currency, OfficialID: p.id, OfficialStatus: p.status, OfficialPaid: p.paid, OfficialAmount: p.amount, OfficialCurrency: p.currency, Result: "matched", CheckedAt: time.Now().Unix()}
+	if amountProblem != "" {
+		i.LocalAmount = ""
+	}
 	if p.known && !knownReconciliationStatus(r.provider, p.status) {
 		p.known = false
 		p.problem = "unknown_official_status"
@@ -643,6 +651,11 @@ func classifyReconciliationOrder(r reconciliationCandidate, p reconciliationProo
 	if !i.LocalPaid && !p.paid {
 		return i
 	}
+	if amountProblem != "" {
+		i.Result = "unverified"
+		i.Problem = amountProblem
+		return i
+	}
 	if p.amount != "" {
 		a, e := decimal.NewFromString(p.amount)
 		b := decimal.NewFromFloat(r.money)
@@ -667,6 +680,50 @@ func classifyReconciliationOrder(r reconciliationCandidate, p reconciliationProo
 	}
 	return i
 }
+
+// Subscription Money is USD. Reconcile the frozen payer amount, never a
+// current exchange rate or the callback amount being audited.
+func reconciliationEpaySubscriptionAmount(r reconciliationCandidate) (reconciliationCandidate, string) {
+	var envelope struct {
+		Snapshot *subscriptionEpayPaymentSnapshot `json:"payment_snapshot"`
+	}
+	if common.UnmarshalJsonStr(r.payload, &envelope) != nil {
+		return r, "missing_frozen_bill_amount"
+	}
+	var snapshot subscriptionEpayPaymentSnapshot
+	if envelope.Snapshot != nil {
+		snapshot = *envelope.Snapshot
+	} else if common.UnmarshalJsonStr(r.payload, &snapshot) != nil {
+		return r, "missing_frozen_bill_amount"
+	}
+	expected, err := calculateSubscriptionEpayChargeAmount(snapshot.PayableUSD, snapshot.ExchangeRate)
+	amount, amountErr := decimal.NewFromString(snapshot.ChargeAmount)
+	if err != nil || amountErr != nil || snapshot.ChargeCurrency != "CNY" ||
+		!decimal.NewFromFloat(snapshot.PayableUSD).Equal(decimal.NewFromFloat(r.money)) ||
+		amount.Sign() <= 0 || amount.StringFixed(2) != expected || !amount.Equal(amount.Round(2)) {
+		return r, "missing_frozen_bill_amount"
+	}
+	r.money = amount.InexactFloat64()
+	r.currency = snapshot.ChargeCurrency
+	return r, ""
+}
+
+func reconciliationWaffoSubscriptionOrderID(payload string) string {
+	var event struct {
+		Data struct {
+			OrderID string `json:"orderId"`
+		} `json:"data"`
+	}
+	if common.UnmarshalJsonStr(payload, &event) != nil {
+		return ""
+	}
+	id := strings.TrimSpace(event.Data.OrderID)
+	if !strings.HasPrefix(id, "ORD_") {
+		return ""
+	}
+	return id
+}
+
 func queryReconciliationOrder(ctx context.Context, r reconciliationCandidate) reconciliationProof {
 	fail := reconciliationProof{problem: "official_query_failed"}
 	missing := reconciliationProof{problem: "missing_official_transaction_id"}
@@ -825,10 +882,13 @@ func queryReconciliationOrder(ctx context.Context, r reconciliationCandidate) re
 		if id == "" && r.top != nil {
 			id = r.top.WaffoOrderID
 		}
+		if id == "" && r.purpose == "subscription" {
+			id = reconciliationWaffoSubscriptionOrderID(r.payload)
+		}
 		if id == "" {
 			return missing
 		}
-		p, e := service.QueryWaffoReconciliationPayment(ctx, id, r.trade)
+		p, e := queryWaffoReconciliationPayment(ctx, id, r.trade)
 		if e != nil {
 			return fail
 		}

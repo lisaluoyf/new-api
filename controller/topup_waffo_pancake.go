@@ -337,6 +337,12 @@ func WaffoPancakeWebhook(c *gin.Context) {
 
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
+	// Checkout may not return an order ID. Persist the officially verified
+	// webhook ID before completing either a subscription or a wallet order.
+	if err := model.SavePaymentQueryReference(tradeNo, model.PaymentProviderWaffoPancake, event.Data.OrderID, verifiedCurrency); err != nil {
+		c.String(http.StatusServiceUnavailable, "retry")
+		return
+	}
 	if order := model.GetSubscriptionOrderByTradeNo(tradeNo); order != nil {
 		paidAmount, parseErr := strconv.ParseFloat(strings.TrimSpace(string(event.Data.Amount)), 64)
 		if parseErr != nil || !strings.EqualFold(strings.TrimSpace(event.Data.Currency), "USD") || math.Abs(paidAmount-order.Money) > 0.005 {
