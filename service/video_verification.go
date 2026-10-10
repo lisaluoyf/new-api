@@ -262,7 +262,11 @@ var sendVideoVerificationAlert = func(alert *model.VideoVerificationAlert) error
 	if err != nil {
 		return errors.New("video verification account lookup failed")
 	}
-	return common.SendFeishuInteractiveCard(videoVerificationChat, videoVerificationAlertCard(alert, channelName, email))
+	reference, err := videoVerificationAlertTaskReference(alert.TaskID)
+	if err != nil {
+		return errors.New("video verification request lookup failed")
+	}
+	return common.SendFeishuInteractiveCard(videoVerificationChat, videoVerificationAlertCard(alert, channelName, email, reference))
 }
 
 func videoVerificationAlertUserEmail(taskID int64) (string, error) {
@@ -275,7 +279,37 @@ func videoVerificationAlertUserEmail(taskID int64) (string, error) {
 	return strings.TrimSpace(email), err
 }
 
-func videoVerificationAlertCard(alert *model.VideoVerificationAlert, channelName, email string) map[string]any {
+type videoVerificationAlertReference struct {
+	RequestID string
+	TaskID    string
+}
+
+func videoVerificationAlertTaskReference(taskID int64) (videoVerificationAlertReference, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var task model.Task
+	err := model.DB.WithContext(ctx).Select("user_id", "task_id").Where("id = ?", taskID).First(&task).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return videoVerificationAlertReference{}, nil
+	}
+	if err != nil {
+		return videoVerificationAlertReference{}, err
+	}
+	reference := videoVerificationAlertReference{TaskID: task.TaskID}
+	// The existing lookup matches the log's own task_id and prefers the
+	// original charge over settlement adjustments or a referencing upgrade.
+	log, err := model.FindConsumeLogRowForTask(task.UserId, task.TaskID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return reference, nil
+	}
+	if err != nil {
+		return reference, err
+	}
+	reference.RequestID = strings.TrimSpace(log.RequestId)
+	return reference, nil
+}
+
+func videoVerificationAlertCard(alert *model.VideoVerificationAlert, channelName, email string, references ...videoVerificationAlertReference) map[string]any {
 	title, color := "Seedance · 检测未完成", "orange"
 	reason := "检测未能得出完整结论，请检查检测记录。"
 	switch alert.Reason {
@@ -315,8 +349,24 @@ func videoVerificationAlertCard(alert *model.VideoVerificationAlert, channelName
 	if email == "" {
 		email = "未获取"
 	}
+	reference := videoVerificationAlertReference{}
+	if len(references) > 0 {
+		reference = references[0]
+	}
+	requestID, taskID := "未获取", "未获取"
+	if reference.RequestID != "" {
+		requestID = "`" + reference.RequestID + "`"
+	}
+	if reference.TaskID != "" {
+		taskID = "`" + reference.TaskID + "`"
+	}
+	identifiers := fmt.Sprintf("**请求 ID**　%s\n**视频任务 ID**　%s", requestID, taskID)
+	if reference.RequestID != "" {
+		identifiers += "\n在后台日志的「请求 ID」筛选框粘贴该 ID，可定位生成记录及视频。"
+	}
 	elements := []any{
 		map[string]any{"tag": "markdown", "content": fmt.Sprintf("**用户邮箱**　%s\n**渠道**　%s\n**声明模型**　%s", email, channelLabel, alert.Model)},
+		map[string]any{"tag": "markdown", "content": identifiers},
 		map[string]any{"tag": "hr"},
 		map[string]any{"tag": "markdown", "content": "**原因**\n" + reason + "\n`" + alert.Reason + "`"},
 	}

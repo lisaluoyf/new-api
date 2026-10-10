@@ -170,3 +170,56 @@ func TestVideoVerificationHistoryStoresImmutableVersion(t *testing.T) {
 	require.Contains(t, string(raw), meta.FingerprintModelVersion)
 	require.Contains(t, string(raw), meta.DetectorVersion)
 }
+
+func TestVideoVerificationAlertUsesOriginalSearchableRequest(t *testing.T) {
+	db := videoVerificationTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Task{}, &model.Log{}))
+	previous := model.LOG_DB
+	model.LOG_DB = db
+	t.Cleanup(func() { model.LOG_DB = previous })
+	require.NoError(t, db.Create(&model.Task{ID: 91, UserId: 7, TaskID: "task_video_original"}).Error)
+	logs := []model.Log{
+		{UserId: 7, Type: model.LogTypeConsume, RequestId: "req_original", Other: `{"task_id":"task_video_original","is_task":true}`},
+		{UserId: 7, Type: model.LogTypeConsume, RequestId: "req_adjustment", Other: `{"task_id":"task_video_original","is_task":false}`},
+		{UserId: 7, Type: model.LogTypeConsume, RequestId: "req_upgrade", Other: `{"task_id":"task_upgrade","is_task":true,"request_data":{"reference":"task_video_original"}}`},
+		{UserId: 8, Type: model.LogTypeConsume, RequestId: "req_other_user", Other: `{"task_id":"task_video_original","is_task":true}`},
+	}
+	require.NoError(t, db.Create(&logs).Error)
+	reference, err := videoVerificationAlertTaskReference(91)
+	require.NoError(t, err)
+	require.Equal(t, "req_original", reference.RequestID)
+	require.Equal(t, "task_video_original", reference.TaskID)
+	alert := &model.VideoVerificationAlert{TaskID: 91, Reason: "incomplete_evidence"}
+	raw, err := common.Marshal(videoVerificationAlertCard(alert, "channel", "", reference))
+	require.NoError(t, err)
+	content := string(raw)
+	require.Contains(t, content, "**请求 ID**　`req_original`")
+	require.Contains(t, content, "**视频任务 ID**　`task_video_original`")
+	require.Contains(t, content, "后台日志的「请求 ID」")
+	require.NotContains(t, content, "req_adjustment")
+	require.NotContains(t, content, "req_upgrade")
+	require.NotContains(t, content, "req_other_user")
+}
+
+func TestVideoVerificationAlertMissingRequestRetainsTaskReference(t *testing.T) {
+	db := videoVerificationTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Task{}, &model.Log{}))
+	previous := model.LOG_DB
+	model.LOG_DB = db
+	t.Cleanup(func() { model.LOG_DB = previous })
+	require.NoError(t, db.Create(&model.Task{ID: 92, UserId: 7, TaskID: "task_without_log"}).Error)
+	reference, err := videoVerificationAlertTaskReference(92)
+	require.NoError(t, err)
+	require.Equal(t, "task_without_log", reference.TaskID)
+	require.Empty(t, reference.RequestID)
+	content := fmt.Sprint(videoVerificationAlertCard(&model.VideoVerificationAlert{}, "channel", "", reference))
+	require.Contains(t, content, "**请求 ID**　未获取")
+	require.Contains(t, content, "**视频任务 ID**　`task_without_log`")
+	require.NotContains(t, content, "后台日志的「请求 ID」")
+	reference, err = videoVerificationAlertTaskReference(999)
+	require.NoError(t, err)
+	require.Empty(t, reference)
+	require.NoError(t, db.Migrator().DropTable(&model.Log{}))
+	_, err = videoVerificationAlertTaskReference(92)
+	require.Error(t, err, "database failures must remain retryable")
+}
