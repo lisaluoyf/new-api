@@ -429,9 +429,11 @@ function getMissingProcurementFields(
 function DotGrid({
   history,
   onAnalyze,
+  video = false,
 }: {
   history: DetectPoint[] | null | undefined
   onAnalyze?: () => void
+  video?: boolean
 }) {
   const { t } = useTranslation()
   const safe = history ?? []
@@ -449,8 +451,8 @@ function DotGrid({
             .map((p, i) => {
               let cls = 'bg-gray-200'
               if (p?.status === 'pass') cls = 'bg-emerald-500'
-              else if (p?.status === 'suspicious') cls = 'bg-amber-400'
-              else if (p?.status === 'notcomplete') cls = 'bg-red-400'
+              else if (p?.status === 'suspicious') cls = video ? 'bg-red-400' : 'bg-amber-400'
+              else if (p?.status === 'notcomplete') cls = video ? 'bg-amber-400' : 'bg-red-400'
 
               const dotEl = (
                 <div
@@ -2387,6 +2389,7 @@ export function ChannelDataPage() {
                       ) : (
                         <DotGrid
                           history={item.fingerprint_history}
+                          video={activeModel.startsWith('seedance-')}
                           onAnalyze={
                             item.base_url
                               ? () => handleAnalyze(item)

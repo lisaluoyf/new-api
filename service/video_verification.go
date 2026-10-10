@@ -320,7 +320,7 @@ func videoVerificationAlertCard(alert *model.VideoVerificationAlert, channelName
 		title, color = "Seedance · 指纹不匹配", "red"
 		reason = "已知指纹的关键检测项未通过。"
 	case "incomplete_evidence":
-		reason = "必要检测项尚未全部通过，暂不能确认完整验真结果。"
+		reason = "交付编码族相符，但尺寸、时序或基线覆盖证据尚不完整；此状态不表示模型不匹配。缺口已纳入管理页，可去重后按代表任务补采。"
 	case "channel_unavailable":
 		reason = "无法读取渠道配置，检测未执行。"
 	case "baseline_unavailable_or_expired":

@@ -38,7 +38,10 @@ type videoVerificationResult struct {
 		ArtifactSHA256 map[string]string `json:"artifact_sha256"`
 		Stale          *bool             `json:"stale"`
 	} `json:"baseline"`
-	Checks []model.VideoFingerprintCheck `json:"checks"`
+	Checks             []model.VideoFingerprintCheck `json:"checks"`
+	Layers             map[string]string             `json:"layers,omitempty"`
+	VerificationStatus string                        `json:"verification_status,omitempty"`
+	CoverageGapID      string                        `json:"coverage_gap_id,omitempty"`
 }
 
 func classifyVerifiedVideo(result videoVerificationResult, normalized string, now time.Time) (string, string, []model.VideoFingerprintCheck) {
@@ -100,13 +103,49 @@ func verifyDeliveredVideoWithProvenance(ctx context.Context, task *model.Task, n
 		return "notcomplete", "video_download_failed", nil, videoVerificationProvenance{}
 	}
 	defer func() { file.Close(); os.Remove(file.Name()) }()
-	result, err := requestVideoVerification(ctx, file, normalized)
+	verificationContext := videoVerificationContext(task)
+	result, err := requestVideoVerification(ctx, file, normalized, verificationContext)
 	if err != nil {
 		return "notcomplete", "detector_unavailable", nil, videoVerificationProvenance{}
 	}
 	status, reason, checks := classifyVerifiedVideo(result, normalized, time.Now().UTC())
 	raw, _ := common.Marshal(result.Baseline.ArtifactSHA256)
 	return status, reason, checks, videoVerificationProvenance{FingerprintModelVersion: result.FingerprintModelVersion, DetectorVersion: result.DetectorVersion, BaselineSHA256: string(raw)}
+}
+
+func videoVerificationContext(task *model.Task) map[string]any {
+	context := map[string]any{"task_id": task.TaskID, "task_type": "text"}
+	snapshot := task.PrivateData.SeedanceRequest
+	for _, field := range []string{"resolution", "aspect_ratio", "duration"} {
+		if value, ok := snapshot[field]; ok {
+			context[field] = value
+		}
+	}
+	if automatic, _ := snapshot["auto_duration"].(bool); automatic {
+		context["duration"] = -1
+	}
+	if kind, _ := snapshot["omni_reference_task_type"].(string); kind != "" {
+		context["task_type"] = kind
+	} else if lenValue(snapshot["image_urls"]) > 0 || lenValue(snapshot["image_with_roles"]) > 0 {
+		context["task_type"] = "image"
+		var images []struct {
+			Role string `json:"role"`
+		}
+		raw, err := common.Marshal(snapshot["image_with_roles"])
+		if err == nil && common.Unmarshal(raw, &images) == nil {
+			first, last := false, false
+			for _, image := range images {
+				first = first || image.Role == "first_frame"
+				last = last || image.Role == "last_frame"
+			}
+			if first && last {
+				context["task_type"] = "first-last"
+			}
+		}
+	} else if lenValue(snapshot["video_urls"]) > 0 || lenValue(snapshot["audio_urls"]) > 0 {
+		context["task_type"] = "reference"
+	}
+	return context
 }
 
 func videoVerificationMediaURL(task *model.Task, channel *model.Channel) (string, string) {
@@ -184,7 +223,19 @@ func downloadVerificationVideo(ctx context.Context, mediaURL, key string) (*os.F
 	return file, nil
 }
 
-func requestVideoVerification(ctx context.Context, file *os.File, normalized string) (videoVerificationResult, error) {
+func lenValue(value any) int {
+	switch values := value.(type) {
+	case []any:
+		return len(values)
+	case []string:
+		return len(values)
+	case []map[string]any:
+		return len(values)
+	}
+	return 0
+}
+
+func requestVideoVerification(ctx context.Context, file *os.File, normalized string, contexts ...map[string]any) (videoVerificationResult, error) {
 	var result videoVerificationResult
 	flaskURL := strings.TrimRight(strings.TrimSpace(os.Getenv("APIMASTER_FLASK_URL")), "/")
 	if flaskURL == "" {
@@ -203,6 +254,13 @@ func requestVideoVerification(ctx context.Context, file *os.File, normalized str
 		err := multipartWriter.WriteField("claim", claim)
 		if err == nil {
 			err = multipartWriter.WriteField("model", normalized)
+		}
+		if err == nil && len(contexts) > 0 {
+			var raw []byte
+			raw, err = common.Marshal(contexts[0])
+			if err == nil {
+				err = multipartWriter.WriteField("verification_context", string(raw))
+			}
 		}
 		if err == nil {
 			var part io.Writer

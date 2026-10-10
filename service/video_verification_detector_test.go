@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/require"
 )
@@ -116,16 +117,35 @@ func TestVideoVerificationDetectorMultipartAndSingleResult(t *testing.T) {
 		require.NoError(t, request.ParseMultipartForm(1024))
 		defer request.MultipartForm.RemoveAll()
 		require.Equal(t, "sd25", request.FormValue("claim"))
+		var metadata map[string]any
+		require.NoError(t, common.UnmarshalJsonStr(request.FormValue("verification_context"), &metadata))
+		require.Equal(t, "extend", metadata["task_type"])
 		uploads := request.MultipartForm.File["files"]
 		require.Len(t, uploads, 1)
 		require.Equal(t, "verification.mp4", uploads[0].Filename)
-		_, _ = writer.Write([]byte(`{"results":[{"claimed":"SD2.5","verdict":"unknown","reason":"unknown_container"}]}`))
+		_, _ = writer.Write([]byte(`{"results":[{"claimed":"SD2.5","verdict":"unknown","reason":"unknown_container","layers":{"fingerprint":"pending","coverage":"pending"},"verification_status":"notcomplete"}]}`))
 	}))
 	defer server.Close()
 	t.Setenv("APIMASTER_FLASK_URL", server.URL)
-	result, err := requestVideoVerification(context.Background(), file, "seedance-2.5")
+	result, err := requestVideoVerification(context.Background(), file, "seedance-2.5", map[string]any{"task_type": "extend"})
 	require.NoError(t, err)
 	require.Equal(t, "SD2.5", result.Claimed)
 	require.Equal(t, "unknown_container", result.Reason)
+	require.Equal(t, "pending", result.Layers["fingerprint"])
 	require.False(t, strings.Contains(result.Reason, file.Name()))
+}
+
+func TestVideoVerificationContextKeepsOnlySafeSamplingMetadata(t *testing.T) {
+	task := &model.Task{TaskID: "task_example", PrivateData: model.TaskPrivateData{SeedanceRequest: map[string]any{
+		"duration": 30, "auto_duration": true, "resolution": "480p", "aspect_ratio": "adaptive",
+		"omni_reference_task_type": "edit", "prompt": "private prompt", "video_urls": []string{"https://private.example/signed"}, "key": "secret",
+	}}}
+	metadata := videoVerificationContext(task)
+	require.Equal(t, -1, metadata["duration"])
+	require.Equal(t, "edit", metadata["task_type"])
+	raw, err := common.Marshal(metadata)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "secret")
+	require.NotContains(t, string(raw), "private.example")
+	require.NotContains(t, string(raw), "prompt")
 }
