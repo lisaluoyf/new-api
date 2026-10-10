@@ -843,6 +843,9 @@ func completeSubscriptionOrderWithDB(db *gorm.DB, tradeNo string, providerPayloa
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
 		}
+		if order.OrderType == "wallet_transfer" {
+			return errors.New("wallet transfer requires an atomic wallet settlement")
+		}
 		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
 		if err != nil {
 			return err
@@ -1013,7 +1016,13 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 // ReverseSubscriptionOrder records a provider refund or chargeback and, for a
 // full reversal, restores the entitlement state that existed before the order.
 func ReverseSubscriptionOrder(tradeNo string, amount float64, reversalType string, providerPayload string) error {
-	return reverseSubscriptionOrderWithDB(DB, tradeNo, amount, reversalType, providerPayload)
+	err := reverseSubscriptionOrderWithDB(DB, tradeNo, amount, reversalType, providerPayload)
+	if err == nil {
+		if order := GetSubscriptionOrderByTradeNo(tradeNo); order != nil && order.OrderType == "wallet_transfer" {
+			_ = invalidateUserCache(order.UserId)
+		}
+	}
+	return err
 }
 
 func reverseSubscriptionOrderWithDB(db *gorm.DB, tradeNo string, amount float64, reversalType string, providerPayload string) error {
@@ -1055,6 +1064,29 @@ func reverseSubscriptionOrderWithDB(db *gorm.DB, tradeNo string, amount float64,
 		}
 		fullReversal := order.RefundAmount+order.ChargebackAmount+0.005 >= order.Money
 		if !fullReversal {
+			return tx.Save(&order).Error
+		}
+		if order.OrderType == "wallet_transfer" {
+			// A support conversion keeps its original payment order for audit,
+			// but its funded value belongs to the wallet, never another plan.
+			var top TopUp
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("trade_no = ? AND user_id = ?", tradeNo, order.UserId).First(&top).Error; err != nil {
+				return err
+			}
+			if top.Status != common.TopUpStatusSuccess || top.CreditedAmount <= 0 {
+				return ErrTopUpStatusInvalid
+			}
+			quota := int(topUpCreditQuota(&top))
+			if err := tx.Model(&User{}).Where("id = ?", order.UserId).Update("quota", gorm.Expr("quota - ?", quota)).Error; err != nil {
+				return err
+			}
+			top.Status = status
+			top.RefundedAmount = order.RefundAmount + order.ChargebackAmount
+			top.RefundedQuota = quota
+			order.Status = status
+			if err := tx.Save(&top).Error; err != nil {
+				return err
+			}
 			return tx.Save(&order).Error
 		}
 

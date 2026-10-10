@@ -170,6 +170,15 @@ func RequestPayPalPay(c *gin.Context) {
 	} else {
 		chargedMoney = GetChargedAmountWithTierDiscount(req.Amount, *user) * firstTopupPromoFactor(id, req.Amount)
 	}
+	// Freeze the same USD amount that CreatePayPalOrder sends to the provider.
+	chargedMoney, err = strconv.ParseFloat(service.FormatPayPalAmount(chargedMoney), 64)
+	if err != nil || chargedMoney < 0.01 || math.IsNaN(chargedMoney) || math.IsInf(chargedMoney, 0) {
+		common.ApiErrorMsg(c, "Invalid PayPal payment amount")
+		return
+	}
+	if plan != nil {
+		terms.Payable = chargedMoney
+	}
 
 	referencePrefix := "new-api-paypal"
 	if plan != nil {
@@ -316,13 +325,15 @@ func handlePayPalOrderApproved(ctx context.Context, resource json.RawMessage, ca
 	logger.LogInfo(ctx, fmt.Sprintf("PayPal capture 成功 order_id=%s client_ip=%s", order.ID, callerIP))
 }
 
+var queryPayPalCapture = service.QueryPayPalCapture
+
 func handlePayPalCaptureCompleted(ctx context.Context, resource json.RawMessage, callerIP string) error {
 	var capture payPalCaptureResource
 	if err := common.Unmarshal(resource, &capture); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("PayPal capture.completed 解析失败 client_ip=%s error=%q", callerIP, err.Error()))
 		return err
 	}
-	trusted, err := service.QueryPayPalCapture(ctx, capture.ID)
+	trusted, err := queryPayPalCapture(ctx, capture.ID)
 	if err != nil {
 		return err
 	}
@@ -359,7 +370,7 @@ func handlePayPalCaptureCompleted(ctx context.Context, resource json.RawMessage,
 
 	if order := model.GetSubscriptionOrderByTradeNo(referenceID); order != nil {
 		paidAmount, parseErr := strconv.ParseFloat(capture.Amount.Value, 64)
-		if parseErr != nil || !strings.EqualFold(strings.TrimSpace(capture.Amount.CurrencyCode), "USD") || math.Abs(paidAmount-order.Money) > 0.005 {
+		if parseErr != nil || !strings.EqualFold(strings.TrimSpace(capture.Amount.CurrencyCode), "USD") || !verifiedPaymentAmountMatches(model.PaymentProviderPayPal, order.Money, paidAmount) {
 			logger.LogError(ctx, fmt.Sprintf("PayPal 订阅金额校验失败 trade_no=%s expected=%.2f actual=%q currency=%q client_ip=%s", referenceID, order.Money, capture.Amount.Value, capture.Amount.CurrencyCode, callerIP))
 			return fmt.Errorf("PayPal subscription money mismatch")
 		}

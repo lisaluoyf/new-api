@@ -851,7 +851,8 @@ func ExportAllTopUps(keyword string, status string, paymentMethod string, transa
 func subscriptionTradeNoSubquery(tx *gorm.DB) *gorm.DB {
 	return tx.Model(&SubscriptionOrder{}).
 		Select("trade_no").
-		Where("trade_no IS NOT NULL AND trade_no <> ''")
+		Where("trade_no IS NOT NULL AND trade_no <> ''").
+		Where("order_type IS NULL OR order_type <> ?", "wallet_transfer")
 }
 
 func applyTopupTransactionTypeFilter(query *gorm.DB, transactionType string) *gorm.DB {
@@ -1397,6 +1398,9 @@ func getPaymentNotificationContext(userId int, tradeNo string) paymentNotificati
 		First(&order).Error; err != nil {
 		return paymentNotificationContext{}
 	}
+	if order.OrderType == "wallet_transfer" {
+		return paymentNotificationContext{}
+	}
 	plan, err := GetSubscriptionPlanById(order.PlanId)
 	if err != nil {
 		return paymentNotificationContext{}
@@ -1743,6 +1747,7 @@ func EnrichTopupsWithTransactionInfo(topups []*TopUp) {
 		Select("so.trade_no, sp.title AS plan_title, so.order_type, so.payment_provider, so.provider_payload").
 		Joins("JOIN subscription_plans AS sp ON sp.id = so.plan_id").
 		Where("so.trade_no IN ?", tradeNos).
+		Where("so.order_type IS NULL OR so.order_type <> ?", "wallet_transfer").
 		Find(&rows).Error
 	if err != nil {
 		common.SysLog("failed to enrich topups with subscription info: " + err.Error())

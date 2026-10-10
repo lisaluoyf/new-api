@@ -29,6 +29,33 @@ func TestPaymentVerificationChecksProviderMoneyAndCurrency(t *testing.T) {
 	require.Error(t, validateVerifiedPaymentPrice("test-payment", "stripe", "RUB", 10))
 }
 
+func TestPayPalVerificationMatchesFrozenCentAmount(t *testing.T) {
+	db := setupCryptoPersistenceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}))
+	for _, quote := range []struct {
+		trade string
+		money float64
+		paid  float64
+	}{
+		{"pro-upgrade", 10.066003086419753, 10.07},
+		{"ultra-upgrade", 90.06690972222222, 90.07},
+		{"round-down", 90.064, 90.06},
+	} {
+		require.NoError(t, db.Create(&model.SubscriptionOrder{TradeNo: quote.trade, Money: quote.money, PaymentProvider: "paypal", Status: "pending"}).Error)
+		require.NoError(t, validateVerifiedPaymentPrice(quote.trade, "paypal", "USD", quote.paid))
+		for _, paid := range []float64{quote.paid - .01, quote.paid + .01, quote.money, math.NaN(), math.Inf(1)} {
+			require.Error(t, validateVerifiedPaymentPrice(quote.trade, "paypal", "USD", paid))
+		}
+		require.Error(t, validateVerifiedPaymentPrice(quote.trade, "stripe", "USD", quote.paid))
+		require.Error(t, validateVerifiedPaymentPrice(quote.trade, "paypal", "EUR", quote.paid))
+	}
+	require.NoError(t, db.Create(&model.TopUp{TradeNo: "fractional-wallet", Money: 10.066003086419753, PaymentProvider: "paypal", Status: "pending"}).Error)
+	require.NoError(t, validateVerifiedPaymentPrice("fractional-wallet", "paypal", "USD", 10.07))
+	require.Error(t, validateVerifiedPaymentPrice("fractional-wallet", "paypal", "USD", 10.06))
+	// Other providers retain their existing exact frozen-price validation.
+	require.False(t, verifiedPaymentAmountMatches("stripe", 10.066003086419753, 10.07))
+}
+
 func TestStripeCallbackRequiresVerifiedPaidSession(t *testing.T) {
 	db := setupCryptoPersistenceTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}))

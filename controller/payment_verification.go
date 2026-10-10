@@ -18,18 +18,31 @@ import (
 
 // Price and provider are frozen on the order. A provider lookup must never
 // choose a different customer's order or update a price to fit a callback.
+func verifiedPaymentAmountMatches(provider string, expected, paid float64) bool {
+	if expected <= 0 || math.IsNaN(expected) || math.IsInf(expected, 0) {
+		return false
+	}
+	if provider == model.PaymentProviderPayPal {
+		// Legacy upgrade quotes contain prorated fractions of a cent. Compare
+		// against the exact amount sent to PayPal, not a widened tolerance.
+		charged, err := strconv.ParseFloat(service.FormatPayPalAmount(expected), 64)
+		return err == nil && math.Abs(charged-paid) <= 0.000001
+	}
+	return math.Abs(expected-paid) <= 0.000001
+}
+
 func validateVerifiedPaymentPrice(trade, provider, currency string, paid float64) error {
 	if trade == "" || currency != "USD" || paid <= 0 || math.IsNaN(paid) || math.IsInf(paid, 0) {
 		return errors.New("invalid verified payment identity, currency or amount")
 	}
 	if order := model.GetSubscriptionOrderByTradeNo(trade); order != nil {
-		if order.PaymentProvider != provider || math.Abs(order.Money-paid) > 0.000001 {
+		if order.PaymentProvider != provider || !verifiedPaymentAmountMatches(provider, order.Money, paid) {
 			return errors.New("subscription provider or amount mismatch")
 		}
 		return nil
 	}
 	top := model.GetTopUpByTradeNo(trade)
-	if top == nil || top.PaymentProvider != provider || math.Abs(top.Money-paid) > 0.000001 {
+	if top == nil || top.PaymentProvider != provider || !verifiedPaymentAmountMatches(provider, top.Money, paid) {
 		return errors.New("wallet provider or amount mismatch")
 	}
 	return nil

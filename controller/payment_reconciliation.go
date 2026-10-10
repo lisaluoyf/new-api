@@ -443,6 +443,9 @@ func mergeReconciliationStatement(provider string, items []model.PaymentReconcil
 			}
 			if b == nil {
 				row = reconciliationCandidate{trade: trade, provider: normalizeReconciliationProvider(sub.PaymentProvider, sub.PaymentMethod), method: sub.PaymentMethod, purpose: "subscription", status: sub.Status, user: sub.UserId, money: sub.Money, top: row.top, currency: payment.Currency, payload: sub.ProviderPayload}
+				if sub.OrderType == "wallet_transfer" {
+					row.purpose = "wallet"
+				}
 			}
 			if a == nil || b == nil {
 				if row.provider != provider {
@@ -558,6 +561,9 @@ func loadReconciliationCandidates(start, end int64, provider string) ([]reconcil
 			continue
 		}
 		r := reconciliationCandidate{trade: s.TradeNo, provider: p, method: s.PaymentMethod, purpose: "subscription", status: s.Status, user: s.UserId, money: s.Money, payload: s.ProviderPayload}
+		if s.OrderType == "wallet_transfer" {
+			r.purpose = "wallet"
+		}
 		if t, ok := rows[s.TradeNo]; ok {
 			r.top = t.top
 		}
@@ -659,6 +665,11 @@ func classifyReconciliationOrder(r reconciliationCandidate, p reconciliationProo
 	if p.amount != "" {
 		a, e := decimal.NewFromString(p.amount)
 		b := decimal.NewFromFloat(r.money)
+		if r.provider == model.PaymentProviderPayPal {
+			// Match the exact two-decimal charge sent to PayPal for legacy
+			// prorated orders, as the live capture validator does.
+			b, _ = decimal.NewFromString(service.FormatPayPalAmount(r.money))
+		}
 		if e != nil || a.LessThanOrEqual(decimal.Zero) {
 			i.Result = "unverified"
 			i.Problem = "invalid_official_amount"
