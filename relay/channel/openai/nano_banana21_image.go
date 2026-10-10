@@ -22,6 +22,7 @@ import (
 )
 
 var nanoBanana21CacheReference = service.CacheImageBase64Locally
+var nanoBanana21DownloadImage = service.GetImageFromUrl
 
 // This provider ignores image_config on Chat Completions. Its native Gemini
 // endpoint honors imageSize and accepts inline references at every tier.
@@ -55,6 +56,10 @@ func nanoBanana21ContentImages(raw json.RawMessage) []string {
 			}
 		}
 	}
+	return nanoBanana21MarkdownImages(text)
+}
+
+func nanoBanana21MarkdownImages(text string) []string {
 	var images []string
 	seen := make(map[string]bool)
 	for _, match := range nanoBanana21MarkdownImage.FindAllStringSubmatch(text, -1) {
@@ -65,6 +70,21 @@ func nanoBanana21ContentImages(raw json.RawMessage) []string {
 		}
 	}
 	return images
+}
+
+func validatedNanoBanana21GeminiImage(c *gin.Context, payload string) (map[string]string, error) {
+	config, _, _, err := service.DecodeBase64ImageData(payload)
+	if err != nil {
+		return nil, fmt.Errorf("invalid upstream generated image")
+	}
+	if requestData := service.ImageRequestDataFromContext(c); requestData != nil {
+		tier, _ := requestData["effective_resolution"].(string)
+		minimum := map[string]int{"1K": 1024, "2K": 2048, "4K": 4096}[tier]
+		if max(config.Width, config.Height) < minimum {
+			return nil, fmt.Errorf("upstream image is smaller than requested resolution")
+		}
+	}
+	return map[string]string{"b64_json": payload}, nil
 }
 
 // The OpenRouter model returns images in chat messages. Keep image requests on
@@ -267,23 +287,44 @@ func normalizeNanoBanana21ImageResponse(c *gin.Context, info *relaycommon.RelayI
 			return nil, err
 		}
 		for _, candidate := range gemini.Candidates {
+			candidateImages := []map[string]string{}
+			var text strings.Builder
 			for _, part := range candidate.Content.Parts {
-				if part.Thought || part.InlineData == nil || !strings.HasPrefix(part.InlineData.MimeType, "image/") || part.InlineData.Data == "" {
+				if part.Thought {
 					continue
 				}
-				config, _, _, err := service.DecodeBase64ImageData(part.InlineData.Data)
-				if err != nil {
-					return nil, fmt.Errorf("invalid upstream generated image")
-				}
-				if requestData := service.ImageRequestDataFromContext(c); requestData != nil {
-					tier, _ := requestData["effective_resolution"].(string)
-					minimum := map[string]int{"1K": 1024, "2K": 2048, "4K": 4096}[tier]
-					if max(config.Width, config.Height) < minimum {
-						return nil, fmt.Errorf("upstream image is smaller than requested resolution")
+				text.WriteString(part.Text)
+				text.WriteByte('\n')
+				if part.InlineData != nil && strings.HasPrefix(part.InlineData.MimeType, "image/") && part.InlineData.Data != "" {
+					img, err := validatedNanoBanana21GeminiImage(c, part.InlineData.Data)
+					if err != nil {
+						return nil, err
 					}
+					candidateImages = append(candidateImages, img)
 				}
-				data = append(data, map[string]string{"b64_json": part.InlineData.Data})
 			}
+			// Subrouter can return Gemini images as Markdown in text parts.
+			// Prefer inline images to avoid charging for a duplicate representation.
+			if len(candidateImages) == 0 {
+				for _, imageURL := range nanoBanana21MarkdownImages(text.String()) {
+					var payload string
+					var err error
+					if strings.HasPrefix(imageURL, "data:image/") {
+						_, payload, err = service.DecodeBase64FileData(imageURL)
+					} else {
+						_, payload, err = nanoBanana21DownloadImage(imageURL)
+					}
+					if err != nil {
+						return nil, fmt.Errorf("unable to read upstream generated image")
+					}
+					img, err := validatedNanoBanana21GeminiImage(c, payload)
+					if err != nil {
+						return nil, err
+					}
+					candidateImages = append(candidateImages, img)
+				}
+			}
+			data = append(data, candidateImages...)
 		}
 		response.Usage = &dto.Usage{PromptTokens: gemini.UsageMetadata.PromptTokenCount, CompletionTokens: gemini.UsageMetadata.CandidatesTokenCount, TotalTokens: gemini.UsageMetadata.TotalTokenCount}
 	}
