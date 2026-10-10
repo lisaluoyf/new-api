@@ -67,6 +67,7 @@ var (
 		"too many pending requests",
 		"upstream overload",
 		"rate_limit_error",
+		"rate limit exceeded",
 	}
 )
 
@@ -270,8 +271,30 @@ func isUpstreamModelUnavailableError(err *types.NewAPIError) bool {
 }
 
 func isRateLimitCooldown(err *types.NewAPIError) bool {
-	if err.StatusCode != 429 {
+	if err == nil || err.StatusCode != 429 {
 		return false
+	}
+	// Providers often put the rate-limit diagnosis in type/code rather than
+	// message. Read only error fields, never arbitrary request parameters.
+	isRateLimit := func(errorType, code string) bool {
+		return strings.EqualFold(errorType, "rate_limit_error") ||
+			strings.EqualFold(code, "rate_limit_exceeded") ||
+			strings.EqualFold(code, "luna_rpm_exceeded")
+	}
+	if isRateLimit(err.ToOpenAIError().Type, string(err.GetErrorCode())) {
+		return true
+	}
+	var body struct {
+		Type  string `json:"type"`
+		Code  string `json:"code"`
+		Error struct {
+			Type string `json:"type"`
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if common.UnmarshalJsonStr(err.UpstreamResponseBody, &body) == nil &&
+		(isRateLimit(body.Type, body.Code) || isRateLimit(body.Error.Type, body.Error.Code)) {
+		return true
 	}
 	lower := strings.ToLower(err.Error())
 	for _, m := range rateLimitCooldownMarkers {
