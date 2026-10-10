@@ -18,7 +18,7 @@ import (
 )
 
 type Log struct {
-	Id               int    `json:"id" gorm:"index:idx_created_at_id,priority:1;index:idx_user_id_id,priority:2;index:idx_logs_user_request_type_id,priority:4"`
+	Id               int    `json:"id" gorm:"index:idx_created_at_id,priority:1;index:idx_user_id_id,priority:2;index:idx_logs_user_request_type_id,priority:4;index:idx_logs_request_id_id,priority:2"`
 	UserId           int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1;index:idx_logs_user_request_type_id,priority:1"`
 	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:2;index:idx_created_at_type"`
 	Type             int    `json:"type" gorm:"index:idx_created_at_type;index:idx_logs_user_request_type_id,priority:3"`
@@ -37,7 +37,7 @@ type Log struct {
 	TokenId          int    `json:"token_id" gorm:"default:0;index"`
 	Group            string `json:"group" gorm:"index"`
 	Ip               string `json:"ip" gorm:"index;default:''"`
-	RequestId        string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;index:idx_logs_user_request_type_id,priority:2;default:''"`
+	RequestId        string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;index:idx_logs_request_id_id,priority:1;index:idx_logs_user_request_type_id,priority:2;default:''"`
 	Other            string `json:"other"`
 
 	WalletSupplementQuota           int     `json:"wallet_supplement_quota,omitempty" gorm:"default:0"`
@@ -703,11 +703,18 @@ func migrateBillingHoldConfirmManageLogsToConsume() {
 }
 
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, filterUserId int) (logs []*Log, total int64, err error) {
+	return GetAllLogsWithContext(context.Background(), logType, startTimestamp, endTimestamp, modelName, username, tokenName, startIdx, num, channel, group, requestId, filterUserId)
+}
+
+func GetAllLogsWithContext(ctx context.Context, logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, filterUserId int) (logs []*Log, total int64, err error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	db := LOG_DB.WithContext(ctx)
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = LOG_DB
+		tx = db
 	} else {
-		tx = LOG_DB.Where("logs.type = ?", logType)
+		tx = db.Where("logs.type = ?", logType)
 	}
 
 	if modelName != "" {
@@ -773,7 +780,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 			}
 		} else {
 			// Bulk query channels from DB
-			if err = DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
+			if err = DB.WithContext(ctx).Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
 				return logs, total, err
 			}
 		}
@@ -799,7 +806,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 			Username string `gorm:"column:username"`
 			Email    string `gorm:"column:email"`
 		}
-		if err2 := DB.Table("users").Select("id, username, email").Where("id IN ?", missingUserIds.Items()).Find(&userRows).Error; err2 == nil {
+		if err2 := DB.WithContext(ctx).Table("users").Select("id, username, email").Where("id IN ?", missingUserIds.Items()).Find(&userRows).Error; err2 == nil {
 			userMap := make(map[int]struct {
 				Username string
 				Email    string
@@ -833,7 +840,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 			Username string `gorm:"column:username"`
 			Email    string `gorm:"column:email"`
 		}
-		if err2 := DB.Table("users").Select("username, email").Where("username IN ?", usernames.Items()).Find(&userEmailRows).Error; err2 == nil {
+		if err2 := DB.WithContext(ctx).Table("users").Select("username, email").Where("username IN ?", usernames.Items()).Find(&userEmailRows).Error; err2 == nil {
 			emailMap := make(map[string]string, len(userEmailRows))
 			for _, row := range userEmailRows {
 				emailMap[row.Username] = row.Email

@@ -10,6 +10,38 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestGetAllLogsHonorsCancellation(t *testing.T) {
+	setupUserLogVisibilityTestDB(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, err := GetAllLogsWithContext(ctx, LogTypeUnknown, 0, 0, "", "", "", 0, 10, 0, "", "missing", 0)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestGetAllLogsRequestLookupPagination(t *testing.T) {
+	setupUserLogVisibilityTestDB(t)
+	oldDB := DB
+	DB = LOG_DB
+	require.NoError(t, DB.AutoMigrate(&User{}))
+	t.Cleanup(func() { DB = oldDB })
+	rows := []Log{
+		{UserId: 1, RequestId: "target"},
+		{UserId: 2, RequestId: "other"},
+		{UserId: 2, RequestId: "target"},
+		{UserId: 3, RequestId: "target"},
+	}
+	require.NoError(t, LOG_DB.Create(&rows).Error)
+	logs, total, err := GetAllLogsWithContext(context.Background(), LogTypeUnknown, 0, 0, "", "", "", 1, 1, 0, "", "target", 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, total)
+	require.Len(t, logs, 1)
+	require.Equal(t, rows[2].Id, logs[0].Id)
+	logs, total, err = GetAllLogsWithContext(context.Background(), LogTypeUnknown, 0, 0, "", "", "", 0, 10, 0, "", "missing", 0)
+	require.NoError(t, err)
+	require.Zero(t, total)
+	require.Empty(t, logs)
+}
+
 func TestGetUserLogsHonorsCancellation(t *testing.T) {
 	setupUserLogVisibilityTestDB(t)
 	ctx, cancel := context.WithCancel(context.Background())

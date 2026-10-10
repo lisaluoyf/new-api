@@ -32,7 +32,7 @@ func GetAllLogs(c *gin.Context) {
 	if filterUserId != 0 {
 		username = ""
 	}
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, filterUserId)
+	logs, total, err := model.GetAllLogsWithContext(c.Request.Context(), logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, filterUserId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
