@@ -65,3 +65,25 @@ func TestRealtimeFetchDoesNotRequeryTerminalTasks(t *testing.T) {
 		require.Equal(t, status, task.Status)
 	}
 }
+
+func TestVideoResponsesExposeNestedReviewWithoutProviderPayload(t *testing.T) {
+	reason := "The request failed because the input image may be related to copyright restrictions. Request ID: 20261011163219F021CD55F251F078E959_asset-20261011163219-tp2zd"
+	data, err := common.Marshal(map[string]any{"data": map[string]any{
+		"cost": 123, "id": "provider-task-id", "error": map[string]any{
+			"upstream": map[string]any{"code": "InputImageSensitiveContentDetected.PolicyViolation", "message": reason},
+		},
+	}})
+	require.NoError(t, err)
+	task := &model.Task{TaskID: "task_public", Platform: "apimart-video", Status: model.TaskStatusFailure,
+		Properties: model.Properties{OriginModelName: "seedance-2.5"},
+		FailReason: "Your request did not pass content safety review.", Data: data}
+	compatibility := buildSafeVideoTaskResponse(task, data)
+	openAI, err := sanitizeOpenAIVideoTaskFailure(task, []byte(`{"id":"task_public","status":"failed"}`))
+	require.NoError(t, err)
+	for _, body := range [][]byte{compatibility, openAI} {
+		require.Contains(t, string(body), reason)
+		for _, forbidden := range []string{"provider-task-id", `"cost"`, `"upstream"`, `"private_data"`} {
+			require.NotContains(t, string(body), forbidden)
+		}
+	}
+}

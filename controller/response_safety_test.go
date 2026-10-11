@@ -80,3 +80,14 @@ func TestTasksToUserDtoPreservesSafeFailureAndHidesLegacyResult(t *testing.T) {
 	require.Equal(t, "The provider width should not be less than 700px", item.FailReason)
 	require.Empty(t, item.ResultURL)
 }
+
+func TestTasksToUserDtoExposesNestedReviewReason(t *testing.T) {
+	reason := "The request failed because the input image may be related to copyright restrictions. Request ID: 20261011163219F021CD55F251F078E959_asset-20261011163219-tp2zd"
+	data, err := common.Marshal(map[string]any{"data": map[string]any{"error": map[string]any{"upstream": map[string]any{"code": "InputImageSensitiveContentDetected.PolicyViolation", "message": reason}}}})
+	require.NoError(t, err)
+	task := &model.Task{TaskID: "task_public", Platform: constant.TaskPlatformApimartVideo, Status: model.TaskStatusFailure,
+		FailReason: "Your request did not pass content safety review.", Data: data}
+	item := tasksToUserDto([]*model.Task{task})[0]
+	require.Equal(t, reason, item.FailReason)
+	require.Empty(t, item.ResultURL)
+}

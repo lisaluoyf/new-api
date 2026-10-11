@@ -756,7 +756,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	}
 	if task.Status == model.TaskStatusFailure {
 		message := "Video generation failed"
-		if service.IsSeedance20Variant(task.Properties.OriginModelName) {
+		if service.IsSeedanceLibraryModel(task.Properties.OriginModelName) {
 			message = service.PublicTaskFailure(task)
 		}
 		out["error"] = map[string]string{

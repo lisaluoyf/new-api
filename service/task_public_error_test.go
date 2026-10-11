@@ -61,6 +61,61 @@ func TestPublicTaskFailureDoesNotMutateAudit(t *testing.T) {
 	require.Empty(t, PublicTaskFailure(task))
 }
 
+func TestPublicTaskFailurePreservesProviderReviewReasons(t *testing.T) {
+	for _, tc := range []struct {
+		name, reason string
+		nested       bool
+	}{
+		{"first input image", "The request failed because the input image may be related to copyright restrictions. Request ID: 20261011163219F021CD55F251F078E959_asset-20261011163219-tp2zd", true},
+		{"second input image", "The request failed because the input image may be related to copyright restrictions. Request ID: 20261011163934D6F09AA2463AD98BD20B_asset-20261011163934-dlp79", true},
+		{"output sensitive", "The request failed because the output video may contain sensitive information. Request id: 02179170959940900000000000000000000ffffac1926adbf679f", false},
+		{"output copyright", "The request failed because the output video may be related to copyright restrictions. Request id: 02179170790151900000000000000000000ffffac175b6997935f", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			task := model.Task{Status: model.TaskStatusFailure, FailReason: tc.reason}
+			if tc.nested {
+				task.Platform = "apimart-video"
+				task.FailReason = "Your request did not pass content safety review. Please adjust your prompt or input files and try again."
+				body, err := common.Marshal(map[string]any{"data": map[string]any{"error": map[string]any{
+					"message": task.FailReason, "param": "image_with_roles[0].url",
+					"upstream": map[string]any{"code": "InputImageSensitiveContentDetected.PolicyViolation", "message": tc.reason},
+				}}})
+				require.NoError(t, err)
+				task.Data = body
+			}
+			originalReason, originalData := task.FailReason, string(task.Data)
+			require.Equal(t, tc.reason, PublicTaskFailure(&task))
+			require.Equal(t, originalReason, task.FailReason)
+			require.Equal(t, originalData, string(task.Data))
+		})
+	}
+}
+
+func TestPublicTaskFailureIgnoresUnrelatedNestedDiagnostics(t *testing.T) {
+	task := model.Task{Platform: "apimart-video", Status: model.TaskStatusFailure, FailReason: "Task failed"}
+	for _, body := range []string{
+		`{"data":{"error":{"upstream":{"code":"Unauthorized","message":"secret diagnostic"}}}}`,
+		`{"data":{"error":{"upstream":{"code":"InputImageSensitiveContentDetected.PolicyViolation","message":"secret diagnostic"}}}}`,
+		`{"data":{"error":{"upstream":{"message":"may contain sensitive information"}}}}`,
+		`{malformed`,
+	} {
+		task.Data = []byte(body)
+		require.Equal(t, "Task failed", PublicTaskFailure(&task))
+	}
+}
+
+func TestReviewReasonsStillRemoveCredentialsAndInternalDiagnostics(t *testing.T) {
+	reason := "The output video may contain sensitive information. Request id: 02179170959940900000000000000000000ffffac1926adbf679f; Authorization: Bearer private-token; https://provider.example/private; channel_id=153; asset_id=private-asset; /opt/private"
+	result := sanitizeTaskFailure(reason)
+	require.Contains(t, result, "Request id: 02179170959940900000000000000000000ffffac1926adbf679f")
+	for _, secret := range []string{"private-token", "provider.example", "channel_id", "private-asset", "/opt/private"} {
+		require.NotContains(t, result, secret)
+	}
+	require.NotContains(t, sanitizeTaskFailure("ordinary failure; Request id: 02179170959940900000000000000000000ffffac1926adbf679f"), "021791709599")
+	require.NotContains(t, sanitizeTaskFailure("may contain sensitive information; request_id=sk-fake-secret-value"), "sk-fake-secret-value")
+	require.NotContains(t, sanitizeTaskFailure("may contain sensitive information; request_id=private-provider-id", "private-provider-id"), "private-provider-id")
+}
+
 func TestEnrichUserTaskLogFailuresBackfillsHistoryWithOwnership(t *testing.T) {
 	oldDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -85,4 +140,36 @@ func TestEnrichUserTaskLogFailuresBackfillsHistoryWithOwnership(t *testing.T) {
 	var stored model.Task
 	require.NoError(t, db.First(&stored, task.ID).Error)
 	require.Equal(t, task.FailReason, stored.FailReason)
+}
+
+func TestEnrichUserTaskLogFailuresShowsHistoricalNestedReview(t *testing.T) {
+	oldDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	t.Cleanup(func() { model.DB = oldDB })
+	require.NoError(t, db.AutoMigrate(&model.Task{}))
+	reason := "The request failed because the input image may be related to copyright restrictions. Request ID: 20261011163219F021CD55F251F078E959_asset-20261011163219-tp2zd"
+	body, err := common.Marshal(map[string]any{"data": map[string]any{"error": map[string]any{"upstream": map[string]any{"code": "InputImageSensitiveContentDetected.PolicyViolation", "message": reason}}}})
+	require.NoError(t, err)
+	task := model.Task{TaskID: "task_review", UserId: 42, Platform: "apimart-video", Status: model.TaskStatusFailure, FailReason: "Your request did not pass content safety review.", Data: body}
+	require.NoError(t, db.Create(&task).Error)
+	logs := []*model.Log{
+		{UserId: 42, Type: model.LogTypeConsume, Other: `{"task_id":"task_review","billing_refunded":true}`},
+		{UserId: 42, Type: model.LogTypeRefund, Other: `{"task_id":"task_review"}`},
+		{UserId: 43, Type: model.LogTypeConsume, Other: `{"task_id":"task_review"}`},
+	}
+	EnrichUserTaskLogFailures(logs)
+	for _, log := range logs[:2] {
+		other, _ := common.StrToMap(log.Other)
+		require.Equal(t, reason, other["task_fail_reason"])
+		require.Equal(t, "Task failed: "+reason, log.Content)
+	}
+	require.NotContains(t, logs[2].Other, "copyright")
+	other, _ := common.StrToMap(logs[0].Other)
+	require.Equal(t, true, other["billing_refunded"])
+	var stored model.Task
+	require.NoError(t, db.First(&stored, task.ID).Error)
+	require.Equal(t, task.FailReason, stored.FailReason)
+	require.Equal(t, string(body), string(stored.Data))
 }

@@ -15,7 +15,8 @@ var taskErrorKey = regexp.MustCompile(`\b(?:sk-[A-Za-z0-9_-]+|AIza[A-Za-z0-9_-]+
 var taskErrorURL = regexp.MustCompile(`(?i)(?:https?|wss?|s3|gs|asset)://[^\s<>"']+`)
 var taskErrorIPv6 = regexp.MustCompile(`(?i)(?:\[[0-9a-f]*:[0-9a-f:]+\]|(?:[0-9a-f]{1,4}:){2,}[0-9a-f:]+)`)
 var taskErrorEmail = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
-var taskErrorDiagnostic = regexp.MustCompile(`(?i)(?:\b(?:request|transaction|trace|channel|merchant|account|asset|group)[_-]?id\b["']?\s*[:=]\s*[^\s,;]+|(?:/var/|/opt/|/home/|/root/|/app/)[^\s"']+)`)
+var taskErrorDiagnostic = regexp.MustCompile(`(?i)(?:\b(?:request|transaction|trace|channel|merchant|account|asset|group)[_ -]?id\b["']?\s*[:=]\s*[^\s,;]+|(?:/var/|/opt/|/home/|/root/|/app/)[^\s"']+)`)
+var taskReviewRequestID = regexp.MustCompile(`(?i)^request[_ -]?id\s*[:=]\s*[a-z0-9][a-z0-9_-]{11,159}$`)
 
 // PublicTaskFailure preserves useful errors while removing provider credentials,
 // routing and identifiers. Original task/audit records are never modified.
@@ -56,7 +57,40 @@ func PublicTaskFailure(task *model.Task) string {
 			}
 		}
 	}
-	return sanitizeTaskFailure(task.FailReason, sensitive...)
+	return sanitizeTaskFailure(taskFailureReason(task), sensitive...)
+}
+
+// Apimart wraps the actionable review message in data.error.upstream while
+// keeping only a generic content-safety message at the outer level. Read the
+// saved response so historical tasks and their logs benefit without rewriting
+// the original audit or billing records.
+func taskFailureReason(task *model.Task) string {
+	var envelope map[string]any
+	if task.Platform == "apimart-video" && common.Unmarshal(task.Data, &envelope) == nil {
+		data, _ := envelope["data"].(map[string]any)
+		err, _ := data["error"].(map[string]any)
+		upstream, _ := err["upstream"].(map[string]any)
+		message, _ := upstream["message"].(string)
+		code, _ := upstream["code"].(string)
+		if strings.HasSuffix(code, ".PolicyViolation") && isTaskReviewRejection(message) {
+			return message
+		}
+	}
+	return task.FailReason
+}
+
+func isTaskReviewRejection(reason string) bool {
+	reason = strings.ToLower(reason)
+	for _, marker := range []string{
+		"may be related to copyright restrictions", "may contain sensitive information",
+		"did not pass content safety review", "rejected by the safety system",
+		"rejected as a result of our safety system", "content policy violation",
+	} {
+		if strings.Contains(reason, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func sanitizeTaskFailure(reason string, sensitive ...string) string {
@@ -81,7 +115,16 @@ func sanitizeTaskFailure(reason string, sensitive ...string) string {
 	reason = taskErrorURL.ReplaceAllString(reason, "[redacted]")
 	reason = taskErrorEmail.ReplaceAllString(reason, "[redacted]")
 	reason = taskErrorIPv6.ReplaceAllString(reason, "[redacted]")
-	reason = taskErrorDiagnostic.ReplaceAllString(reason, "[redacted]")
+	// Review request IDs are useful when asking the provider to investigate a
+	// false positive. Only retain bounded opaque IDs in explicit review errors;
+	// credentials and URLs have already been removed above.
+	review := isTaskReviewRejection(reason)
+	reason = taskErrorDiagnostic.ReplaceAllStringFunc(reason, func(diagnostic string) string {
+		if review && taskReviewRequestID.MatchString(diagnostic) {
+			return diagnostic
+		}
+		return "[redacted]"
+	})
 	reason = common.MaskSensitiveInfo(reason)
 	reason = strings.Join(strings.FieldsFunc(reason, func(r rune) bool { return unicode.IsControl(r) || unicode.IsSpace(r) }), " ")
 	if strings.TrimSpace(strings.ReplaceAll(reason, "[redacted]", "")) == "" {

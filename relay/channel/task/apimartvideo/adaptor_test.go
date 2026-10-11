@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -45,6 +46,26 @@ func TestConvertToOpenAIVideoHidesProviderFailure(t *testing.T) {
 	require.Contains(t, string(body), "Video generation failed")
 	require.NotContains(t, string(body), "700px")
 	require.NotContains(t, string(body), "provider rejected")
+}
+
+func TestConvertToOpenAIVideoShowsSeedance25ReviewReason(t *testing.T) {
+	reason := "The request failed because the input image may be related to copyright restrictions. Request ID: 20261011163219F021CD55F251F078E959_asset-20261011163219-tp2zd"
+	data, err := common.Marshal(map[string]any{"data": map[string]any{"error": map[string]any{"upstream": map[string]any{"code": "InputImageSensitiveContentDetected.PolicyViolation", "message": reason}}}})
+	require.NoError(t, err)
+	task := &model.Task{
+		TaskID: "task_public", Platform: "apimart-video", Status: model.TaskStatusFailure,
+		Properties: model.Properties{OriginModelName: "seedance-2.5"},
+		FailReason: "Your request did not pass content safety review.", Data: data,
+	}
+	body, err := (&TaskAdaptor{}).ConvertToOpenAIVideo(task)
+	require.NoError(t, err)
+	var response struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	require.NoError(t, common.Unmarshal(body, &response))
+	require.Equal(t, reason, response.Error.Message)
 }
 
 func TestConvertToOpenAIVideoProxiesProviderResult(t *testing.T) {
