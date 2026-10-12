@@ -26,7 +26,7 @@ import (
 )
 
 const topupForbiddenMessage = "Top-up is disabled for this account"
-const repeatWalletTopupMinUSD = 5
+const repeatWalletTopupMinUSD = 10
 
 func isCurrentUserTopupForbidden(c *gin.Context) bool {
 	userID := c.GetInt("id")

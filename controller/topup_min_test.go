@@ -11,6 +11,28 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestEffectiveWalletMinTopupUSD(t *testing.T) {
+	testCases := []struct {
+		name               string
+		configuredMin      int
+		hasSuccessfulTopup bool
+		expectedMin        int
+	}{
+		{name: "first payment keeps one dollar minimum", configuredMin: 1, expectedMin: 1},
+		{name: "first payment preserves configured minimum", configuredMin: 20, expectedMin: 20},
+		{name: "repeat payment raises one dollar minimum", configuredMin: 1, hasSuccessfulTopup: true, expectedMin: 10},
+		{name: "repeat payment raises five dollar minimum", configuredMin: 5, hasSuccessfulTopup: true, expectedMin: 10},
+		{name: "repeat payment keeps ten dollar minimum", configuredMin: 10, hasSuccessfulTopup: true, expectedMin: 10},
+		{name: "repeat payment preserves higher minimum", configuredMin: 20, hasSuccessfulTopup: true, expectedMin: 20},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			require.Equal(t, testCase.expectedMin, effectiveWalletMinTopupUSD(testCase.configuredMin, testCase.hasSuccessfulTopup))
+		})
+	}
+}
+
 func TestWalletMinTopupForUserUsesPaidHistory(t *testing.T) {
 	oldDB := model.DB
 	t.Cleanup(func() {
@@ -34,8 +56,9 @@ func TestWalletMinTopupForUserUsesPaidHistory(t *testing.T) {
 		Status:          common.TopUpStatusSuccess,
 	}).Error)
 
-	require.EqualValues(t, 5, getWalletMinTopupForUser(1, 1))
+	require.EqualValues(t, 10, getWalletMinTopupForUser(1, 1))
 	require.EqualValues(t, 10, getWalletMinTopupForUser(1, 10))
+	require.EqualValues(t, 20, getWalletMinTopupForUser(1, 20))
 }
 
 func TestWalletMinTopupForUserConvertsTokenDisplay(t *testing.T) {
@@ -68,7 +91,7 @@ func TestWalletMinTopupForUserConvertsTokenDisplay(t *testing.T) {
 		Status:          common.TopUpStatusSuccess,
 	}).Error)
 
-	require.EqualValues(t, 2500000, getWalletMinTopupForUser(1, 1))
+	require.EqualValues(t, 5000000, getWalletMinTopupForUser(1, 1))
 }
 
 func TestClonePayMethodsWithMinTopupReturnsNumericMinimum(t *testing.T) {
@@ -78,14 +101,14 @@ func TestClonePayMethodsWithMinTopupReturnsNumericMinimum(t *testing.T) {
 	}
 
 	cloned := clonePayMethodsWithMinTopup(original, map[string]int64{
-		"alipay": 5,
-		"wxpay":  5,
+		"alipay": 10,
+		"wxpay":  10,
 	})
 
 	require.Len(t, cloned, 2)
 	require.IsType(t, int64(0), cloned[0]["min_topup"])
-	require.EqualValues(t, 5, cloned[0]["min_topup"])
+	require.EqualValues(t, 10, cloned[0]["min_topup"])
 	require.IsType(t, int64(0), cloned[1]["min_topup"])
-	require.EqualValues(t, 5, cloned[1]["min_topup"])
+	require.EqualValues(t, 10, cloned[1]["min_topup"])
 	require.NotContains(t, original[0], "min_topup")
 }
