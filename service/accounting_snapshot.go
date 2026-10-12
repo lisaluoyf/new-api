@@ -44,10 +44,11 @@ type ConsumeAccountingInput struct {
 }
 
 type accountingPriceTuple struct {
-	InputPrice         float64 `json:"input_price"`
-	OutputPrice        float64 `json:"output_price"`
-	CachePrice         float64 `json:"cache_price"`
-	CacheCreationPrice float64 `json:"cache_creation_price"`
+	InputPrice           float64  `json:"input_price"`
+	OutputPrice          float64  `json:"output_price"`
+	CachePrice           float64  `json:"cache_price"`
+	CacheCreationPrice   float64  `json:"cache_creation_price"`
+	CacheCreationPrice1h *float64 `json:"cache_creation_price_1h"`
 }
 
 type consumeAccountingSnapshot struct {
@@ -125,10 +126,12 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		CacheTokenSemanticSource: input.CacheTokenSemanticSource,
 		AccountingAmountVersion:  "mixed_billing_v1",
 		Tokens: map[string]int{
-			"input":       input.InputTokens,
-			"output":      input.OutputTokens,
-			"cache_read":  input.CacheReadTokens,
-			"cache_write": input.CacheWriteTokens,
+			"input":          input.InputTokens,
+			"output":         input.OutputTokens,
+			"cache_read":     input.CacheReadTokens,
+			"cache_write":    normalizedAccountingCacheWriteTotal(input),
+			"cache_write_5m": max(0, normalizedAccountingCacheWriteTotal(input)-max(0, input.CacheWriteTokens1h)),
+			"cache_write_1h": max(0, input.CacheWriteTokens1h),
 		},
 		Prices:     map[string]any{},
 		AmountsUSD: map[string]float64{},
@@ -138,6 +141,9 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		snap.Tokens["cache_write_5m"] = input.CacheWriteTokens5m
 		snap.Tokens["cache_write_1h"] = input.CacheWriteTokens1h
 		snap.Prices["cache_write_price_multiplier"] = *input.CacheWritePriceMultiplier
+	}
+	if input.CacheWriteTokens1h > 0 {
+		snap.AccountingAmountVersion = "mixed_billing_v3_cache_ttl_prices"
 	}
 	if units := accountingUnits(input); len(units) > 0 {
 		snap.Units = units
@@ -173,6 +179,7 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		errorText = appendAccountingError(errorText, "channel_cost_price_missing")
 	} else {
 		tuple := tupleFromChannelPrices(channelCost)
+		tuple.CacheCreationPrice1h = ratio_setting.ResolveCacheCreation1hPrice(input.ModelName, tuple.CacheCreationPrice, tuple.CacheCreationPrice1h)
 		snap.Prices["channel_cost"] = tuple
 		fields.ChannelCostAmountUSD = amountUSD(tuple, input)
 		snap.AmountsUSD["channel_cost"] = fields.ChannelCostAmountUSD
@@ -212,10 +219,11 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 			snap.Prices["user_amount_source"] = "settled_quota"
 		}
 		finalPrice := accountingPriceTuple{
-			InputPrice:         tuple.InputPrice * input.GroupRatio,
-			OutputPrice:        tuple.OutputPrice * input.GroupRatio,
-			CachePrice:         tuple.CachePrice * input.GroupRatio,
-			CacheCreationPrice: tuple.CacheCreationPrice * input.GroupRatio,
+			InputPrice:           tuple.InputPrice * input.GroupRatio,
+			OutputPrice:          tuple.OutputPrice * input.GroupRatio,
+			CachePrice:           tuple.CachePrice * input.GroupRatio,
+			CacheCreationPrice:   tuple.CacheCreationPrice * input.GroupRatio,
+			CacheCreationPrice1h: multiplyOptionalPrice(tuple.CacheCreationPrice1h, input.GroupRatio),
 		}
 		if input.ZeroUserCharge {
 			finalPrice = accountingPriceTuple{}
@@ -233,10 +241,11 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		}
 		if ok {
 			official = accountingPriceTuple{
-				InputPrice:         in,
-				OutputPrice:        out,
-				CachePrice:         cache,
-				CacheCreationPrice: cacheCreation,
+				InputPrice:           in,
+				OutputPrice:          out,
+				CachePrice:           cache,
+				CacheCreationPrice:   cacheCreation,
+				CacheCreationPrice1h: ratio_setting.ResolveCacheCreation1hPrice(input.ModelName, cacheCreation, nil),
 			}
 			snap.Prices["official_price"] = official
 		} else {
@@ -266,10 +275,11 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 			snap.ResellerDiscountRatio = rule.DiscountRatio
 			if _, ok := snap.Prices["official_price"]; ok {
 				resellerCost := accountingPriceTuple{
-					InputPrice:         official.InputPrice * rule.DiscountRatio,
-					OutputPrice:        official.OutputPrice * rule.DiscountRatio,
-					CachePrice:         official.CachePrice * rule.DiscountRatio,
-					CacheCreationPrice: official.CacheCreationPrice * rule.DiscountRatio,
+					InputPrice:           official.InputPrice * rule.DiscountRatio,
+					OutputPrice:          official.OutputPrice * rule.DiscountRatio,
+					CachePrice:           official.CachePrice * rule.DiscountRatio,
+					CacheCreationPrice:   official.CacheCreationPrice * rule.DiscountRatio,
+					CacheCreationPrice1h: multiplyOptionalPrice(official.CacheCreationPrice1h, rule.DiscountRatio),
 				}
 				snap.Prices["reseller_cost"] = resellerCost
 				fields.ResellerCostAmountUSD = amountUSD(resellerCost, input)
@@ -306,6 +316,12 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 		snap.AmountsUSD["user_price"] = fields.UserPriceAmountUSD
 		snap.Prices["user_amount_source"] = "settled_quota"
 	}
+	if input.CacheWriteTokens1h > 0 {
+		if tuple, ok := snap.Prices["channel_cost"].(accountingPriceTuple); ok && tuple.CacheCreationPrice1h == nil {
+			status = "partial"
+			errorText = appendAccountingError(errorText, "channel_cache_1h_price_missing")
+		}
+	}
 	fields.GroupRatio = input.GroupRatio
 	fields.Status = status
 	if errorText != "" {
@@ -321,10 +337,11 @@ func tupleFromChannelPrices(p *model.ChannelActualPrices) accountingPriceTuple {
 		return accountingPriceTuple{}
 	}
 	return accountingPriceTuple{
-		InputPrice:         p.InputPrice,
-		OutputPrice:        p.OutputPrice,
-		CachePrice:         p.CachePrice,
-		CacheCreationPrice: p.CacheCreationPrice,
+		InputPrice:           p.InputPrice,
+		OutputPrice:          p.OutputPrice,
+		CachePrice:           p.CachePrice,
+		CacheCreationPrice:   p.CacheCreationPrice,
+		CacheCreationPrice1h: p.CacheCreationPrice1h,
 	}
 }
 
@@ -345,13 +362,14 @@ func amountUSD(prices accountingPriceTuple, input ConsumeAccountingInput) float6
 
 	inputTokens := input.InputTokens
 	if input.InputTokensIncludeCache {
-		inputTokens -= input.CacheReadTokens + input.CacheWriteTokens
+		inputTokens -= input.CacheReadTokens + normalizedAccountingCacheWriteTotal(input)
 		if inputTokens < 0 {
 			inputTokens = 0
 		}
 	}
-	cacheWriteAmount := prices.CacheCreationPrice * float64(input.CacheWriteTokens)
-	if input.CacheWritePriceMultiplier != nil {
+	cacheWriteAmount := cacheWriteCostUSD(prices, input)
+	// Legacy callers with no split still carry their existing multiplier.
+	if input.CacheWriteTokens1h <= 0 && input.CacheWriteTokens5m <= 0 && input.CacheWritePriceMultiplier != nil {
 		cacheWriteAmount *= *input.CacheWritePriceMultiplier
 	}
 	return (prices.InputPrice*float64(inputTokens) +
@@ -435,4 +453,30 @@ func getEnabledResellerRuleByAnyModelName(resellerId int, downlineId int, modelN
 		}
 	}
 	return nil, nil
+}
+
+func normalizedAccountingCacheWriteTotal(input ConsumeAccountingInput) int {
+	return max(0, max(input.CacheWriteTokens, max(0, input.CacheWriteTokens5m)+max(0, input.CacheWriteTokens1h)))
+}
+func cacheWriteCostUSD(prices accountingPriceTuple, input ConsumeAccountingInput) float64 {
+	total := normalizedAccountingCacheWriteTotal(input)
+	oneHour := max(0, input.CacheWriteTokens1h)
+	price1h := ratio_setting.ResolveCacheCreation1hPrice(input.ModelName, prices.CacheCreationPrice, prices.CacheCreationPrice1h)
+	if price1h == nil {
+		if oneHour > 0 && input.CacheWritePriceMultiplier != nil {
+			return prices.CacheCreationPrice * float64(total) * *input.CacheWritePriceMultiplier
+		}
+	}
+	cost := prices.CacheCreationPrice * float64(total-oneHour)
+	if price1h != nil {
+		cost += *price1h * float64(oneHour)
+	}
+	return cost
+}
+func multiplyOptionalPrice(price *float64, ratio float64) *float64 {
+	if price == nil {
+		return nil
+	}
+	value := *price * ratio
+	return &value
 }

@@ -5204,5 +5204,12 @@
   "2K low": "2K 低质量",
   "2K medium": "2K 中等质量",
   "Fingerprint version": "指纹版本",
-  "Detector version": "检测程序版本"
+  "Detector version": "检测程序版本",
+  "Cache write price (5 minutes)": "缓存写入价格（5分钟）",
+  "Cache write price (1 hour)": "缓存写入价格（1小时）",
+  "Create cache ratio (1 hour)": "缓存写入倍率（1小时）",
+  "Optional 1-hour cache write ratio. Empty entries inherit 1.6 times the 5-minute ratio.": "可选的1小时缓存写入倍率。未配置时使用5分钟倍率的1.6倍。",
+  "Claude cache prices are in USD per million tokens. Channel and group multipliers apply separately. Empty 1-hour prices inherit 1.6 times the 5-minute price; explicit zero is free.": "Claude 缓存基础价单位为美元/百万 tokens，渠道和分组倍率另行应用。1小时价格留空时使用5分钟价格的1.6倍，明确填写0表示免费。",
+  "Expression billing: check the expression for user charges": "表达式计费：用户扣费以表达式为准",
+  "Token billing": "Token 计费"
 }

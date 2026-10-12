@@ -5166,5 +5166,12 @@
   "2K low": "2K low",
   "2K medium": "2K medium",
   "Fingerprint version": "Fingerprint version",
-  "Detector version": "Detector version"
+  "Detector version": "Detector version",
+  "Cache write price (5 minutes)": "Cache write price (5 minutes)",
+  "Cache write price (1 hour)": "Cache write price (1 hour)",
+  "Create cache ratio (1 hour)": "Create cache ratio (1 hour)",
+  "Optional 1-hour cache write ratio. Empty entries inherit 1.6 times the 5-minute ratio.": "Optional 1-hour cache write ratio. Empty entries inherit 1.6 times the 5-minute ratio.",
+  "Claude cache prices are in USD per million tokens. Channel and group multipliers apply separately. Empty 1-hour prices inherit 1.6 times the 5-minute price; explicit zero is free.": "Claude cache prices are in USD per million tokens. Channel and group multipliers apply separately. Empty 1-hour prices inherit 1.6 times the 5-minute price; explicit zero is free.",
+  "Expression billing: check the expression for user charges": "Expression billing: check the expression for user charges",
+  "Token billing": "Token billing"
 }

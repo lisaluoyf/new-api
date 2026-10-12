@@ -51,5 +51,6 @@ func ApplyModelGroupRatio(setting *string, modelName string, row *ChannelPricing
 	row.OutputPrice *= factor
 	row.CachePrice *= factor
 	row.CacheCreationPrice *= factor
+	row.CacheCreationPrice1h = multiplyOptionalPrice(row.CacheCreationPrice1h, factor)
 	row.GroupRatio = ratio
 }

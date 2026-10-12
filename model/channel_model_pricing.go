@@ -8,19 +8,20 @@ import (
 )
 
 type ChannelModelPricing struct {
-	Id                 int64   `json:"id"           gorm:"primaryKey;autoIncrement"`
-	ChannelId          int     `json:"channel_id"   gorm:"uniqueIndex:idx_ch_model;not null"`
-	ModelName          string  `json:"model_name"   gorm:"size:256;uniqueIndex:idx_ch_model;not null"`
-	InputPrice         float64 `json:"input_price"`          // USD per 1M input tokens = model_ratio × group_ratio × 2
-	OutputPrice        float64 `json:"output_price"`         // USD per 1M output tokens
-	CachePrice         float64 `json:"cache_price"`          // USD per 1M cache-read tokens
-	CacheCreationPrice float64 `json:"cache_creation_price"` // USD per 1M cache-write tokens
-	GroupRatio         float64 `json:"group_ratio"    gorm:"default:1"`
-	Currency           string  `json:"currency"       gorm:"size:8;default:'USD'"`
-	PricingSource      string  `json:"pricing_source" gorm:"size:16;default:'api'"` // "api" | "manual" | "free_model"
-	FetchedAt          int64   `json:"fetched_at"`
-	BillingMode        string  `json:"billing_mode" gorm:"size:32"`
-	BillingExpr        string  `json:"billing_expr" gorm:"type:text"`
+	Id                   int64    `json:"id"           gorm:"primaryKey;autoIncrement"`
+	ChannelId            int      `json:"channel_id"   gorm:"uniqueIndex:idx_ch_model;not null"`
+	ModelName            string   `json:"model_name"   gorm:"size:256;uniqueIndex:idx_ch_model;not null"`
+	InputPrice           float64  `json:"input_price"`          // USD per 1M input tokens = model_ratio × group_ratio × 2
+	OutputPrice          float64  `json:"output_price"`         // USD per 1M output tokens
+	CachePrice           float64  `json:"cache_price"`          // USD per 1M cache-read tokens
+	CacheCreationPrice   float64  `json:"cache_creation_price"` // USD per 1M cache-write tokens
+	CacheCreationPrice1h *float64 `json:"cache_creation_price_1h" gorm:"column:cache_creation_price_1h"`
+	GroupRatio           float64  `json:"group_ratio"    gorm:"default:1"`
+	Currency             string   `json:"currency"       gorm:"size:8;default:'USD'"`
+	PricingSource        string   `json:"pricing_source" gorm:"size:16;default:'api'"` // "api" | "manual" | "free_model"
+	FetchedAt            int64    `json:"fetched_at"`
+	BillingMode          string   `json:"billing_mode" gorm:"size:32"`
+	BillingExpr          string   `json:"billing_expr" gorm:"type:text"`
 }
 
 // GetChannelModelPricing returns the pricing row for a given channel+model.
@@ -42,10 +43,11 @@ func GetChannelModelPricing(channelId int, modelName string) (*ChannelModelPrici
 // service.ChannelActualPricesResolved applies recharge_rate × apimaster_ratio
 // (user price); the helper below applies recharge_rate only (procurement cost).
 type ChannelActualPrices struct {
-	InputPrice         float64
-	OutputPrice        float64
-	CachePrice         float64
-	CacheCreationPrice float64
+	CacheCreationPrice1h *float64 `json:"cache_creation_price_1h" gorm:"column:cache_creation_price_1h"`
+	InputPrice           float64
+	OutputPrice          float64
+	CachePrice           float64
+	CacheCreationPrice   float64
 }
 
 // GetChannelActualPrices returns procurement cost (× recharge_rate only).
@@ -68,10 +70,11 @@ func GetChannelActualPrices(channelId int, modelName string) (*ChannelActualPric
 	}
 
 	return &ChannelActualPrices{
-		InputPrice:         p.InputPrice * rechargeRate,
-		OutputPrice:        p.OutputPrice * rechargeRate,
-		CachePrice:         p.CachePrice * rechargeRate,
-		CacheCreationPrice: p.CacheCreationPrice * rechargeRate,
+		InputPrice:           p.InputPrice * rechargeRate,
+		OutputPrice:          p.OutputPrice * rechargeRate,
+		CachePrice:           p.CachePrice * rechargeRate,
+		CacheCreationPrice:   p.CacheCreationPrice * rechargeRate,
+		CacheCreationPrice1h: scaledChannelCache1hPrice(p.CacheCreationPrice1h, rechargeRate),
 	}, nil
 }
 
@@ -85,9 +88,17 @@ func UpsertChannelModelPricings(rows []ChannelModelPricing) error {
 	return DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "channel_id"}, {Name: "model_name"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"input_price", "output_price", "cache_price", "cache_creation_price",
+			"input_price", "output_price", "cache_price", "cache_creation_price", "cache_creation_price_1h",
 			"group_ratio", "currency", "pricing_source", "fetched_at",
 			"billing_mode", "billing_expr",
 		}),
 	}).Create(&rows).Error
+}
+
+func scaledChannelCache1hPrice(price *float64, rate float64) *float64 {
+	if price == nil {
+		return nil
+	}
+	value := *price * rate
+	return &value
 }

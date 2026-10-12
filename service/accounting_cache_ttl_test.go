@@ -58,7 +58,7 @@ func TestCacheTTLAccountingSnapshotRecordsSplitAndWeightedAmounts(t *testing.T) 
 	var snap consumeAccountingSnapshot
 	require.NoError(t, common.UnmarshalJsonStr(got.Snapshot, &snap))
 	require.Equal(t, 1000, snap.Tokens["cache_write_1h"])
-	require.Equal(t, "mixed_billing_v2_cache_ttl", snap.AccountingAmountVersion)
+	require.Equal(t, "mixed_billing_v3_cache_ttl_prices", snap.AccountingAmountVersion)
 	require.Equal(t, 1.6, snap.Prices["cache_write_price_multiplier"])
 }
 

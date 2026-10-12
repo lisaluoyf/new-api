@@ -24,13 +24,16 @@ const (
 // 1 === ￥0.014 / 1k tokens
 
 var defaultModelRatio = map[string]float64{
-	"jev-latest":    0.021, // TypeSafe $0.042 / 1M input, 2026-09-20
-	"jev-1.13.0":    0.021,
-	"jev-preview":   0.021,
-	"gpt-6-astra":   5,     // $10 / 1M input tokens
-	"kimi-k3":       1.5,   // $3 / 1M input tokens
-	"qwen3.8-max":   1.25,  // $2.5 / 1M input tokens
-	"qwen3.8-flash": 0.075, // $0.15 / 1M input tokens
+	"claude-opus-5-5":   2,
+	"claude-sonnet-5-5": 1,
+	"claude-sonnet-5.5": 1,
+	"jev-latest":        0.021, // TypeSafe $0.042 / 1M input, 2026-09-20
+	"jev-1.13.0":        0.021,
+	"jev-preview":       0.021,
+	"gpt-6-astra":       5,     // $10 / 1M input tokens
+	"kimi-k3":           1.5,   // $3 / 1M input tokens
+	"qwen3.8-max":       1.25,  // $2.5 / 1M input tokens
+	"qwen3.8-flash":     0.075, // $0.15 / 1M input tokens
 	//"midjourney":                50,
 	"gpt-4-gizmo-*":  15,
 	"gpt-4o-gizmo-*": 2.5,

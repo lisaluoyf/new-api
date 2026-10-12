@@ -59,8 +59,8 @@ type textQuotaSummary struct {
 	CacheTokenSemanticSource string
 }
 
-// Price catalogs expose the base cache-write price. Carry the same TTL weighting
-// used by settlement into procurement, user and reseller accounting snapshots.
+// Retain settlement weighting for legacy accounting callers and diagnostics.
+// New split-aware procurement accounting uses independent 5m/1h unit prices.
 func cacheWriteAccountingMultiplier(summary textQuotaSummary) *float64 {
 	if summary.InputTokensIncludeCache || summary.CacheCreationTokens1h <= 0 || summary.CacheCreationRatio <= 0 {
 		return nil

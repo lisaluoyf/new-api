@@ -28,6 +28,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { resetModelRatios } from '../api'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { ClaudeCachePricingSettings } from './claude-cache-pricing-settings'
 import { GroupRatioForm } from './group-ratio-form'
 import { ImagePricingForm } from './image-pricing-form'
 import { ModelRatioForm } from './model-ratio-form'
@@ -69,6 +70,15 @@ const modelSchema = z.object({
     }
   }),
   CreateCacheRatio: z.string().superRefine((value, ctx) => {
+    const result = validateJsonString(value)
+    if (!result.valid) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: result.message || 'Invalid JSON',
+      })
+    }
+  }),
+  CreateCache1hRatio: z.string().superRefine((value, ctx) => {
     const result = validateJsonString(value)
     if (!result.valid) {
       ctx.addIssue({
@@ -254,6 +264,7 @@ export function RatioSettingsCard({
     ModelRatio: normalizeJsonString(modelDefaults.ModelRatio),
     CacheRatio: normalizeJsonString(modelDefaults.CacheRatio),
     CreateCacheRatio: normalizeJsonString(modelDefaults.CreateCacheRatio),
+    CreateCache1hRatio: normalizeJsonString(modelDefaults.CreateCache1hRatio),
     CompletionRatio: normalizeJsonString(modelDefaults.CompletionRatio),
     ImageRatio: normalizeJsonString(modelDefaults.ImageRatio),
     AudioRatio: normalizeJsonString(modelDefaults.AudioRatio),
@@ -286,6 +297,9 @@ export function RatioSettingsCard({
       ModelRatio: formatJsonForTextarea(modelDefaults.ModelRatio),
       CacheRatio: formatJsonForTextarea(modelDefaults.CacheRatio),
       CreateCacheRatio: formatJsonForTextarea(modelDefaults.CreateCacheRatio),
+      CreateCache1hRatio: formatJsonForTextarea(
+        modelDefaults.CreateCache1hRatio
+      ),
       CompletionRatio: formatJsonForTextarea(modelDefaults.CompletionRatio),
       ImageRatio: formatJsonForTextarea(modelDefaults.ImageRatio),
       AudioRatio: formatJsonForTextarea(modelDefaults.AudioRatio),
@@ -319,6 +333,7 @@ export function RatioSettingsCard({
       ModelRatio: normalizeJsonString(modelDefaults.ModelRatio),
       CacheRatio: normalizeJsonString(modelDefaults.CacheRatio),
       CreateCacheRatio: normalizeJsonString(modelDefaults.CreateCacheRatio),
+      CreateCache1hRatio: normalizeJsonString(modelDefaults.CreateCache1hRatio),
       CompletionRatio: normalizeJsonString(modelDefaults.CompletionRatio),
       ImageRatio: normalizeJsonString(modelDefaults.ImageRatio),
       AudioRatio: normalizeJsonString(modelDefaults.AudioRatio),
@@ -336,6 +351,9 @@ export function RatioSettingsCard({
       ModelRatio: formatJsonForTextarea(modelDefaults.ModelRatio),
       CacheRatio: formatJsonForTextarea(modelDefaults.CacheRatio),
       CreateCacheRatio: formatJsonForTextarea(modelDefaults.CreateCacheRatio),
+      CreateCache1hRatio: formatJsonForTextarea(
+        modelDefaults.CreateCache1hRatio
+      ),
       CompletionRatio: formatJsonForTextarea(modelDefaults.CompletionRatio),
       ImageRatio: formatJsonForTextarea(modelDefaults.ImageRatio),
       AudioRatio: formatJsonForTextarea(modelDefaults.AudioRatio),
@@ -380,6 +398,7 @@ export function RatioSettingsCard({
         ModelRatio: normalizeJsonString(values.ModelRatio),
         CacheRatio: normalizeJsonString(values.CacheRatio),
         CreateCacheRatio: normalizeJsonString(values.CreateCacheRatio),
+        CreateCache1hRatio: normalizeJsonString(values.CreateCache1hRatio),
         CompletionRatio: normalizeJsonString(values.CompletionRatio),
         ImageRatio: normalizeJsonString(values.ImageRatio),
         AudioRatio: normalizeJsonString(values.AudioRatio),
@@ -473,13 +492,31 @@ export function RatioSettingsCard({
   const renderTabContent = (tab: RatioTabId) => {
     if (tab === 'models') {
       return (
-        <ModelRatioForm
-          form={modelForm}
-          onSave={saveModelRatios}
-          onReset={handleResetRatios}
-          isSaving={updateOption.isPending}
-          isResetting={resetMutation.isPending}
-        />
+        <div className='space-y-8'>
+          <ModelRatioForm
+            form={modelForm}
+            onSave={saveModelRatios}
+            onReset={handleResetRatios}
+            isSaving={updateOption.isPending}
+            isResetting={resetMutation.isPending}
+          />
+          <ClaudeCachePricingSettings
+            modelRatio={modelForm.watch('ModelRatio')}
+            completionRatio={modelForm.watch('CompletionRatio')}
+            cacheRatio={modelForm.watch('CacheRatio')}
+            createCacheRatio={modelForm.watch('CreateCacheRatio')}
+            createCache1hRatio={modelForm.watch('CreateCache1hRatio')}
+            billingMode={modelForm.watch('BillingMode')}
+            onChange={(key, value) =>
+              modelForm.setValue(key, value, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }
+            onSave={modelForm.handleSubmit(saveModelRatios)}
+            isSaving={updateOption.isPending}
+          />
+        </div>
       )
     }
     if (tab === 'groups') {
@@ -508,6 +545,7 @@ export function RatioSettingsCard({
           CompletionRatio: modelDefaults.CompletionRatio,
           CacheRatio: modelDefaults.CacheRatio,
           CreateCacheRatio: modelDefaults.CreateCacheRatio,
+
           ImageRatio: modelDefaults.ImageRatio,
           AudioRatio: modelDefaults.AudioRatio,
           AudioCompletionRatio: modelDefaults.AudioCompletionRatio,

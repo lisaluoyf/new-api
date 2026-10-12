@@ -64,25 +64,27 @@ type ModelDataItem struct {
 	ClientExclusive   string   `json:"client_exclusive"` // "" | codex | claude_code
 	// Pricing fields: nil = no pricing row (upstream 401/404 / cookie-only auth / no endpoint).
 	// Frontend renders nil as "—".
-	ModelPrice                 *float64                   `json:"model_price"`                  // 渠道原价/计费基准价 ($/1M); nil = unknown
-	OfficialInputPrice         *float64                   `json:"official_input_price"`         // 官方原价 (unified official list price, 系统设置→模型定价); nil = not configured
-	OfficialOutputPrice        *float64                   `json:"official_output_price"`        // 官方原价 output side; nil = not configured
-	BasePriceMismatchPct       *float64                   `json:"base_price_mismatch_pct"`      // |渠道原价 − 官方原价| / 官方原价 × 100; nil when either side unknown
-	SuggestedGroupRatio        *float64                   `json:"suggested_group_ratio"`        // input_price ÷ 官方原价 — gratio that reconciles 渠道原价 to 官方原价
-	GroupRatio                 *float64                   `json:"group_ratio"`                  // upstream group multiplier (e.g. 1.05 for CC); nil = unknown
-	RechargeRate               float64                    `json:"recharge_rate"`                // platform recharge multiplier
-	InputPrice                 *float64                   `json:"input_price"`                  // model_price × group_ratio ($/1M); nil = unknown
-	ActualPrice                *float64                   `json:"actual_price"`                 // input_price × recharge_rate (采购价); nil = unknown
-	UserPrice                  *float64                   `json:"user_price"`                   // actual_price × apimaster_price_ratio (用户最终价格); nil = unknown
-	ApimasterPriceRatio        float64                    `json:"apimaster_price_ratio"`        // per-channel markup multiplier; 1.0 when unset
-	PricingSource              string                     `json:"pricing_source"`               // "api" | "manual" | "" (no pricing data)
-	HubPrice                   *float64                   `json:"hub_price"`                    // hub.romaapi.com listed input price ($/1M), matched by key_group; nil = no hub data / group mismatch
-	OutputPrice                *float64                   `json:"output_price"`                 // raw upstream output price ($/1M); nil = unknown
-	ActualOutputPrice          *float64                   `json:"actual_output_price"`          // output_price × recharge_rate (采购价); nil = unknown
-	ActualOutputUserPrice      *float64                   `json:"actual_output_user_price"`     // actual_output_price × apimaster_price_ratio (用户最终价格); nil = unknown
-	CachePrice                 *float64                   `json:"cache_price"`                  // cache-read price ($/1M); nil = unknown
-	ActualCachePrice           *float64                   `json:"actual_cache_price"`           // cache_price × recharge_rate; nil = unknown
-	CacheCreationPrice         *float64                   `json:"cache_creation_price"`         // cache-write price ($/1M); nil = unknown
+	ModelPrice                 *float64                   `json:"model_price"`              // 渠道原价/计费基准价 ($/1M); nil = unknown
+	OfficialInputPrice         *float64                   `json:"official_input_price"`     // 官方原价 (unified official list price, 系统设置→模型定价); nil = not configured
+	OfficialOutputPrice        *float64                   `json:"official_output_price"`    // 官方原价 output side; nil = not configured
+	BasePriceMismatchPct       *float64                   `json:"base_price_mismatch_pct"`  // |渠道原价 − 官方原价| / 官方原价 × 100; nil when either side unknown
+	SuggestedGroupRatio        *float64                   `json:"suggested_group_ratio"`    // input_price ÷ 官方原价 — gratio that reconciles 渠道原价 to 官方原价
+	GroupRatio                 *float64                   `json:"group_ratio"`              // upstream group multiplier (e.g. 1.05 for CC); nil = unknown
+	RechargeRate               float64                    `json:"recharge_rate"`            // platform recharge multiplier
+	InputPrice                 *float64                   `json:"input_price"`              // model_price × group_ratio ($/1M); nil = unknown
+	ActualPrice                *float64                   `json:"actual_price"`             // input_price × recharge_rate (采购价); nil = unknown
+	UserPrice                  *float64                   `json:"user_price"`               // actual_price × apimaster_price_ratio (用户最终价格); nil = unknown
+	ApimasterPriceRatio        float64                    `json:"apimaster_price_ratio"`    // per-channel markup multiplier; 1.0 when unset
+	PricingSource              string                     `json:"pricing_source"`           // "api" | "manual" | "" (no pricing data)
+	HubPrice                   *float64                   `json:"hub_price"`                // hub.romaapi.com listed input price ($/1M), matched by key_group; nil = no hub data / group mismatch
+	OutputPrice                *float64                   `json:"output_price"`             // raw upstream output price ($/1M); nil = unknown
+	ActualOutputPrice          *float64                   `json:"actual_output_price"`      // output_price × recharge_rate (采购价); nil = unknown
+	ActualOutputUserPrice      *float64                   `json:"actual_output_user_price"` // actual_output_price × apimaster_price_ratio (用户最终价格); nil = unknown
+	CachePrice                 *float64                   `json:"cache_price"`              // cache-read price ($/1M); nil = unknown
+	ActualCachePrice           *float64                   `json:"actual_cache_price"`       // cache_price × recharge_rate; nil = unknown
+	CacheCreationPrice         *float64                   `json:"cache_creation_price"`     // cache-write price ($/1M); nil = unknown
+	ActualCacheCreationPrice1h *float64                   `json:"actual_cache_creation_price_1h"`
+	CacheCreationPrice1h       *float64                   `json:"cache_creation_price_1h"`
 	ActualCacheCreationPrice   *float64                   `json:"actual_cache_creation_price"`  // cache_creation_price × recharge_rate; nil = unknown
 	MediaPricing               *VideoMediaPricingView     `json:"media_pricing,omitempty"`      // tiered media official, procurement, and billing prices
 	FingerprintHistory         []DetectPoint              `json:"fingerprint_history"`          // last 24 fingerprint runs (newest first)
@@ -346,6 +348,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		OutputPrice                *float64
 		CachePrice                 *float64
 		CacheCreationPrice         *float64
+		CacheCreationPrice1h       *float64 `gorm:"column:cache_creation_price_1h"`
 		GroupRatio                 *float64 // upstream group multiplier; nil when no pricing row
 		PricingSource              *string
 		RechargeRate               *float64
@@ -386,7 +389,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 	// Match the same aliases and groups as the toggle. EXISTS avoids duplicate
 	// pricing rows and reports enabled only while a matching route remains usable.
 	model.DB.Table("channels c").
-		Select("c.id as channel_id, c.name as channel_name, "+channelGroupColumn+" as channel_group, c.priority, c.base_url, c.setting, c.model_mapping, p.input_price, p.output_price, p.cache_price, p.cache_creation_price, p.group_ratio, p.pricing_source, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.settings as other_settings, c.status, c.consecutive_fingerprint_pass, EXISTS (SELECT 1 FROM abilities a WHERE a.channel_id = c.id AND a.model IN ? AND a.enabled = ?) as model_enabled, c.other_info", candidates, true).
+		Select("c.id as channel_id, c.name as channel_name, "+channelGroupColumn+" as channel_group, c.priority, c.base_url, c.setting, c.model_mapping, p.input_price, p.output_price, p.cache_price, p.cache_creation_price, p.cache_creation_price_1h, p.group_ratio, p.pricing_source, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.settings as other_settings, c.status, c.consecutive_fingerprint_pass, EXISTS (SELECT 1 FROM abilities a WHERE a.channel_id = c.id AND a.model IN ? AND a.enabled = ?) as model_enabled, c.other_info", candidates, true).
 		Joins("LEFT JOIN channel_model_pricings p ON c.id = p.channel_id AND p.model_name IN ?", candidates).
 		// Show all status (1/2/3) so the operator can act on auto-disabled ones from the table.
 		Where("c.status IN (1, 2, 3)").
@@ -804,6 +807,8 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 			ActualCachePrice:           actualCachePricePtr,
 			CacheCreationPrice:         cacheCreationPricePtr,
 			ActualCacheCreationPrice:   actualCacheCreationPricePtr,
+			ActualCacheCreationPrice1h: exportCache1hPrice(modelName, cacheCreationPricePtr, r.CacheCreationPrice1h, rechargeRate),
+			CacheCreationPrice1h:       exportCache1hPrice(modelName, cacheCreationPricePtr, r.CacheCreationPrice1h, 1),
 			MediaPricing:               mediaPricing,
 			RechargeRate:               rechargeRate,
 			PricingSource:              pricingSource,
@@ -1989,4 +1994,16 @@ func cvPercent(values []float64) float64 {
 	}
 	std := math.Sqrt(ss / float64(n-1))
 	return std / med * 100
+}
+
+func exportCache1hPrice(modelName string, base, explicit *float64, multiplier float64) *float64 {
+	if base == nil {
+		return nil
+	}
+	price := ratio_setting.ResolveCacheCreation1hPrice(modelName, *base, explicit)
+	if price == nil {
+		return nil
+	}
+	value := *price * multiplier
+	return &value
 }

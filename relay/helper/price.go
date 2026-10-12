@@ -275,8 +275,8 @@ func resolveModelPriceData(c *gin.Context, info *relaycommon.RelayInfo, promptTo
 			cacheCreationRatio, _ = ratio_setting.GetCreateCacheRatio(info.OriginModelName)
 		}
 		cacheCreationRatio5m = cacheCreationRatio
-		// 固定1h和5min缓存写入价格的比例
-		cacheCreationRatio1h = cacheCreationRatio * claudeCacheCreation1hMultiplier
+		// Preserve the channel 5m base while applying the configured 1h/5m ratio.
+		cacheCreationRatio1h = ratio_setting.CacheCreation1hRatioFromBase(info.OriginModelName, cacheCreationRatio)
 		imageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
 		audioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
@@ -444,7 +444,7 @@ func BuildCodingPlanPriceData(_ *gin.Context, info *relaycommon.RelayInfo, promp
 		CacheRatio:           cache / input,
 		CacheCreationRatio:   cacheCreation / input,
 		CacheCreation5mRatio: cacheCreation / input,
-		CacheCreation1hRatio: cacheCreation / input * claudeCacheCreation1hMultiplier,
+		CacheCreation1hRatio: ratio_setting.CacheCreation1hRatioFromBase(info.OriginModelName, cacheCreation/input),
 		UsePrice:             false,
 		QuotaToPreConsume:    int(float64(preConsumedTokens) * modelRatio),
 		GroupRatioInfo:       types.GroupRatioInfo{GroupRatio: 1, GroupSpecialRatio: -1},

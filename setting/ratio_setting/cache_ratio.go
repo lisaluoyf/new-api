@@ -1,10 +1,17 @@
 package ratio_setting
 
 import (
+	"fmt"
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/types"
+	"math"
+	"strings"
 )
 
 var defaultCacheRatio = map[string]float64{
+	"claude-opus-5-5":                     0.05,
+	"claude-sonnet-5-5":                   0.05,
+	"claude-sonnet-5.5":                   0.05,
 	"qwen3.8-max":                         0.2,
 	"qwen3.8-flash":                       0.1,
 	"gemini-3-flash-preview":              0.1,
@@ -83,6 +90,9 @@ var defaultCacheRatio = map[string]float64{
 }
 
 var defaultCreateCacheRatio = map[string]float64{
+	"claude-opus-5-5":                     1.25,
+	"claude-sonnet-5-5":                   1.25,
+	"claude-sonnet-5.5":                   1.25,
 	"gpt-6-astra":                         1.25,
 	"qwen3.8-max":                         1.25,
 	"qwen3.8-flash":                       1.333333333333,
@@ -174,4 +184,59 @@ func GetCacheRatioCopy() map[string]float64 {
 
 func GetCreateCacheRatioCopy() map[string]float64 {
 	return createCacheRatioMap.ReadAll()
+}
+
+// Separate 1h overrides preserve explicit zero; missing Claude overrides retain
+// the historical 2x-input / 1.25x-input TTL ratio used by settlement.
+var createCache1hRatioMap = types.NewRWMap[string, float64]()
+
+func CreateCache1hRatio2JSONString() string         { return createCache1hRatioMap.MarshalJSONString() }
+func GetCreateCache1hRatioCopy() map[string]float64 { return createCache1hRatioMap.ReadAll() }
+func UpdateCreateCache1hRatioByJSONString(raw string) error {
+	var values map[string]float64
+	if err := common.Unmarshal([]byte(raw), &values); err != nil {
+		return err
+	}
+	for _, value := range values {
+		if value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+			return fmt.Errorf("1h cache ratio must be finite and non-negative")
+		}
+	}
+	return types.LoadFromJsonStringWithCallback(createCache1hRatioMap, raw, InvalidateExposedDataCache)
+}
+func GetCreateCache1hRatio(name string) (float64, bool) {
+	if value, ok := createCache1hRatioMap.Get(name); ok {
+		return value, true
+	}
+	if !strings.Contains(strings.ToLower(name), "claude") {
+		return 0, false
+	}
+	base, _ := GetCreateCacheRatio(name)
+	return base * 1.6, true
+}
+
+// ResolveCacheCreation1hPrice is also used for older channel catalogs which
+// exported only the 5m base. Explicit channel overrides always take precedence.
+func ResolveCacheCreation1hPrice(name string, base float64, explicit *float64) *float64 {
+	if explicit != nil {
+		return explicit
+	}
+	ratio, ok := GetCreateCache1hRatio(name)
+	if !ok {
+		return nil
+	}
+	fiveMinuteRatio, _ := GetCreateCacheRatio(name)
+	if fiveMinuteRatio <= 0 {
+		return nil
+	}
+	value := base * ratio / fiveMinuteRatio
+	return &value
+}
+
+// Preserve channel-specific 5m ratios instead of substituting the global base.
+func CacheCreation1hRatioFromBase(name string, base float64) float64 {
+	if price := ResolveCacheCreation1hPrice(name, base, nil); price != nil {
+		return *price
+	}
+	return base * 1.6
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 // ModelMappingTarget resolves the upstream model name for a client-facing model
@@ -64,14 +65,15 @@ func appendUniqueStrings(base []string, extra ...string) []string {
 
 // ChannelPricingLookupRow is a single channel_model_pricings match.
 type ChannelPricingLookupRow struct {
-	BillingMode        string
-	BillingExpr        string
-	InputPrice         float64
-	OutputPrice        float64
-	CachePrice         float64
-	CacheCreationPrice float64
-	GroupRatio         float64
-	PricingSource      string
+	BillingMode          string
+	BillingExpr          string
+	InputPrice           float64
+	OutputPrice          float64
+	CachePrice           float64
+	CacheCreationPrice1h *float64 `json:"cache_creation_price_1h" gorm:"column:cache_creation_price_1h"`
+	CacheCreationPrice   float64
+	GroupRatio           float64
+	PricingSource        string
 }
 
 // LookupChannelPricingRow returns the cheapest row for (channel, any of candidates).
@@ -80,14 +82,15 @@ func LookupChannelPricingRow(channelID int, candidates []string) (*ChannelPricin
 		return nil, false
 	}
 	var row struct {
-		BillingMode        string
-		BillingExpr        string
-		InputPrice         float64
-		OutputPrice        float64
-		CachePrice         float64
-		CacheCreationPrice float64
-		GroupRatio         float64
-		PricingSource      *string
+		BillingMode          string
+		BillingExpr          string
+		InputPrice           float64
+		OutputPrice          float64
+		CachePrice           float64
+		CacheCreationPrice1h *float64 `json:"cache_creation_price_1h" gorm:"column:cache_creation_price_1h"`
+		CacheCreationPrice   float64
+		GroupRatio           float64
+		PricingSource        *string
 	}
 	err := model.DB.Table("channel_model_pricings").
 		Select("*").
@@ -108,14 +111,15 @@ func LookupChannelPricingRow(channelID int, candidates []string) (*ChannelPricin
 		src = *row.PricingSource
 	}
 	return &ChannelPricingLookupRow{
-		BillingMode:        row.BillingMode,
-		BillingExpr:        row.BillingExpr,
-		InputPrice:         row.InputPrice,
-		OutputPrice:        row.OutputPrice,
-		CachePrice:         row.CachePrice,
-		CacheCreationPrice: row.CacheCreationPrice,
-		GroupRatio:         gr,
-		PricingSource:      src,
+		BillingMode:          row.BillingMode,
+		BillingExpr:          row.BillingExpr,
+		InputPrice:           row.InputPrice,
+		OutputPrice:          row.OutputPrice,
+		CachePrice:           row.CachePrice,
+		CacheCreationPrice:   row.CacheCreationPrice,
+		CacheCreationPrice1h: row.CacheCreationPrice1h,
+		GroupRatio:           gr,
+		PricingSource:        src,
 	}, true
 }
 
@@ -220,10 +224,11 @@ func ChannelActualPricesResolved(channelID int, modelName string) (*model.Channe
 	}
 	mult := ch.RechargeRate * ch.EffectivePriceRatio(modelName)
 	return &model.ChannelActualPrices{
-		InputPrice:         row.InputPrice * mult,
-		OutputPrice:        row.OutputPrice * mult,
-		CachePrice:         row.CachePrice * mult,
-		CacheCreationPrice: row.CacheCreationPrice * mult,
+		InputPrice:           row.InputPrice * mult,
+		OutputPrice:          row.OutputPrice * mult,
+		CachePrice:           row.CachePrice * mult,
+		CacheCreationPrice:   row.CacheCreationPrice * mult,
+		CacheCreationPrice1h: scaleCache1hPrice(modelName, row, mult),
 	}, nil
 }
 
@@ -286,9 +291,14 @@ func ChannelProcurementPricesResolved(channelID int, modelName string) (*model.C
 		return nil, nil
 	}
 	return &model.ChannelActualPrices{
-		InputPrice:         row.InputPrice * ch.RechargeRate,
-		OutputPrice:        row.OutputPrice * ch.RechargeRate,
-		CachePrice:         row.CachePrice * ch.RechargeRate,
-		CacheCreationPrice: row.CacheCreationPrice * ch.RechargeRate,
+		InputPrice:           row.InputPrice * ch.RechargeRate,
+		OutputPrice:          row.OutputPrice * ch.RechargeRate,
+		CachePrice:           row.CachePrice * ch.RechargeRate,
+		CacheCreationPrice:   row.CacheCreationPrice * ch.RechargeRate,
+		CacheCreationPrice1h: scaleCache1hPrice(modelName, row, ch.RechargeRate),
 	}, nil
+}
+
+func scaleCache1hPrice(modelName string, row *ChannelPricingLookupRow, multiplier float64) *float64 {
+	return multiplyOptionalPrice(ratio_setting.ResolveCacheCreation1hPrice(modelName, row.CacheCreationPrice, row.CacheCreationPrice1h), multiplier)
 }
