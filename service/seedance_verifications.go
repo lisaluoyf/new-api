@@ -63,17 +63,24 @@ func CreateSeedanceVerification(c *gin.Context, input SeedanceVerificationInput)
 		}
 		return existing, nil
 	}
-	origin := os.Getenv("SEEDANCE_CALLBACK_ORIGIN")
-	parsed, err := url.Parse(origin)
-	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
-		return nil, seedanceError(503, "Hosted portrait callback is not configured")
-	}
-	resource, err := selectSeedanceLibraryWithFilter(c, input.Model, isBytePlusSeedanceChannel)
+	resource, err := selectSeedanceLibraryWithFilter(c, input.Model, supportsSeedanceH5)
 	if err != nil {
 		if apiErr, ok := err.(*SeedanceAPIError); ok && apiErr.Code == "credentials_not_configured" {
 			return nil, err
 		}
 		return nil, seedanceError(503, "Selected channel does not support configured official H5 verification; no alternative route was used", "channel_not_supported")
+	}
+	ch, err := model.GetChannelById(resource.ChannelID, true)
+	if err != nil {
+		return nil, err
+	}
+	gateway := isXingchiyunSeedanceChannel(ch)
+	origin := os.Getenv("SEEDANCE_CALLBACK_ORIGIN")
+	if !gateway {
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+			return nil, seedanceError(503, "Hosted portrait callback is not configured")
+		}
 	}
 	var recent int64
 	if err := seedanceDB().Model(&model.SeedanceResource{}).Where("kind = ? AND user_id = ? AND created_at > ?", "verification", c.GetInt("id"), time.Now().Unix()-60).Count(&recent).Error; err != nil {
@@ -103,7 +110,11 @@ func CreateSeedanceVerification(c *gin.Context, input SeedanceVerificationInput)
 		return nil, err
 	}
 	callback := strings.TrimRight(origin, "/") + "/v1/seedance2/private-avatar/callback/" + id + "/" + state
-	envelope, err := bytePlusAssetRequest(c.Request.Context(), resource, "CreateVisualValidateSession", map[string]any{"CallbackURL": callback})
+	fields := map[string]any{"CallbackURL": callback}
+	if gateway {
+		fields = map[string]any{"Name": resource.Name}
+	}
+	envelope, err := seedanceActionRequest(c.Request.Context(), resource, "CreateVisualValidateSession", fields)
 	if err != nil {
 		resource.Status = "submission_unknown"
 		if e, ok := err.(*SeedanceAPIError); ok && e.Code == "entitlement_required" {
@@ -118,10 +129,14 @@ func CreateSeedanceVerification(c *gin.Context, input SeedanceVerificationInput)
 	resource.VerificationTokenHash = SeedanceKeyFingerprint(resource.UpstreamID)
 	link := seedanceString(result, "H5Link")
 	linkURL, linkErr := url.Parse(link)
-	if resource.UpstreamID == "" || linkErr != nil || linkURL.Scheme != "https" || linkURL.Hostname() == "" || linkURL.User != nil {
+	if resource.UpstreamID == "" || (gateway && !validXingchiyunVerificationToken(resource.UpstreamID)) || (gateway && seedanceString(result, "Id") == "") || linkErr != nil || linkURL.Scheme != "https" || linkURL.Hostname() == "" || linkURL.User != nil {
 		resource.Status = "submission_unknown"
 	} else {
-		encoded, _ := common.Marshal(map[string]any{"verification_url": link})
+		privateResult := map[string]any{"verification_url": link}
+		if gateway {
+			privateResult["upstream_group_id"] = seedanceString(result, "Id")
+		}
+		encoded, _ := common.Marshal(privateResult)
 		resource.ResultData, resource.Status = string(encoded), "pending"
 	}
 	if err := seedanceDB().Save(resource).Error; err != nil {
@@ -149,19 +164,34 @@ func confirmSeedanceVerification(c *gin.Context, resource *model.SeedanceResourc
 		return nil
 	}
 	ch, err := model.GetChannelById(resource.ChannelID, true)
-	if err != nil || !isBytePlusSeedanceChannel(ch) {
+	if err != nil || !supportsSeedanceH5(ch) {
 		return seedanceError(503, "Media library is temporarily unavailable")
 	}
 	if _, _, err := SeedanceResourceKey(ch, resource.KeyFingerprint); err != nil {
 		return err
 	}
-	envelope, err := bytePlusAssetRequest(c.Request.Context(), resource, "GetVisualValidateResult", map[string]any{"BytedToken": resource.UpstreamID})
+	envelope, err := seedanceActionRequest(c.Request.Context(), resource, "GetVisualValidateResult", map[string]any{"BytedToken": resource.UpstreamID})
 	if err != nil {
+		if apiErr, ok := err.(*SeedanceAPIError); ok && isXingchiyunSeedanceChannel(ch) {
+			if apiErr.Code == "verification_pending" {
+				return nil
+			}
+			if apiErr.Code == "verification_failed_or_expired" {
+				resource.Status, resource.FailReason, resource.ResultData, resource.UpstreamID = "failed", apiErr.Code, "", ""
+				return seedanceDB().Model(resource).Updates(map[string]any{"status": "failed", "fail_reason": apiErr.Code, "result_data": "", "upstream_id": ""}).Error
+			}
+		}
 		return err
 	} // Temporary errors never become authentication failure.
 	upstreamGroup := seedanceString(seedanceResult(envelope), "GroupId")
 	if upstreamGroup == "" {
 		return nil
+	}
+	if isXingchiyunSeedanceChannel(ch) {
+		var privateResult map[string]any
+		if common.UnmarshalJsonStr(resource.ResultData, &privateResult) != nil || seedanceString(privateResult, "upstream_group_id") != upstreamGroup {
+			return seedanceError(502, "Verification result does not match the original session")
+		}
 	}
 	group := model.SeedanceResource{ID: "group_" + strings.TrimPrefix(resource.ID, "verification_"), Kind: "group", UserID: resource.UserID, ChannelID: resource.ChannelID, KeyFingerprint: resource.KeyFingerprint, ProjectName: resource.ProjectName, CredentialFingerprint: resource.CredentialFingerprint, GroupType: "real_person", VerificationID: resource.ID, UpstreamID: upstreamGroup, Model: resource.Model, Name: resource.Name, Status: "Active"}
 	return seedanceDB().Transaction(func(tx *gorm.DB) error {
@@ -204,7 +234,11 @@ func SeedanceVerificationDTO(resource *model.SeedanceResource) map[string]any {
 		dto["error"] = map[string]any{"code": "submission_unknown", "message": "Upstream acceptance is uncertain; do not create another session automatically", "trace_id": resource.ID}
 	}
 	if resource.Status == "failed" {
-		dto["error"] = map[string]any{"code": resource.FailReason, "message": "Upstream account permission or entitlement is required", "trace_id": resource.ID}
+		message := "Upstream account permission or entitlement is required"
+		if resource.FailReason == "verification_failed_or_expired" {
+			message = "Owner verification failed or expired; confirm the result before creating a new session"
+		}
+		dto["error"] = map[string]any{"code": resource.FailReason, "message": message, "trace_id": resource.ID}
 	}
 	return dto
 }

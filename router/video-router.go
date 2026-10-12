@@ -30,6 +30,9 @@ func SetVideoRouter(router *gin.Engine) {
 		}
 		resources.GET("", controller.ListSeedanceResources)
 		resources.GET("/:resource_id", controller.GetSeedanceResource)
+		if kind == "asset" {
+			resources.GET("/:resource_id/preview", controller.PreviewSeedanceAsset)
+		}
 		resources.PATCH("/:resource_id", controller.UpdateSeedanceResource)
 		resources.DELETE("/:resource_id", controller.DeleteSeedanceResource)
 	}

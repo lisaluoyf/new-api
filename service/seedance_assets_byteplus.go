@@ -169,11 +169,11 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 		case http.MethodPost:
 			delete(native, "Id")
 			native["GroupType"] = "AIGC"
-			return bytePlusAssetRequest(ctx, resource, "CreateAssetGroup", native)
+			return seedanceActionRequest(ctx, resource, "CreateAssetGroup", native)
 		case http.MethodPatch:
-			return bytePlusAssetRequest(ctx, resource, "UpdateAssetGroup", native)
+			return seedanceActionRequest(ctx, resource, "UpdateAssetGroup", native)
 		case http.MethodDelete:
-			return bytePlusAssetRequest(ctx, resource, "DeleteAssetGroup", native)
+			return seedanceActionRequest(ctx, resource, "DeleteAssetGroup", native)
 		}
 	}
 	if resource.Kind == "task" {
@@ -197,7 +197,7 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 				if err := seedanceDB().Model(asset).Update("status", "Submitting").Error; err != nil {
 					return nil, err
 				}
-				envelope, err := bytePlusAssetRequest(ctx, asset, "CreateAsset", map[string]any{"GroupId": group.UpstreamID, "URL": asset.SourceURL, "AssetType": asset.AssetType, "Name": asset.ID})
+				envelope, err := seedanceActionRequest(ctx, asset, "CreateAsset", map[string]any{"GroupId": group.UpstreamID, "URL": asset.SourceURL, "AssetType": asset.AssetType, "Name": asset.ID})
 				if err != nil {
 					return nil, err
 				}
@@ -228,12 +228,13 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 					items = append(items, map[string]any{"status": "SubmissionUnknown", "raw_response": map[string]any{"Result": map[string]any{"Name": id}}})
 					continue
 				}
-				envelope, err := bytePlusAssetRequest(ctx, asset, "GetAsset", map[string]any{"Id": asset.UpstreamID})
+				envelope, err := seedanceActionRequest(ctx, asset, "GetAsset", map[string]any{"Id": asset.UpstreamID})
 				if err != nil {
 					return nil, err
 				}
 				status := seedanceString(seedanceResult(envelope), "Status")
-				if e := seedanceDB().Model(asset).Updates(map[string]any{"status": status, "fail_reason": seedanceAssetReviewFailure(asset, seedanceResult(envelope))}).Error; e != nil {
+				asset.ResultData = seedanceGatewayPreviewData(asset, seedanceResult(envelope))
+				if e := seedanceDB().Model(asset).Updates(map[string]any{"status": status, "fail_reason": seedanceAssetReviewFailure(asset, seedanceResult(envelope)), "result_data": asset.ResultData}).Error; e != nil {
 					return nil, e
 				}
 				if status == "Active" || status == "Failed" {
@@ -256,7 +257,7 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 		native := map[string]any{"Id": resource.UpstreamID}
 		switch method {
 		case http.MethodGet:
-			return bytePlusAssetRequest(ctx, resource, "GetAsset", native)
+			return seedanceActionRequest(ctx, resource, "GetAsset", native)
 		case http.MethodPatch:
 			if name, ok := fields["name"].(string); ok {
 				if utf8.RuneCountInString(name) > 64 {
@@ -264,9 +265,9 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 				}
 				native["Name"] = name
 			}
-			return bytePlusAssetRequest(ctx, resource, "UpdateAsset", native)
+			return seedanceActionRequest(ctx, resource, "UpdateAsset", native)
 		case http.MethodDelete:
-			return bytePlusAssetRequest(ctx, resource, "DeleteAsset", native)
+			return seedanceActionRequest(ctx, resource, "DeleteAsset", native)
 		}
 	}
 	return nil, fmt.Errorf("unsupported media library operation")

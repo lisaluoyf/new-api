@@ -131,7 +131,7 @@ func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability fun
 			autoEnabled := credentials.AutoRouteEnabled == nil || *credentials.AutoRouteEnabled
 			return err == nil && (pinned || autoEnabled) && seedanceChannelAllowed(c, ch, name)
 		}
-		provider := host == "apimart.ai" || strings.HasSuffix(host, ".apimart.ai") || host == "apib.ai" || strings.HasSuffix(host, ".apib.ai") || ch.Id == constant.VideoFeeSeedanceChannelID
+		provider := host == "apimart.ai" || strings.HasSuffix(host, ".apimart.ai") || host == "apib.ai" || strings.HasSuffix(host, ".apib.ai") || ch.Id == constant.VideoFeeSeedanceChannelID || isXingchiyunSeedanceChannel(ch)
 		return provider && seedanceChannelAllowed(c, ch, name)
 	}
 	var ch *model.Channel
@@ -178,7 +178,7 @@ func seedanceProviderRequest(ctx context.Context, resource *model.SeedanceResour
 	if err != nil {
 		return nil, err
 	}
-	if isBytePlusSeedanceChannel(ch) {
+	if isBytePlusSeedanceChannel(ch) || isXingchiyunSeedanceChannel(ch) {
 		return bytePlusLibraryRequest(ctx, resource, method, path, payload)
 	}
 	if ch.Id == constant.VideoFeeSeedanceChannelID {

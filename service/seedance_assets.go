@@ -265,7 +265,7 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 	if err != nil {
 		task.Status = "submission_unknown"
 		task.FailReason = "Submission could not be fully confirmed; query each asset and do not repeat upload"
-		if isBytePlusTask(task) {
+		if isSeedanceActionTask(task) {
 			task.UpstreamID = task.ID
 		}
 		_ = seedanceDB().Model(task).Updates(map[string]any{"status": task.Status, "upstream_id": task.UpstreamID, "fail_reason": task.FailReason}).Error
@@ -451,7 +451,8 @@ func RefreshSeedanceAsset(c *gin.Context, asset *model.SeedanceResource) error {
 		asset.Status = "Pending"
 	}
 	asset.FailReason = seedanceAssetReviewFailure(asset, seedanceResult(envelope))
-	return seedanceDB().Model(asset).Updates(map[string]any{"status": asset.Status, "fail_reason": asset.FailReason}).Error
+	asset.ResultData = seedanceGatewayPreviewData(asset, seedanceResult(envelope))
+	return seedanceDB().Model(asset).Updates(map[string]any{"status": asset.Status, "fail_reason": asset.FailReason, "result_data": asset.ResultData}).Error
 }
 
 func UpdateSeedanceResource(c *gin.Context, resource *model.SeedanceResource, name, description *string) error {
@@ -504,15 +505,19 @@ func DeleteSeedanceResource(c *gin.Context, resource *model.SeedanceResource) er
 }
 
 func seedancePublicSourceURL(resource *model.SeedanceResource) string {
+	ch, _ := model.GetChannelById(resource.ChannelID, true)
+	if isXingchiyunSeedanceChannel(ch) {
+		return seedanceGatewayPublicPreview(resource)
+	}
 	if resource.GroupType == "real_person" {
 		return ""
 	}
 	return resource.SourceURL
 }
 
-func isBytePlusTask(task *model.SeedanceResource) bool {
+func isSeedanceActionTask(task *model.SeedanceResource) bool {
 	ch, err := model.GetChannelById(task.ChannelID, true)
-	return err == nil && isBytePlusSeedanceChannel(ch)
+	return err == nil && (isBytePlusSeedanceChannel(ch) || isXingchiyunSeedanceChannel(ch))
 }
 
 func seedanceAssetReviewFailure(asset *model.SeedanceResource, result map[string]any) string {

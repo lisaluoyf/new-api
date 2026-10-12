@@ -38,12 +38,14 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 			if !configured {
 				reason = "Separate asset API credentials are not configured"
 			}
+		} else if isXingchiyunSeedanceChannel(ch) {
+			mode, configured, reason = "official_h5", ch.Key != "", "Gateway provides official H5 sessions and server-side result polling; complete owner verification before importing real-person assets"
 		} else if ch.Id == constant.VideoFeeSeedanceChannelID {
 			mode, configured, reason = "channel_material_review", ch.Status == 1 && ch.Key != "", "Channel portrait asset review is available; this integration does not provide official owner H5 verification"
 		} else if u, e := url.Parse(ch.GetBaseURL()); e == nil && (u.Hostname() == "apimart.ai" || strings.HasSuffix(u.Hostname(), ".apimart.ai") || u.Hostname() == "apib.ai" || strings.HasSuffix(u.Hostname(), ".apib.ai")) {
 			mode, reason = "virtual_or_ordinary", "Material library integration exists; this integration does not expose real-person H5 verification"
 		}
-		result = append(result, map[string]any{"model": name, "channel_id": ch.Id, "method": mode, "configured": configured, "real_person_verified": false, "reason": reason, "hosted_callback": mode == "official_h5", "live_acceptance": "not_tested"})
+		result = append(result, map[string]any{"model": name, "channel_id": ch.Id, "method": mode, "configured": configured, "real_person_verified": false, "reason": reason, "hosted_callback": mode == "official_h5" && !isXingchiyunSeedanceChannel(ch), "live_acceptance": "not_tested"})
 	}
 	return result, nil
 }
