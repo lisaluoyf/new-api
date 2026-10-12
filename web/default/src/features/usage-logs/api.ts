@@ -33,7 +33,9 @@ import type {
 // ============================================================================
 
 function buildApiPath(endpoint: string, isAdmin: boolean): string {
-  return isAdmin ? endpoint : `${endpoint}/self`
+  const normalizedEndpoint = endpoint.replace(/\/+$/, '')
+  if (!isAdmin) return `${normalizedEndpoint}/self`
+  return endpoint.endsWith('/') ? `${normalizedEndpoint}/` : endpoint
 }
 
 /**
@@ -131,7 +133,7 @@ export const getUserMidjourneyLogs = (params: GetMidjourneyLogsParams) =>
 // ============================================================================
 
 export const getAllTaskLogs = (params: GetTaskLogsParams) =>
-  fetchLogs('/api/task', params, true)
+  fetchLogs('/api/task/', params, true)
 
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
-  fetchLogs('/api/task', params, false)
+  fetchLogs('/api/task/', params, false)
