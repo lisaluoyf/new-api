@@ -219,6 +219,18 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		body.Duration, body.Frames, body.Seed = nil, nil, nil
 		body.GenerateAudio, body.CameraFixed, body.Draft = nil, nil, nil
 		body.Ratio, body.Tools, body.OmniReferenceTaskType = "", nil, nil
+	} else {
+		// This hint is only valid for multimodal reference generation. The
+		// public normalizer's default "auto" must not reach text/frame tasks.
+		references := false
+		for _, item := range body.Content {
+			if item.Type == "video_url" || item.Type == "audio_url" || (item.Type == "image_url" && item.Role == "reference_image") {
+				references = true
+			}
+		}
+		if !references {
+			body.OmniReferenceTaskType = nil
+		}
 	}
 	if info.IsModelMapped {
 		body.Model = info.UpstreamModelName

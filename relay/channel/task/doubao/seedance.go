@@ -99,6 +99,9 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 	if content, ok := req.Metadata["content"].([]interface{}); ok {
 		for _, value := range content {
 			if item, ok := value.(map[string]interface{}); ok {
+				if item["type"] == "draft_task" {
+					return invalid(fmt.Errorf("Use public draft_task_id for draft upgrades"))
+				}
 				defaultRole := ""
 				switch item["type"] {
 				case "video_url":

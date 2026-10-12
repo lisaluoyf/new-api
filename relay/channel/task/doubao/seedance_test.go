@@ -274,3 +274,40 @@ func TestSeedanceDraftUpgradeUsesVerifiedReferenceOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 4, req.Duration) // Retained internally for pre-consumption.
 }
+
+func TestSeedanceTaskTypeHintOnlyForReferences(t *testing.T) {
+	for _, tc := range []struct {
+		name, input string
+		wantHint    bool
+	}{
+		{"text", ``, false},
+		{"frames", `,"image_with_roles":[{"url":"https://example.com/start.png","role":"first_frame"},{"url":"https://example.com/end.png","role":"last_frame"}]`, false},
+		{"video", `,"video_urls":["https://example.com/reference.mp4"]`, true},
+		{"reference-image", `,"image_with_roles":[{"url":"https://example.com/reference.png","role":"reference_image"}]`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := seedanceContext(`{"model":"seedance-2.5","prompt":"scene","aspect_ratio":"adaptive","omni_reference_task_type":"auto"` + tc.input + `}`)
+			info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{}}
+			a := &TaskAdaptor{}
+			require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+			body, err := a.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			data, err := io.ReadAll(body)
+			require.NoError(t, err)
+			var payload map[string]any
+			require.NoError(t, common.Unmarshal(data, &payload))
+			if tc.wantHint {
+				require.Equal(t, "auto", payload["omni_reference_task_type"])
+			} else {
+				require.NotContains(t, payload, "omni_reference_task_type")
+			}
+		})
+	}
+}
+
+func TestSeedanceRejectsUnverifiedPrivateDraftReference(t *testing.T) {
+	c, _ := seedanceContext(`{"model":"seedance-2.5","prompt":"scene","content":[{"type":"draft_task","draft_task":{"id":"private-provider-id"}}]}`)
+	err := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}})
+	require.NotNil(t, err)
+	require.Equal(t, http.StatusBadRequest, err.StatusCode)
+}
