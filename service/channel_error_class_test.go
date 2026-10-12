@@ -348,6 +348,69 @@ func TestEvaluateChannelHealth_rechargeHighConfidence(t *testing.T) {
 	require.Contains(t, reason, "余额不足")
 }
 
+func TestEvaluateChannelHealthInsufficientAccountBalance(t *testing.T) {
+	previous := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = previous
+		ClearChannelHealth(291)
+	})
+	for _, body := range []string{
+		`{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}`,
+		`{"message":"Insufficient account balance"}`,
+		`{"message":"Insufficient credit balance"}`,
+		`{"code":"INSUFFICIENT_BALANCE","message":"Account unavailable"}`,
+		`{"error":{"code":"insufficient_balance","message":"Account unavailable"}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			err := RelayErrorHandler(context.Background(), &http.Response{
+				StatusCode: http.StatusForbidden,
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}, false)
+			require.Equal(t, CategoryUpstreamRecharge, ClassifyChannelError(err))
+			require.True(t, IsHighConfidenceRecharge(err))
+			require.True(t, ShouldDisableChannel(err))
+			action, reason := EvaluateChannelHealth(types.ChannelError{ChannelId: 291, AutoBan: true}, err)
+			require.Equal(t, HealthNotifyRecharge, action, "first confirmed balance error must trigger channel disable and notification")
+			require.NotEmpty(t, reason)
+			action, _ = EvaluateChannelHealth(types.ChannelError{ChannelId: 291, AutoBan: false}, err)
+			require.Equal(t, HealthSkip, action)
+			common.AutomaticDisableChannelEnabled = false
+			require.False(t, ShouldDisableChannel(err))
+			action, _ = EvaluateChannelHealth(types.ChannelError{ChannelId: 291, AutoBan: true}, err)
+			require.Equal(t, HealthSkip, action)
+			common.AutomaticDisableChannelEnabled = true
+		})
+	}
+}
+
+func TestClassifyChannelErrorRechargeCodeBoundaries(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{
+		`{"message":"Forbidden","param":"INSUFFICIENT_BALANCE"}`,
+		`{"message":"Forbidden","metadata":{"code":"INSUFFICIENT_BALANCE"}}`,
+		`{"code":"NOT_INSUFFICIENT_BALANCE","message":"Forbidden"}`,
+		`{"code":"INSUFFICIENT_BALANCE","message":"用户额度不足"}`,
+		`{"error":{"code":"INSUFFICIENT_BALANCE","message":"insufficient user quota"}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			err := RelayErrorHandler(context.Background(), &http.Response{
+				StatusCode: http.StatusForbidden,
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}, false)
+			require.Equal(t, CategorySkip, ClassifyChannelError(err))
+			require.False(t, IsHighConfidenceRecharge(err))
+		})
+	}
+	err := types.WithOpenAIError(types.OpenAIError{Message: "Account unavailable", Code: "INSUFFICIENT_BALANCE"}, http.StatusForbidden)
+	require.Equal(t, CategoryUpstreamRecharge, ClassifyChannelError(err))
+	require.True(t, IsHighConfidenceRecharge(err))
+	err = types.NewErrorWithStatusCode(types.NewError(nil, types.ErrorCodeInsufficientUserQuota), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden)
+	err.UpstreamResponseBody = `{"code":"INSUFFICIENT_BALANCE"}`
+	require.Equal(t, CategorySkip, ClassifyChannelError(err))
+	require.False(t, IsHighConfidenceRecharge(err))
+}
+
 func TestEvaluateChannelHealth_upstreamBudgetExceeded(t *testing.T) {
 	commonBackup := common.AutomaticDisableChannelEnabled
 	common.AutomaticDisableChannelEnabled = true

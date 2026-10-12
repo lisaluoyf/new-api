@@ -26,6 +26,8 @@ var (
 		"余额不足",
 		"账户余额不足",
 		"insufficient balance",
+		"insufficient account balance",
+		"insufficient credit balance",
 		"insufficient_balance",
 		"balance is insufficient",
 		"balance not enough",
@@ -186,7 +188,7 @@ func isUnavailableGroupCode(code string) bool {
 func isUpstreamRechargeError(err *types.NewAPIError) bool {
 	msg := err.Error()
 	lower := strings.ToLower(msg)
-	if isHighConfidenceUpstreamRechargeMessage(lower) {
+	if IsHighConfidenceRecharge(err) {
 		return true
 	}
 	hits := 0
@@ -327,8 +329,24 @@ func isWindowFault(err *types.NewAPIError) bool {
 }
 
 func IsHighConfidenceRecharge(err *types.NewAPIError) bool {
-	if err == nil {
+	if err == nil || isPlatformUserQuotaError(err) {
 		return false
+	}
+	// Exact provider error codes may survive only in the diagnostic response.
+	// Do not search arbitrary body text, parameters, or metadata for these codes.
+	if strings.EqualFold(string(err.GetErrorCode()), "insufficient_balance") {
+		return true
+	}
+	var body struct {
+		Code  string `json:"code"`
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if common.UnmarshalJsonStr(err.UpstreamResponseBody, &body) == nil &&
+		(strings.EqualFold(body.Code, "insufficient_balance") ||
+			strings.EqualFold(body.Error.Code, "insufficient_balance")) {
+		return true
 	}
 	return isHighConfidenceUpstreamRechargeMessage(strings.ToLower(err.Error()))
 }

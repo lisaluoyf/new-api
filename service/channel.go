@@ -325,7 +325,7 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	if types.IsImageGenerationTimeoutError(err) {
 		return false
 	}
-	if !isPlatformUserQuotaError(err) && isUpstreamGroupUnavailableError(err) {
+	if !isPlatformUserQuotaError(err) && (isUpstreamGroupUnavailableError(err) || IsHighConfidenceRecharge(err)) {
 		return true
 	}
 	if isRateLimitCooldown(err) {
