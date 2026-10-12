@@ -125,6 +125,11 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 	if TaskUsesDurationBasedBilling(info.PriceData) {
 		accountingInput.DurationUnitPrice = logModelPrice
+		if snapshot, ok := c.Get("seedance_billing_snapshot"); ok {
+			if fields, ok := snapshot.(map[string]any); ok {
+				accountingInput.DurationPriceVariant, _ = fields["billing_variant"].(string)
+			}
+		}
 	}
 	accounting := BuildConsumeAccountingFields(accountingInput)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
@@ -189,6 +194,11 @@ func BackfillTaskLogOnComplete(ctx context.Context, task *model.Task, taskResult
 	if cost := taskActualChannelCostUSD(task); cost > 0 {
 		if err := model.UpdateLogChannelCostByTaskID(task.UserId, task.TaskID, cost); err != nil {
 			logger.LogWarn(ctx, fmt.Sprintf("failed to backfill channel cost for task %s: %v", task.TaskID, err))
+		}
+	}
+	if UsesSeedanceTariff(task) && taskActualChannelCostUSD(task) <= 0 {
+		if err := backfillSeedanceEstimatedCost(task, taskActualBillableSeconds(task, taskResult)); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("failed to backfill Seedance cost for task %s: %v", task.TaskID, err))
 		}
 	}
 	backfillVideoOutputSpec(task, taskResult)

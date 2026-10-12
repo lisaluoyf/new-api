@@ -33,6 +33,7 @@ type ConsumeAccountingInput struct {
 	ImageBaseUnits            float64
 	ImagePriceVariant         string
 	DurationUnitPrice         float64
+	DurationPriceVariant      string
 	DurationSeconds           int
 	GroupRatio                float64
 	UserModelDiscount         float64
@@ -75,6 +76,9 @@ type consumeAccountingSnapshot struct {
 	Prices                   map[string]any     `json:"prices"`
 	AmountsUSD               map[string]float64 `json:"amounts_usd"`
 	AccountingAmountVersion  string             `json:"accounting_amount_version"`
+	DurationPriceVariant     string             `json:"duration_price_variant,omitempty"`
+	DurationPriceRatio       float64            `json:"duration_price_ratio,omitempty"`
+	CostPriceSource          string             `json:"cost_price_source,omitempty"`
 }
 
 const (
@@ -180,6 +184,18 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 	} else {
 		tuple := tupleFromChannelPrices(channelCost)
 		tuple.CacheCreationPrice1h = ratio_setting.ResolveCacheCreation1hPrice(input.ModelName, tuple.CacheCreationPrice, tuple.CacheCreationPrice1h)
+		if input.DurationPriceVariant != "" && IsSeedanceLibraryModel(input.ModelName) && normalizedAccountingBillingMode(input) == accountingBillingModeDurationSeconds {
+			ratio := ratio_setting.GetVideoModelOfficialPriceRatio(input.ModelName, input.DurationPriceVariant)
+			if ratio <= 0 {
+				status = "partial"
+				errorText = appendAccountingError(errorText, "video_procurement_variant_missing")
+			} else {
+				tuple.InputPrice *= ratio
+				snap.DurationPriceVariant = input.DurationPriceVariant
+				snap.DurationPriceRatio = ratio
+				snap.CostPriceSource = "configured_video_variant_estimate"
+			}
+		}
 		snap.Prices["channel_cost"] = tuple
 		fields.ChannelCostAmountUSD = amountUSD(tuple, input)
 		snap.AmountsUSD["channel_cost"] = fields.ChannelCostAmountUSD
