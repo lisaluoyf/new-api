@@ -79,6 +79,31 @@ func TestSeedanceDefaultsMetadataAndValidation(t *testing.T) {
 	}
 }
 
+func TestSeedanceJSONBooleanContract(t *testing.T) {
+	for _, name := range []string{"seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini", "seedance-2.5"} {
+		for _, field := range []string{"generate_audio", "audio", "watermark", "camera_fixed", "return_last_frame", "draft"} {
+			for _, placement := range []string{"top-level", "metadata"} {
+				if field == "audio" && placement == "metadata" {
+					continue // metadata has the provider's generate_audio field.
+				}
+				t.Run(name+"/"+field+"/"+placement, func(t *testing.T) {
+					property := `"` + field + `":"false"`
+					if placement == "metadata" {
+						property = `"metadata":{` + property + `}`
+					}
+					c, _ := seedanceContext(`{"model":"` + name + `","prompt":"scene",` + property + `}`)
+					err := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}})
+					require.NotNil(t, err)
+					require.Equal(t, http.StatusBadRequest, err.StatusCode)
+				})
+			}
+		}
+	}
+	// An explicit top-level false overrides an invalid legacy metadata value.
+	c, _ := seedanceContext(`{"model":"seedance-2.0","prompt":"scene","generate_audio":false,"metadata":{"generate_audio":"false"}}`)
+	require.Nil(t, (&TaskAdaptor{}).ValidateRequestAndSetAction(c, &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}))
+}
+
 func TestSeedanceSubmitPollAndActualDuration(t *testing.T) {
 	a := &TaskAdaptor{}
 	c, w := seedanceContext(`{}`)

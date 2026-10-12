@@ -56,6 +56,15 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 				req.Metadata["generate_audio"] = value
 			}
 		}
+		// JSON booleans must stay booleans. BoolValue also accepts strings
+		// for form transports, which must not relax the public JSON contract.
+		for _, key := range []string{"generate_audio", "watermark", "camera_fixed", "return_last_frame", "draft"} {
+			if value, exists := req.Metadata[key]; exists {
+				if _, ok := value.(bool); !ok {
+					return invalid(fmt.Errorf("%s must be a boolean", key))
+				}
+			}
+		}
 		for _, media := range []string{"image", "video", "audio"} {
 			value, ok := fields[media+"_urls"]
 			if !ok {
