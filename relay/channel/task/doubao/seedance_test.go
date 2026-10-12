@@ -247,3 +247,30 @@ func TestSeedancePublicFrameAliasesReachArkBody(t *testing.T) {
 		}
 	}
 }
+
+func TestSeedanceDraftUpgradeUsesVerifiedReferenceOnly(t *testing.T) {
+	c, _ := seedanceContext(`{"model":"seedance-2.5","draft_task_id":"task_public_draft","resolution":"1080p","output_format":"mov","return_last_frame":false,"watermark":false}`)
+	source := &model.Task{Properties: model.Properties{OriginModelName: "seedance-2.5"}, PrivateData: model.TaskPrivateData{UpstreamTaskID: "upstream-private-draft"}}
+	c.Set("seedance_draft_task", source)
+	c.Set("seedance25_normalized_request", map[string]any{"model": "seedance-2.5", "draft_task_id": "task_public_draft", "duration": float64(4), "resolution": "1080p", "generate_audio": true, "output_format": "mov", "return_last_frame": false, "watermark": false})
+	info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{IsModelMapped: true, UpstreamModelName: "doubao-seedance-2-5-260628"}}
+	a := &TaskAdaptor{}
+	require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+	body, err := a.BuildRequestBody(c, info)
+	require.NoError(t, err)
+	data, err := io.ReadAll(body)
+	require.NoError(t, err)
+	var payload map[string]any
+	require.NoError(t, common.Unmarshal(data, &payload))
+	require.Equal(t, "doubao-seedance-2-5-260628", payload["model"])
+	require.Equal(t, "mov", payload["output_format"])
+	require.Equal(t, false, payload["return_last_frame"])
+	require.Equal(t, false, payload["watermark"])
+	require.Equal(t, []any{map[string]any{"type": "draft_task", "draft_task": map[string]any{"id": "upstream-private-draft"}}}, payload["content"])
+	for _, forbidden := range []string{"duration", "frames", "ratio", "seed", "generate_audio", "draft", "tools", "camera_fixed", "omni_reference_task_type", "draft_task_id"} {
+		require.NotContains(t, payload, forbidden)
+	}
+	req, err := relaycommon.GetTaskRequest(c)
+	require.NoError(t, err)
+	require.Equal(t, 4, req.Duration) // Retained internally for pre-consumption.
+}

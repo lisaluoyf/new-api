@@ -48,7 +48,7 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 				fields = values
 			}
 		}
-		for _, key := range []string{"content", "duration", "resolution", "ratio", "generate_audio", "watermark", "seed", "camera_fixed", "return_last_frame", "draft", "frames", "callback_url", "service_tier", "execution_expires_after", "tools"} {
+		for _, key := range []string{"content", "duration", "resolution", "ratio", "generate_audio", "watermark", "seed", "camera_fixed", "return_last_frame", "draft", "frames", "callback_url", "service_tier", "execution_expires_after", "tools", "output_format", "omni_reference_task_type"} {
 			if value, ok := fields[key]; ok {
 				req.Metadata[key] = value
 			}

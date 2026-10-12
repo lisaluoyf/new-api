@@ -29,12 +29,17 @@ import (
 // ============================
 
 type ContentItem struct {
-	Type     string    `json:"type,omitempty"`
-	Text     string    `json:"text,omitempty"`
-	ImageURL *MediaURL `json:"image_url,omitempty"`
-	VideoURL *MediaURL `json:"video_url,omitempty"`
-	AudioURL *MediaURL `json:"audio_url,omitempty"`
-	Role     string    `json:"role,omitempty"`
+	Type      string     `json:"type,omitempty"`
+	Text      string     `json:"text,omitempty"`
+	ImageURL  *MediaURL  `json:"image_url,omitempty"`
+	VideoURL  *MediaURL  `json:"video_url,omitempty"`
+	AudioURL  *MediaURL  `json:"audio_url,omitempty"`
+	DraftTask *DraftTask `json:"draft_task,omitempty"`
+	Role      string     `json:"role,omitempty"`
+}
+
+type DraftTask struct {
+	ID string `json:"id"`
 }
 
 type MediaURL struct {
@@ -53,13 +58,15 @@ type requestPayload struct {
 	Tools                 []struct {
 		Type string `json:"type,omitempty"`
 	} `json:"tools,omitempty"`
-	Resolution  string         `json:"resolution,omitempty"`
-	Ratio       string         `json:"ratio,omitempty"`
-	Duration    *dto.IntValue  `json:"duration,omitempty"`
-	Frames      *dto.IntValue  `json:"frames,omitempty"`
-	Seed        *dto.IntValue  `json:"seed,omitempty"`
-	CameraFixed *dto.BoolValue `json:"camera_fixed,omitempty"`
-	Watermark   *dto.BoolValue `json:"watermark,omitempty"`
+	Resolution            string         `json:"resolution,omitempty"`
+	Ratio                 string         `json:"ratio,omitempty"`
+	Duration              *dto.IntValue  `json:"duration,omitempty"`
+	Frames                *dto.IntValue  `json:"frames,omitempty"`
+	Seed                  *dto.IntValue  `json:"seed,omitempty"`
+	CameraFixed           *dto.BoolValue `json:"camera_fixed,omitempty"`
+	Watermark             *dto.BoolValue `json:"watermark,omitempty"`
+	OutputFormat          *string        `json:"output_format,omitempty"`
+	OmniReferenceTaskType *string        `json:"omni_reference_task_type,omitempty"`
 }
 
 type responsePayload struct {
@@ -117,6 +124,17 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
+	// Middleware verifies draft ownership, age, model, channel and key before
+	// setting this context. Upgrades reuse a draft and intentionally omit prompt.
+	if value, exists := c.Get("seedance_draft_task"); exists {
+		task, ok := value.(*model.Task)
+		if !ok || task == nil || task.Properties.OriginModelName != "seedance-2.5" || task.PrivateData.UpstreamTaskID == "" {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("Draft is unavailable"), "invalid_request", http.StatusBadRequest)
+		}
+		info.Action = constant.TaskActionGenerate
+		c.Set("task_request", relaycommon.TaskSubmitReq{Model: "seedance-2.5", Metadata: map[string]interface{}{}})
+		return a.normalizeSeedanceRequest(c, info)
+	}
 	if taskErr = relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate); taskErr != nil {
 		return taskErr
 	}
@@ -192,6 +210,15 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	body, err := a.convertToRequestPayload(&req)
 	if err != nil {
 		return nil, errors.Wrap(err, "convert request payload failed")
+	}
+	if value, exists := c.Get("seedance_draft_task"); exists {
+		task := value.(*model.Task)
+		// Ark upgrades accept only a private draft reference plus final-output
+		// controls. Re-sending inherited generation parameters is rejected.
+		body.Content = []ContentItem{{Type: "draft_task", DraftTask: &DraftTask{ID: task.PrivateData.UpstreamTaskID}}}
+		body.Duration, body.Frames, body.Seed = nil, nil, nil
+		body.GenerateAudio, body.CameraFixed, body.Draft = nil, nil, nil
+		body.Ratio, body.Tools, body.OmniReferenceTaskType = "", nil, nil
 	}
 	if info.IsModelMapped {
 		body.Model = info.UpstreamModelName
