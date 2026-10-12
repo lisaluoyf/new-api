@@ -195,3 +195,28 @@ func TestSeedanceVideoReferenceRoleAcrossPublicAndNativeRequests(t *testing.T) {
 		}
 	}
 }
+
+func TestSeedanceAudioReferenceRoleAcrossPublicAndNativeRequests(t *testing.T) {
+	for _, name := range []string{"seedance-2.0", "seedance-2.5", "seedance-2.0-fast", "seedance-2.0-mini"} {
+		for _, refs := range []string{`"audio_urls":["https://example.com/reference.wav"]`, `"content":[{"type":"audio_url","audio_url":{"url":"https://example.com/reference.wav"}}]`} {
+			c, _ := seedanceContext(`{"model":"` + name + `","prompt":"scene","duration":4,"resolution":"480p",` + refs + `}`)
+			info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{}}
+			a := &TaskAdaptor{}
+			require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+			body, err := a.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			data, err := io.ReadAll(body)
+			require.NoError(t, err)
+			var payload requestPayload
+			require.NoError(t, common.Unmarshal(data, &payload))
+			found := false
+			for _, item := range payload.Content {
+				if item.Type == "audio_url" {
+					found = true
+					require.Equal(t, "reference_audio", item.Role)
+				}
+			}
+			require.True(t, found)
+		}
+	}
+}

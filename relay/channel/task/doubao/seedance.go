@@ -86,13 +86,22 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 		}
 	}
 
-	// Public video_urls and native video references need the provider's explicit
-	// reference role. Preserve caller-specified roles while filling the default.
+	// Public URLs and native media references need the provider's explicit
+	// reference role. Preserve caller-specified roles while filling defaults.
 	if content, ok := req.Metadata["content"].([]interface{}); ok {
 		for _, value := range content {
-			if item, ok := value.(map[string]interface{}); ok && item["type"] == "video_url" {
+			if item, ok := value.(map[string]interface{}); ok {
+				defaultRole := ""
+				switch item["type"] {
+				case "video_url":
+					defaultRole = "reference_video"
+				case "audio_url":
+					defaultRole = "reference_audio"
+				}
 				if role, _ := item["role"].(string); role == "" {
-					item["role"] = "reference_video"
+					if defaultRole != "" {
+						item["role"] = defaultRole
+					}
 				}
 			}
 		}
