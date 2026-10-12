@@ -64,6 +64,16 @@ func TestSeedanceLastFrameOwnershipAndUnavailableMedia(t *testing.T) {
 	require.Equal(t, "image/png", w.Header().Get("Content-Type"))
 	require.Equal(t, "private, no-store", w.Header().Get("Cache-Control"))
 	require.Equal(t, 1, hits)
+	// Ark tasks store the image URL in content.last_frame_url without a wrapper.
+	task.Data = []byte(fmt.Sprintf(`{"content":{"video_url":%q,"last_frame_url":%q}}`, source.URL+"/video.mp4", source.URL+"/frame.jpg"))
+	require.NoError(t, db.Model(&task).Update("data", task.Data).Error)
+	w = invoke(2)
+	require.Equal(t, 404, w.Code)
+	require.Equal(t, 1, hits)
+	w = invoke(1)
+	require.Equal(t, 200, w.Code)
+	require.Equal(t, "image fixture", w.Body.String())
+	require.Equal(t, 2, hits)
 	// VideoFee returns a root-relative image URL. Ownership and URL validation
 	// must still run, while the response must not expose provider credentials.
 	require.NoError(t, db.Create(&model.Channel{Id: constant.VideoFeeSeedanceChannelID, Type: 1, Key: "private-secret", BaseURL: &source.URL}).Error)
@@ -73,7 +83,7 @@ func TestSeedanceLastFrameOwnershipAndUnavailableMedia(t *testing.T) {
 	w = invoke(1)
 	require.Equal(t, 200, w.Code)
 	require.Equal(t, "image fixture", w.Body.String())
-	require.Equal(t, 2, hits)
+	require.Equal(t, 3, hits)
 	remoteStatus = 404
 	w = invoke(1)
 	require.Equal(t, 410, w.Code)
@@ -83,5 +93,5 @@ func TestSeedanceLastFrameOwnershipAndUnavailableMedia(t *testing.T) {
 	require.NoError(t, db.Model(&task).Update("private_data", task.PrivateData).Error)
 	w = invoke(1)
 	require.Equal(t, 404, w.Code)
-	require.Equal(t, 3, hits)
+	require.Equal(t, 4, hits)
 }

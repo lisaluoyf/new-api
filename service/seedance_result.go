@@ -28,7 +28,7 @@ func SeedanceLastFrameSource(task *model.Task) string {
 	if task == nil || task.Status != model.TaskStatusSuccess || task.PrivateData.SeedanceRequest["return_last_frame"] != true {
 		return ""
 	}
-	paths := []string{"data.result.videos.0.last_frame_url", "result.videos.0.last_frame_url", "data.result.last_frame_url"}
+	paths := []string{"data.result.videos.0.last_frame_url", "result.videos.0.last_frame_url", "data.result.last_frame_url", "content.last_frame_url", "data.content.last_frame_url", "data.data.content.last_frame_url"}
 	if task.ChannelId == constant.VideoFeeSeedanceChannelID || task.ChannelId == constant.BeeNexSeedanceChannelID {
 		paths = append(paths, "data.last_frame_url", "data.last_frame.url", "data.data.last_frame_url", "data.data.content.last_frame_url", "last_frame_url")
 	}
