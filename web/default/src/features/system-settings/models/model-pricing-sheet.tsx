@@ -69,6 +69,7 @@ import {
   getVideoPerSecondDetailKey,
   isVideoPerSecondModel,
 } from '@/features/pricing/lib/video-billing'
+import { cacheWriteBasePrices } from './cache-write-base-prices'
 import { TieredPricingEditor } from './tiered-pricing-editor'
 
 const createModelPricingSchema = (t: (key: string) => string) =>
@@ -78,6 +79,7 @@ const createModelPricingSchema = (t: (key: string) => string) =>
     ratio: z.string().optional(),
     cacheRatio: z.string().optional(),
     createCacheRatio: z.string().optional(),
+    createCache1hRatio: z.string().optional(),
     completionRatio: z.string().optional(),
     imageRatio: z.string().optional(),
     audioRatio: z.string().optional(),
@@ -93,6 +95,7 @@ type LaneKey =
   | 'completion'
   | 'cache'
   | 'createCache'
+  | 'createCache1h'
   | 'image'
   | 'audioInput'
   | 'audioOutput'
@@ -103,6 +106,7 @@ export type ModelRatioData = {
   ratio?: string
   cacheRatio?: string
   createCacheRatio?: string
+  createCache1hRatio?: string
   completionRatio?: string
   imageRatio?: string
   audioRatio?: string
@@ -141,6 +145,7 @@ const EMPTY_LANE_PRICES: Record<LaneKey, string> = {
   completion: '',
   cache: '',
   createCache: '',
+  createCache1h: '',
   image: '',
   audioInput: '',
   audioOutput: '',
@@ -150,6 +155,7 @@ const EMPTY_LANE_ENABLED: Record<LaneKey, boolean> = {
   completion: false,
   cache: false,
   createCache: false,
+  createCache1h: false,
   image: false,
   audioInput: false,
   audioOutput: false,
@@ -159,6 +165,7 @@ const ratioFieldByLane: Record<LaneKey, keyof ModelPricingFormValues> = {
   completion: 'completionRatio',
   cache: 'cacheRatio',
   createCache: 'createCacheRatio',
+  createCache1h: 'createCache1hRatio',
   image: 'imageRatio',
   audioInput: 'audioRatio',
   audioOutput: 'audioCompletionRatio',
@@ -184,9 +191,16 @@ const laneConfigs: Array<{
   },
   {
     key: 'createCache',
-    titleKey: 'Cache write price',
+    titleKey: 'Cache write price (5 minutes)',
     descriptionKey: 'Token price for creating cache entries.',
     placeholder: '3.75',
+  },
+  {
+    key: 'createCache1h',
+    titleKey: 'Cache write price (1 hour)',
+    descriptionKey:
+      'Optional 1-hour cache write price. When unset, Claude inherits 1.6 times the 5-minute price.',
+    placeholder: '6',
   },
   {
     key: 'image',
@@ -258,6 +272,7 @@ function createInitialLaneState(data?: ModelRatioData | null) {
     completion: deriveLanePrice(data.completionRatio, promptPrice),
     cache: deriveLanePrice(data.cacheRatio, promptPrice),
     createCache: deriveLanePrice(data.createCacheRatio, promptPrice),
+    createCache1h: deriveLanePrice(data.createCache1hRatio, promptPrice),
     image: deriveLanePrice(data.imageRatio, promptPrice),
     audioInput: audioInputPrice,
     audioOutput: deriveLanePrice(data.audioCompletionRatio, audioInputPrice),
@@ -270,6 +285,7 @@ function createInitialLaneState(data?: ModelRatioData | null) {
       completion: hasValue(data.completionRatio),
       cache: hasValue(data.cacheRatio),
       createCache: hasValue(data.createCacheRatio),
+      createCache1h: hasValue(data.createCache1hRatio),
       image: hasValue(data.imageRatio),
       audioInput: hasValue(data.audioRatio),
       audioOutput: hasValue(data.audioCompletionRatio),
@@ -353,11 +369,23 @@ function buildPreviewRows(
     },
     {
       key: 'createCache',
-      label: t('Cache write price'),
+      label: t(
+        values.name.toLowerCase().includes('claude')
+          ? 'Cache write price (5 minutes)'
+          : 'Cache write price'
+      ),
       value:
         laneEnabled.createCache && lanePrices.createCache
           ? `$${lanePrices.createCache}`
           : t('Empty'),
+    },
+    {
+      key: 'createCache1h',
+      label: t('Cache write price (1 hour)'),
+      value:
+        laneEnabled.createCache1h && lanePrices.createCache1h
+          ? `$${lanePrices.createCache1h}`
+          : t('Inherited'),
     },
     {
       key: 'image',
@@ -449,6 +477,7 @@ export function ModelPricingEditorPanel({
       ratio: '',
       cacheRatio: '',
       createCacheRatio: '',
+      createCache1hRatio: '',
       completionRatio: '',
       imageRatio: '',
       audioRatio: '',
@@ -466,6 +495,7 @@ export function ModelPricingEditorPanel({
         ratio: editData.ratio || '',
         cacheRatio: editData.cacheRatio || '',
         createCacheRatio: editData.createCacheRatio || '',
+        createCache1hRatio: editData.createCache1hRatio || '',
         completionRatio: editData.completionRatio || '',
         imageRatio: editData.imageRatio || '',
         audioRatio: editData.audioRatio || '',
@@ -487,6 +517,7 @@ export function ModelPricingEditorPanel({
         ratio: '',
         cacheRatio: '',
         createCacheRatio: '',
+        createCache1hRatio: '',
         completionRatio: '',
         imageRatio: '',
         audioRatio: '',
@@ -660,6 +691,7 @@ export function ModelPricingEditorPanel({
         editData.completionRatio,
         editData.cacheRatio,
         editData.createCacheRatio,
+        editData.createCache1hRatio,
         editData.imageRatio,
         editData.audioRatio,
         editData.audioCompletionRatio,
@@ -728,6 +760,7 @@ export function ModelPricingEditorPanel({
       ratio: values.ratio || '',
       cacheRatio: values.cacheRatio || '',
       createCacheRatio: values.createCacheRatio || '',
+      createCache1hRatio: values.createCache1hRatio || '',
       completionRatio: values.completionRatio || '',
       imageRatio: values.imageRatio || '',
       audioRatio: values.audioRatio || '',
@@ -837,29 +870,51 @@ export function ModelPricingEditorPanel({
                     </Field>
 
                     <div className='grid gap-3 sm:grid-cols-2'>
-                      {laneConfigs.map((lane) => {
-                        const disabled =
-                          lane.key === 'audioOutput' &&
-                          (!laneEnabled.audioInput ||
-                            !hasValue(lanePrices.audioInput))
-                        return (
-                          <PriceLane
-                            key={lane.key}
-                            title={t(lane.titleKey)}
-                            description={t(lane.descriptionKey)}
-                            placeholder={lane.placeholder}
-                            value={lanePrices[lane.key]}
-                            enabled={laneEnabled[lane.key]}
-                            disabled={disabled}
-                            onEnabledChange={(checked) =>
-                              handleLaneToggle(lane.key, checked)
-                            }
-                            onChange={(value) =>
-                              handleLanePriceChange(lane.key, value)
-                            }
-                          />
+                      {laneConfigs
+                        .filter(
+                          (lane) =>
+                            lane.key !== 'createCache1h' ||
+                            activeModelName.toLowerCase().includes('claude') ||
+                            laneEnabled.createCache1h
                         )
-                      })}
+                        .map((lane) => {
+                          const disabled =
+                            lane.key === 'audioOutput' &&
+                            (!laneEnabled.audioInput ||
+                              !hasValue(lanePrices.audioInput))
+                          return (
+                            <PriceLane
+                              key={lane.key}
+                              title={t(
+                                lane.key === 'createCache' &&
+                                  !activeModelName
+                                    .toLowerCase()
+                                    .includes('claude')
+                                  ? 'Cache write price'
+                                  : lane.titleKey
+                              )}
+                              description={t(lane.descriptionKey)}
+                              placeholder={
+                                lane.key === 'createCache1h' &&
+                                !laneEnabled.createCache1h
+                                  ? String(
+                                      cacheWriteBasePrices(watchedValues)
+                                        .oneHour ?? ''
+                                    )
+                                  : lane.placeholder
+                              }
+                              value={lanePrices[lane.key]}
+                              enabled={laneEnabled[lane.key]}
+                              disabled={disabled}
+                              onEnabledChange={(checked) =>
+                                handleLaneToggle(lane.key, checked)
+                              }
+                              onChange={(value) =>
+                                handleLanePriceChange(lane.key, value)
+                              }
+                            />
+                          )
+                        })}
                     </div>
                   </FieldGroup>
                 </TabsContent>
@@ -901,9 +956,7 @@ export function ModelPricingEditorPanel({
                         </FormControl>
                         <FormDescription>
                           {isVideoPerSecond
-                            ? t(
-                                getVideoPerSecondDetailKey(activeModelName)
-                              )
+                            ? t(getVideoPerSecondDetailKey(activeModelName))
                             : t(
                                 'Cost in USD per request, regardless of tokens used.'
                               )}
@@ -918,6 +971,35 @@ export function ModelPricingEditorPanel({
                   value='tiered_expr'
                   className='flex flex-col gap-5'
                 >
+                  {watchedValues.name.toLowerCase().includes('claude') && (
+                    <div className='space-y-2 rounded-lg border p-3 text-sm'>
+                      <p className='font-medium'>{t('Base cache prices')}</p>
+                      <p>
+                        {t('Cache write price (5 minutes)')}:{' '}
+                        {cacheWriteBasePrices(watchedValues).fiveMinutes ===
+                        undefined
+                          ? t('Unset price')
+                          : `$${formatNumber(cacheWriteBasePrices(watchedValues).fiveMinutes!)}`}{' '}
+                        / 1M
+                      </p>
+                      <p>
+                        {t('Cache write price (1 hour)')}:{' '}
+                        {cacheWriteBasePrices(watchedValues).oneHour ===
+                        undefined
+                          ? t('Unset price')
+                          : `$${formatNumber(cacheWriteBasePrices(watchedValues).oneHour!)}`}{' '}
+                        / 1M{' '}
+                        {cacheWriteBasePrices(watchedValues).inheritsOneHour
+                          ? `(${t('Inherited')})`
+                          : ''}
+                      </p>
+                      <p className='text-muted-foreground'>
+                        {t(
+                          'Expression billing uses its tier prices. These are the configured base cache prices.'
+                        )}
+                      </p>
+                    </div>
+                  )}
                   <TieredPricingEditor
                     modelName={watchedValues.name}
                     billingExpr={billingExpr}
