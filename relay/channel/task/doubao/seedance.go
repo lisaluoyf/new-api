@@ -43,6 +43,11 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 		if err := common.UnmarshalBodyReusable(c, &fields); err != nil {
 			return invalid(err)
 		}
+		if normalized, exists := c.Get("seedance25_normalized_request"); exists {
+			if values, ok := normalized.(map[string]any); ok {
+				fields = values
+			}
+		}
 		for _, key := range []string{"content", "duration", "resolution", "ratio", "generate_audio", "watermark", "seed", "camera_fixed", "return_last_frame", "draft", "frames", "callback_url", "service_tier", "execution_expires_after", "tools"} {
 			if value, ok := fields[key]; ok {
 				req.Metadata[key] = value
@@ -83,6 +88,9 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 				content = append(content, map[string]interface{}{"type": media + "_url", media + "_url": map[string]string{"url": url}})
 			}
 			req.Metadata["content"] = content
+		}
+		if err := normalizeSeedanceFrameAliases(fields, req.Metadata); err != nil {
+			return invalid(err)
 		}
 	}
 

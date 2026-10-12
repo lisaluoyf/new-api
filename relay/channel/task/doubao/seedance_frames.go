@@ -11,6 +11,67 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Keep the public first/last-frame contract when an Ark-compatible channel is
+// selected. Unknown public fields must never silently become text-only tasks.
+func normalizeSeedanceFrameAliases(fields, metadata map[string]any) error {
+	value, exists := fields["image_with_roles"]
+	if !exists {
+		value, exists = metadata["image_with_roles"]
+	}
+	if !exists {
+		aliases := []any{}
+		for _, alias := range []struct{ key, role string }{{"first_frame_image", "first_frame"}, {"last_frame_image", "last_frame"}} {
+			if value, ok := fields[alias.key]; ok {
+				aliases = append(aliases, map[string]any{"url": value, "role": alias.role})
+			}
+		}
+		if len(aliases) == 0 {
+			return nil
+		}
+		value = aliases
+	}
+	entries, ok := value.([]any)
+	if !ok {
+		return fmt.Errorf("image_with_roles must be an array")
+	}
+	limit := 9
+	if fields["model"] == "seedance-2.5" {
+		limit = 30
+	}
+	if len(entries) > limit {
+		return fmt.Errorf("image_with_roles supports at most %d images", limit)
+	}
+	content, _ := metadata["content"].([]any)
+	roles := map[string]int{}
+	for _, value := range entries {
+		entry, ok := value.(map[string]any)
+		if !ok {
+			return fmt.Errorf("image_with_roles entries must be objects")
+		}
+		u, ok := entry["url"].(string)
+		if !ok || strings.TrimSpace(u) == "" {
+			return fmt.Errorf("image_with_roles entries require a non-empty url")
+		}
+		role, _ := entry["role"].(string)
+		if role != "first_frame" && role != "last_frame" && role != "reference_image" {
+			return fmt.Errorf("image_with_roles role must be first_frame, last_frame, or reference_image")
+		}
+		roles[role]++
+		content = append(content, map[string]any{"type": "image_url", "image_url": map[string]string{"url": u}, "role": role})
+	}
+	if roles["first_frame"] > 1 || roles["last_frame"] > 1 {
+		return fmt.Errorf("Use at most one first_frame and one last_frame")
+	}
+	if roles["last_frame"] > 0 && roles["first_frame"] == 0 {
+		return fmt.Errorf("last_frame requires first_frame")
+	}
+	if (roles["first_frame"] > 0 || roles["last_frame"] > 0) && metadata["ratio"] != "adaptive" {
+		return fmt.Errorf("first/last frame aspect_ratio must be adaptive")
+	}
+	metadata["content"] = content
+	return nil
+}
+
 // Validation runs before task model mapping and pre-consumption. Resolve the
 // mapping without mutating RelayInfo or applying this provider's rules globally.
 func (a *TaskAdaptor) tencentSeedanceModel(c *gin.Context, info *relaycommon.RelayInfo, model string) string {

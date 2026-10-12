@@ -220,3 +220,30 @@ func TestSeedanceAudioReferenceRoleAcrossPublicAndNativeRequests(t *testing.T) {
 		}
 	}
 }
+
+func TestSeedancePublicFrameAliasesReachArkBody(t *testing.T) {
+	for _, name := range []string{"seedance-2.0", "seedance-2.5", "seedance-2.0-fast", "seedance-2.0-mini"} {
+		for _, input := range []string{
+			`"image_with_roles":[{"url":"https://example.com/start.png","role":"first_frame"},{"url":"https://example.com/end.png","role":"last_frame"}]`,
+			`"first_frame_image":"https://example.com/start.png","last_frame_image":"https://example.com/end.png"`,
+		} {
+			c, _ := seedanceContext(`{"model":"` + name + `","prompt":"scene","aspect_ratio":"adaptive",` + input + `}`)
+			info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{}}
+			a := &TaskAdaptor{}
+			require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+			body, err := a.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			data, err := io.ReadAll(body)
+			require.NoError(t, err)
+			var payload requestPayload
+			require.NoError(t, common.Unmarshal(data, &payload))
+			roles := map[string]string{}
+			for _, item := range payload.Content {
+				if item.ImageURL != nil {
+					roles[item.Role] = item.ImageURL.URL
+				}
+			}
+			require.Equal(t, map[string]string{"first_frame": "https://example.com/start.png", "last_frame": "https://example.com/end.png"}, roles)
+		}
+	}
+}
