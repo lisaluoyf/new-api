@@ -107,6 +107,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               modelRatio={form.watch('ModelRatio')}
               cacheRatio={form.watch('CacheRatio')}
               createCacheRatio={form.watch('CreateCacheRatio')}
+              createCache1hRatio={form.watch('CreateCache1hRatio')}
               completionRatio={form.watch('CompletionRatio')}
               imageRatio={form.watch('ImageRatio')}
               audioRatio={form.watch('AudioRatio')}

@@ -5211,5 +5211,9 @@
   "Optional 1-hour cache write ratio. Empty entries inherit 1.6 times the 5-minute ratio.": "可选的1小时缓存写入倍率。未配置时使用5分钟倍率的1.6倍。",
   "Claude cache prices are in USD per million tokens. Channel and group multipliers apply separately. Empty 1-hour prices inherit 1.6 times the 5-minute price; explicit zero is free.": "Claude 缓存基础价单位为美元/百万 tokens，渠道和分组倍率另行应用。1小时价格留空时使用5分钟价格的1.6倍，明确填写0表示免费。",
   "Expression billing: check the expression for user charges": "表达式计费：用户扣费以表达式为准",
-  "Token billing": "Token 计费"
+  "Token billing": "Token 计费",
+  "Base cache prices": "缓存基础价格",
+  "Inherited": "继承默认值",
+  "Optional 1-hour cache write price. When unset, Claude inherits 1.6 times the 5-minute price.": "可选的1小时缓存写入价格。未配置时，Claude 使用5分钟价格的1.6倍。",
+  "Expression billing uses its tier prices. These are the configured base cache prices.": "表达式计费按各档位价格执行，此处显示配置的缓存基础价。"
 }

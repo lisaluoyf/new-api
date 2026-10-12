@@ -5173,5 +5173,9 @@
   "Optional 1-hour cache write ratio. Empty entries inherit 1.6 times the 5-minute ratio.": "Optional 1-hour cache write ratio. Empty entries inherit 1.6 times the 5-minute ratio.",
   "Claude cache prices are in USD per million tokens. Channel and group multipliers apply separately. Empty 1-hour prices inherit 1.6 times the 5-minute price; explicit zero is free.": "Claude cache prices are in USD per million tokens. Channel and group multipliers apply separately. Empty 1-hour prices inherit 1.6 times the 5-minute price; explicit zero is free.",
   "Expression billing: check the expression for user charges": "Expression billing: check the expression for user charges",
-  "Token billing": "Token billing"
+  "Token billing": "Token billing",
+  "Base cache prices": "Base cache prices",
+  "Inherited": "Inherited",
+  "Optional 1-hour cache write price. When unset, Claude inherits 1.6 times the 5-minute price.": "Optional 1-hour cache write price. When unset, Claude inherits 1.6 times the 5-minute price.",
+  "Expression billing uses its tier prices. These are the configured base cache prices.": "Expression billing uses its tier prices. These are the configured base cache prices."
 }
