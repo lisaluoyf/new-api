@@ -162,8 +162,12 @@ func TestBeeNexQueryProtocolConfiguration(t *testing.T) {
 }
 
 func TestBeeNexPendingQueryPersistenceFailureIsReported(t *testing.T) {
-	truncate(t)
-	setupTaskWebhookTest(t)
+	db := seedanceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Task{}))
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	common.MemoryCacheEnabled = false
 	seedChannel(t, 274)
 	oldFactory := GetTaskAdaptorFunc
 	t.Cleanup(func() { GetTaskAdaptorFunc = oldFactory })
@@ -178,11 +182,11 @@ func TestBeeNexPendingQueryPersistenceFailureIsReported(t *testing.T) {
 			tx.AddError(errors.New("task state write failed"))
 		}
 	}))
-	t.Cleanup(func() { model.DB.Callback().Update().Remove("beenex_fail_state_update") })
+	t.Cleanup(func() { db.Callback().Update().Remove("beenex_fail_state_update") })
 	require.ErrorContains(t, RefreshBeeNexSeedanceTask(context.Background(), task), "task state write failed")
 	var persisted model.Task
 	require.NoError(t, model.DB.First(&persisted, task.ID).Error)
 	require.Equal(t, "50%", persisted.Progress)
-	require.Equal(t, model.TaskStatusInProgress, persisted.Status)
+	require.EqualValues(t, model.TaskStatusInProgress, persisted.Status)
 	require.Equal(t, 1, calls)
 }

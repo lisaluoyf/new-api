@@ -22,10 +22,14 @@ import (
 	"gorm.io/gorm"
 )
 
-func seedanceTestDB(t *testing.T) *gorm.DB {
+func seedanceTestDB(t *testing.T, databases ...string) *gorm.DB {
 	t.Helper()
 	oldDB, oldMemory := model.DB, common.MemoryCacheEnabled
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	source := ":memory:"
+	if len(databases) > 0 {
+		source = databases[0]
+	}
+	db, err := gorm.Open(sqlite.Open(source), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.SeedanceResource{}, &model.Channel{}, &model.Ability{}))
 	model.DB, common.MemoryCacheEnabled = db, true

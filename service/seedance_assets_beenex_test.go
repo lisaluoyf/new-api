@@ -26,7 +26,7 @@ func TestBeeNexAssetSignedProxyAndOwnedLifecycle(t *testing.T) {
 }
 
 func testBeeNexAssetOwnedScope(t *testing.T, scope, name string) {
-	db := seedanceTestDB(t)
+	db := seedanceTestDB(t, filepath.Join(t.TempDir(), "beenex-assets.sqlite"))
 	require.NoError(t, db.AutoMigrate(&model.User{}))
 	require.NoError(t, db.Create(&model.User{Id: 1, Role: 100}).Error)
 	dir := t.TempDir()
