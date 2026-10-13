@@ -364,3 +364,5 @@ setup.create_admin_failed: "Failed to create the administrator account: {{.Error
 setup.save_mode_failed: "Failed to save the {{.Mode}} setting: {{.Error}}"
 setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
+
+quota.pending_settlement: "Une requête précédente a une facturation non réglée. Rechargez le solde initial ou contactez le support. Cela est distinct de la limite de cinq heures de votre abonnement."

@@ -274,3 +274,82 @@ func TestResolvePendingTextSettlementsUsesAvailableWalletImmediately(t *testing.
 	require.NoError(t, DB.First(&user, 1).Error)
 	require.Equal(t, 80, user.Quota)
 }
+
+func TestTextSettlementDeletedTokenPreservesDeletionAndSettlesOnce(t *testing.T) {
+	for _, funding := range []string{"wallet", "subscription"} {
+		t.Run(funding, func(t *testing.T) {
+			var item *TextSettlement
+			if funding == "subscription" {
+				item = freeCreditSettlementFixture(t, SubscriptionPlanTypeGPTReferralReward, 10)
+			} else {
+				item = settlementFixture(t)
+			}
+			require.NoError(t, DB.Model(&Token{}).Where("id = ?", 2).Updates(map[string]any{"remain_quota": 0, "status": 2}).Error)
+			require.NoError(t, DB.Delete(&Token{}, 2).Error)
+			var before Token
+			require.NoError(t, DB.Unscoped().First(&before, 2).Error)
+			for i := 0; i < 3; i++ {
+				_, err := ApplyTextSettlement(item.Id)
+				require.NoError(t, err)
+			}
+			var token Token
+			var user User
+			var logs []Log
+			require.NoError(t, DB.Unscoped().First(&token, 2).Error)
+			require.Equal(t, before.DeletedAt, token.DeletedAt)
+			require.Equal(t, 2, token.Status)
+			require.Equal(t, -40, token.RemainQuota)
+			require.Equal(t, 50, token.UsedQuota)
+			require.ErrorIs(t, DB.First(&Token{}, 2).Error, gorm.ErrRecordNotFound)
+			require.NoError(t, DB.First(&user, 1).Error)
+			expected := 60
+			if funding == "subscription" {
+				expected = 80
+			}
+			require.Equal(t, expected, user.Quota)
+			require.Equal(t, 1, user.RequestCount)
+			require.NoError(t, DB.Find(&logs).Error)
+			require.Len(t, logs, 1)
+		})
+	}
+}
+
+func TestTextSettlementDeletedTokenWrongOwnerRollsBack(t *testing.T) {
+	item := settlementFixture(t)
+	require.NoError(t, DB.Model(&Token{}).Where("id = ?", 2).Update("user_id", 99).Error)
+	require.NoError(t, DB.Delete(&Token{}, 2).Error)
+	_, err := ApplyTextSettlement(item.Id)
+	require.ErrorIs(t, err, ErrSettlementBalance)
+	var user User
+	require.NoError(t, DB.First(&user, 1).Error)
+	require.Equal(t, 100, user.Quota)
+	require.Zero(t, user.UsedQuota)
+}
+
+func TestPendingPromotionalExceptionRequiresOnlyVerifiedFreeOverflow(t *testing.T) {
+	for _, kind := range []string{"free", "wallet", "paid", "paid_snapshot", "not_overflow", "wrong_owner", "mixed", "unknown_error"} {
+		t.Run(kind, func(t *testing.T) {
+			item := freeCreditSettlementFixture(t, SubscriptionPlanTypeGPTReferralReward, 10)
+			require.NoError(t, DB.Model(item).Update("last_error", ErrSettlementBalance.Error()).Error)
+			switch kind {
+			case "wallet":
+				require.NoError(t, DB.Model(item).Update("funding_source", "wallet").Error)
+			case "paid":
+				require.NoError(t, DB.Model(&SubscriptionPlan{}).Where("id = ?", 8).Update("plan_type", SubscriptionPlanTypeGPTSubscription).Error)
+			case "paid_snapshot":
+				require.NoError(t, DB.Model(&UserSubscription{}).Where("id = ?", 7).Update("paid_amount_snapshot", 1).Error)
+			case "not_overflow":
+				require.NoError(t, DB.Model(&UserSubscription{}).Where("id = ?", 7).Update("amount_total", 100).Error)
+			case "wrong_owner":
+				require.NoError(t, DB.Model(&UserSubscription{}).Where("id = ?", 7).Update("user_id", 99).Error)
+			case "mixed":
+				require.NoError(t, DB.Create(&TextSettlement{UserId: 1, RequestId: "other-debt", Status: "pending", FundingSource: "wallet"}).Error)
+			case "unknown_error":
+				require.NoError(t, DB.Model(item).Update("last_error", "subscription reservation mismatch").Error)
+			}
+			allowed, err := HasOnlyPendingGPTPromotionalOverflow(1)
+			require.NoError(t, err)
+			require.Equal(t, kind == "free", allowed)
+		})
+	}
+}

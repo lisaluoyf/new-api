@@ -900,8 +900,17 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 	}
+	pendingSettlementError := func() *types.NewAPIError {
+		return types.NewErrorWithStatusCode(fmt.Errorf("previous request has a pending billing settlement; restore wallet/key/subscription quota and retry"), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithClientMessage(i18n.MsgQuotaPendingSettlement, nil))
+	}
 	if pending {
-		return nil, types.NewErrorWithStatusCode(fmt.Errorf("previous request has a pending billing settlement; restore wallet/key/subscription quota and retry"), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+		promotionalOnly, checkErr := model.HasOnlyPendingGPTPromotionalOverflow(relayInfo.UserId)
+		if checkErr != nil {
+			return nil, types.NewError(checkErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		if !promotionalOnly {
+			return nil, pendingSettlementError()
+		}
 	}
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
@@ -1087,6 +1096,24 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 			return nil, apiErr
 		}
 		return session, nil
+	}
+
+	if pending {
+		// An unpaid promotional bill never transfers to the paid subscription.
+		// Only a separately funded, eligible paid GPT request may proceed.
+		if session, apiErr := tryGPTPaidSubscription(); apiErr != nil {
+			return nil, apiErr
+		} else if session != nil {
+			return session, nil
+		}
+		if paidRollingLimitErr != nil {
+			walletQuota, quotaErr := model.GetUserQuota(relayInfo.UserId, false)
+			if quotaErr != nil {
+				return nil, types.NewError(quotaErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+			}
+			return nil, newGPTSubscriptionRollingLimitAPIError(c, relayInfo, paidRollingLimitErr, walletQuota, false)
+		}
+		return nil, pendingSettlementError()
 	}
 
 	if session, apiErr := tryGPTTrial(); apiErr != nil {

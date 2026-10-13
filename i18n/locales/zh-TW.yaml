@@ -419,3 +419,5 @@ setup.create_admin_failed: "建立管理員帳號失敗：{{.Error}}"
 setup.save_mode_failed: "儲存 {{.Mode}} 設定失敗：{{.Error}}"
 setup.initialization_failed: "系統初始化失敗：{{.Error}}"
 setup.success: "系統初始化成功"
+
+quota.pending_settlement: "歷史請求仍有未結清帳單，請補足原資金來源的餘額或聯絡客服。這與訂閱五小時額度限制不同。"

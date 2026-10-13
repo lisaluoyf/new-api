@@ -159,9 +159,10 @@ func ApplyTextSettlement(id int) (*TextSettlement, error) {
 		}
 		if !item.IsPlayground {
 			tokenDelta := item.Quota - item.TokenConsumed
-			q := tx.Model(&Token{}).Where("id = ? AND user_id = ?", item.TokenId, item.UserId)
+			// Deleted credentials remain deleted; only their historical counters change.
+			q := tx.Unscoped().Model(&Token{}).Where("id = ? AND user_id = ?", item.TokenId, item.UserId)
 			if tokenDelta > 0 {
-				q = q.Where("unlimited_quota = ? OR remain_quota >= ?", true, tokenDelta)
+				q = q.Where("deleted_at IS NOT NULL OR unlimited_quota = ? OR remain_quota >= ?", true, tokenDelta)
 			}
 			res := q.Updates(map[string]interface{}{"remain_quota": gorm.Expr("remain_quota - ?", tokenDelta), "used_quota": gorm.Expr("used_quota + ?", tokenDelta), "accessed_time": common.GetTimestamp()})
 			if res.Error != nil {
@@ -316,6 +317,29 @@ func HasPendingTextSettlement(userID int) (bool, error) {
 	var count int64
 	err := DB.Model(&TextSettlement{}).Where("user_id = ? AND status = ?", userID, "pending").Count(&count).Error
 	return count > 0, err
+}
+
+// HasOnlyPendingGPTPromotionalOverflow restricts the paid-plan exception to
+// verified free-credit overflow. Wallet/paid debt and inconsistent rows still block.
+func HasOnlyPendingGPTPromotionalOverflow(userID int) (bool, error) {
+	var counts struct {
+		Total       int64
+		Promotional int64
+	}
+	err := DB.Model(&TextSettlement{}).
+		Joins("LEFT JOIN user_subscriptions AS s ON s.id = text_settlements.subscription_id AND s.user_id = text_settlements.user_id").
+		Joins("LEFT JOIN subscription_plans AS p ON p.id = s.plan_id").
+		Where("text_settlements.user_id = ? AND text_settlements.status = ?", userID, "pending").
+		Select(`COUNT(*) AS total, COALESCE(SUM(CASE WHEN
+            text_settlements.funding_source = 'subscription'
+            AND text_settlements.last_error = ?
+            AND p.plan_type IN (?, ?) AND p.price_amount = 0
+            AND s.paid_amount_snapshot = 0 AND s.amount_total > 0
+            AND s.amount_used + text_settlements.quota - text_settlements.pre_consumed_quota > s.amount_total
+            THEN 1 ELSE 0 END), 0) AS promotional`,
+			ErrSettlementBalance.Error(), SubscriptionPlanTypeGPTTrial, SubscriptionPlanTypeGPTReferralReward).
+		Scan(&counts).Error
+	return counts.Total > 0 && counts.Total == counts.Promotional, err
 }
 
 // ResolvePendingTextSettlements retries a user's durable bills before a new

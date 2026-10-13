@@ -364,3 +364,5 @@ setup.create_admin_failed: "Failed to create the administrator account: {{.Error
 setup.save_mode_failed: "Failed to save the {{.Mode}} setting: {{.Error}}"
 setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
+
+quota.pending_settlement: "Một yêu cầu trước đó có khoản phí chưa thanh toán. Hãy nạp số dư ban đầu hoặc liên hệ hỗ trợ. Việc này khác với giới hạn năm giờ của gói đăng ký."

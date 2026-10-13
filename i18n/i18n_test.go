@@ -124,3 +124,16 @@ func TestIsSupportedRejectsUnknownLanguages(t *testing.T) {
 		}
 	}
 }
+
+func TestPendingSettlementMessagesAreLocalized(t *testing.T) {
+	if err := Init(); err != nil {
+		t.Fatal(err)
+	}
+	english := Translate(LangEn, MsgQuotaPendingSettlement, nil)
+	for _, lang := range SupportedLanguages() {
+		msg := Translate(lang, MsgQuotaPendingSettlement, nil)
+		if msg == MsgQuotaPendingSettlement || (lang != LangEn && msg == english) {
+			t.Errorf("missing pending settlement translation: %s", lang)
+		}
+	}
+}

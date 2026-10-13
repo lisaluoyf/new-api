@@ -364,3 +364,5 @@ setup.create_admin_failed: "Failed to create the administrator account: {{.Error
 setup.save_mode_failed: "Failed to save the {{.Mode}} setting: {{.Error}}"
 setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
+
+quota.pending_settlement: "По предыдущему запросу остался незавершённый расчёт. Пополните исходный баланс или обратитесь в поддержку. Это не связано с пятичасовым лимитом подписки."

@@ -127,6 +127,7 @@ const (
 const (
 	MsgQuotaNegative              = "quota.negative"
 	MsgQuotaExceedMax             = "quota.exceed_max"
+	MsgQuotaPendingSettlement     = "quota.pending_settlement"
 	MsgQuotaInsufficient          = "quota.insufficient"
 	MsgQuotaInsufficientBalance   = "quota.insufficient_balance"
 	MsgQuotaRequestExceedsBalance = "quota.request_exceeds_balance"
@@ -462,7 +463,7 @@ const (
 	MsgDistributorAffinityChannelDisabled = "distributor.affinity_channel_disabled"
 	MsgDistributorTokenNoModelAccess      = "distributor.token_no_model_access"
 	MsgDistributorTokenModelForbidden     = "distributor.token_model_forbidden"
-	MsgDistributorTrialModelForbidden    = "distributor.trial_model_forbidden"
+	MsgDistributorTrialModelForbidden     = "distributor.trial_model_forbidden"
 	MsgDistributorModelNameRequired       = "distributor.model_name_required"
 	MsgDistributorInvalidPlayground       = "distributor.invalid_playground_request"
 	MsgDistributorGroupAccessDenied       = "distributor.group_access_denied"

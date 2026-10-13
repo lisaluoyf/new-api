@@ -364,3 +364,5 @@ setup.create_admin_failed: "Failed to create the administrator account: {{.Error
 setup.save_mode_failed: "Failed to save the {{.Mode}} setting: {{.Error}}"
 setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
+
+quota.pending_settlement: "Permintaan sebelumnya memiliki tagihan yang belum diselesaikan. Isi ulang saldo asal atau hubungi dukungan. Ini terpisah dari batas lima jam langganan."

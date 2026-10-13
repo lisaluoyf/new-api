@@ -364,3 +364,5 @@ setup.create_admin_failed: "Failed to create the administrator account: {{.Error
 setup.save_mode_failed: "Failed to save the {{.Mode}} setting: {{.Error}}"
 setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
+
+quota.pending_settlement: "Für eine frühere Anfrage ist eine Abrechnung offen. Laden Sie das ursprüngliche Guthaben auf oder kontaktieren Sie den Support. Dies ist unabhängig vom Fünfstundenlimit des Abonnements."

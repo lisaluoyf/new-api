@@ -364,3 +364,5 @@ setup.create_admin_failed: "Failed to create the administrator account: {{.Error
 setup.save_mode_failed: "Failed to save the {{.Mode}} setting: {{.Error}}"
 setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
+
+quota.pending_settlement: "이전 요청에 미결제 청구가 있습니다. 기존 잔액을 충전하거나 지원팀에 문의하세요. 구독의 5시간 한도와는 별개의 문제입니다."

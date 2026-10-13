@@ -419,3 +419,5 @@ setup.create_admin_failed: "创建管理员账号失败：{{.Error}}"
 setup.save_mode_failed: "保存 {{.Mode}} 设置失败：{{.Error}}"
 setup.initialization_failed: "系统初始化失败：{{.Error}}"
 setup.success: "系统初始化成功"
+
+quota.pending_settlement: "历史请求仍有未结清账单，请补足原资金来源的余额或联系客服。这与订阅五小时额度限制不同。"
