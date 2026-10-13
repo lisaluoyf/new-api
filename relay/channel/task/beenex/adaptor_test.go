@@ -209,3 +209,23 @@ func TestBothModelsConfiguredReadOnlyQueryAndNoRedirect(t *testing.T) {
 	require.ErrorContains(t, err, "HTTP 302")
 	require.False(t, redirected)
 }
+
+func TestBeeNexBooleanTypesBeforeNormalizationAndReservation(t *testing.T) {
+	for _, name := range []string{"seedance-2.0", "seedance-2.5"} {
+		for _, field := range []string{"generate_audio", "audio", "watermark", "return_last_frame", "draft", "auto_duration", "camerafixed", "camera_fixed"} {
+			for _, value := range []string{`"false"`, `0`, `null`} {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest("POST", "/v1/videos", strings.NewReader(`{"model":"`+name+`","prompt":"synthetic avatar","duration":4,"`+field+`":`+value+`}`))
+				c.Request.Header.Set("Content-Type", "application/json")
+				info := &relaycommon.RelayInfo{OriginModelName: name, TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 274}}
+				a := &TaskAdaptor{}
+				a.Init(info)
+				err := a.ValidateRequestAndSetAction(c, info)
+				require.NotNil(t, err)
+				require.Equal(t, "invalid_request", err.Code)
+				require.Nil(t, info.Billing)
+				require.Empty(t, info.PublicTaskID)
+			}
+		}
+	}
+}

@@ -77,6 +77,13 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 }
 
 func validateBeeNexCapabilities(fields map[string]any) *dto.TaskError {
+	for _, field := range []string{"generate_audio", "audio", "watermark", "return_last_frame", "draft", "auto_duration", "camerafixed", "camera_fixed"} {
+		if value, present := fields[field]; present {
+			if _, valid := value.(bool); !valid {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("%s must be a JSON boolean", field), "invalid_request", http.StatusBadRequest)
+			}
+		}
+	}
 	if fields["return_last_frame"] == true {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("BeeNex does not provide a verified upstream last-frame resource"), "unsupported_last_frame", http.StatusBadRequest)
 	}
