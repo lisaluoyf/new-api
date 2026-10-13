@@ -19,6 +19,7 @@ import (
 
 type beeNexRecoveryFixtureAdaptor struct {
 	response string
+	model    string
 	fail     bool
 	calls    *int
 }
@@ -32,7 +33,7 @@ func (a beeNexRecoveryFixtureAdaptor) FetchTask(_ string, key string, body map[s
 	if a.fail {
 		return nil, errors.New("BeeNex query HTTP 502")
 	}
-	if body["origin_model_name"] != "seedance-2.5" || key != "own-stored-key" {
+	if body["origin_model_name"] != a.model || key != "own-stored-key" {
 		return nil, errors.New("wrong channel task context")
 	}
 	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(a.response))}, nil
@@ -52,6 +53,11 @@ func (a beeNexRecoveryFixtureAdaptor) ParseTaskResult(raw []byte) (*relaycommon.
 }
 
 func TestBeeNexExistingTaskRecoverySettlesOncePreservesContext(t *testing.T) {
+	for _, name := range []string{"seedance-2.0", "seedance-2.5"} {
+		t.Run(name, func(t *testing.T) { testBeeNexExistingTaskRecovery(t, name) })
+	}
+}
+func testBeeNexExistingTaskRecovery(t *testing.T, name string) {
 	truncate(t)
 	setupTaskWebhookTest(t)
 	seedUser(t, 91274, 2_000_000)
@@ -62,7 +68,7 @@ func TestBeeNexExistingTaskRecoverySettlesOncePreservesContext(t *testing.T) {
 	failed := true
 	GetTaskAdaptorFunc = func(platform constant.TaskPlatform) TaskPollingAdaptor {
 		require.EqualValues(t, constant.TaskPlatformBeeNex, platform)
-		return beeNexRecoveryFixtureAdaptor{response: fmt.Sprintf(`{"id":"supplier-existing","status":"completed","completed_at":%d,"metadata":{"url":"https://example.com/video.mp4"}}`, time.Now().Unix()-60), fail: failed, calls: &calls}
+		return beeNexRecoveryFixtureAdaptor{model: name, response: fmt.Sprintf(`{"id":"supplier-existing","status":"completed","completed_at":%d,"metadata":{"url":"https://example.com/video.mp4"}}`, time.Now().Unix()-60), fail: failed, calls: &calls}
 	}
 	t.Cleanup(func() { GetTaskAdaptorFunc = oldFactory })
 	task := makeTask(91274, 274, 215880, 91274, BillingSourceWallet, 0)
@@ -70,12 +76,12 @@ func TestBeeNexExistingTaskRecoverySettlesOncePreservesContext(t *testing.T) {
 	task.Platform = constant.TaskPlatformBeeNex
 	task.Progress = "50%"
 	task.SubmitTime = time.Now().Unix() - 240
-	task.Properties.OriginModelName = "seedance-2.5"
+	task.Properties.OriginModelName = name
 	task.PrivateData.Key = "own-stored-key"
 	task.PrivateData.UpstreamTaskID = "supplier-existing"
 	task.PrivateData.SeedanceRequest = map[string]any{"duration": 4, "tariff_unit_rate": .1028, "seed": float64(0), "output_format": "mp4"}
 	task.PrivateData.BillingContext.SeedanceTariff = true
-	task.PrivateData.BillingContext.OriginModelName = "seedance-2.5"
+	task.PrivateData.BillingContext.OriginModelName = name
 	task.PrivateData.BillingContext.GroupRatio = 1.05
 	task.PrivateData.BillingContext.ModelPrice = .1028
 	task.PrivateData.BillingContext.OtherRatios = map[string]float64{"size": 1, "seconds": 4}
@@ -87,12 +93,12 @@ func TestBeeNexExistingTaskRecoverySettlesOncePreservesContext(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.SeedanceBillingReceipt{ID: "receipt-existing", TaskID: task.TaskID, UserID: task.UserId, Status: "pending", InitialQuota: 215880, Details: details}).Error)
 	contextBefore, _ := common.Marshal(task.PrivateData.BillingContext)
 	userBefore := getUserQuota(t, task.UserId)
-	require.Error(t, RefreshBeeNexSeedance25Task(context.Background(), task))
+	require.Error(t, RefreshBeeNexSeedanceTask(context.Background(), task))
 	require.Equal(t, "50%", task.Progress)
 	require.EqualValues(t, "IN_PROGRESS", task.Status)
 	require.Equal(t, userBefore, getUserQuota(t, task.UserId))
 	failed = false
-	require.NoError(t, RefreshBeeNexSeedance25Task(context.Background(), task))
+	require.NoError(t, RefreshBeeNexSeedanceTask(context.Background(), task))
 	require.EqualValues(t, "SUCCESS", task.Status)
 	require.Equal(t, "100%", task.Progress)
 	require.Equal(t, "task_existing_paid", task.TaskID)
@@ -112,7 +118,7 @@ func TestBeeNexExistingTaskRecoverySettlesOncePreservesContext(t *testing.T) {
 	quotaAfter := getUserQuota(t, task.UserId)
 	callsAfter := calls
 	for i := 0; i < 3; i++ {
-		require.NoError(t, RefreshBeeNexSeedance25Task(context.Background(), task))
+		require.NoError(t, RefreshBeeNexSeedanceTask(context.Background(), task))
 	}
 	require.Equal(t, callsAfter, calls)
 	require.Equal(t, quotaAfter, getUserQuota(t, task.UserId))
@@ -120,6 +126,31 @@ func TestBeeNexExistingTaskRecoverySettlesOncePreservesContext(t *testing.T) {
 	other := *task
 	other.ChannelId = 273
 	other.Status = model.TaskStatusInProgress
-	require.NoError(t, RefreshBeeNexSeedance25Task(context.Background(), &other))
+	require.NoError(t, RefreshBeeNexSeedanceTask(context.Background(), &other))
 	require.Equal(t, callsAfter, calls)
+}
+
+func TestBeeNexQueryProtocolConfiguration(t *testing.T) {
+	ch := &model.Channel{Id: 274}
+	protocol, err := BeeNexTaskQueryProtocol(ch, "seedance-2.0")
+	require.NoError(t, err)
+	require.Equal(t, "video_generations", protocol)
+	setting := `{"beenex_query_protocols":{"seedance-2.0":"sora","seedance-2.5":"video_generations"}}`
+	ch.Setting = &setting
+	require.NoError(t, ch.ValidateSettings())
+	protocol, err = BeeNexTaskQueryProtocol(ch, "seedance-2.0")
+	require.NoError(t, err)
+	require.Equal(t, "sora", protocol)
+	protocol, err = BeeNexTaskQueryProtocol(ch, "seedance-2.5")
+	require.NoError(t, err)
+	require.Equal(t, "video_generations", protocol)
+	setting = `{"beenex_query_protocols":{"seedance-2.0":"https://unsafe.example"}}`
+	require.Error(t, ch.ValidateSettings())
+	_, err = BeeNexTaskQueryProtocol(ch, "seedance-2.0")
+	require.Error(t, err)
+	ch.Id = 273
+	require.Error(t, ch.ValidateSettings())
+	_, err = BeeNexTaskQueryProtocol(ch, "seedance-2.0")
+	require.Error(t, err)
+	require.NotContains(t, BeeNexTaskQueryFailureSummary(errors.New("https://signed.example?secret=credential")), "credential")
 }

@@ -75,6 +75,9 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 		if asset.GroupType == "channel_portrait" && fields["model"] != asset.Model {
 			return "", seedanceError(409, "Channel portrait certification compatibility with the requested model is not confirmed", "asset_context_incompatible")
 		}
+		if asset.ChannelID == constant.BeeNexSeedanceChannelID && fields["model"] != asset.Model {
+			return "", seedanceError(409, "Use a BeeNex material registered for the requested model; cross-model generation is not verified", "asset_context_incompatible")
+		}
 		if pinned != nil && (pinned.ChannelID != asset.ChannelID || pinned.KeyFingerprint != asset.KeyFingerprint || pinned.ProjectName != asset.ProjectName || pinned.CredentialFingerprint != asset.CredentialFingerprint) {
 			return "", seedanceError(400, "All referenced assets must belong to the same media library")
 		}
@@ -107,7 +110,7 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 			return nil, seedanceError(409, "Asset account or project is incompatible with this route")
 		}
 	}
-	if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" {
+	if isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(name) {
 		credentials, e := loadBeeNexAssetCredentials(ch.Id)
 		if e != nil || validateBeeNexAssetContext(pinned, credentials) != nil {
 			return nil, seedanceError(409, "BeeNex asset account or project changed", "asset_context_incompatible")
@@ -128,7 +131,10 @@ func ResolveSeedanceAssetReferences(c *gin.Context, fields map[string]any, chann
 		if asset.ChannelID != channelID || asset.KeyFingerprint != SeedanceKeyFingerprint(key) {
 			return "", fmt.Errorf("Media library is temporarily unavailable")
 		}
-		if channelID == constant.BeeNexSeedanceChannelID && fields["model"] == "seedance-2.5" {
+		if channelID == constant.BeeNexSeedanceChannelID && fields["model"] != asset.Model {
+			return "", seedanceError(409, "BeeNex material model context does not match", "asset_context_incompatible")
+		}
+		if channelID == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(common.Interface2String(fields["model"])) {
 			credentials, err := loadBeeNexAssetCredentials(channelID)
 			if err != nil {
 				return "", err

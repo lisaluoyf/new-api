@@ -19,11 +19,13 @@ import (
 
 func TestBeeNexAssetSignedProxyAndOwnedLifecycle(t *testing.T) {
 	for _, scope := range []string{"named", "account_scoped"} {
-		t.Run(scope, func(t *testing.T) { testBeeNexAssetOwnedScope(t, scope) })
+		for _, name := range []string{"seedance-2.0", "seedance-2.5"} {
+			t.Run(scope+"/"+name, func(t *testing.T) { testBeeNexAssetOwnedScope(t, scope, name) })
+		}
 	}
 }
 
-func testBeeNexAssetOwnedScope(t *testing.T, scope string) {
+func testBeeNexAssetOwnedScope(t *testing.T, scope, name string) {
 	db := seedanceTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.User{}))
 	require.NoError(t, db.Create(&model.User{Id: 1, Role: 100}).Error)
@@ -39,8 +41,8 @@ func testBeeNexAssetOwnedScope(t *testing.T, scope string) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "channel-274.json"), config, 0600))
 	base := "https://beenexapi.phone580.com"
-	require.NoError(t, db.Create(&model.Channel{Id: 274, Type: 1, Status: 1, Key: "beenex-inference-key", BaseURL: &base, Models: "seedance-2.5", Group: "default"}).Error)
-	require.NoError(t, db.Create(&model.Ability{ChannelId: 274, Model: "seedance-2.5", Group: "default", Enabled: false}).Error)
+	require.NoError(t, db.Create(&model.Channel{Id: 274, Type: 1, Status: 1, Key: "beenex-inference-key", BaseURL: &base, Models: name, Group: "default"}).Error)
+	require.NoError(t, db.Create(&model.Ability{ChannelId: 274, Model: name, Group: "default", Enabled: false}).Error)
 	model.InitChannelCache()
 	calls := []string{}
 	phase := 0
@@ -93,6 +95,8 @@ func testBeeNexAssetOwnedScope(t *testing.T, scope string) {
 				project = "different-project"
 			}
 			fmt.Fprintf(w, `{"Result":{"Id":"bee-asset","Status":%q,"URL":"https://media.example/own.jpg?X-Tos-Signature=private","ProjectName":%s}}`, status, func() []byte { b, _ := common.Marshal(project); return b }())
+		case "UpdateAsset", "UpdateAssetGroup", "DeleteAsset", "DeleteAssetGroup":
+			fmt.Fprint(w, `{"Result":{}}`)
 		case "ListAssets":
 			fmt.Fprintf(w, `{"Result":{"Items":[{"Id":"bee-asset","Status":"Active","ProjectName":%s}]}}`, func() []byte { b, _ := common.Marshal(upstreamProject); return b }())
 		default:
@@ -106,14 +110,14 @@ func testBeeNexAssetOwnedScope(t *testing.T, scope string) {
 	t.Cleanup(func() { beeNexAssetEndpoint = old })
 	c := seedanceContext(1)
 	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, "274")
-	caps, err := SeedancePortraitCapabilities(c, "seedance-2.5")
+	caps, err := SeedancePortraitCapabilities(c, name)
 	require.NoError(t, err)
 	require.Len(t, caps, 1)
 	require.Equal(t, true, caps[0]["configured"])
 	require.Equal(t, scope, caps[0]["project_scope"])
 	require.Equal(t, "not_tested", caps[0]["live_acceptance"])
 	require.Equal(t, false, caps[0]["real_person_verified"])
-	task, err := SubmitSeedanceAssets(c, SeedanceAssetSubmission{Model: "seedance-2.5", Group: &SeedanceGroupInput{ChannelID: 274, Name: "Bee group", Purpose: "ordinary"}, Assets: []SeedanceAssetInput{{URL: "https://example.com/synthetic.png", Name: "Synthetic"}}})
+	task, err := SubmitSeedanceAssets(c, SeedanceAssetSubmission{Model: name, Group: &SeedanceGroupInput{ChannelID: 274, Name: "Bee group", Purpose: "ordinary"}, Assets: []SeedanceAssetInput{{URL: "https://example.com/synthetic.png", Name: "Synthetic"}}})
 	require.NoError(t, err)
 	require.Equal(t, 274, task.ChannelID)
 	require.Equal(t, project, task.ProjectName)
@@ -139,17 +143,18 @@ func testBeeNexAssetOwnedScope(t *testing.T, scope string) {
 	credentials, err := loadBeeNexAssetCredentials(274)
 	require.NoError(t, err)
 	credentials.MaterialVerifiedAt = 1791900000
+	credentials.MaterialVerifiedModels = map[string]int64{name: 1791900000}
 	credentials.MaterialVerifiedFingerprint = beeNexControlFingerprint(credentials)
 	verifiedConfig, err := common.Marshal(credentials)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "channel-274.json"), verifiedConfig, 0600))
-	verifiedCaps, err := SeedancePortraitCapabilities(c, "seedance-2.5")
+	verifiedCaps, err := SeedancePortraitCapabilities(c, name)
 	require.NoError(t, err)
 	require.Equal(t, "ordinary_asset_lifecycle_verified", verifiedCaps[0]["live_acceptance"])
 	require.Equal(t, false, verifiedCaps[0]["real_person_verified"])
 
 	require.NotEqual(t, "real_person", asset.GroupType)
-	fields := map[string]any{"model": "seedance-2.5", "image_urls": []any{"asset://" + asset.ID}, "seed": float64(0)}
+	fields := map[string]any{"model": name, "image_urls": []any{"asset://" + asset.ID}, "seed": float64(0)}
 	pinned, err := SeedanceAssetRouting(c, fields)
 	require.NoError(t, err)
 	require.Equal(t, 274, pinned.ChannelID)
@@ -168,9 +173,29 @@ func testBeeNexAssetOwnedScope(t *testing.T, scope string) {
 	}
 	// Two-step public usage must accept a group already created on the pinned
 	// admin channel even while automatic distribution remains disabled.
-	second, err := SubmitSeedanceAssets(c, SeedanceAssetSubmission{Model: "seedance-2.5", GroupID: task.GroupID, Assets: []SeedanceAssetInput{{URL: "https://example.com/second.png", Name: "Second"}}})
+	second, err := SubmitSeedanceAssets(c, SeedanceAssetSubmission{Model: name, GroupID: task.GroupID, Assets: []SeedanceAssetInput{{URL: "https://example.com/second.png", Name: "Second"}}})
 	require.NoError(t, err)
 	require.Equal(t, task.GroupID, second.GroupID)
+	otherModel := "seedance-2.0"
+	if name == otherModel {
+		otherModel = "seedance-2.5"
+	}
+	_, err = SeedanceAssetRouting(c, map[string]any{"model": otherModel, "image_urls": []any{"asset://" + asset.ID}})
+	require.Error(t, err)
+	_, err = ResolveSeedanceAssetReferences(c, map[string]any{"model": otherModel, "image_urls": []any{"asset://" + asset.ID}}, 274, "beenex-inference-key")
+	require.Error(t, err)
+	renamed := "Renamed virtual"
+	require.NoError(t, UpdateSeedanceResource(c, &asset, &renamed, nil))
+	group, err := model.GetSeedanceResource(1, "group", task.GroupID)
+	require.NoError(t, err)
+	require.NoError(t, UpdateSeedanceResource(c, group, &renamed, nil))
+	require.NoError(t, DeleteSeedanceResource(c, &asset))
+	var remaining []model.SeedanceResource
+	require.NoError(t, db.Where("group_id = ? AND kind = ?", task.GroupID, "asset").Find(&remaining).Error)
+	for _, row := range remaining {
+		require.NoError(t, DeleteSeedanceResource(c, &row))
+	}
+	require.NoError(t, DeleteSeedanceResource(c, group))
 	// No distribution or credential context is changed by material operations.
 	var ability model.Ability
 	require.NoError(t, db.First(&ability, "channel_id = ?", 274).Error)

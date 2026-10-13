@@ -984,6 +984,11 @@ func (channel *Channel) ValidateSettings() error {
 	if channelParams.ThinkingToContent && channelParams.StripPrefixThinkBlock {
 		return fmt.Errorf("thinking_to_content and strip_prefix_think_block cannot be enabled together")
 	}
+	for name, protocol := range channelParams.BeeNexQueryProtocols {
+		if channel.Id != constant.BeeNexSeedanceChannelID || (name != "seedance-2.0" && name != "seedance-2.5") || (protocol != "sora" && protocol != "video_generations") {
+			return fmt.Errorf("beenex_query_protocols requires channel 274, seedance-2.0/2.5 and sora/video_generations")
+		}
+	}
 	for modelName, ratio := range channelParams.ModelGroupRatios {
 		if modelName == "" || strings.TrimSpace(modelName) != modelName || len(modelName) > 255 {
 			return fmt.Errorf("model_group_ratios must use non-empty, trimmed model names of at most 255 bytes")

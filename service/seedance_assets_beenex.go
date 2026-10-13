@@ -22,13 +22,33 @@ import (
 
 type beeNexAssetCredentials struct {
 	bytePlusAssetCredentials
-	SigningHost                 string `json:"signing_host,omitempty"`
-	ProjectMode                 string `json:"project_mode,omitempty"`
-	MaterialVerifiedAt          int64  `json:"material_verified_at,omitempty"`
-	MaterialVerifiedFingerprint string `json:"material_verified_fingerprint,omitempty"`
+	SigningHost                       string           `json:"signing_host,omitempty"`
+	ProjectMode                       string           `json:"project_mode,omitempty"`
+	MaterialVerifiedAt                int64            `json:"material_verified_at,omitempty"`
+	MaterialVerifiedFingerprint       string           `json:"material_verified_fingerprint,omitempty"`
+	MaterialVerifiedModels            map[string]int64 `json:"material_verified_models,omitempty"`
+	GenerationReferenceVerifiedModels map[string]int64 `json:"generation_reference_verified_models,omitempty"`
 }
 
-func isBeeNexSeedance25Channel(ch *model.Channel) bool {
+func IsBeeNexSeedanceModel(name string) bool {
+	return name == "seedance-2.0" || name == "seedance-2.5"
+}
+
+// Preserve the previously verified 2.5 marker without inferring acceptance for 2.0.
+func beeNexMaterialVerifiedAt(c beeNexAssetCredentials, name string) int64 {
+	if c.MaterialVerifiedFingerprint != beeNexControlFingerprint(c) {
+		return 0
+	}
+	if at := c.MaterialVerifiedModels[name]; at > 0 {
+		return at
+	}
+	if name == "seedance-2.5" {
+		return c.MaterialVerifiedAt
+	}
+	return 0
+}
+
+func isBeeNexSeedanceChannel(ch *model.Channel) bool {
 	if ch == nil || ch.Id != constant.BeeNexSeedanceChannelID {
 		return false
 	}
@@ -89,7 +109,7 @@ var beeNexAssetEndpoint = func(ch *model.Channel) string { return strings.TrimRi
 
 func beeNexAssetRequest(ctx context.Context, r *model.SeedanceResource, action string, payload map[string]any) (map[string]any, error) {
 	ch, err := model.GetChannelById(r.ChannelID, true)
-	if err != nil || !isBeeNexSeedance25Channel(ch) {
+	if err != nil || !isBeeNexSeedanceChannel(ch) {
 		return nil, seedanceError(503, "BeeNex media library channel is unavailable")
 	}
 	c, err := loadBeeNexAssetCredentials(r.ChannelID)
@@ -174,9 +194,11 @@ func beeNexAssetRequest(ctx context.Context, r *model.SeedanceResource, action s
 	return envelope, nil
 }
 
-func BeeNexSeedance25Capabilities() map[string]any {
+func BeeNexSeedanceCapabilities() map[string]any {
 	return map[string]any{
-		"editing":        map[string]any{"supported": false, "reason": "The verified hy model rejects duration=-1; no supported editing protocol is confirmed"},
+		"editing":        map[string]any{"supported": false, "reason": "No supported editing protocol is confirmed for this hy route"},
+		"extension":      map[string]any{"supported": false, "reason": "No distinct extension protocol is verified for this hy route"},
+		"draft":          map[string]any{"supported": false, "reason": "Draft generation and upgrade have no verified protocol for this hy route"},
 		"output_formats": []string{"mp4"},
 		"mov":            map[string]any{"supported": false, "reason": "Verified BeeNex output is MP4; no platform remux is provided"},
 		"last_frame":     map[string]any{"supported": false, "reason": "The verified task query does not return an upstream last-frame resource"},
@@ -187,7 +209,7 @@ func BeeNexSeedance25Capabilities() map[string]any {
 // Match the existing explicitly pinned admin-generation semantics without
 // enabling a disabled public ability or changing distribution configuration.
 func beeNexMaterialAdminPinned(c *gin.Context, ch *model.Channel, name string) bool {
-	if name != "seedance-2.5" || !isBeeNexSeedance25Channel(ch) || ch.Status != common.ChannelStatusEnabled || !model.IsAdmin(c.GetInt("id")) {
+	if !IsBeeNexSeedanceModel(name) || !isBeeNexSeedanceChannel(ch) || ch.Status != common.ChannelStatusEnabled || !model.IsAdmin(c.GetInt("id")) {
 		return false
 	}
 	pinned, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)

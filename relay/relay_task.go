@@ -268,7 +268,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	if resp != nil && resp.StatusCode != http.StatusOK {
 		responseBody, _ := io.ReadAll(resp.Body)
-		if info.ChannelId == constant.BeeNexSeedanceChannelID && info.OriginModelName == "seedance-2.5" {
+		if info.ChannelId == constant.BeeNexSeedanceChannelID && service.IsBeeNexSeedanceModel(info.OriginModelName) {
 			logger.LogWarn(c.Request.Context(), fmt.Sprintf("BeeNex task submit failed with HTTP %d", resp.StatusCode))
 		} else {
 			logger.LogWarn(c.Request.Context(), fmt.Sprintf("task upstream request failed with status %d: %.2048s", resp.StatusCode, string(responseBody)))
@@ -431,15 +431,19 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	if originTask.ChannelId == constant.BeeNexSeedanceChannelID && originTask.Properties.OriginModelName == "seedance-2.5" {
-		if err := service.RefreshBeeNexSeedance25Task(c.Request.Context(), originTask); err != nil {
-			logger.LogWarn(c.Request.Context(), "BeeNex task status refresh failed; retained previous state")
+	if originTask.ChannelId == constant.BeeNexSeedanceChannelID && service.IsBeeNexSeedanceModel(originTask.Properties.OriginModelName) {
+		wasTerminal := originTask.Status == model.TaskStatusSuccess || originTask.Status == model.TaskStatusFailure
+		if err := service.RefreshBeeNexSeedanceTask(c.Request.Context(), originTask); err != nil {
+			c.Header("X-Task-Status-Source", "upstream_query_failed")
+			c.Header("X-Task-Last-Persisted-At", strconv.FormatInt(originTask.UpdatedAt, 10))
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("BeeNex channel 274 task %s model %s query failed: %s", originTask.TaskID, originTask.Properties.OriginModelName, service.BeeNexTaskQueryFailureSummary(err)))
 			taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("Task status could not be refreshed; query this existing task again"), "task_query_unavailable", http.StatusBadGateway)
 			return
 		}
 		c.Header("X-Task-Status-Source", "persisted_terminal")
-		if originTask.Status != model.TaskStatusSuccess && originTask.Status != model.TaskStatusFailure {
+		if !wasTerminal {
 			c.Header("X-Task-Status-Source", "live_upstream")
+			c.Header("X-Task-Status-Checked-At", strconv.FormatInt(time.Now().Unix(), 10))
 		}
 	}
 	if err := service.SyncSeedanceUsageLog(originTask); err != nil {

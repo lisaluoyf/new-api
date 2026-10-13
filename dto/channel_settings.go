@@ -3,6 +3,8 @@ package dto
 import "fmt"
 
 type ChannelSettings struct {
+	// BeeNexQueryProtocols selects a documented read-only task API per public model.
+	BeeNexQueryProtocols map[string]string `json:"beenex_query_protocols,omitempty"`
 	// ImageResolutionModelMapping selects an upstream model by client model and resolution.
 	ImageResolutionModelMapping map[string]map[string]string `json:"image_resolution_model_mapping,omitempty"`
 	ModelGroupRatios            map[string]float64           `json:"model_group_ratios,omitempty"`

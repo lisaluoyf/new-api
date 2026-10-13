@@ -116,7 +116,7 @@ func CreateSeedanceGroup(c *gin.Context, name string, input SeedanceGroupInput) 
 	resource.Name, resource.Description = input.Name, input.Description
 	resource.GroupType = "virtual"
 	if input.Purpose != "" {
-		if resource.ChannelID != constant.VideoFeeSeedanceChannelID && !(resource.ChannelID == constant.BeeNexSeedanceChannelID && name == "seedance-2.5" && input.Purpose == "ordinary") {
+		if resource.ChannelID != constant.VideoFeeSeedanceChannelID && !(resource.ChannelID == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(name) && input.Purpose == "ordinary") {
 			return nil, seedanceError(400, "Explicit channel material purpose is unsupported on this channel", "channel_not_supported")
 		}
 		resource.GroupType = input.Purpose
@@ -293,7 +293,7 @@ func SeedanceAssetDTO(resource *model.SeedanceResource) map[string]any {
 			dto["review"] = review
 		}
 	}
-	if resource.ChannelID == constant.BeeNexSeedanceChannelID && resource.Model == "seedance-2.5" {
+	if resource.ChannelID == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(resource.Model) {
 		dto["material_purpose"] = resource.GroupType
 		dto["verification_method"] = "virtual_asset_review"
 		dto["owner_verified"] = false
@@ -511,7 +511,7 @@ func DeleteSeedanceResource(c *gin.Context, resource *model.SeedanceResource) er
 
 func seedancePublicSourceURL(resource *model.SeedanceResource) string {
 	ch, _ := model.GetChannelById(resource.ChannelID, true)
-	if isXingchiyunSeedanceChannel(ch) || (isBeeNexSeedance25Channel(ch) && resource.Model == "seedance-2.5") {
+	if isXingchiyunSeedanceChannel(ch) || (isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(resource.Model)) {
 		return seedanceGatewayPublicPreview(resource)
 	}
 	if resource.GroupType == "real_person" {
@@ -522,7 +522,7 @@ func seedancePublicSourceURL(resource *model.SeedanceResource) string {
 
 func isSeedanceActionTask(task *model.SeedanceResource) bool {
 	ch, err := model.GetChannelById(task.ChannelID, true)
-	return err == nil && (isBytePlusSeedanceChannel(ch) || isXingchiyunSeedanceChannel(ch) || (isBeeNexSeedance25Channel(ch) && task.Model == "seedance-2.5"))
+	return err == nil && (isBytePlusSeedanceChannel(ch) || isXingchiyunSeedanceChannel(ch) || (isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(task.Model)))
 }
 
 func seedanceAssetReviewFailure(asset *model.SeedanceResource, result map[string]any) string {

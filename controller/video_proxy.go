@@ -130,7 +130,7 @@ func VideoProxy(c *gin.Context) {
 	if c.GetBool("video_last_frame") {
 		videoURL = service.SeedanceLastFrameSource(task)
 		if videoURL == "" {
-			if task.ChannelId == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" {
+			if task.ChannelId == constant.BeeNexSeedanceChannelID && service.IsBeeNexSeedanceModel(task.Properties.OriginModelName) {
 				c.JSON(http.StatusNotImplemented, gin.H{"error": gin.H{"type": "unsupported_feature", "code": "last_frame_unsupported", "message": "BeeNex did not provide an upstream last-frame resource for this task"}})
 				return
 			}
@@ -162,7 +162,7 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
-	beeNex := task.ChannelId == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5"
+	beeNex := task.ChannelId == constant.BeeNexSeedanceChannelID && service.IsBeeNexSeedanceModel(task.Properties.OriginModelName)
 	fetchSetting := system_setting.GetFetchSetting()
 	if err := common.ValidateURLWithFetchSetting(videoURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
 		if beeNex {

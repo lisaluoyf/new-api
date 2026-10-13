@@ -149,17 +149,63 @@ func TestSeedance25QueryUsesSoraAndRejectsHTML(t *testing.T) {
 }
 
 func TestBeeNexUnsupportedEditAndMOVBeforeBilling(t *testing.T) {
-	for _, extra := range []string{`"duration":-1,"aspect_ratio":"adaptive","video_urls":["https://example.com/source.mp4"]`, `"duration":4,"aspect_ratio":"16:9","output_format":"mov"`} {
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest("POST", "/v1/videos", strings.NewReader(`{"model":"seedance-2.5","prompt":"edit source",`+extra+`}`))
-		c.Request.Header.Set("Content-Type", "application/json")
-		info := &relaycommon.RelayInfo{OriginModelName: "seedance-2.5", TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 274, UpstreamModelName: "doubao-seedance-2-5-260628-hy"}}
-		a := &TaskAdaptor{}
-		a.Init(info)
-		err := a.ValidateRequestAndSetAction(c, info)
-		require.NotNil(t, err)
-		require.Contains(t, err.Code, "unsupported")
-		require.Nil(t, info.Billing)
-		require.Empty(t, info.PublicTaskID)
+	for _, name := range []string{"seedance-2.0", "seedance-2.5"} {
+		for _, extra := range []string{`"duration":-1,"aspect_ratio":"adaptive","video_urls":["https://example.com/source.mp4"]`, `"duration":4,"aspect_ratio":"16:9","output_format":"mov"`, `"duration":4,"return_last_frame":true`, `"duration":4,"draft":true`} {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/v1/videos", strings.NewReader(`{"model":"`+name+`","prompt":"edit source",`+extra+`}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			info := &relaycommon.RelayInfo{OriginModelName: name, TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 274, UpstreamModelName: "doubao-seedance-2-5-260628-hy"}}
+			a := &TaskAdaptor{}
+			a.Init(info)
+			err := a.ValidateRequestAndSetAction(c, info)
+			require.NotNil(t, err)
+			require.Contains(t, err.Code, "unsupported")
+			require.Nil(t, info.Billing)
+			require.Empty(t, info.PublicTaskID)
+		}
 	}
+
+}
+
+func TestBothModelsConfiguredReadOnlyQueryAndNoRedirect(t *testing.T) {
+	service.InitHttpClient()
+	location := ""
+	wantPath := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, wantPath, r.URL.Path)
+		if location != "" {
+			w.Header().Set("Location", location)
+			w.WriteHeader(302)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"existing","status":"processing","progress":37}`)
+	}))
+	defer server.Close()
+	for _, name := range []string{"seedance-2.0", "seedance-2.5"} {
+		for _, protocol := range []string{"sora", "video_generations"} {
+			wantPath = "/v1/videos/existing"
+			if protocol == "video_generations" {
+				wantPath = "/v1/video/generations/existing"
+			}
+			a := &TaskAdaptor{}
+			resp, err := a.FetchTask(server.URL, "own-key", map[string]any{"task_id": "existing", "origin_model_name": name, "query_protocol": protocol}, "")
+			require.NoError(t, err)
+			raw, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			result, err := a.ParseTaskResult(raw)
+			require.NoError(t, err)
+			require.Equal(t, "37%", result.Progress)
+			require.Equal(t, "IN_PROGRESS", result.Status)
+		}
+	}
+	redirected := false
+	trap := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { redirected = true }))
+	defer trap.Close()
+	location = trap.URL
+	wantPath = "/v1/videos/existing"
+	_, err := (&TaskAdaptor{}).FetchTask(server.URL, "own-key", map[string]any{"task_id": "existing", "query_protocol": "sora"}, "")
+	require.ErrorContains(t, err, "HTTP 302")
+	require.False(t, redirected)
 }

@@ -379,7 +379,12 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		key = privateData.Key
 	}
 	query := map[string]any{"task_id": task.GetUpstreamTaskID(), "action": task.Action}
-	if ch.Id == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" {
+	if ch.Id == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(task.Properties.OriginModelName) {
+		protocol, err := BeeNexTaskQueryProtocol(ch, task.Properties.OriginModelName)
+		if err != nil {
+			return err
+		}
+		query["query_protocol"] = protocol
 		query["origin_model_name"] = task.Properties.OriginModelName
 		query["query_context"] = ctx
 	}
@@ -419,7 +424,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 	}
 
-	if ch.Id == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" && taskResult.TaskID != task.GetUpstreamTaskID() {
+	if ch.Id == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(task.Properties.OriginModelName) && taskResult.TaskID != task.GetUpstreamTaskID() {
 		return fmt.Errorf("BeeNex task query returned a mismatched task ID")
 	}
 
@@ -476,7 +481,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		task.Progress = taskcommon.ProgressComplete
 		if task.FinishTime == 0 {
 			task.FinishTime = now
-			if ch.Id == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" && taskResult.CompletedAt >= task.SubmitTime && taskResult.CompletedAt <= now {
+			if ch.Id == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(task.Properties.OriginModelName) && taskResult.CompletedAt >= task.SubmitTime && taskResult.CompletedAt <= now {
 				task.FinishTime = taskResult.CompletedAt
 			}
 		}
@@ -522,7 +527,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		won, err := task.UpdateWithStatus(snap.Status)
 		if err != nil {
 			logger.LogError(ctx, fmt.Sprintf("UpdateWithStatus failed for task %s: %s", task.TaskID, err.Error()))
-			if ch.Id == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" {
+			if ch.Id == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(task.Properties.OriginModelName) {
 				return err
 			}
 			shouldRefund = false

@@ -35,7 +35,7 @@ func seedanceActionRequest(ctx context.Context, resource *model.SeedanceResource
 	if err != nil || ch == nil || ch.Status != common.ChannelStatusEnabled {
 		return nil, seedanceError(503, "Media library is temporarily unavailable")
 	}
-	if isBeeNexSeedance25Channel(ch) && resource.Model == "seedance-2.5" {
+	if isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(resource.Model) {
 		return beeNexAssetRequest(ctx, resource, action, payload)
 	}
 	if !isXingchiyunSeedanceChannel(ch) {
@@ -111,7 +111,7 @@ func validXingchiyunVerificationToken(token string) bool {
 
 func seedanceGatewayPreviewData(asset *model.SeedanceResource, result map[string]any) string {
 	ch, _ := model.GetChannelById(asset.ChannelID, true)
-	if !isXingchiyunSeedanceChannel(ch) && !(isBeeNexSeedance25Channel(ch) && asset.Model == "seedance-2.5") {
+	if !isXingchiyunSeedanceChannel(ch) && !(isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(asset.Model)) {
 		return asset.ResultData
 	}
 	preview := seedanceString(result, "URL")

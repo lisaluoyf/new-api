@@ -31,7 +31,7 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 			continue
 		}
 		mode, configured, reason := "unverified", false, "Portrait support has not been verified for this integration"
-		if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" {
+		if isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(name) {
 			mode, reason = "virtual_or_ordinary", "BeeNex AIGC asset upload/review is separate from owner or live-person verification"
 			_, err := loadBeeNexAssetCredentials(ch.Id)
 			configured = err == nil
@@ -53,18 +53,31 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 			mode, reason = "virtual_or_ordinary", "Material library integration exists; this integration does not expose real-person H5 verification"
 		}
 		entry := map[string]any{"model": name, "channel_id": ch.Id, "method": mode, "configured": configured, "real_person_verified": false, "reason": reason, "hosted_callback": mode == "official_h5" && !isXingchiyunSeedanceChannel(ch), "live_acceptance": "not_tested"}
-		if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" {
+		if isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(name) {
 			if credentials, err := loadBeeNexAssetCredentials(ch.Id); err == nil {
 				entry["project_scope"] = credentials.ProjectMode
 				entry["project_name_available"] = credentials.ProjectMode == "named"
-				if credentials.MaterialVerifiedAt > 0 && credentials.MaterialVerifiedFingerprint == beeNexControlFingerprint(credentials) {
+				if at := beeNexMaterialVerifiedAt(credentials, name); at > 0 {
 					entry["live_acceptance"] = "ordinary_asset_lifecycle_verified"
-					entry["material_verified_at"] = credentials.MaterialVerifiedAt
+					entry["material_verified_at"] = at
 				}
-
+				generationReference := "not_tested"
+				if credentials.MaterialVerifiedFingerprint == beeNexControlFingerprint(credentials) && credentials.GenerationReferenceVerifiedModels[name] > 0 {
+					generationReference = "verified"
+				}
+				entry["material_capabilities"] = map[string]any{
+					"ordinary_or_virtual": true, "upstream_group_type": "AIGC",
+					"upload": true, "review": true, "preview": true, "crud": true,
+					"generation_reference_acceptance": generationReference,
+					"official_h5":                     false, "liveness": false,
+				}
 			}
-			entry["generation_capabilities"] = BeeNexSeedance25Capabilities()
+			entry["generation_capabilities"] = BeeNexSeedanceCapabilities()
 			entry["generation_route_enabled"] = seedanceChannelAllowed(c, ch, name)
+			protocol, err := BeeNexTaskQueryProtocol(ch, name)
+			if err == nil {
+				entry["task_query_protocol"] = protocol
+			}
 		}
 		result = append(result, entry)
 	}

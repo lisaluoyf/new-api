@@ -125,7 +125,7 @@ func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability fun
 		if capability != nil && !capability(ch) {
 			return false
 		}
-		if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" {
+		if isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(name) {
 			credentials, err := loadBeeNexAssetCredentials(ch.Id)
 			_, pinned := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 			autoEnabled := credentials.AutoRouteEnabled != nil && *credentials.AutoRouteEnabled
@@ -151,7 +151,7 @@ func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability fun
 				return nil, credentialErr
 			}
 		}
-		if err == nil && isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" && seedanceLibraryChannelAllowed(c, ch, name) {
+		if err == nil && isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(name) && seedanceLibraryChannelAllowed(c, ch, name) {
 			if _, e := loadBeeNexAssetCredentials(ch.Id); e != nil {
 				return nil, e
 			}
@@ -177,7 +177,7 @@ func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability fun
 		}
 		resource.ProjectName, resource.CredentialFingerprint = credentials.ProjectName, seedanceControlFingerprint(credentials)
 	}
-	if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" {
+	if isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(name) {
 		credentials, e := loadBeeNexAssetCredentials(ch.Id)
 		if e != nil {
 			return nil, e
@@ -196,7 +196,7 @@ func seedanceProviderRequest(ctx context.Context, resource *model.SeedanceResour
 	if err != nil {
 		return nil, err
 	}
-	if isBytePlusSeedanceChannel(ch) || isXingchiyunSeedanceChannel(ch) || (isBeeNexSeedance25Channel(ch) && resource.Model == "seedance-2.5") {
+	if isBytePlusSeedanceChannel(ch) || isXingchiyunSeedanceChannel(ch) || (isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(resource.Model)) {
 		return bytePlusLibraryRequest(ctx, resource, method, path, payload)
 	}
 	if ch.Id == constant.VideoFeeSeedanceChannelID {

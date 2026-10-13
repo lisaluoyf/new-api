@@ -26,11 +26,17 @@ func (f seedancePreviewTransport) RoundTrip(r *http.Request) (*http.Response, er
 
 func TestSeedanceAssetPreviewOwnershipRefreshAndNoSourceFallback(t *testing.T) {
 	for _, provider := range []string{"xingchiyun", "beenex"} {
-		t.Run(provider, func(t *testing.T) { testSeedanceAssetPreviewProvider(t, provider) })
+		names := []string{"seedance-2.5"}
+		if provider == "beenex" {
+			names = append(names, "seedance-2.0")
+		}
+		for _, name := range names {
+			t.Run(provider+"/"+name, func(t *testing.T) { testSeedanceAssetPreviewProvider(t, provider, name) })
+		}
 	}
 }
 
-func testSeedanceAssetPreviewProvider(t *testing.T, provider string) {
+func testSeedanceAssetPreviewProvider(t *testing.T, provider, name string) {
 	oldDB, oldMemory, oldTransport := model.DB, common.MemoryCacheEnabled, http.DefaultTransport
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -56,7 +62,7 @@ func testSeedanceAssetPreviewProvider(t *testing.T, provider string) {
 	}
 
 	require.NoError(t, db.Create(&model.Channel{Id: channelID, Type: channelType, Status: 1, Key: "private-key", BaseURL: &base}).Error)
-	asset := model.SeedanceResource{ID: "asset_public", UserID: 1, Kind: "asset", ChannelID: channelID, CredentialFingerprint: fingerprint, Model: "seedance-2.5", AssetType: "Image", KeyFingerprint: service.SeedanceKeyFingerprint("private-key"), UpstreamID: "asset-private", Status: "Active", SourceURL: "https://input.example/original.jpg"}
+	asset := model.SeedanceResource{ID: "asset_public", UserID: 1, Kind: "asset", ChannelID: channelID, CredentialFingerprint: fingerprint, Model: name, AssetType: "Image", KeyFingerprint: service.SeedanceKeyFingerprint("private-key"), UpstreamID: "asset-private", Status: "Active", SourceURL: "https://input.example/original.jpg"}
 	require.NoError(t, db.Create(&asset).Error)
 	hits, available, html := 0, true, false
 	http.DefaultTransport = seedancePreviewTransport(func(r *http.Request) (*http.Response, error) {
