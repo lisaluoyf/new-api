@@ -255,6 +255,7 @@ func listEpayStatement(ctx context.Context, start time.Time) ([]StatementPayment
 			Status   string `json:"status"`
 			Amount   string `json:"amount"`
 			Currency string `json:"currency"`
+			Site     string `json:"site"`
 		} `json:"payments"`
 	}
 	if err = verifiedEpayJSON(req, &response); err != nil {
@@ -265,6 +266,12 @@ func listEpayStatement(ctx context.Context, start time.Time) ([]StatementPayment
 	}
 	out := []StatementPayment{}
 	for _, p := range response.Payments {
+		// The shared gateway attributes ownership only after matching the
+		// official receipt to its stored transaction and callback destinations.
+		// Legacy/unattributed receipts remain visible for missing-order checks.
+		if p.Site == "romaapi" {
+			continue
+		}
 		out = append(out, StatementPayment{ID: p.ID, TradeNo: p.Trade, Status: p.Status, Amount: p.Amount, Currency: p.Currency})
 	}
 	if !response.Complete {
