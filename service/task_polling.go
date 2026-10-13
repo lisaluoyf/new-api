@@ -378,10 +378,12 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if privateData.Key != "" {
 		key = privateData.Key
 	}
-	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
-		"task_id": task.GetUpstreamTaskID(),
-		"action":  task.Action,
-	}, proxy)
+	query := map[string]any{"task_id": task.GetUpstreamTaskID(), "action": task.Action}
+	if ch.Id == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" {
+		query["origin_model_name"] = task.Properties.OriginModelName
+		query["query_context"] = ctx
+	}
+	resp, err := adaptor.FetchTask(baseURL, key, query, proxy)
 	if err != nil {
 		return fmt.Errorf("fetchTask failed for task %s: %w", taskId, err)
 	}
@@ -391,7 +393,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
 	}
 
-	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask response: %s", string(responseBody)))
+	if ch.Id != constant.BeeNexSeedanceChannelID {
+		logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask response: %s", string(responseBody)))
+	}
 
 	snap := task.Snapshot()
 
@@ -415,6 +419,10 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 	}
 
+	if ch.Id == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" && taskResult.TaskID != task.GetUpstreamTaskID() {
+		return fmt.Errorf("BeeNex task query returned a mismatched task ID")
+	}
+
 	task.Data = preserveTaskUpstreamCost(
 		task.Platform,
 		taskResult.Status,
@@ -422,7 +430,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		redactVideoResponseBody(responseBody),
 	)
 
-	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask taskResult: %+v", taskResult))
+	if ch.Id != constant.BeeNexSeedanceChannelID {
+		logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask taskResult: %+v", taskResult))
+	}
 
 	now := time.Now().Unix()
 	if taskResult.Status == "" {
@@ -466,6 +476,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		task.Progress = taskcommon.ProgressComplete
 		if task.FinishTime == 0 {
 			task.FinishTime = now
+			if ch.Id == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" && taskResult.CompletedAt >= task.SubmitTime && taskResult.CompletedAt <= now {
+				task.FinishTime = taskResult.CompletedAt
+			}
 		}
 		if strings.HasPrefix(taskResult.Url, "data:") {
 			// data: URI (e.g. Vertex base64 encoded video) — keep in Data, not in ResultURL
@@ -478,14 +491,20 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		}
 		shouldSettle = true
 	case model.TaskStatusFailure:
-		logger.LogJson(ctx, fmt.Sprintf("Task %s failed", taskId), task)
+		if ch.Id != constant.BeeNexSeedanceChannelID {
+			logger.LogJson(ctx, fmt.Sprintf("Task %s failed", taskId), task)
+		}
 		task.Status = model.TaskStatusFailure
 		task.Progress = taskcommon.ProgressComplete
 		if task.FinishTime == 0 {
 			task.FinishTime = now
 		}
 		task.FailReason = taskResult.Reason
-		logger.LogInfo(ctx, fmt.Sprintf("Task %s failed: %s", task.TaskID, task.FailReason))
+		if ch.Id == constant.BeeNexSeedanceChannelID {
+			logger.LogInfo(ctx, fmt.Sprintf("BeeNex task %s failed", task.TaskID))
+		} else {
+			logger.LogInfo(ctx, fmt.Sprintf("Task %s failed: %s", task.TaskID, task.FailReason))
+		}
 		taskResult.Progress = taskcommon.ProgressComplete
 		if quota != 0 {
 			shouldRefund = true
@@ -503,6 +522,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		won, err := task.UpdateWithStatus(snap.Status)
 		if err != nil {
 			logger.LogError(ctx, fmt.Sprintf("UpdateWithStatus failed for task %s: %s", task.TaskID, err.Error()))
+			if ch.Id == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" {
+				return err
+			}
 			shouldRefund = false
 			shouldSettle = false
 		} else if !won {

@@ -1,7 +1,9 @@
 package beenex
 
 import (
+	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -9,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -104,4 +107,59 @@ func TestPublicAliasesAndConflict(t *testing.T) {
 	}
 	_, err := contentPayload(map[string]any{"duration": float64(4), "content": []any{}, "video_urls": []any{"https://example.com/ref.mp4"}})
 	require.Error(t, err)
+}
+
+func TestSeedance25QueryUsesSoraAndRejectsHTML(t *testing.T) {
+	service.InitHttpClient()
+	calls := 0
+	status := 200
+	contentType := "application/json"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		require.Equal(t, "GET", r.Method)
+		require.Equal(t, "/v1/videos/task_existing", r.URL.Path)
+		require.Equal(t, "Bearer own-key", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(status)
+		if status == 200 {
+			fmt.Fprint(w, `{"id":"task_existing","status":"completed","progress":100,"completed_at":1791873949,"metadata":{"url":"https://cdn.example/video.mp4"}}`)
+		} else {
+			fmt.Fprint(w, "<html>alb</html>")
+		}
+	}))
+	defer server.Close()
+	a := &TaskAdaptor{}
+	resp, err := a.FetchTask(server.URL, "own-key", map[string]any{"task_id": "task_existing", "origin_model_name": "seedance-2.5"}, "")
+	require.NoError(t, err)
+	raw, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	require.NoError(t, err)
+	result, err := a.ParseTaskResult(raw)
+	require.NoError(t, err)
+	require.Equal(t, "SUCCESS", result.Status)
+	require.Equal(t, "100%", result.Progress)
+	require.EqualValues(t, 1791873949, result.CompletedAt)
+	require.Equal(t, "https://cdn.example/video.mp4", result.Url)
+	status = 502
+	contentType = "text/html"
+	_, err = a.FetchTask(server.URL, "own-key", map[string]any{"task_id": "task_existing", "origin_model_name": "seedance-2.5"}, "")
+	require.ErrorContains(t, err, "HTTP 502")
+	require.NotContains(t, err.Error(), "own-key")
+	require.Equal(t, 2, calls)
+}
+
+func TestBeeNexUnsupportedEditAndMOVBeforeBilling(t *testing.T) {
+	for _, extra := range []string{`"duration":-1,"aspect_ratio":"adaptive","video_urls":["https://example.com/source.mp4"]`, `"duration":4,"aspect_ratio":"16:9","output_format":"mov"`} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/v1/videos", strings.NewReader(`{"model":"seedance-2.5","prompt":"edit source",`+extra+`}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		info := &relaycommon.RelayInfo{OriginModelName: "seedance-2.5", TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 274, UpstreamModelName: "doubao-seedance-2-5-260628-hy"}}
+		a := &TaskAdaptor{}
+		a.Init(info)
+		err := a.ValidateRequestAndSetAction(c, info)
+		require.NotNil(t, err)
+		require.Contains(t, err.Code, "unsupported")
+		require.Nil(t, info.Billing)
+		require.Empty(t, info.PublicTaskID)
+	}
 }

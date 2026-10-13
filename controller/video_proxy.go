@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -129,6 +130,10 @@ func VideoProxy(c *gin.Context) {
 	if c.GetBool("video_last_frame") {
 		videoURL = service.SeedanceLastFrameSource(task)
 		if videoURL == "" {
+			if task.ChannelId == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" {
+				c.JSON(http.StatusNotImplemented, gin.H{"error": gin.H{"type": "unsupported_feature", "code": "last_frame_unsupported", "message": "BeeNex did not provide an upstream last-frame resource for this task"}})
+				return
+			}
 			videoProxyError(c, 404, "invalid_request_error", "Last frame is not available for this task")
 			return
 		}
@@ -157,30 +162,47 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
+	beeNex := task.ChannelId == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5"
 	fetchSetting := system_setting.GetFetchSetting()
 	if err := common.ValidateURLWithFetchSetting(videoURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Video URL blocked for task %s: %v", taskID, err))
+		if beeNex {
+			logger.LogError(c.Request.Context(), "BeeNex media delivery failed; source URL redacted")
+		} else {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Video URL blocked for task %s: %v", taskID, err))
+		}
 		videoProxyError(c, http.StatusForbidden, "server_error", "Video source is unavailable")
 		return
 	}
 
 	req.URL, err = url.Parse(videoURL)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to parse URL %s: %s", videoURL, err.Error()))
+		if beeNex {
+			logger.LogError(c.Request.Context(), "BeeNex media delivery failed; source URL redacted")
+		} else {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to parse URL %s: %s", videoURL, err.Error()))
+		}
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy request")
 		return
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to fetch video from %s: %s", videoURL, err.Error()))
+		if beeNex {
+			logger.LogError(c.Request.Context(), "BeeNex media delivery failed; source URL redacted")
+		} else {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to fetch video from %s: %s", videoURL, err.Error()))
+		}
 		videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to fetch video content")
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Upstream returned status %d for %s", resp.StatusCode, videoURL))
+		if beeNex {
+			logger.LogError(c.Request.Context(), "BeeNex media delivery failed; source URL redacted")
+		} else {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Upstream returned status %d for %s", resp.StatusCode, videoURL))
+		}
 		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusGone {
 			videoProxyError(c, http.StatusGone, "invalid_request_error",
 				"Media has expired or is no longer available")
@@ -190,6 +212,23 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
+	if beeNex && !c.GetBool("video_last_frame") {
+		// Confirm the actual ISO-BMFF MP4 header; do not relabel MP4 as MOV.
+		prefix := make([]byte, 32)
+		n, readErr := io.ReadFull(resp.Body, prefix)
+		brand := string(prefix[8:12])
+		mp4Brand := brand == "isom" || brand == "iso2" || brand == "iso4" || brand == "iso5" || brand == "iso6" || brand == "mp41" || brand == "mp42" || brand == "avc1" || brand == "dash" || brand == "M4V "
+		if readErr != nil || n < 16 || string(prefix[4:8]) != "ftyp" || !mp4Brand {
+			videoProxyError(c, http.StatusBadGateway, "unsupported_output_format", "BeeNex returned an unverified video container")
+			return
+		}
+		resp.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(prefix[:n]), resp.Body), resp.Body}
+		resp.Header.Set("Content-Type", "video/mp4")
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", task.TaskID+".mp4"))
+	}
 	copySafeVideoHeaders(c.Writer.Header(), resp.Header)
 
 	c.Writer.Header().Set("Cache-Control", "private, no-store")

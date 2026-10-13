@@ -268,7 +268,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	if resp != nil && resp.StatusCode != http.StatusOK {
 		responseBody, _ := io.ReadAll(resp.Body)
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("task upstream request failed with status %d: %.2048s", resp.StatusCode, string(responseBody)))
+		if info.ChannelId == constant.BeeNexSeedanceChannelID && info.OriginModelName == "seedance-2.5" {
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("BeeNex task submit failed with HTTP %d", resp.StatusCode))
+		} else {
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("task upstream request failed with status %d: %.2048s", resp.StatusCode, string(responseBody)))
+		}
 		_ = resp.Body.Close()
 		return nil, service.PublicVideoSubmitError(resp.StatusCode, responseBody, common.GetContextKeyString(c, constant.ContextKeyChannelKey), info.ChannelId)
 	}
@@ -427,6 +431,17 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
+	if originTask.ChannelId == constant.BeeNexSeedanceChannelID && originTask.Properties.OriginModelName == "seedance-2.5" {
+		if err := service.RefreshBeeNexSeedance25Task(c.Request.Context(), originTask); err != nil {
+			logger.LogWarn(c.Request.Context(), "BeeNex task status refresh failed; retained previous state")
+			taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("Task status could not be refreshed; query this existing task again"), "task_query_unavailable", http.StatusBadGateway)
+			return
+		}
+		c.Header("X-Task-Status-Source", "persisted_terminal")
+		if originTask.Status != model.TaskStatusSuccess && originTask.Status != model.TaskStatusFailure {
+			c.Header("X-Task-Status-Source", "live_upstream")
+		}
+	}
 	if err := service.SyncSeedanceUsageLog(originTask); err != nil {
 		logger.LogWarn(c.Request.Context(), "Unable to backfill video usage log")
 	}

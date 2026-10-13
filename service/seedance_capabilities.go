@@ -24,14 +24,21 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 	}
 	result := []map[string]any{}
 	for _, ch := range channels {
-		if !seedanceChannelAllowed(c, ch, name) {
+		if !seedanceLibraryChannelAllowed(c, ch, name) {
 			continue
 		}
 		if specified, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok && specified != strconv.Itoa(ch.Id) {
 			continue
 		}
 		mode, configured, reason := "unverified", false, "Portrait support has not been verified for this integration"
-		if isBytePlusSeedanceChannel(ch) {
+		if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" {
+			mode, reason = "virtual_or_ordinary", "BeeNex AIGC asset upload/review is separate from owner or live-person verification"
+			_, err := loadBeeNexAssetCredentials(ch.Id)
+			configured = err == nil
+			if !configured {
+				reason = "Separate BeeNex asset signing credentials, region and project are not configured"
+			}
+		} else if isBytePlusSeedanceChannel(ch) {
 			mode, reason = "official_h5", "Account entitlement requires upstream confirmation"
 			_, err := loadBytePlusAssetCredentials(ch.Id)
 			configured = err == nil
@@ -45,7 +52,12 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 		} else if u, e := url.Parse(ch.GetBaseURL()); e == nil && (u.Hostname() == "apimart.ai" || strings.HasSuffix(u.Hostname(), ".apimart.ai") || u.Hostname() == "apib.ai" || strings.HasSuffix(u.Hostname(), ".apib.ai")) {
 			mode, reason = "virtual_or_ordinary", "Material library integration exists; this integration does not expose real-person H5 verification"
 		}
-		result = append(result, map[string]any{"model": name, "channel_id": ch.Id, "method": mode, "configured": configured, "real_person_verified": false, "reason": reason, "hosted_callback": mode == "official_h5" && !isXingchiyunSeedanceChannel(ch), "live_acceptance": "not_tested"})
+		entry := map[string]any{"model": name, "channel_id": ch.Id, "method": mode, "configured": configured, "real_person_verified": false, "reason": reason, "hosted_callback": mode == "official_h5" && !isXingchiyunSeedanceChannel(ch), "live_acceptance": "not_tested"}
+		if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" {
+			entry["generation_capabilities"] = BeeNexSeedance25Capabilities()
+			entry["generation_route_enabled"] = seedanceChannelAllowed(c, ch, name)
+		}
+		result = append(result, entry)
 	}
 	return result, nil
 }

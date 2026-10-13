@@ -48,6 +48,12 @@ func AddSeedanceResultFields(task *model.Task, out map[string]any) {
 	if task.FinishTime >= task.SubmitTime && task.SubmitTime > 0 {
 		out["actual_time"] = task.FinishTime - task.SubmitTime
 	}
+	if task.ChannelId == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5" {
+		out["delivery_capabilities"] = BeeNexSeedance25Capabilities()
+		out["requested_output_format"] = task.PrivateData.SeedanceRequest["output_format"]
+		out["output_format"] = "mp4"
+		out["seed_verification"] = "unavailable"
+	}
 	if tokens, ok := SeedanceCompletionTokens(task); ok {
 		out["usage"] = map[string]any{"completion_tokens": tokens}
 	}
@@ -79,7 +85,7 @@ func SeedanceCompatibleTaskResponse(task *model.Task) map[string]any {
 		status = "queued"
 	}
 	format := "mp4"
-	if task.PrivateData.SeedanceRequest["output_format"] == "mov" {
+	if task.PrivateData.SeedanceRequest["output_format"] == "mov" && !(task.ChannelId == constant.BeeNexSeedanceChannelID && task.Properties.OriginModelName == "seedance-2.5") {
 		format = "mov"
 	}
 	out := map[string]any{"error": nil, "format": format, "metadata": nil, "status": status, "task_id": task.TaskID, "url": ""}

@@ -2,6 +2,7 @@ package beenex
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -52,6 +53,14 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	var fields map[string]any
 	if err = common.Unmarshal(raw, &fields); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	if info.ChannelId == 274 && info.OriginModelName == "seedance-2.5" {
+		if fields["output_format"] == "mov" {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("BeeNex Seedance 2.5 currently delivers MP4; MOV and platform remux are unsupported"), "unsupported_output_format", http.StatusBadRequest)
+		}
+		if fields["duration"] == float64(-1) || fields["auto_duration"] == true || fields["draft_task_id"] != nil || fields["omni_reference_task_type"] == "edit" {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("BeeNex Seedance 2.5 editing and draft upgrade are unsupported by the verified hy protocol"), "unsupported_editing", http.StatusBadRequest)
+		}
 	}
 	// Validate the conversion before wallet reservation, preserving explicit
 	// false/zero options through maps rather than omitempty scalar fields.
@@ -243,18 +252,49 @@ func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy 
 	if !ok || id == "" {
 		return nil, fmt.Errorf("invalid task ID")
 	}
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/video/generations/"+url.PathEscape(id), nil)
+	path := "/v1/video/generations/"
+	confirmedSora := body["origin_model_name"] == "seedance-2.5"
+	if confirmedSora {
+		path = "/v1/videos/"
+	}
+	ctx, _ := body["query_context"].(context.Context)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	// The response body remains live for the caller, so cancellation is tied to Close.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+path+url.PathEscape(id), nil)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Accept", "application/json")
 	client, err := service.GetHttpClientWithProxy(proxy)
-	if err != nil {
-		return nil, err
+	if err != nil || client == nil {
+		cancel()
+		return nil, fmt.Errorf("BeeNex query HTTP client unavailable")
 	}
-	return client.Do(req)
+	response, err := client.Do(req)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("BeeNex task query transport unavailable")
+	}
+	if confirmedSora && (response.StatusCode != http.StatusOK || !strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "json")) {
+		response.Body.Close()
+		cancel()
+		return nil, fmt.Errorf("BeeNex task query failed: HTTP %d; expected JSON", response.StatusCode)
+	}
+	response.Body = queryResponseBody{ReadCloser: response.Body, cancel: cancel}
+	return response, nil
 }
+
+type queryResponseBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (r queryResponseBody) Close() error { defer r.cancel(); return r.ReadCloser.Close() }
 func (a *TaskAdaptor) ParseTaskResult(raw []byte) (*relaycommon.TaskInfo, error) {
 	if !gjson.ValidBytes(raw) {
 		return nil, fmt.Errorf("invalid BeeNex task response")
@@ -263,7 +303,7 @@ func (a *TaskAdaptor) ParseTaskResult(raw []byte) (*relaycommon.TaskInfo, error)
 	if nested := data.Get("data"); nested.IsObject() {
 		data = nested
 	}
-	result := &relaycommon.TaskInfo{TaskID: data.Get("task_id").String(), Progress: data.Get("progress").String()}
+	result := &relaycommon.TaskInfo{TaskID: data.Get("task_id").String(), Progress: data.Get("progress").String(), CompletedAt: data.Get("completed_at").Int()}
 	if result.TaskID == "" {
 		result.TaskID = data.Get("id").String()
 	}
@@ -340,6 +380,13 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	video.CreatedAt = task.CreatedAt
 	video.CompletedAt = task.FinishTime
 	video.SetProgressStr(task.Progress)
+	if task.ChannelId == 274 && task.Properties.OriginModelName == "seedance-2.5" {
+		video.SetMetadata("delivery_capabilities", service.BeeNexSeedance25Capabilities())
+		video.SetMetadata("requested_output_format", task.PrivateData.SeedanceRequest["output_format"])
+		video.SetMetadata("output_format", "mp4")
+		video.SetMetadata("seed_verification", "unavailable")
+	}
+
 	if task.Status == model.TaskStatusSuccess {
 		video.SetMetadata("url", taskcommon.BuildProxyURL(task.TaskID))
 	}

@@ -35,6 +35,9 @@ func seedanceActionRequest(ctx context.Context, resource *model.SeedanceResource
 	if err != nil || ch == nil || ch.Status != common.ChannelStatusEnabled {
 		return nil, seedanceError(503, "Media library is temporarily unavailable")
 	}
+	if isBeeNexSeedance25Channel(ch) && resource.Model == "seedance-2.5" {
+		return beeNexAssetRequest(ctx, resource, action, payload)
+	}
 	if !isXingchiyunSeedanceChannel(ch) {
 		return bytePlusAssetRequest(ctx, resource, action, payload)
 	}

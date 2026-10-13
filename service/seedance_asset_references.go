@@ -94,7 +94,7 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 		return nil, err
 	}
 	ch, err := model.GetChannelById(pinned.ChannelID, true)
-	if err != nil || !seedanceChannelAllowed(c, ch, name) {
+	if err != nil || !seedanceLibraryChannelAllowed(c, ch, name) {
 		return nil, seedanceError(503, "Media library is temporarily unavailable")
 	}
 	if _, _, err := SeedanceResourceKey(ch, pinned.KeyFingerprint); err != nil {
@@ -104,6 +104,12 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 		credentials, e := loadBytePlusAssetCredentials(ch.Id)
 		if e != nil || credentials.ProjectName != pinned.ProjectName || seedanceControlFingerprint(credentials) != pinned.CredentialFingerprint {
 			return nil, seedanceError(409, "Asset account or project is incompatible with this route")
+		}
+	}
+	if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" && pinned.ProjectName != "" {
+		credentials, e := loadBeeNexAssetCredentials(ch.Id)
+		if e != nil || credentials.ProjectName != pinned.ProjectName || seedanceControlFingerprint(credentials.bytePlusAssetCredentials) != pinned.CredentialFingerprint {
+			return nil, seedanceError(409, "BeeNex asset account or project changed", "asset_context_incompatible")
 		}
 	}
 	c.Set("seedance_public_asset_urls", publicURLs)
