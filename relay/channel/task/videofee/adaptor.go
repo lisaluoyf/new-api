@@ -236,6 +236,11 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			return nil, err
 		}
 	}
+	if _, explicit := out["callback_url"]; !explicit {
+		if callback := service.VideoFeeWebhookURL(info.ChannelId); callback != "" {
+			out["callback_url"] = callback
+		}
+	}
 	out["model"] = info.UpstreamModelName
 	if _, ok := out["duration"]; !ok && !upgrade {
 		req, e := relaycommon.GetTaskRequest(c)

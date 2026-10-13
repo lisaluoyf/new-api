@@ -69,6 +69,9 @@ func ProcessMediaTaskWebhook(ctx context.Context, body []byte) error {
 	if !exists || task == nil {
 		return fmt.Errorf("media task %s not found", payload.ID)
 	}
+	if task.ChannelId == constant.VideoFeeSeedanceChannelID {
+		return fmt.Errorf("VideoFee callbacks require provider signature endpoint")
+	}
 	if task.PrivateData.Webhook != nil {
 		valid, _ := ctx.Value(TaskWebhookContextKey).(bool)
 		if !valid {

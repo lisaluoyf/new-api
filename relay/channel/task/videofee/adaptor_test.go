@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -180,4 +181,34 @@ func TestRelativeResultURLUsesProviderBase(t *testing.T) {
 	require.Equal(t, "https://seedance2026.vip/v1/videos/provider-id/content", r.Url)
 	_, err = (&TaskAdaptor{}).ParseTaskResult([]byte(`{"data":{"status":"SUCCESS","result_url":"/v1/videos/id/content"}}`))
 	require.Error(t, err)
+}
+
+func TestAutomaticCallbackAndLegacyOverride(t *testing.T) {
+	old := system_setting.ServerAddress
+	system_setting.ServerAddress = "https://apimaster.ai"
+	t.Cleanup(func() { system_setting.ServerAddress = old })
+	for _, tc := range []struct{ extra, want string }{
+		{"", "https://apimaster.ai/api/tasks/videofee/callback"},
+		{`,"callback_url":"https://customer.example/cb"`, "https://customer.example/cb"},
+		{`,"webhook":"https://customer.example/legacy"`, "https://customer.example/legacy"},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/v1/videos", strings.NewReader(`{"model":"seedance-2.5","prompt":"boat","duration":5,"aspect_ratio":"16:9"`+tc.extra+`}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		a := &TaskAdaptor{}
+		info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 273, ChannelBaseUrl: "https://seedance2026.vip", UpstreamModelName: "doubao-seedance-2-5"}}
+		a.Init(info)
+		require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+		body, err := a.BuildRequestBody(c, info)
+		require.NoError(t, err)
+		raw, err := io.ReadAll(body)
+		require.NoError(t, err)
+		var out map[string]any
+		require.NoError(t, common.Unmarshal(raw, &out))
+		require.Equal(t, tc.want, out["callback_url"])
+		require.NotContains(t, out, "webhook")
+	}
+	t.Setenv("VIDEOFEE_WEBHOOK_ENABLED", "false")
+	require.Empty(t, service.VideoFeeWebhookURL(273))
+	require.Empty(t, service.VideoFeeWebhookURL(272))
 }

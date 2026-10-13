@@ -80,6 +80,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/payment/clink/webhook", controller.ClinkWebhook)
 		apiRouter.POST("/nowpayments/webhook", controller.NowPaymentsWebhook)
 		apiRouter.POST("/tasks/callback", controller.MediaTaskCallback)
+		apiRouter.POST("/tasks/videofee/callback", controller.VideoFeeTaskCallback)
 		apiRouter.POST("/tasks/imagine/:token/callback", controller.ImagineCallback)
 		apiRouter.GET("/tasks/imagine/stats", middleware.AdminAuth(), controller.ImagineSpeedStats)
 

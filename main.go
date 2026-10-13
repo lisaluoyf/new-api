@@ -179,6 +179,8 @@ func main() {
 		return a
 	}
 
+	service.StartVideoFeeWebhookWorker()
+
 	// Channel upstream model update check task
 	controller.StartChannelUpstreamModelUpdateTask()
 

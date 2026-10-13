@@ -1157,3 +1157,16 @@ none：0
 - `api` 和 `pricing` 是同一个来源层级的不同命名：底层 `channel_model_pricings.pricing_source` 多数存 `api`，业务审计口径叫 `pricing`。统计时必须归一，否则会把 pricing 行误算成 `none`。
 - `global` 不是错误。之前曾按"触发 global 就不对"理解过重，最终用户确认：官方渠道可以用官方原价兜底，只有最终价格字段缺失才报警。
 - `/api/pricing` 和 OpenRouter 可能只给输入/输出/缓存读，缺缓存写。对 LLM 记账而言写缓存不能为 0，应该按官方四件套比例补齐。
+
+## 渠道 273 VideoFee 任务回调（2026-10-13）
+
+上游接入文档新版第 11.1 节已提供公网 `callback_url`、团队 HMAC-SHA256 验签密钥和 24 小时持久化重试：
+https://www.seedance2026.vip/assets/%E7%A7%BB%E5%8A%A8%E6%9C%80%E6%96%B0%E8%AE%A1%E8%B4%B9SD2%20API%20%E6%8E%A5%E5%85%A5%E8%AF%B4%E6%98%8E-1243f4ee2aaa.md
+
+渠道 273 新提交任务在未显式指定旧式客户回调时，自动设置 APIMaster 的 `/api/tasks/videofee/callback`。接收端通过任务保存的上游凭据获取团队验签密钥，按原始正文验证 `timestamp.event_id.body`，拒绝超出五分钟的请求；验签密钥不使用客户 Key、不写入 Git 或日志。密钥短暂保存在进程内存，签名不匹配时重新获取以适应轮换。
+
+接收端先把已验签事件写入 `video_fee_webhook_inboxes` 后 ACK，按事件 ID 持久化去重。主 worker 每秒扫描收件箱，使用原 VideoFee 解析器及统一任务终态 CAS、结算、客户通知和 SD 检测路径；失败重试、过期租约可恢复，已处理事件至少保留八天。旧通用无签名回调不能更新渠道 273。
+
+现有轮询继续兜底，先到的合法终态通过 CAS 生效，后到的结果不会重复结算或退款。已有任务仍按原流程查询；回调仅随新提交任务登记。`VIDEOFEE_WEBHOOK_ENABLED=false` 可关闭新任务自动登记，已登记事件继续处理。显式传入的旧 `webhook` / `callback_url` 保持原语义。
+
+验证覆盖原始正文篡改、时间窗、错误签名、事件与任务绑定、重复投递、过期租约恢复、成功/失败/取消及单次退款和单次 SD 入队。上游验签密钥接口已在生产核查 HTTP 200；最终上线结果记录在主仓 `artifacts/channel273-webhook-20261013/`。
