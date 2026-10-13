@@ -55,6 +55,9 @@ func loadBeeNexAssetCredentials(channelID int) (beeNexAssetCredentials, error) {
 	if err != nil || common.Unmarshal(raw, &c) != nil || c.AccessKeyID == "" || c.SecretAccessKey == "" || c.Region == "" || c.ProjectName == "" {
 		return c, seedanceError(503, "BeeNex asset account, region and project must be explicitly configured", "credentials_not_configured")
 	}
+	if c.Region != "cn-beijing" {
+		return c, seedanceError(503, "BeeNex asset signing requires the documented cn-beijing region", "credentials_not_configured")
+	}
 	if c.SigningHost != "" && (strings.ContainsAny(c.SigningHost, "/\\?\r\n@ ") || len(c.SigningHost) > 255) {
 		return c, seedanceError(503, "BeeNex canonical host configuration is invalid", "credentials_not_configured")
 	}
@@ -80,7 +83,7 @@ func beeNexAssetRequest(ctx context.Context, r *model.SeedanceResource, action s
 	for k, v := range payload {
 		fields[k] = v
 	}
-	fields["ProjectName"] = c.ProjectName
+	// BeeNex documents project as a response/account context, not a request field.
 	raw, err := common.Marshal(fields)
 	if err != nil {
 		return nil, err
@@ -122,6 +125,27 @@ func beeNexAssetRequest(ctx context.Context, r *model.SeedanceResource, action s
 	metadata, _ := envelope["ResponseMetadata"].(map[string]any)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || metadata["Error"] != nil || envelope["error"] != nil {
 		return nil, seedanceError(502, fmt.Sprintf("BeeNex asset operation %s could not be confirmed; query existing resources before retrying", action))
+	}
+	result, _ := envelope["Result"].(map[string]any)
+	checkProject := func(item map[string]any) error {
+		if project, _ := item["ProjectName"].(string); project != c.ProjectName {
+			return seedanceError(409, "BeeNex returned an incompatible asset project", "asset_context_incompatible")
+		}
+		return nil
+	}
+	if action == "GetAsset" || action == "GetAssetGroup" {
+		if err := checkProject(result); err != nil {
+			return nil, err
+		}
+	}
+	if action == "ListAssets" || action == "ListAssetGroups" {
+		items, _ := result["Items"].([]any)
+		for _, item := range items {
+			resource, _ := item.(map[string]any)
+			if err := checkProject(resource); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return envelope, nil
 }
