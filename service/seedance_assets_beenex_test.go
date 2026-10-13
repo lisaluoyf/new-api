@@ -92,7 +92,7 @@ func testBeeNexAssetOwnedScope(t *testing.T, scope string) {
 			if phase == 2 {
 				project = "different-project"
 			}
-			fmt.Fprintf(w, `{"Result":{"Id":"bee-asset","Status":%q,"ProjectName":%s}}`, status, func() []byte { b, _ := common.Marshal(project); return b }())
+			fmt.Fprintf(w, `{"Result":{"Id":"bee-asset","Status":%q,"URL":"https://media.example/own.jpg?X-Tos-Signature=private","ProjectName":%s}}`, status, func() []byte { b, _ := common.Marshal(project); return b }())
 		case "ListAssets":
 			fmt.Fprintf(w, `{"Result":{"Items":[{"Id":"bee-asset","Status":"Active","ProjectName":%s}]}}`, func() []byte { b, _ := common.Marshal(upstreamProject); return b }())
 		default:
@@ -132,6 +132,10 @@ func testBeeNexAssetOwnedScope(t *testing.T, scope string) {
 	require.Len(t, assets, 1)
 	asset := assets[0]
 	require.Equal(t, "Active", asset.Status)
+	publicAsset := SeedanceAssetDTO(&asset)
+	require.Contains(t, publicAsset["url"], "/assets/"+asset.ID+"/preview")
+	require.NotContains(t, publicAsset["url"], "X-Tos-Signature")
+
 	credentials, err := loadBeeNexAssetCredentials(274)
 	require.NoError(t, err)
 	credentials.MaterialVerifiedAt = 1791900000

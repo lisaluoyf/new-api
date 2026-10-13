@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,6 +25,12 @@ type seedancePreviewTransport func(*http.Request) (*http.Response, error)
 func (f seedancePreviewTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestSeedanceAssetPreviewOwnershipRefreshAndNoSourceFallback(t *testing.T) {
+	for _, provider := range []string{"xingchiyun", "beenex"} {
+		t.Run(provider, func(t *testing.T) { testSeedanceAssetPreviewProvider(t, provider) })
+	}
+}
+
+func testSeedanceAssetPreviewProvider(t *testing.T, provider string) {
 	oldDB, oldMemory, oldTransport := model.DB, common.MemoryCacheEnabled, http.DefaultTransport
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -36,17 +44,33 @@ func TestSeedanceAssetPreviewOwnershipRefreshAndNoSourceFallback(t *testing.T) {
 		fetch.EnableSSRFProtection = oldProtection
 	})
 	base := "https://api.xingchiyun.com/v1/seedance"
-	require.NoError(t, db.Create(&model.Channel{Id: 292, Type: constant.ChannelTypeDoubaoVideo, Status: 1, Key: "private-key", BaseURL: &base}).Error)
-	asset := model.SeedanceResource{ID: "asset_public", UserID: 1, Kind: "asset", ChannelID: 292, Model: "seedance-2.5", AssetType: "Image", KeyFingerprint: service.SeedanceKeyFingerprint("private-key"), UpstreamID: "asset-private", Status: "Active", SourceURL: "https://input.example/original.jpg"}
+	channelID, channelType, upstreamHost := 292, constant.ChannelTypeDoubaoVideo, "api.xingchiyun.com"
+	fingerprint := ""
+	if provider == "beenex" {
+		base = "https://beenexapi.phone580.com"
+		channelID, channelType, upstreamHost = 274, 1, "beenexapi.phone580.com"
+		dir := t.TempDir()
+		t.Setenv("BEENEX_ASSET_CREDENTIALS_DIR", dir)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "channel-274.json"), []byte(`{"access_key_id":"own-ak","secret_access_key":"own-sk","region":"cn-beijing","project_mode":"account_scoped"}`), 0600))
+		fingerprint = service.SeedanceKeyFingerprint("own-ak\x00account_scoped\x00")
+	}
+
+	require.NoError(t, db.Create(&model.Channel{Id: channelID, Type: channelType, Status: 1, Key: "private-key", BaseURL: &base}).Error)
+	asset := model.SeedanceResource{ID: "asset_public", UserID: 1, Kind: "asset", ChannelID: channelID, CredentialFingerprint: fingerprint, Model: "seedance-2.5", AssetType: "Image", KeyFingerprint: service.SeedanceKeyFingerprint("private-key"), UpstreamID: "asset-private", Status: "Active", SourceURL: "https://input.example/original.jpg"}
 	require.NoError(t, db.Create(&asset).Error)
 	hits, available, html := 0, true, false
 	http.DefaultTransport = seedancePreviewTransport(func(r *http.Request) (*http.Response, error) {
 		hits++
 		body, contentType := "image fixture", "image/jpeg"
 		if r.Method == "POST" {
-			require.Equal(t, "api.xingchiyun.com", r.URL.Host)
+			require.Equal(t, upstreamHost, r.URL.Host)
 			require.Equal(t, "GetAsset", r.URL.Query().Get("Action"))
-			require.Equal(t, "Bearer private-key", r.Header.Get("Authorization"))
+			if provider == "beenex" {
+				require.Equal(t, "/post-proxy/", r.URL.Path)
+				require.True(t, strings.HasPrefix(r.Header.Get("Authorization"), "HMAC-SHA256 Credential=own-ak/"))
+			} else {
+				require.Equal(t, "Bearer private-key", r.Header.Get("Authorization"))
+			}
 			body = `{"Result":{"Status":"Active"}}`
 			if available {
 				body = `{"Result":{"Status":"Active","URL":"https://media.example/preview.jpg?X-Tos-Signature=secret"}}`

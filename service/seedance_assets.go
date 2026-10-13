@@ -511,7 +511,7 @@ func DeleteSeedanceResource(c *gin.Context, resource *model.SeedanceResource) er
 
 func seedancePublicSourceURL(resource *model.SeedanceResource) string {
 	ch, _ := model.GetChannelById(resource.ChannelID, true)
-	if isXingchiyunSeedanceChannel(ch) {
+	if isXingchiyunSeedanceChannel(ch) || (isBeeNexSeedance25Channel(ch) && resource.Model == "seedance-2.5") {
 		return seedanceGatewayPublicPreview(resource)
 	}
 	if resource.GroupType == "real_person" {

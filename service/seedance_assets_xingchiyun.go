@@ -111,7 +111,7 @@ func validXingchiyunVerificationToken(token string) bool {
 
 func seedanceGatewayPreviewData(asset *model.SeedanceResource, result map[string]any) string {
 	ch, _ := model.GetChannelById(asset.ChannelID, true)
-	if !isXingchiyunSeedanceChannel(ch) {
+	if !isXingchiyunSeedanceChannel(ch) && !(isBeeNexSeedance25Channel(ch) && asset.Model == "seedance-2.5") {
 		return asset.ResultData
 	}
 	preview := seedanceString(result, "URL")
