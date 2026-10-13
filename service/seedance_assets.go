@@ -213,7 +213,7 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 			return nil, seedanceError(409, "Media group is not ready")
 		}
 		ch, e := model.GetChannelById(group.ChannelID, true)
-		if e != nil || !seedanceChannelAllowed(c, ch, input.Model) {
+		if e != nil || !seedanceLibraryChannelAllowed(c, ch, input.Model) {
 			return nil, seedanceError(503, "Media library is temporarily unavailable")
 		}
 	} else {
