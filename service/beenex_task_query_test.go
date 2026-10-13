@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 type beeNexRecoveryFixtureAdaptor struct {
@@ -41,6 +42,8 @@ func (a beeNexRecoveryFixtureAdaptor) FetchTask(_ string, key string, body map[s
 func (a beeNexRecoveryFixtureAdaptor) ParseTaskResult(raw []byte) (*relaycommon.TaskInfo, error) {
 	var p struct {
 		ID          string `json:"id"`
+		Status      string `json:"status"`
+		Progress    int    `json:"progress"`
 		CompletedAt int64  `json:"completed_at"`
 		Metadata    struct {
 			URL string `json:"url"`
@@ -48,6 +51,9 @@ func (a beeNexRecoveryFixtureAdaptor) ParseTaskResult(raw []byte) (*relaycommon.
 	}
 	if err := common.Unmarshal(raw, &p); err != nil {
 		return nil, err
+	}
+	if p.Status == "processing" {
+		return &relaycommon.TaskInfo{TaskID: p.ID, Status: "IN_PROGRESS", Progress: fmt.Sprintf("%d%%", p.Progress)}, nil
 	}
 	return &relaycommon.TaskInfo{TaskID: p.ID, Status: "SUCCESS", Progress: "100%", CompletedAt: p.CompletedAt, Url: p.Metadata.URL}, nil
 }
@@ -153,4 +159,30 @@ func TestBeeNexQueryProtocolConfiguration(t *testing.T) {
 	_, err = BeeNexTaskQueryProtocol(ch, "seedance-2.0")
 	require.Error(t, err)
 	require.NotContains(t, BeeNexTaskQueryFailureSummary(errors.New("https://signed.example?secret=credential")), "credential")
+}
+
+func TestBeeNexPendingQueryPersistenceFailureIsReported(t *testing.T) {
+	truncate(t)
+	setupTaskWebhookTest(t)
+	seedChannel(t, 274)
+	oldFactory := GetTaskAdaptorFunc
+	t.Cleanup(func() { GetTaskAdaptorFunc = oldFactory })
+	calls := 0
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor {
+		return beeNexRecoveryFixtureAdaptor{model: "seedance-2.0", response: `{"id":"supplier-existing","status":"processing","progress":37}`, calls: &calls}
+	}
+	task := &model.Task{TaskID: "task_pending", ChannelId: 274, Status: model.TaskStatusInProgress, Progress: "50%", Properties: model.Properties{OriginModelName: "seedance-2.0"}, PrivateData: model.TaskPrivateData{Key: "own-stored-key", UpstreamTaskID: "supplier-existing"}}
+	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, model.DB.Callback().Update().Before("gorm:update").Register("beenex_fail_state_update", func(tx *gorm.DB) {
+		if tx.Statement.Table == "tasks" {
+			tx.AddError(errors.New("task state write failed"))
+		}
+	}))
+	t.Cleanup(func() { model.DB.Callback().Update().Remove("beenex_fail_state_update") })
+	require.ErrorContains(t, RefreshBeeNexSeedanceTask(context.Background(), task), "task state write failed")
+	var persisted model.Task
+	require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+	require.Equal(t, "50%", persisted.Progress)
+	require.Equal(t, model.TaskStatusInProgress, persisted.Status)
+	require.Equal(t, 1, calls)
 }
