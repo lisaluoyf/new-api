@@ -54,6 +54,15 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 		}
 		entry := map[string]any{"model": name, "channel_id": ch.Id, "method": mode, "configured": configured, "real_person_verified": false, "reason": reason, "hosted_callback": mode == "official_h5" && !isXingchiyunSeedanceChannel(ch), "live_acceptance": "not_tested"}
 		if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" {
+			if credentials, err := loadBeeNexAssetCredentials(ch.Id); err == nil {
+				entry["project_scope"] = credentials.ProjectMode
+				entry["project_name_available"] = credentials.ProjectMode == "named"
+				if credentials.MaterialVerifiedAt > 0 && credentials.MaterialVerifiedFingerprint == beeNexControlFingerprint(credentials) {
+					entry["live_acceptance"] = "ordinary_asset_lifecycle_verified"
+					entry["material_verified_at"] = credentials.MaterialVerifiedAt
+				}
+
+			}
 			entry["generation_capabilities"] = BeeNexSeedance25Capabilities()
 			entry["generation_route_enabled"] = seedanceChannelAllowed(c, ch, name)
 		}

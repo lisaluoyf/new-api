@@ -22,7 +22,10 @@ import (
 
 type beeNexAssetCredentials struct {
 	bytePlusAssetCredentials
-	SigningHost string `json:"signing_host,omitempty"`
+	SigningHost                 string `json:"signing_host,omitempty"`
+	ProjectMode                 string `json:"project_mode,omitempty"`
+	MaterialVerifiedAt          int64  `json:"material_verified_at,omitempty"`
+	MaterialVerifiedFingerprint string `json:"material_verified_fingerprint,omitempty"`
 }
 
 func isBeeNexSeedance25Channel(ch *model.Channel) bool {
@@ -52,8 +55,14 @@ func loadBeeNexAssetCredentials(channelID int) (beeNexAssetCredentials, error) {
 		return c, seedanceError(503, "BeeNex asset credential file is invalid", "credentials_not_configured")
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, 32769))
-	if err != nil || common.Unmarshal(raw, &c) != nil || c.AccessKeyID == "" || c.SecretAccessKey == "" || c.Region == "" || c.ProjectName == "" {
+	if err != nil || common.Unmarshal(raw, &c) != nil || c.AccessKeyID == "" || c.SecretAccessKey == "" || c.Region == "" {
 		return c, seedanceError(503, "BeeNex asset account, region and project must be explicitly configured", "credentials_not_configured")
+	}
+	if c.ProjectMode == "" {
+		c.ProjectMode = "named"
+	}
+	if (c.ProjectMode == "named" && c.ProjectName == "") || (c.ProjectMode == "account_scoped" && c.ProjectName != "") || (c.ProjectMode != "named" && c.ProjectMode != "account_scoped") {
+		return c, seedanceError(503, "BeeNex asset project scope must be explicitly configured", "credentials_not_configured")
 	}
 	if c.Region != "cn-beijing" {
 		return c, seedanceError(503, "BeeNex asset signing requires the documented cn-beijing region", "credentials_not_configured")
@@ -62,6 +71,17 @@ func loadBeeNexAssetCredentials(channelID int) (beeNexAssetCredentials, error) {
 		return c, seedanceError(503, "BeeNex canonical host configuration is invalid", "credentials_not_configured")
 	}
 	return c, nil
+}
+
+func beeNexControlFingerprint(c beeNexAssetCredentials) string {
+	return SeedanceKeyFingerprint(c.AccessKeyID + "\x00" + c.ProjectMode + "\x00" + c.ProjectName)
+}
+
+func validateBeeNexAssetContext(r *model.SeedanceResource, c beeNexAssetCredentials) error {
+	if r.ChannelID != constant.BeeNexSeedanceChannelID || r.CredentialFingerprint == "" || r.ProjectName != c.ProjectName || r.CredentialFingerprint != beeNexControlFingerprint(c) {
+		return seedanceError(409, "BeeNex asset account or project changed", "asset_context_incompatible")
+	}
+	return nil
 }
 
 // Test transport hook: production always uses this channel's configured origin.
@@ -76,8 +96,8 @@ func beeNexAssetRequest(ctx context.Context, r *model.SeedanceResource, action s
 	if err != nil {
 		return nil, err
 	}
-	if r.ProjectName != "" && (r.ProjectName != c.ProjectName || r.CredentialFingerprint != seedanceControlFingerprint(c.bytePlusAssetCredentials)) {
-		return nil, seedanceError(409, "BeeNex asset account or project changed", "asset_context_incompatible")
+	if err := validateBeeNexAssetContext(r, c); err != nil {
+		return nil, err
 	}
 	fields := make(map[string]any, len(payload)+1)
 	for k, v := range payload {
@@ -128,7 +148,11 @@ func beeNexAssetRequest(ctx context.Context, r *model.SeedanceResource, action s
 	}
 	result, _ := envelope["Result"].(map[string]any)
 	checkProject := func(item map[string]any) error {
-		if project, _ := item["ProjectName"].(string); project != c.ProjectName {
+		project, present := item["ProjectName"]
+		if c.ProjectMode == "account_scoped" && (!present || project == nil || project == "") {
+			return nil
+		}
+		if named, ok := project.(string); !ok || c.ProjectMode != "named" || named != c.ProjectName {
 			return seedanceError(409, "BeeNex returned an incompatible asset project", "asset_context_incompatible")
 		}
 		return nil

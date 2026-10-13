@@ -182,7 +182,7 @@ func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability fun
 		if e != nil {
 			return nil, e
 		}
-		resource.ProjectName, resource.CredentialFingerprint = credentials.ProjectName, seedanceControlFingerprint(credentials.bytePlusAssetCredentials)
+		resource.ProjectName, resource.CredentialFingerprint = credentials.ProjectName, beeNexControlFingerprint(credentials)
 	}
 	return resource, nil
 }

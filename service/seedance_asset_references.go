@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -106,9 +107,9 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 			return nil, seedanceError(409, "Asset account or project is incompatible with this route")
 		}
 	}
-	if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" && pinned.ProjectName != "" {
+	if isBeeNexSeedance25Channel(ch) && name == "seedance-2.5" {
 		credentials, e := loadBeeNexAssetCredentials(ch.Id)
-		if e != nil || credentials.ProjectName != pinned.ProjectName || seedanceControlFingerprint(credentials.bytePlusAssetCredentials) != pinned.CredentialFingerprint {
+		if e != nil || validateBeeNexAssetContext(pinned, credentials) != nil {
 			return nil, seedanceError(409, "BeeNex asset account or project changed", "asset_context_incompatible")
 		}
 	}
@@ -126,6 +127,15 @@ func ResolveSeedanceAssetReferences(c *gin.Context, fields map[string]any, chann
 		}
 		if asset.ChannelID != channelID || asset.KeyFingerprint != SeedanceKeyFingerprint(key) {
 			return "", fmt.Errorf("Media library is temporarily unavailable")
+		}
+		if channelID == constant.BeeNexSeedanceChannelID && fields["model"] == "seedance-2.5" {
+			credentials, err := loadBeeNexAssetCredentials(channelID)
+			if err != nil {
+				return "", err
+			}
+			if err := validateBeeNexAssetContext(asset, credentials); err != nil {
+				return "", err
+			}
 		}
 		return "asset://" + asset.UpstreamID, nil
 	})
