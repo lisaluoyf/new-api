@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -48,7 +49,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		if err != nil {
 			return service.TaskErrorWrapperLocal(fmt.Errorf("invalid JSON request"), "invalid_request", http.StatusBadRequest)
 		}
-		if err := validateBeeNexCapabilities(fields); err != nil {
+		if err := validateBeeNexCapabilities(info.OriginModelName, fields); err != nil {
 			return err
 		}
 	}
@@ -64,7 +65,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
 	if info.ChannelId == 274 && service.IsBeeNexSeedanceModel(info.OriginModelName) {
-		if err := validateBeeNexCapabilities(fields); err != nil {
+		if err := validateBeeNexCapabilities(info.OriginModelName, fields); err != nil {
 			return err
 		}
 	}
@@ -76,7 +77,16 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	return nil
 }
 
-func validateBeeNexCapabilities(fields map[string]any) *dto.TaskError {
+func validateBeeNexCapabilities(name string, fields map[string]any) *dto.TaskError {
+	if seconds, ok := fields["duration"].(float64); ok && name == "seedance-2.0" && seconds > 15 {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("seedance-2.0 duration must be an integer from 4 to 15"), "invalid_request", http.StatusBadRequest)
+	}
+	if value, present := fields["seed"]; present {
+		seed, valid := value.(float64)
+		if !valid || math.Trunc(seed) != seed {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("seed must be a JSON integer"), "invalid_request", http.StatusBadRequest)
+		}
+	}
 	for _, field := range []string{"generate_audio", "audio", "watermark", "return_last_frame", "draft", "auto_duration", "camerafixed", "camera_fixed"} {
 		if value, present := fields[field]; present {
 			if _, valid := value.(bool); !valid {

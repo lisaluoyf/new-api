@@ -229,3 +229,19 @@ func TestBeeNexBooleanTypesBeforeNormalizationAndReservation(t *testing.T) {
 		}
 	}
 }
+
+func TestBeeNexPublicDurationAndSeedTypesBeforeBilling(t *testing.T) {
+	for _, extra := range []string{`"duration":16`, `"seconds":"16"`, `"duration":4,"seed":"0"`, `"duration":4,"seed":0.5`} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/v1/videos", strings.NewReader(`{"model":"seedance-2.0","prompt":"avatar",`+extra+`}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		info := &relaycommon.RelayInfo{OriginModelName: "seedance-2.0", TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 274}}
+		a := &TaskAdaptor{}
+		a.Init(info)
+		err := a.ValidateRequestAndSetAction(c, info)
+		require.NotNil(t, err)
+		require.Equal(t, "invalid_request", err.Code)
+		require.Nil(t, info.Billing)
+		require.Empty(t, info.PublicTaskID)
+	}
+}
