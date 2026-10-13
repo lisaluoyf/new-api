@@ -542,6 +542,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	} else if !snap.Equal(task.Snapshot()) {
 		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
 			logger.LogError(ctx, fmt.Sprintf("Failed to update task %s: %s", task.TaskID, err.Error()))
+			if ch.Id == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(task.Properties.OriginModelName) {
+				return err
+			}
 		}
 	} else {
 		// No changes, skip update
