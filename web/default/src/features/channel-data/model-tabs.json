@@ -146,6 +146,11 @@
     "accent": "#94a3b8"
   },
   {
+    "model_id": "gemini-4-argon",
+    "label": "Gemini 4 Argon",
+    "accent": "#4285f4"
+  },
+  {
     "model_id": "gemini-3.1-pro-preview",
     "label": "Gemini 3.1 Pro",
     "accent": "#4285f4"
