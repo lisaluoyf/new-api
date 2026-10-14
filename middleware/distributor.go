@@ -67,6 +67,26 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if c.Request.Method == http.MethodGet && c.GetInt("relay_mode") == relayconstant.RelayModeVideoFetchByID {
+			id := c.Param("video_id")
+			if id == "" {
+				id = c.Param("task_id")
+			}
+			if id == "" {
+				id = strings.TrimPrefix(c.Request.URL.Path, "/v1/videos/")
+			}
+			saved, found, e := model.GetByTaskId(c.GetInt("id"), id)
+			if e != nil || !found {
+				abortWithOpenAiMessage(c, http.StatusNotFound, "Task not found")
+				return
+			}
+			// Read permissions from the owned original task, never an empty
+			// GET body, a query override, or the currently cheapest provider.
+			modelRequest.Model = saved.Properties.OriginModelName
+			if modelRequest.Model == "" {
+				modelRequest.Model = saved.Properties.UpstreamModelName
+			}
+		}
 		if c.Request.Method == http.MethodGet && strings.HasPrefix(c.Request.URL.Path, "/v1/tasks/imagine_") {
 			id := c.Param("task_id")
 			var batch *model.ImagineBatch

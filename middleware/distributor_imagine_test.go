@@ -55,3 +55,42 @@ func TestImagineQueryUsesOwnedTaskModelForRestrictedTokens(t *testing.T) {
 		require.Equal(t, tc.status, w.Code, "%s user=%d: %s", tc.path, tc.user, w.Body.String())
 	}
 }
+
+func TestVideoQueryUsesOwnedSavedModelForRestrictedTokens(t *testing.T) {
+	i18n.Init()
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { sqlDB.Close() })
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.Task{}))
+	require.NoError(t, db.Create(&model.Task{TaskID: "task_owned", UserId: 42, ChannelId: 273, Properties: model.Properties{OriginModelName: "seedance-2.0"}}).Error)
+	for _, tc := range []struct {
+		path    string
+		user    int
+		allowed string
+		status  int
+	}{
+		{"task_owned", 42, "seedance-2.0", 200},
+		{"task_owned?model=seedance-2.5", 42, "seedance-2.0", 200},
+		{"task_owned?model=seedance-2.5", 42, "seedance-2.5", 403},
+		{"task_owned", 99, "seedance-2.0", 404},
+		{"task_missing", 42, "seedance-2.0", 404},
+	} {
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("id", tc.user)
+			common.SetContextKey(c, constant.ContextKeyTokenGroup, "default")
+			common.SetContextKey(c, constant.ContextKeyTokenModelLimitEnabled, true)
+			common.SetContextKey(c, constant.ContextKeyTokenModelLimit, map[string]bool{tc.allowed: true})
+		})
+		router.GET("/v1/videos/:video_id", Distribute(), func(c *gin.Context) { c.Status(200) })
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", "/v1/videos/"+tc.path, nil))
+		require.Equal(t, tc.status, w.Code, "%s: %s", tc.path, w.Body.String())
+	}
+}
