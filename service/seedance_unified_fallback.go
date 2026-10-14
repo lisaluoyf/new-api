@@ -35,6 +35,13 @@ func ResetRejectedUnifiedSubmission(c *gin.Context, channel int) error {
 	}
 	c.Set(VideoSubmissionSentContextKey, false)
 	c.Set("seedance_confirmed_not_accepted", false)
+	fields, _ := c.Get("seedance_unified_fields")
+	if _, err := chooseUnifiedSeedanceRoute(c, fields.(map[string]any), bannedChannelIDsFromContext(c)); err != nil {
+		if e := model.FinishVideoSubmission(record.ID, model.VideoSubmissionNotAccepted, "", false); e != nil {
+			return e
+		}
+		return err
+	}
 	return nil
 }
 func BindUnifiedSeedanceKey(c *gin.Context, channel *model.Channel) error {

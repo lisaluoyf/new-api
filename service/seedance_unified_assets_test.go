@@ -164,3 +164,25 @@ func TestUnifiedLogicalAssetPassesNormalizationWithoutProviderID(t *testing.T) {
 	_, err = seedanceOwnedAsset(c, "logical-a-account-a")
 	require.Error(t, err)
 }
+
+func TestRejectedUnifiedRequestWithoutReadyFallbackRemainsNotAccepted(t *testing.T) {
+	db, c := unifiedRoutingFixture(t)
+	require.NoError(t, db.AutoMigrate(&model.VideoSubmission{}))
+	fields := map[string]any{"model": "seedance-2.0-fast", "image_urls": []any{"asset://logical-a"}}
+	_, err := chooseUnifiedSeedanceRoute(c, fields, nil)
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 8).Update("model_price_ratios", `{"seedance-2.0-fast":2}`).Error)
+	record, fresh, err := model.ClaimVideoSubmission(&model.VideoSubmission{ID: "rejected-no-backup", UserID: 1, Fingerprint: "same", TaskID: "one-task"})
+	require.NoError(t, err)
+	require.True(t, fresh)
+	require.NoError(t, model.MarkVideoSubmissionSending(record.ID, 7))
+	c.Set(VideoSubmissionContextKey, record)
+	c.Set(VideoSubmissionSentContextKey, true)
+	c.Set("seedance_confirmed_not_accepted", true)
+	c.Set("use_channel", []string{"7"})
+	require.Error(t, ResetRejectedUnifiedSubmission(c, 7))
+	saved, err := model.GetVideoSubmission(1, record.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.VideoSubmissionNotAccepted, saved.Status)
+	require.False(t, c.GetBool(VideoSubmissionSentContextKey))
+}
