@@ -49,6 +49,17 @@ func TestModelDetectSkipChannelsSaveReadAndCompatibility(t *testing.T) {
 	require.Equal(t, []int{38, 224}, buildModelDetectConfigResponse("model-a")["fingerprint_skip_channel_ids"])
 	require.Equal(t, []int{}, buildModelDetectConfigResponse("new-model")["fingerprint_skip_channel_ids"])
 
+	require.False(t, service.LoadDetectConfig("model-a").FingerprintPriceTopEnabled)
+	require.Equal(t, 10, service.LoadDetectConfig("model-a").FingerprintPriceTopN)
+	recorder = post(`{"model":"model-a","fingerprint_enabled":true,"fingerprint_price_top_enabled":true,"fingerprint_price_top_n":10}`)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.True(t, service.LoadDetectConfig("model-a").FingerprintPriceTopEnabled)
+	require.Equal(t, true, buildModelDetectConfigResponse("model-a")["fingerprint_price_top_enabled"])
+	for _, invalid := range []string{"0", "-1", "2147483648", "1.5", `"10"`} {
+		recorder = post(`{"model":"model-a","fingerprint_price_top_n":` + invalid + `}`)
+		require.Equal(t, http.StatusBadRequest, recorder.Code)
+		require.Equal(t, 10, service.LoadDetectConfig("model-a").FingerprintPriceTopN)
+	}
 	// An older client changing an interval must not erase the skip list.
 	recorder = post(`{"model":"model-a","fingerprint_enabled":true,"fingerprint_interval_minutes":9,"uptime_enabled":false}`)
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -59,6 +70,12 @@ func TestModelDetectSkipChannelsSaveReadAndCompatibility(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, recorder.Code, invalid)
 		require.Equal(t, []int{38, 224}, service.LoadDetectConfig("model-a").FingerprintSkipChannelIDs)
 	}
+	require.True(t, service.LoadDetectConfig("model-a").FingerprintPriceTopEnabled, "legacy clients must preserve price limits")
+	recorder = post(`{"model":"model-a","fingerprint_enabled":true,"fingerprint_price_top_enabled":false,"fingerprint_price_top_n":5}`)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.False(t, service.LoadDetectConfig("model-a").FingerprintPriceTopEnabled)
+	require.Equal(t, 5, service.LoadDetectConfig("model-a").FingerprintPriceTopN)
+	require.False(t, service.LoadDetectConfig("new-model").FingerprintPriceTopEnabled)
 	// [] explicitly clears the list; older persisted configs also default to [].
 	recorder = post(`{"model":"model-a","fingerprint_enabled":true,"fingerprint_skip_channel_ids":[]}`)
 	require.Equal(t, http.StatusOK, recorder.Code)

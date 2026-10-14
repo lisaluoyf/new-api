@@ -21,6 +21,7 @@ import { Settings2, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -191,6 +192,8 @@ interface DetectConfig {
   fingerprint_enabled: boolean
   fingerprint_interval_minutes: number
   fingerprint_skip_channel_ids: number[]
+  fingerprint_price_top_enabled: boolean
+  fingerprint_price_top_n: number
   uptime_enabled: boolean
   uptime_interval_minutes: number
   next_fingerprint_at?: number // unix sec; 0 means feature off
@@ -593,15 +596,21 @@ function IntervalDialog({
   onClose,
   initialMinutes,
   skipChannelIds,
+  priceTopEnabled = false,
+  priceTopN = 10,
   onSave,
 }: {
   open: boolean
   onClose: () => void
   initialMinutes: number
   skipChannelIds?: number[]
+  priceTopEnabled?: boolean
+  priceTopN?: number
   onSave: (
     intervalMinutes: number,
-    skipChannelIds?: number[]
+    skipChannelIds?: number[],
+    priceTopEnabled?: boolean,
+    priceTopN?: number
   ) => Promise<boolean>
 }) {
   const { t } = useTranslation()
@@ -610,6 +619,10 @@ function IntervalDialog({
   const [unit, setUnit] = useState(initUnit)
   const [skipChannels, setSkipChannels] = useState('')
   const [skipError, setSkipError] = useState(false)
+  const [topEnabled, setTopEnabled] = useState(priceTopEnabled)
+  const [topN, setTopN] = useState(String(priceTopN))
+  const [topError, setTopError] = useState(false)
+  const topInputId = useId()
   const [saving, setSaving] = useState(false)
   const skipInputId = useId()
   const initialSkipChannels = (skipChannelIds ?? []).join(',')
@@ -621,10 +634,25 @@ function IntervalDialog({
       setUnit(u)
       setSkipChannels(initialSkipChannels)
       setSkipError(false)
+      setTopEnabled(priceTopEnabled)
+      setTopN(String(priceTopN))
+      setTopError(false)
     }
-  }, [open, initialMinutes, initialSkipChannels])
+  }, [open, initialMinutes, initialSkipChannels, priceTopEnabled, priceTopN])
 
   async function handleSave() {
+    const rankLimit = Number(topN)
+    if (
+      skipChannelIds !== undefined &&
+      topEnabled &&
+      (!/^\d+$/.test(topN) ||
+        !Number.isSafeInteger(rankLimit) ||
+        rankLimit < 1 ||
+        rankLimit > 2147483647)
+    ) {
+      setTopError(true)
+      return
+    }
     let ids: number[] | undefined
     if (skipChannelIds !== undefined) {
       const text = skipChannels.trim().replaceAll('，', ',')
@@ -650,7 +678,15 @@ function IntervalDialog({
     const safeValue = Number.isFinite(value) && value >= 1 ? value : 1
     setSaving(true)
     try {
-      if (await onSave(unitOpt.toMinutes(safeValue), ids)) onClose()
+      if (
+        await onSave(
+          unitOpt.toMinutes(safeValue),
+          ids,
+          topEnabled,
+          topEnabled ? rankLimit : priceTopN
+        )
+      )
+        onClose()
     } finally {
       setSaving(false)
     }
@@ -697,6 +733,52 @@ function IntervalDialog({
               ))}
             </div>
           </div>
+          {skipChannelIds !== undefined && (
+            <div className='space-y-2'>
+              <label className='flex items-center gap-2 text-sm font-medium'>
+                <Checkbox
+                  checked={topEnabled}
+                  onCheckedChange={(checked) => setTopEnabled(checked)}
+                  disabled={saving}
+                />
+                {t('Only detect channels in the top user-price ranks')}
+              </label>
+              <div className='flex items-center gap-2'>
+                <label htmlFor={topInputId} className='text-sm'>
+                  {t('Top channel count')}
+                </label>
+                <Input
+                  id={topInputId}
+                  type='number'
+                  min={1}
+                  max={2147483647}
+                  step={1}
+                  value={topN}
+                  disabled={!topEnabled || saving}
+                  className='w-24'
+                  aria-invalid={topError}
+                  aria-describedby={`${topInputId}-help`}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    setTopN(e.target.value)
+                    setTopError(false)
+                  }}
+                />
+              </div>
+              <p id={`${topInputId}-help`} className='text-xs text-gray-500'>
+                {t(
+                  'Ranks all channels of this model by current user price, lowest first, including enabled and disabled channels. Applies to scheduled model detection only. Skipped channels still occupy rank positions.'
+                )}
+              </p>
+              {topError && (
+                <p role='alert' className='text-xs text-red-600'>
+                  {t(
+                    'Enter a positive whole number no greater than 2147483647.'
+                  )}
+                </p>
+              )}
+            </div>
+          )}
           {skipChannelIds !== undefined && (
             <div className='space-y-2'>
               <label htmlFor={skipInputId} className='text-sm font-medium'>
@@ -863,6 +945,8 @@ export function ChannelDataPage() {
     fingerprint_enabled: false,
     fingerprint_interval_minutes: 360,
     fingerprint_skip_channel_ids: [],
+    fingerprint_price_top_enabled: false,
+    fingerprint_price_top_n: 10,
     uptime_enabled: false,
     uptime_interval_minutes: 30,
   })
@@ -1309,6 +1393,8 @@ export function ChannelDataPage() {
           fingerprint_enabled: next.fingerprint_enabled,
           fingerprint_interval_minutes: next.fingerprint_interval_minutes,
           fingerprint_skip_channel_ids: next.fingerprint_skip_channel_ids,
+          fingerprint_price_top_enabled: next.fingerprint_price_top_enabled,
+          fingerprint_price_top_n: next.fingerprint_price_top_n,
           uptime_enabled: next.uptime_enabled,
           uptime_interval_minutes: next.uptime_interval_minutes,
         })
@@ -2510,10 +2596,14 @@ export function ChannelDataPage() {
           onClose={() => setIntervalOpen(null)}
           initialMinutes={config.fingerprint_interval_minutes}
           skipChannelIds={config.fingerprint_skip_channel_ids ?? []}
-          onSave={(m, ids) =>
+          priceTopEnabled={config.fingerprint_price_top_enabled ?? false}
+          priceTopN={config.fingerprint_price_top_n ?? 10}
+          onSave={(m, ids, topEnabled, topN) =>
             saveConfig({
               fingerprint_interval_minutes: m,
               fingerprint_skip_channel_ids: ids ?? [],
+              fingerprint_price_top_enabled: topEnabled ?? false,
+              fingerprint_price_top_n: topN ?? 10,
             })
           }
         />

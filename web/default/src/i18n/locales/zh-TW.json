@@ -4842,5 +4842,9 @@
   "2K low": "2K 低品質",
   "2K medium": "2K 中等品質",
   "Gemini Only": "Gemini Only",
-  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "將此渠道限制為 Codex、Claude Code 或 Gemini 原生 API 協定。其他請求會自動略過此渠道，定價 key_group 不變。"
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "將此渠道限制為 Codex、Claude Code 或 Gemini 原生 API 協定。其他請求會自動略過此渠道，定價 key_group 不變。",
+  "Only detect channels in the top user-price ranks": "僅檢測使用者價格排名前 N 名的渠道",
+  "Top channel count": "前多少名",
+  "Ranks all channels of this model by current user price, lowest first, including enabled and disabled channels. Applies to scheduled model detection only. Skipped channels still occupy rank positions.": "按該模型全部渠道的目前使用者價格由低到高排名，包括啟用和停用渠道。僅對自動模型檢測生效；跳過檢測的渠道仍佔排名名額。",
+  "Enter a positive whole number no greater than 2147483647.": "請輸入不大於 2147483647 的正整數。"
 }

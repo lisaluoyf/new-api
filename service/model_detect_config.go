@@ -13,6 +13,8 @@ import (
 type ModelDetectConfig struct {
 	FingerprintEnabled         bool  `json:"fingerprint_enabled"`
 	FingerprintIntervalMinutes int   `json:"fingerprint_interval_minutes"`
+	FingerprintPriceTopEnabled bool  `json:"fingerprint_price_top_enabled"`
+	FingerprintPriceTopN       int   `json:"fingerprint_price_top_n"`
 	FingerprintSkipChannelIDs  []int `json:"fingerprint_skip_channel_ids"`
 	UptimeEnabled              bool  `json:"uptime_enabled"`
 	UptimeIntervalMinutes      int   `json:"uptime_interval_minutes"`
@@ -23,6 +25,7 @@ func defaultDetectConfig() ModelDetectConfig {
 		FingerprintEnabled:         false,
 		FingerprintIntervalMinutes: 360,
 		FingerprintSkipChannelIDs:  []int{},
+		FingerprintPriceTopN:       10,
 		UptimeEnabled:              false,
 		UptimeIntervalMinutes:      30,
 	}

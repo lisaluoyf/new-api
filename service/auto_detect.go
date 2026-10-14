@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -64,11 +66,9 @@ func runAutoDetectOnce(flaskURL string) {
 	ctx := context.Background()
 
 	var channels []model.Channel
-	// status IN (1,3): keep probing AutoDisabled (3) channels so they have a chance
-	// to recover via the consecutive-pass counter. Skip ManuallyDisabled (2) — operator
-	// said "stop touching it".
+	// Include manually disabled channels only when price ranking is enabled for the model.
 	if err := model.DB.Where(
-		"status IN (1, 3) AND ((base_url != '' AND base_url IS NOT NULL) OR type IN ?)",
+		"status IN (1, 2, 3) AND ((base_url != '' AND base_url IS NOT NULL) OR type IN ?)",
 		[]int{constant.ChannelTypeZhipu, constant.ChannelTypeZhipu_v4},
 	).Find(&channels).Error; err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("auto-detect: failed to list channels: %v", err))
@@ -82,30 +82,90 @@ func runAutoDetectOnce(flaskURL string) {
 
 	now := time.Now().Unix()
 
-	for _, ch := range channels {
-		channelModels := splitChannelModels(ch.Models)
-		for _, m := range configuredModels {
-			if !channelModels[m] {
-				continue // channel doesn't support this model
-			}
-			cfg := LoadDetectConfig(m)
-			if !cfg.FingerprintEnabled || cfg.FingerprintSkipsChannel(ch.Id) || IsTextEmbeddingModel(m) {
+	for _, m := range configuredModels {
+		cfg := LoadDetectConfig(m)
+		if !cfg.FingerprintEnabled || IsTextEmbeddingModel(m) {
+			continue
+		}
+		var ranked map[int]bool
+		if cfg.FingerprintPriceTopEnabled {
+			var err error
+			ranked, err = fingerprintPriceTopChannels(m, cfg.FingerprintPriceTopN)
+			if err != nil {
+				logger.LogWarn(ctx, fmt.Sprintf("auto-detect: price ranking failed for %s: %v", m, err))
 				continue
 			}
-
+		}
+		for _, ch := range channels {
+			if cfg.FingerprintSkipsChannel(ch.Id) {
+				continue
+			}
+			if cfg.FingerprintPriceTopEnabled {
+				if !ranked[ch.Id] {
+					continue
+				}
+			} else {
+				if ch.Status == common.ChannelStatusManuallyDisabled || !splitChannelModels(ch.Models)[strings.ToLower(m)] {
+					continue
+				}
+			}
 			intervalSec := int64(cfg.FingerprintIntervalMinutes) * 60
 			if intervalSec < 60 {
 				intervalSec = 60
 			}
-
-			lastTime := lastFingerprintTime(ch.Id, m)
-			if now-lastTime < intervalSec {
-				continue // not yet due
+			if now-lastFingerprintTime(ch.Id, m) < intervalSec {
+				continue
 			}
-
 			detectOneChannel(ctx, flaskURL, &ch, m)
 		}
 	}
+}
+
+// Rank before applying skip IDs, due times or channel availability: these must
+// never promote a more expensive channel into the configured first N positions.
+func fingerprintPriceTopChannels(modelName string, n int) (map[int]bool, error) {
+	rows, err := LoadChannelDataPricingRows(modelName)
+	if err != nil {
+		return nil, err
+	}
+	return rankFingerprintPriceChannels(rows, modelName, n), nil
+}
+
+func rankFingerprintPriceChannels(rows []ChannelDataPricingRow, modelName string, n int) map[int]bool {
+	type pricedRow struct {
+		row   ChannelDataPricingRow
+		price float64
+	}
+	priced := make([]pricedRow, 0, len(rows))
+	for _, row := range rows {
+		value := math.Inf(1)
+		if price := ChannelDataUserPrice(row, modelName); price != nil && *price > 0 && !math.IsNaN(*price) {
+			value = *price
+		}
+		priced = append(priced, pricedRow{row, value})
+	}
+	sort.Slice(priced, func(i, j int) bool {
+		a, b := priced[i], priced[j]
+		if a.price != b.price {
+			return a.price < b.price
+		}
+		var ap, bp int64
+		if a.row.Priority != nil {
+			ap = *a.row.Priority
+		}
+		if b.row.Priority != nil {
+			bp = *b.row.Priority
+		}
+		if ap != bp {
+			return ap > bp
+		}
+		return a.row.ChannelID < b.row.ChannelID
+	})
+	ids := make(map[int]bool)
+	for i := 0; i < n && i < len(priced); i++ {
+		ids[priced[i].row.ChannelID] = true
+	}
+	return ids
 }
 
 // splitChannelModels parses Channel.Models (comma-separated) into a set.

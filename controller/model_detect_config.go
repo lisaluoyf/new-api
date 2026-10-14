@@ -15,6 +15,8 @@ import (
 type ModelDetectConfig struct {
 	FingerprintEnabled         bool  `json:"fingerprint_enabled"`
 	FingerprintIntervalMinutes int   `json:"fingerprint_interval_minutes"`
+	FingerprintPriceTopEnabled bool  `json:"fingerprint_price_top_enabled"`
+	FingerprintPriceTopN       int   `json:"fingerprint_price_top_n"`
 	FingerprintSkipChannelIDs  []int `json:"fingerprint_skip_channel_ids"`
 	UptimeEnabled              bool  `json:"uptime_enabled"`
 	UptimeIntervalMinutes      int   `json:"uptime_interval_minutes"`
@@ -29,6 +31,7 @@ func defaultDetectConfig() ModelDetectConfig {
 		FingerprintEnabled:         false,
 		FingerprintIntervalMinutes: 360,
 		FingerprintSkipChannelIDs:  []int{},
+		FingerprintPriceTopN:       10,
 		UptimeEnabled:              false,
 		UptimeIntervalMinutes:      30,
 	}
@@ -79,13 +82,15 @@ func buildModelDetectConfigResponse(modelName string) gin.H {
 	}
 
 	return gin.H{
-		"fingerprint_enabled":          cfg.FingerprintEnabled,
-		"fingerprint_interval_minutes": cfg.FingerprintIntervalMinutes,
-		"fingerprint_skip_channel_ids": cfg.FingerprintSkipChannelIDs,
-		"uptime_enabled":               cfg.UptimeEnabled,
-		"uptime_interval_minutes":      cfg.UptimeIntervalMinutes,
-		"next_fingerprint_at":          nextDetectAt(modelName, "auto", cfg.FingerprintEnabled, cfg.FingerprintIntervalMinutes),
-		"next_uptime_at":               nextDetectAt(modelName, "uptime", cfg.UptimeEnabled, cfg.UptimeIntervalMinutes),
+		"fingerprint_enabled":           cfg.FingerprintEnabled,
+		"fingerprint_interval_minutes":  cfg.FingerprintIntervalMinutes,
+		"fingerprint_skip_channel_ids":  cfg.FingerprintSkipChannelIDs,
+		"fingerprint_price_top_enabled": cfg.FingerprintPriceTopEnabled,
+		"fingerprint_price_top_n":       cfg.FingerprintPriceTopN,
+		"uptime_enabled":                cfg.UptimeEnabled,
+		"uptime_interval_minutes":       cfg.UptimeIntervalMinutes,
+		"next_fingerprint_at":           nextDetectAt(modelName, "auto", cfg.FingerprintEnabled, cfg.FingerprintIntervalMinutes),
+		"next_uptime_at":                nextDetectAt(modelName, "uptime", cfg.UptimeEnabled, cfg.UptimeIntervalMinutes),
 	}
 }
 
@@ -117,6 +122,8 @@ func SaveModelDetectConfig(c *gin.Context) {
 		Model                      string `json:"model"`
 		FingerprintEnabled         bool   `json:"fingerprint_enabled"`
 		FingerprintIntervalMinutes int    `json:"fingerprint_interval_minutes"`
+		FingerprintPriceTopEnabled *bool  `json:"fingerprint_price_top_enabled"`
+		FingerprintPriceTopN       *int   `json:"fingerprint_price_top_n"`
 		FingerprintSkipChannelIDs  *[]int `json:"fingerprint_skip_channel_ids"`
 		UptimeEnabled              bool   `json:"uptime_enabled"`
 		UptimeIntervalMinutes      int    `json:"uptime_interval_minutes"`
@@ -133,7 +140,19 @@ func SaveModelDetectConfig(c *gin.Context) {
 	}
 	// Older clients omit the new field when toggling detection or updating uptime.
 	// Preserve the saved list unless the caller explicitly provides an array.
-	skipIDs := service.LoadDetectConfig(req.Model).FingerprintSkipChannelIDs
+	saved := service.LoadDetectConfig(req.Model)
+	skipIDs := saved.FingerprintSkipChannelIDs
+	topEnabled, topN := saved.FingerprintPriceTopEnabled, saved.FingerprintPriceTopN
+	if req.FingerprintPriceTopEnabled != nil {
+		topEnabled = *req.FingerprintPriceTopEnabled
+	}
+	if req.FingerprintPriceTopN != nil {
+		topN = *req.FingerprintPriceTopN
+		if topN < 1 || int64(topN) > 2147483647 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "price rank limit must be a positive integer no greater than 2147483647"})
+			return
+		}
+	}
 	if req.FingerprintSkipChannelIDs != nil {
 		var err error
 		skipIDs, err = service.NormalizeFingerprintSkipChannelIDs(*req.FingerprintSkipChannelIDs)
@@ -151,6 +170,8 @@ func SaveModelDetectConfig(c *gin.Context) {
 		FingerprintEnabled:         req.FingerprintEnabled,
 		FingerprintIntervalMinutes: req.FingerprintIntervalMinutes,
 		FingerprintSkipChannelIDs:  skipIDs,
+		FingerprintPriceTopEnabled: topEnabled,
+		FingerprintPriceTopN:       topN,
 		UptimeEnabled:              req.UptimeEnabled,
 		UptimeIntervalMinutes:      req.UptimeIntervalMinutes,
 	}
