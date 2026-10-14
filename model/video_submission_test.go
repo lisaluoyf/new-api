@@ -189,3 +189,21 @@ func TestRecoveryTokenStillRejectsRevokedExpiredAndMissing(t *testing.T) {
 	_, err = ValidateUserTokenForRecovery("missing")
 	require.Error(t, err)
 }
+
+func TestRejectedSubmissionResetRequiresLiveOwnerAndUnacceptedAttempt(t *testing.T) {
+	submissionTestDB(t)
+	record, fresh, err := ClaimVideoSubmission(&VideoSubmission{ID: "retry-proof", UserID: 1, Fingerprint: "same", TaskID: "public-task"})
+	require.NoError(t, err)
+	require.True(t, fresh)
+	require.NoError(t, MarkVideoSubmissionSending(record.ID, 7))
+	require.Error(t, RetryRejectedVideoSubmission(record.ID, "wrong-owner", 7))
+	require.Error(t, RetryRejectedVideoSubmission(record.ID, record.OwnerToken, 8))
+	require.NoError(t, RetryRejectedVideoSubmission(record.ID, record.OwnerToken, 7))
+	require.NoError(t, MarkVideoSubmissionSending(record.ID, 8))
+	require.NoError(t, FinishVideoSubmission(record.ID, VideoSubmissionAccepted, "accepted-upstream", false))
+	require.Error(t, RetryRejectedVideoSubmission(record.ID, record.OwnerToken, 8))
+	saved, err := GetVideoSubmission(1, record.ID)
+	require.NoError(t, err)
+	require.Equal(t, VideoSubmissionAccepted, saved.Status)
+	require.Contains(t, saved.AttemptsJSON, "confirmed_not_accepted")
+}

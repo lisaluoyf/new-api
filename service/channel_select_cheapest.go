@@ -381,6 +381,7 @@ func selectPricedChannelIDFromDBScoped(modelName string, bannedIDs []int, ascend
 	var bestID int
 	var bestPrice float64
 	var bestPriority int64
+	var bestCost float64
 	pricingAt := time.Now()
 	for _, candidate := range candidatesByChannel {
 		price, ok := routeCandidateUserInputPriceAt(candidate, modelName, globalInputUSD, pricingAt)
@@ -390,9 +391,11 @@ func selectPricedChannelIDFromDBScoped(modelName string, bannedIDs []int, ascend
 		if !ok {
 			continue
 		}
-		if bestID == 0 || routeCandidateBeats(price, candidate.Priority, bestPrice, bestPriority, ascending) {
+		cost := price / candidate.ApimasterPriceRatio
+		if bestID == 0 || pricedRouteBeats(price, cost, candidate.Priority, candidate.ChannelID, bestPrice, bestCost, bestPriority, bestID, ascending) {
 			bestID = candidate.ChannelID
 			bestPrice = price
+			bestCost = cost
 			bestPriority = candidate.Priority
 		}
 	}
@@ -598,4 +601,25 @@ func bannedChannelIDsFromContext(c *gin.Context) []int {
 		}
 	}
 	return out
+}
+
+// Preserve user-price ordering; ties prefer procurement cost, then priority,
+// then a stable ID. Never depend on randomized map iteration.
+func pricedRouteBeats(price, cost float64, priority int64, id int, bestPrice, bestCost float64, bestPriority int64, bestID int, ascending bool) bool {
+	if price != bestPrice {
+		if ascending {
+			return price < bestPrice
+		}
+		return price > bestPrice
+	}
+	if ascending && cost != bestCost {
+		return cost < bestCost
+	}
+	if priority != bestPriority {
+		if ascending {
+			return priority > bestPriority
+		}
+		return priority < bestPriority
+	}
+	return id < bestID
 }

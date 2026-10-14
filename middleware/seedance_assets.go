@@ -78,6 +78,10 @@ func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 			return
 		}
 		if asset != nil {
+			if c.GetBool("seedance_unified_routing") && c.Request.URL.Path != "/v1/videos/quote" && service.VideoSubmissionFromContext(c) == nil {
+				seedanceRoutingError(c, fmt.Errorf("Idempotency-Key is required for unified material generation"))
+				return
+			}
 			pin := strconv.Itoa(asset.ChannelID)
 			if specified, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok && specified != pin {
 				seedanceRoutingError(c, fmt.Errorf("Selected media library is unavailable for this key"))

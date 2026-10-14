@@ -22,6 +22,7 @@ const (
 // A durable claim is never deleted or reused. Only its creator may execute it.
 // No API key, prompt, media URL or raw idempotency key is stored here.
 type VideoSubmission struct {
+	AttemptsJSON   string `json:"-" gorm:"type:text"`
 	ID             string `json:"submission_id" gorm:"primaryKey;size:64"`
 	UserID         int    `json:"-" gorm:"index"`
 	OwnerToken     string `json:"-" gorm:"size:64"`
@@ -139,6 +140,36 @@ func InsertVideoSubmissionTask(task *Task, receipt *SeedanceBillingReceipt, subm
 			return result.Error
 		}
 		if result.RowsAffected != 1 {
+			return ErrVideoSubmissionClaimLost
+		}
+		return nil
+	})
+}
+
+// Only an explicit rejection lets the same live owner cross the send boundary
+// again. Uncertain, accepted, expired and replayed claims cannot be reset.
+func RetryRejectedVideoSubmission(id, owner string, channel int) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var row VideoSubmission
+		if err := tx.Where("id = ? AND owner_token = ? AND status = ? AND channel_id = ? AND deadline > ?", id, owner, VideoSubmissionSubmitting, channel, time.Now().Unix()).First(&row).Error; err != nil {
+			return err
+		}
+		var attempts []map[string]any
+		if row.AttemptsJSON != "" {
+			if err := common.UnmarshalJsonStr(row.AttemptsJSON, &attempts); err != nil {
+				return err
+			}
+		}
+		attempts = append(attempts, map[string]any{"channel_id": channel, "status": "confirmed_not_accepted", "at": time.Now().Unix()})
+		raw, err := common.Marshal(attempts)
+		if err != nil {
+			return err
+		}
+		res := tx.Model(&VideoSubmission{}).Where("id = ? AND owner_token = ? AND status = ? AND channel_id = ? AND updated_at = ?", id, owner, VideoSubmissionSubmitting, channel, row.UpdatedAt).Updates(map[string]any{"status": VideoSubmissionPending, "attempts_json": string(raw), "updated_at": time.Now().Unix()})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
 			return ErrVideoSubmissionClaimLost
 		}
 		return nil

@@ -38,7 +38,7 @@ func SubmitSeedanceAssets(c *gin.Context) {
 
 func FetchSeedanceAssetTask(c *gin.Context) {
 	task, err := model.GetSeedanceResource(c.GetInt("id"), "task", c.Param("task_id"))
-	if err != nil {
+	if err != nil || task.ParentID != "" {
 		c.JSON(404, gin.H{"error": gin.H{"message": "Task not found", "type": "not_found"}})
 		return
 	}
@@ -84,7 +84,7 @@ func ListSeedanceResources(c *gin.Context) {
 		c.JSON(400, gin.H{"error": gin.H{"message": "page must be positive and limit must be between 1 and 100"}})
 		return
 	}
-	query := model.DB.Model(&model.SeedanceResource{}).Where("user_id = ? AND kind = ?", c.GetInt("id"), kind)
+	query := model.DB.Model(&model.SeedanceResource{}).Where("user_id = ? AND kind = ? AND (parent_id = ? OR parent_id IS NULL)", c.GetInt("id"), kind, "")
 	if kind == "asset" {
 		if groupID := c.Query("group_id"); groupID != "" {
 			if _, err := model.GetSeedanceResource(c.GetInt("id"), "group", groupID); err != nil {
@@ -120,7 +120,7 @@ func ListSeedanceResources(c *gin.Context) {
 
 func GetSeedanceResource(c *gin.Context) {
 	resource, err := model.GetSeedanceResource(c.GetInt("id"), seedanceResourceKind(c), c.Param("resource_id"))
-	if err != nil {
+	if err != nil || resource.ParentID != "" {
 		c.JSON(404, gin.H{"error": gin.H{"message": "Media resource not found"}})
 		return
 	}
@@ -139,7 +139,7 @@ func GetSeedanceResource(c *gin.Context) {
 
 func UpdateSeedanceResource(c *gin.Context) {
 	resource, err := model.GetSeedanceResource(c.GetInt("id"), seedanceResourceKind(c), c.Param("resource_id"))
-	if err != nil {
+	if err != nil || resource.ParentID != "" {
 		c.JSON(404, gin.H{"error": gin.H{"message": "Media resource not found"}})
 		return
 	}
@@ -170,7 +170,7 @@ func UpdateSeedanceResource(c *gin.Context) {
 
 func DeleteSeedanceResource(c *gin.Context) {
 	resource, err := model.GetSeedanceResource(c.GetInt("id"), seedanceResourceKind(c), c.Param("resource_id"))
-	if err != nil {
+	if err != nil || resource.ParentID != "" {
 		c.JSON(404, gin.H{"error": gin.H{"message": "Media resource not found"}})
 		return
 	}

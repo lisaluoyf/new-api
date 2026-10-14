@@ -988,6 +988,11 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		}
 		markOfficialFallbackChannel(c, channel)
 	}
+	if c.GetBool("seedance_unified_routing") {
+		if err := service.BindUnifiedSeedanceKey(c, channel); err != nil {
+			return nil, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		}
+	}
 	return channel, nil
 }
 
@@ -1729,6 +1734,9 @@ func RelayTask(c *gin.Context) {
 	if _, ok := c.Get("seedance_portrait_video_receipt"); ok || service.VideoSubmissionFromContext(c) != nil {
 		maxTaskRetries = 0
 	}
+	if c.GetBool("seedance_unified_routing") && !c.GetBool("seedance_unified_explicit_channel") && service.VideoSubmissionFromContext(c) != nil {
+		maxTaskRetries = common.RetryTimes
+	}
 	for ; retryParam.GetRetry() <= maxTaskRetries; retryParam.IncreaseRetry() {
 		var channel *model.Channel
 
@@ -1768,6 +1776,16 @@ func RelayTask(c *gin.Context) {
 		}
 
 		retryDecision := evaluateTaskRetry(c, channel.Id, taskErr, retryParam.GetRetry(), common.RetryTimes-retryParam.GetRetry())
+		if c.GetBool("seedance_unified_routing") {
+			retryDecision.ShouldRetry = false
+			retryDecision.Reason = "material_submission_not_confirmed_rejected"
+			if !c.GetBool("seedance_unified_explicit_channel") && c.GetBool("seedance_confirmed_not_accepted") && taskErr.StatusCode == 429 && retryParam.GetRetry() < maxTaskRetries {
+				if e := service.ResetRejectedUnifiedSubmission(c, channel.Id); e == nil {
+					retryDecision.ShouldRetry = true
+					retryDecision.Reason = "confirmed_rate_rejection_with_ready_materials"
+				}
+			}
+		}
 		if !taskErr.LocalError {
 			setTaskRetryDecision(c, retryDecision)
 			processChannelError(c, relayInfo,

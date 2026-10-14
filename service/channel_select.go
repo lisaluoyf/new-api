@@ -119,6 +119,16 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	if policy := ProviderPolicyForModel(param.Ctx, param.ModelName); policy != nil {
 		providerScope = &model.ChannelPickScope{Include: policy.Mode == "include", IDs: policy.ChannelIDs}
 	}
+	if param.Ctx.GetBool("seedance_unified_routing") {
+		fields, _ := param.Ctx.Get("seedance_unified_fields")
+		asset, e := chooseUnifiedSeedanceRoute(param.Ctx, fields.(map[string]any), bannedChannelIDsFromContext(param.Ctx))
+		if e != nil {
+			return nil, selectGroup, e
+		}
+		param.Ctx.Set("seedance_asset_key_fingerprint", asset.KeyFingerprint)
+		ch, e := model.GetChannelById(asset.ChannelID, true)
+		return ch, selectGroup, e
+	}
 	if param.Ctx.GetString("seedance_draft_key_fingerprint") != "" {
 		return nil, selectGroup, errors.New("Draft cannot be retried automatically; retry with the same draft_task_id later")
 	}

@@ -92,6 +92,7 @@ func TestBytePlusLibraryBatchReviewRoutingAndCRUD(t *testing.T) {
 		}
 	})
 	c := seedanceContext(1)
+	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, "283")
 	task, err := SubmitSeedanceAssets(c, SeedanceAssetSubmission{Model: "seedance-2.5", Group: &SeedanceGroupInput{Name: "Characters"}, Assets: []SeedanceAssetInput{{URL: "https://example.com/a.jpg", Name: "A"}, {URL: "https://example.com/b.jpg", Name: "B"}}})
 	require.NoError(t, err)
 	require.Equal(t, 283, task.ChannelID)

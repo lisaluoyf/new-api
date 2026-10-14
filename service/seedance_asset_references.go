@@ -64,6 +64,9 @@ func seedanceOwnedAsset(c *gin.Context, id string) (*model.SeedanceResource, err
 }
 
 func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.SeedanceResource, error) {
+	if asset, err := chooseUnifiedSeedanceRoute(c, fields, nil); err != nil || asset != nil {
+		return asset, err
+	}
 	var pinned *model.SeedanceResource
 	publicURLs := []string{}
 	seen := map[string]bool{}
@@ -124,9 +127,17 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 // APIMaster asset IDs, rather than the shared provider's private identifiers.
 func ResolveSeedanceAssetReferences(c *gin.Context, fields map[string]any, channelID int, key string) (map[string]any, error) {
 	value, err := visitSeedanceAssetURLs(fields, func(id string) (string, error) {
-		asset, err := seedanceOwnedAsset(c, id)
+		name := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+		if name == "" {
+			original, _ := fields["model"].(string)
+			name = model.NormalizeVerifiedVideoModel(original)
+		}
+		asset, err := unifiedSeedanceCopy(c, id, name, channelID)
 		if err != nil {
 			return "", err
+		}
+		if asset.Status != "Active" || asset.UpstreamID == "" {
+			return "", fmt.Errorf("Material is not ready")
 		}
 		if asset.ChannelID != channelID || asset.KeyFingerprint != SeedanceKeyFingerprint(key) {
 			return "", fmt.Errorf("Media library is temporarily unavailable")

@@ -149,6 +149,7 @@ func TestSeedanceAssetUncertainBatchPreservesAcceptedAsset(t *testing.T) {
 		}
 	})
 	c := seedanceContext(1)
+	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, "283")
 	c.Request.Header.Set("Idempotency-Key", "asset-batch-once")
 	input := SeedanceAssetSubmission{Model: "seedance-2.5", Assets: []SeedanceAssetInput{{URL: "https://approved.example/a.png"}, {URL: "https://approved.example/b.png"}}}
 	task, err := SubmitSeedanceAssets(c, input)

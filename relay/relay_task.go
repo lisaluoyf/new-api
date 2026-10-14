@@ -261,6 +261,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
 	}
 
+	c.Set("seedance_confirmed_not_accepted", false)
 	// Persist the one-way send boundary before any provider submission.
 	if err := service.MarkVideoSubmissionSending(c, info.ChannelId); err != nil {
 		return nil, service.TaskErrorWrapperLocal(err, "build_request_failed", http.StatusServiceUnavailable)
@@ -278,6 +279,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			logger.LogWarn(c.Request.Context(), fmt.Sprintf("task upstream request failed with status %d: %.2048s", resp.StatusCode, string(responseBody)))
 		}
 		_ = resp.Body.Close()
+		c.Set("seedance_confirmed_not_accepted", service.SeedanceExplicitRateRejection(resp.StatusCode, responseBody))
 		return nil, service.PublicVideoSubmitError(resp.StatusCode, responseBody, common.GetContextKeyString(c, constant.ContextKeyChannelKey), info.ChannelId)
 	}
 

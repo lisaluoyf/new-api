@@ -30,14 +30,17 @@ type SeedanceAssetInput struct {
 }
 
 type SeedanceAssetSubmission struct {
-	Model       string               `json:"model"`
-	Group       *SeedanceGroupInput  `json:"group,omitempty"`
-	GroupID     string               `json:"group_id,omitempty"`
-	ProjectName string               `json:"project_name,omitempty"`
-	AssetType   string               `json:"asset_type"`
-	Assets      []SeedanceAssetInput `json:"assets"`
-	URL         *string              `json:"url,omitempty"`
-	Name        *string              `json:"name,omitempty"`
+	SubmissionHash  string               `json:"-"`
+	ReplicaParentID string               `json:"-"`
+	LogicalAssetIDs []string             `json:"-"`
+	Model           string               `json:"model"`
+	Group           *SeedanceGroupInput  `json:"group,omitempty"`
+	GroupID         string               `json:"group_id,omitempty"`
+	ProjectName     string               `json:"project_name,omitempty"`
+	AssetType       string               `json:"asset_type"`
+	Assets          []SeedanceAssetInput `json:"assets"`
+	URL             *string              `json:"url,omitempty"`
+	Name            *string              `json:"name,omitempty"`
 }
 
 func ValidateSeedanceAssetSubmission(input *SeedanceAssetSubmission) error {
@@ -96,6 +99,11 @@ func ValidateSeedanceAssetSubmission(input *SeedanceAssetSubmission) error {
 }
 
 func CreateSeedanceGroup(c *gin.Context, name string, input SeedanceGroupInput) (*model.SeedanceResource, error) {
+	if input.ChannelID == 0 && input.Purpose == "" && !c.GetBool("seedance_replica_internal") {
+		if _, fixed := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); !fixed {
+			return createUnifiedSeedanceGroup(c, name, input)
+		}
+	}
 	if utf8.RuneCountInString(input.Name) > 255 || utf8.RuneCountInString(input.Description) > 4000 {
 		return nil, seedanceError(400, "Group name or description is too long")
 	}
@@ -146,6 +154,54 @@ func CreateSeedanceGroup(c *gin.Context, name string, input SeedanceGroupInput) 
 }
 
 func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model.SeedanceResource, error) {
+	if !c.GetBool("seedance_replica_internal") {
+		if input.GroupID != "" {
+			g, err := model.GetSeedanceResource(c.GetInt("id"), "group", input.GroupID)
+			if err != nil {
+				return nil, seedanceError(404, "Media group not found")
+			}
+			if g.GroupType == unifiedSeedanceKind {
+				return submitUnifiedSeedanceAssets(c, input, g)
+			}
+		} else if input.Group == nil || (input.Group.ChannelID == 0 && input.Group.Purpose == "") {
+			if _, fixed := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); !fixed {
+				if err := ValidateSeedanceAssetSubmission(&input); err != nil {
+					return nil, err
+				}
+				raw, _ := common.Marshal(input)
+				input.SubmissionHash = SeedanceKeyFingerprint(string(raw))
+				tid := "asset_task_" + SeedanceKeyFingerprint(strconv.Itoa(c.GetInt("id")) + ":" + c.GetHeader("Idempotency-Key"))[:32]
+				if prior, e := model.GetSeedanceResource(c.GetInt("id"), "task", tid); e == nil {
+					if prior.Description != input.SubmissionHash {
+						return nil, seedanceError(409, "Idempotency-Key was used for a different request")
+					}
+					return prior, nil
+				} else if e != gorm.ErrRecordNotFound {
+					return nil, e
+				}
+				if !ValidVideoSubmissionKey(c.GetHeader("Idempotency-Key")) {
+					return nil, seedanceError(400, "Idempotency-Key is required for unified virtual materials")
+				}
+				input.URL = nil
+				input.Name = nil
+				gi := SeedanceGroupInput{}
+				if input.Group != nil {
+					gi = *input.Group
+				}
+				g, err := createUnifiedSeedanceGroup(c, input.Model, gi)
+				if err != nil {
+					return nil, err
+				}
+				input.Group = nil
+				input.GroupID = g.ID
+				return submitUnifiedSeedanceAssets(c, input, g)
+			}
+		}
+	}
+	return submitSeedanceAssetsSingle(c, input)
+}
+
+func submitSeedanceAssetsSingle(c *gin.Context, input SeedanceAssetSubmission) (*model.SeedanceResource, error) {
 	input.Assets = append([]SeedanceAssetInput(nil), input.Assets...)
 	idempotency := c.GetHeader("Idempotency-Key")
 	if input.GroupID != "" {
@@ -230,10 +286,14 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 		return nil, seedanceError(400, "Idempotency-Key of 8–128 characters is required for channel portrait assets")
 	}
 	task := &model.SeedanceResource{ID: taskID, Description: requestHash, Kind: "task", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, ProjectName: group.ProjectName, CredentialFingerprint: group.CredentialFingerprint, GroupType: group.GroupType, VerificationID: group.VerificationID, Model: input.Model, GroupID: group.ID, Status: "processing"}
+	task.ParentID = input.ReplicaParentID
 	assetIDs := make([]string, 0, len(input.Assets))
 	assets := make([]model.SeedanceResource, 0, len(input.Assets))
 	for i, item := range input.Assets {
 		asset := model.SeedanceResource{ID: seedanceID("asset"), Kind: "asset", UserID: group.UserID, ChannelID: group.ChannelID, KeyFingerprint: group.KeyFingerprint, ProjectName: group.ProjectName, CredentialFingerprint: group.CredentialFingerprint, GroupType: group.GroupType, VerificationID: group.VerificationID, Model: input.Model, GroupID: group.ID, Name: item.Name, SourceURL: item.URL, AssetType: input.AssetType, Status: "Pending", DurationSeconds: durations[i], MeasuredDurationSeconds: measuredDurations[i]}
+		if len(input.LogicalAssetIDs) > i {
+			asset.ParentID = input.LogicalAssetIDs[i]
+		}
 		assetIDs = append(assetIDs, asset.ID)
 		assets = append(assets, asset)
 	}
@@ -284,6 +344,9 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 }
 
 func SeedanceAssetDTO(resource *model.SeedanceResource) map[string]any {
+	if resource.GroupType == unifiedSeedanceKind {
+		return unifiedSeedanceAssetDTO(resource)
+	}
 	dto := map[string]any{"id": resource.ID, "asset_id": resource.ID, "asset_url": "asset://" + resource.ID, "name": resource.Name, "asset_type": resource.AssetType, "group_id": resource.GroupID, "status": resource.Status, "url": seedancePublicSourceURL(resource), "created_at": resource.CreatedAt, "updated_at": resource.UpdatedAt}
 	if resource.ChannelID == constant.VideoFeeSeedanceChannelID {
 		dto["material_purpose"] = resource.GroupType
@@ -327,6 +390,9 @@ func SeedanceTaskDTO(resource *model.SeedanceResource) map[string]any {
 }
 
 func PollSeedanceAssetTask(c *gin.Context, task *model.SeedanceResource) error {
+	if task.GroupType == unifiedSeedanceKind {
+		return pollUnifiedSeedanceTask(c, task)
+	}
 	if task.Status == "completed" || task.Status == "failed" {
 		return nil
 	}
@@ -437,6 +503,9 @@ func PollSeedanceAssetTask(c *gin.Context, task *model.SeedanceResource) error {
 }
 
 func RefreshSeedanceAsset(c *gin.Context, asset *model.SeedanceResource) error {
+	if asset.GroupType == unifiedSeedanceKind {
+		return refreshUnifiedSeedanceAsset(c, asset)
+	}
 	if asset.UpstreamID == "" {
 		return nil
 	}
@@ -461,6 +530,9 @@ func RefreshSeedanceAsset(c *gin.Context, asset *model.SeedanceResource) error {
 }
 
 func UpdateSeedanceResource(c *gin.Context, resource *model.SeedanceResource, name, description *string) error {
+	if resource.GroupType == unifiedSeedanceKind {
+		return updateUnifiedSeedanceResource(c, resource, name, description)
+	}
 	payload := map[string]any{}
 	if name != nil {
 		if utf8.RuneCountInString(*name) > 255 {
@@ -488,6 +560,9 @@ func UpdateSeedanceResource(c *gin.Context, resource *model.SeedanceResource, na
 }
 
 func DeleteSeedanceResource(c *gin.Context, resource *model.SeedanceResource) error {
+	if resource.GroupType == unifiedSeedanceKind {
+		return deleteUnifiedSeedanceResource(c, resource)
+	}
 	if resource.Kind == "group" {
 		var count int64
 		if err := seedanceDB().Model(&model.SeedanceResource{}).Where("user_id = ? AND kind = ? AND group_id = ?", resource.UserID, "asset", resource.ID).Count(&count).Error; err != nil {
