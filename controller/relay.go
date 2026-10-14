@@ -1677,7 +1677,7 @@ func RelayTaskFetch(c *gin.Context) {
 
 func RelayTask(c *gin.Context) {
 	var webhookResponse *taskWebhookResponseWriter
-	if GetTaskWebhookConfig(c) != nil {
+	if GetTaskWebhookConfig(c) != nil || service.VideoSubmissionFromContext(c) != nil {
 		webhookResponse = &taskWebhookResponseWriter{ResponseWriter: c.Writer}
 		c.Writer = webhookResponse
 		defer webhookResponse.commit(c)
@@ -1692,6 +1692,9 @@ func RelayTask(c *gin.Context) {
 		return
 	}
 
+	if submission := service.VideoSubmissionFromContext(c); submission != nil {
+		relayInfo.PublicTaskID = submission.TaskID
+	}
 	if value, ok := c.Get("seedance_portrait_video_receipt"); ok {
 		receipt := value.(*model.SeedanceResource)
 		relayInfo.PublicTaskID = receipt.UpstreamID
@@ -1723,7 +1726,7 @@ func RelayTask(c *gin.Context) {
 	}
 
 	maxTaskRetries := common.RetryTimes
-	if _, ok := c.Get("seedance_portrait_video_receipt"); ok {
+	if _, ok := c.Get("seedance_portrait_video_receipt"); ok || service.VideoSubmissionFromContext(c) != nil {
 		maxTaskRetries = 0
 	}
 	for ; retryParam.GetRetry() <= maxTaskRetries; retryParam.IncreaseRetry() {
@@ -1847,10 +1850,18 @@ func RelayTask(c *gin.Context) {
 			if receiptErr != nil {
 				insertErr = receiptErr
 			} else {
-				insertErr = model.InsertSeedanceTaskWithReceipt(task, receipt)
+				if submission := service.VideoSubmissionFromContext(c); submission != nil {
+					insertErr = model.InsertVideoSubmissionTask(task, receipt, submission.ID)
+				} else {
+					insertErr = model.InsertSeedanceTaskWithReceipt(task, receipt)
+				}
 			}
 		} else {
-			insertErr = task.Insert()
+			if submission := service.VideoSubmissionFromContext(c); submission != nil {
+				insertErr = model.InsertVideoSubmissionTask(task, nil, submission.ID)
+			} else {
+				insertErr = task.Insert()
+			}
 		}
 		if insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
@@ -1861,6 +1872,10 @@ func RelayTask(c *gin.Context) {
 	}
 
 	if taskErr != nil {
+		if webhookResponse != nil {
+			webhookResponse.body.Reset()
+			webhookResponse.code = 0
+		}
 		respondTaskError(c, taskErr)
 	}
 }

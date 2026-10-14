@@ -532,6 +532,15 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		client = service.GetHttpClient()
 	}
 
+	if service.VideoSubmissionFromContext(c) != nil && req.Method == http.MethodPost {
+		// Never replay a paid submission through HTTP redirects or the
+		// transport's rewind path, even when an adapter sets an upstream key.
+		req.GetBody = nil
+		isolatedClient := *client
+		isolatedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &isolatedClient
+	}
+
 	var stopPinger context.CancelFunc
 	if info.IsStream {
 		helper.SetEventStreamHeaders(c)

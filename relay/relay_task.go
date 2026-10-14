@@ -261,6 +261,10 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
 	}
 
+	// Persist the one-way send boundary before any provider submission.
+	if err := service.MarkVideoSubmissionSending(c, info.ChannelId); err != nil {
+		return nil, service.TaskErrorWrapperLocal(err, "build_request_failed", http.StatusServiceUnavailable)
+	}
 	// 9. 发送请求
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
@@ -289,6 +293,15 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	upstreamTaskID, taskData, taskErr := adaptor.DoResponse(c, resp, info)
 	if taskErr != nil {
 		return nil, taskErr
+	}
+
+	if submission := service.VideoSubmissionFromContext(c); submission != nil {
+		if upstreamTaskID == "" {
+			return nil, service.TaskErrorWrapper(fmt.Errorf("upstream did not return a task ID"), "invalid_response", http.StatusBadGateway)
+		}
+		if err := model.FinishVideoSubmission(submission.ID, model.VideoSubmissionAccepted, upstreamTaskID, false); err != nil {
+			return nil, service.TaskErrorWrapper(fmt.Errorf("unable to persist upstream acceptance"), "read_response_body_failed", http.StatusServiceUnavailable)
+		}
 	}
 
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios

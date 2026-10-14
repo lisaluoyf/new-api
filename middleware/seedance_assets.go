@@ -85,7 +85,7 @@ func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 			}
 			common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, pin)
 			c.Set("seedance_asset_key_fingerprint", asset.KeyFingerprint)
-			if service.IsSeedancePortraitAsset(asset) && c.Request.URL.Path != "/v1/videos/quote" {
+			if service.IsSeedancePortraitAsset(asset) && c.Request.URL.Path != "/v1/videos/quote" && service.VideoSubmissionFromContext(c) == nil {
 				receipt, fresh, e := service.BeginSeedancePortraitVideo(c, fields, asset)
 				if e != nil {
 					seedanceRoutingError(c, e)
@@ -98,6 +98,10 @@ func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 				}
 				c.Set("seedance_portrait_video_receipt", receipt)
 			}
+		}
+		if c.GetBool("video_submission_legacy") && (asset == nil || !service.IsSeedancePortraitAsset(asset)) {
+			seedanceRoutingError(c, &service.SeedanceAPIError{Status: 409, Message: "Idempotency-Key belongs to an existing portrait request; query its receipt"})
+			return
 		}
 		c.Next()
 	}

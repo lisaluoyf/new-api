@@ -307,6 +307,18 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 }
 
 func TokenAuth() func(c *gin.Context) {
+	return tokenAuth(false)
+}
+
+func VideoSubmissionRecoveryAuth() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		recovery := c.Request.Method == http.MethodGet && c.Request.URL.Path == "/v1/video-submissions/by-key"
+		recovery = recovery || (c.Request.Method == http.MethodPost && service.IsSeedanceSubmissionPath(c.Request.URL.Path) && c.GetHeader("Idempotency-Key") != "")
+		tokenAuth(recovery)(c)
+	}
+}
+
+func tokenAuth(recovery bool) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		// 先检测是否为ws
 		if c.Request.Header.Get("Sec-WebSocket-Protocol") != "" {
@@ -362,7 +374,13 @@ func TokenAuth() func(c *gin.Context) {
 			parts = strings.Split(key, "-")
 			key = parts[0]
 		}
-		token, err := model.ValidateUserToken(key)
+		var token *model.Token
+		var err error
+		if recovery {
+			token, err = model.ValidateUserTokenForRecovery(key)
+		} else {
+			token, err = model.ValidateUserToken(key)
+		}
 		if token != nil {
 			id := c.GetInt("id")
 			if id == 0 {
