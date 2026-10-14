@@ -366,3 +366,5 @@ setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
 
 quota.pending_settlement: "Une requête précédente a une facturation non réglée. Rechargez le solde initial ou contactez le support. Cela est distinct de la limite de cinq heures de votre abonnement."
+
+token.quota_insufficient: "Le quota de la clé API est insuffisant pour cette requête. Augmentez sa limite dans Console > Clés API. Le solde du compte et le quota de la clé sont distincts."

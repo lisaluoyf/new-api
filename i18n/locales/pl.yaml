@@ -366,3 +366,5 @@ setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
 
 quota.pending_settlement: "Poprzednie żądanie ma nierozliczoną płatność. Doładuj pierwotne saldo lub skontaktuj się z pomocą. To odrębna kwestia od pięciogodzinnego limitu subskrypcji."
+
+token.quota_insufficient: "Limit klucza API jest niewystarczający dla tego żądania. Zwiększ go w Konsola > Klucze API. Saldo konta i limit klucza są niezależne."

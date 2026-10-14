@@ -421,3 +421,5 @@ setup.initialization_failed: "系統初始化失敗：{{.Error}}"
 setup.success: "系統初始化成功"
 
 quota.pending_settlement: "歷史請求仍有未結清帳單，請補足原資金來源的餘額或聯絡客服。這與訂閱五小時額度限制不同。"
+
+token.quota_insufficient: "此請求所需額度超過 API Key 的剩餘額度。請在控制台 > API 金鑰中提高該金鑰的額度上限。帳戶餘額與金鑰額度相互獨立。"

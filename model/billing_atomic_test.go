@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -54,7 +55,7 @@ func TestAdjustWalletAndTokenQuotaRejectsConcurrentOverspend(t *testing.T) {
 	require.NoError(t, DB.Create(&Token{Id: 2, UserId: 1, Key: "limited-key", RemainQuota: 100, UsedQuota: 0}).Error)
 
 	err := AdjustWalletAndTokenQuota(1, -40, 2, "limited-key", -40, false)
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInsufficientWalletQuota)
 
 	var user User
 	var token Token
@@ -63,4 +64,52 @@ func TestAdjustWalletAndTokenQuotaRejectsConcurrentOverspend(t *testing.T) {
 	require.Equal(t, 30, user.Quota)
 	require.Equal(t, 100, token.RemainQuota)
 	require.Equal(t, 0, token.UsedQuota)
+}
+
+func TestAdjustWalletAndTokenQuotaClassifiesTokenRejection(t *testing.T) {
+	for _, tc := range []struct {
+		name                        string
+		missing, deleted, unlimited bool
+		wantInsufficient            bool
+	}{
+		{name: "limited", wantInsufficient: true},
+		{name: "missing", missing: true},
+		{name: "deleted", deleted: true},
+		{name: "unlimited", unlimited: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupAtomicBillingTestDB(t)
+			require.NoError(t, DB.Create(&User{Id: 1, Username: "quota-user", Quota: 100}).Error)
+			if !tc.missing {
+				token := Token{Id: 2, UserId: 1, Key: "quota-key", RemainQuota: 10, UnlimitedQuota: tc.unlimited}
+				require.NoError(t, DB.Create(&token).Error)
+				if tc.deleted {
+					require.NoError(t, DB.Delete(&token).Error)
+				}
+			}
+			err := AdjustWalletAndTokenQuota(1, -40, 2, "quota-key", -40, false)
+			var user User
+			require.NoError(t, DB.First(&user, 1).Error)
+			if tc.unlimited {
+				require.NoError(t, err)
+				require.Equal(t, 60, user.Quota)
+			} else {
+				require.Error(t, err)
+				require.Equal(t, tc.wantInsufficient, errors.Is(err, ErrInsufficientTokenQuota))
+				require.Equal(t, 100, user.Quota, "rejected token debit must roll back the wallet")
+			}
+			if !tc.missing {
+				var token Token
+				require.NoError(t, DB.Unscoped().First(&token, 2).Error)
+				if tc.unlimited {
+					require.Equal(t, -30, token.RemainQuota)
+					require.Equal(t, 40, token.UsedQuota)
+				} else {
+					require.Equal(t, 10, token.RemainQuota)
+					require.Zero(t, token.UsedQuota)
+				}
+				require.Equal(t, tc.deleted, token.DeletedAt.Valid)
+			}
+		})
+	}
 }

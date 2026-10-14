@@ -366,3 +366,5 @@ setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
 
 quota.pending_settlement: "По предыдущему запросу остался незавершённый расчёт. Пополните исходный баланс или обратитесь в поддержку. Это не связано с пятичасовым лимитом подписки."
+
+token.quota_insufficient: "Квоты API-ключа недостаточно для этого запроса. Увеличьте лимит в разделе Консоль > API-ключи. Баланс аккаунта и квота ключа учитываются отдельно."

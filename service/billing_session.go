@@ -282,14 +282,7 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 			s.relayInfo.TokenId, s.relayInfo.TokenKey, -delta,
 			s.relayInfo.IsPlayground,
 		); err != nil {
-			return types.NewErrorWithStatusCode(
-				fmt.Errorf("fallback quota reservation failed: %w", err),
-				types.ErrorCodeInsufficientUserQuota,
-				http.StatusForbidden,
-				types.ErrOptionWithSkipRetry(),
-				types.ErrOptionWithNoRecordErrorLog(),
-				types.ErrOptionWithClientMessage(i18n.MsgQuotaInsufficient),
-			)
+			return walletQuotaAdjustmentAPIError(fmt.Errorf("fallback quota reservation failed: %w", err))
 		}
 		wallet.consumed += delta
 		if !s.relayInfo.IsPlayground {
@@ -339,7 +332,7 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 			s.relayInfo.TokenId, s.relayInfo.TokenKey, -effectiveQuota,
 			s.relayInfo.IsPlayground,
 		); err != nil {
-			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+			return walletQuotaAdjustmentAPIError(err)
 		}
 		wallet.consumed = effectiveQuota
 		if !s.relayInfo.IsPlayground {
@@ -391,6 +384,24 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 	s.syncRelayInfo()
 
 	return nil
+}
+
+// walletQuotaAdjustmentAPIError preserves database failures as server errors
+// and reports expected quota rejections as non-retryable client errors.
+func walletQuotaAdjustmentAPIError(err error) *types.NewAPIError {
+	code := types.ErrorCodeInsufficientUserQuota
+	message := i18n.MsgQuotaInsufficient
+	switch {
+	case errors.Is(err, model.ErrInsufficientTokenQuota):
+		code = types.ErrorCodePreConsumeTokenQuotaFailed
+		message = i18n.MsgTokenQuotaInsufficient
+	case errors.Is(err, model.ErrInsufficientWalletQuota):
+	default:
+		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+	}
+	return types.NewErrorWithStatusCode(err, code, http.StatusForbidden,
+		types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog(),
+		types.ErrOptionWithClientMessage(message))
 }
 
 func (s *BillingSession) reserveFunding(delta int) error {

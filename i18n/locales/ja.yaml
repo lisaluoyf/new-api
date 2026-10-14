@@ -366,3 +366,5 @@ setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
 
 quota.pending_settlement: "以前のリクエストに未精算の請求があります。元の残高を補充するか、サポートにお問い合わせください。サブスクリプションの5時間制限とは別の問題です。"
+
+token.quota_insufficient: "このリクエストに必要な API キーの利用枠が不足しています。コンソール > API キーでキーの利用上限を引き上げてください。アカウント残高と API キーの利用枠は別です。"

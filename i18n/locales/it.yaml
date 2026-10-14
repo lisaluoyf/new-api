@@ -366,3 +366,5 @@ setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
 
 quota.pending_settlement: "Una richiesta precedente ha un addebito non saldato. Ricarica il saldo originale o contatta il supporto. Questo è distinto dal limite di cinque ore dell’abbonamento."
+
+token.quota_insufficient: "La quota della chiave API non è sufficiente per questa richiesta. Aumenta il limite in Console > Chiavi API. Il saldo del conto e la quota della chiave sono separati."

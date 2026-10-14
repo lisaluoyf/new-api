@@ -366,3 +366,5 @@ setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
 
 quota.pending_settlement: "Uma solicitação anterior tem uma cobrança pendente. Recarregue o saldo original ou contate o suporte. Isso é separado do limite de cinco horas da assinatura."
+
+token.quota_insufficient: "A cota da chave API é insuficiente para esta solicitação. Aumente o limite em Console > Chaves API. O saldo da conta e a cota da chave são separados."

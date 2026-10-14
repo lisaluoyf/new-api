@@ -366,3 +366,5 @@ setup.initialization_failed: "System initialization failed: {{.Error}}"
 setup.success: "System initialization completed"
 
 quota.pending_settlement: "Für eine frühere Anfrage ist eine Abrechnung offen. Laden Sie das ursprüngliche Guthaben auf oder kontaktieren Sie den Support. Dies ist unabhängig vom Fünfstundenlimit des Abonnements."
+
+token.quota_insufficient: "Das Kontingent des API-Schlüssels reicht für diese Anfrage nicht aus. Erhöhen Sie das Limit unter Konsole > API-Schlüssel. Kontoguthaben und Schlüsselkontingent sind getrennt."

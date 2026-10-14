@@ -1,11 +1,17 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
+)
+
+var (
+	ErrInsufficientWalletQuota = errors.New("wallet quota is insufficient")
+	ErrInsufficientTokenQuota  = errors.New("API key quota is insufficient")
 )
 
 // RefundWalletAndTokenQuota restores a wallet pre-consume and its matching
@@ -51,6 +57,14 @@ func AdjustWalletAndTokenQuota(
 				return res.Error
 			}
 			if res.RowsAffected != 1 {
+				if walletDelta < 0 {
+					var user User
+					if err := tx.Select("id").First(&user, userID).Error; err == nil {
+						return ErrInsufficientWalletQuota
+					} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+						return err
+					}
+				}
 				return fmt.Errorf("wallet refund user %d not found", userID)
 			}
 		}
@@ -68,6 +82,17 @@ func AdjustWalletAndTokenQuota(
 				return res.Error
 			}
 			if res.RowsAffected != 1 {
+				// A conditional debit also affects zero rows when an existing
+				// limited key cannot afford it. Classify only after the atomic
+				// update, so a cached balance cannot bypass the quota guard.
+				if tokenDelta < 0 {
+					var token Token
+					if err := tx.Select("id").First(&token, tokenID).Error; err == nil {
+						return ErrInsufficientTokenQuota
+					} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+						return err
+					}
+				}
 				return fmt.Errorf("token refund token %d not found", tokenID)
 			}
 		}
