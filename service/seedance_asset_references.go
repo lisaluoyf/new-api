@@ -47,6 +47,15 @@ func seedanceOwnedAsset(c *gin.Context, id string) (*model.SeedanceResource, err
 	if err != nil {
 		return nil, seedanceError(400, "Referenced asset was not found in your media library")
 	}
+	if asset.ParentID != "" {
+		return nil, seedanceError(400, "Use the public material ID")
+	}
+	if asset.GroupType == unifiedSeedanceKind {
+		if asset.Status != "Active" {
+			return nil, seedanceError(409, "Material is not ready; query its model readiness", "asset_not_active")
+		}
+		return asset, nil
+	}
 	if asset.Status != "Active" || asset.UpstreamID == "" {
 		return nil, seedanceError(409, "Referenced asset has not passed review", "asset_not_active")
 	}

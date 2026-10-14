@@ -155,3 +155,12 @@ func TestUnifiedUploadOnceCreatesPerModelBindingsAndReplaysWithoutUpload(t *test
 	require.Error(t, err)
 	require.Equal(t, 4, created)
 }
+
+func TestUnifiedLogicalAssetPassesNormalizationWithoutProviderID(t *testing.T) {
+	_, c := unifiedRoutingFixture(t)
+	a, err := seedanceOwnedAsset(c, "logical-a")
+	require.NoError(t, err)
+	require.Empty(t, a.UpstreamID)
+	_, err = seedanceOwnedAsset(c, "logical-a-account-a")
+	require.Error(t, err)
+}
