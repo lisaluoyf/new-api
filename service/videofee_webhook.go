@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/tidwall/gjson"
 	"gorm.io/gorm/clause"
 )
 
@@ -208,8 +209,11 @@ func processVideoFeeWebhook(ctx context.Context, event *model.VideoFeeWebhookInb
 	if task.ChannelId != constant.VideoFeeSeedanceChannelID || task.Platform != constant.TaskPlatformVideoFee {
 		return ErrVideoFeeWebhookPayload
 	}
-	if task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure {
+	if task.Status == model.TaskStatusSuccess {
 		return nil
+	}
+	if task.Status == model.TaskStatusFailure {
+		return enrichVideoFeeTerminalFailure(ctx, &task, event.Payload)
 	}
 	if GetTaskAdaptorFunc == nil {
 		return fmt.Errorf("VideoFee adaptor not ready")
@@ -234,7 +238,45 @@ func processVideoFeeWebhook(ctx context.Context, event *model.VideoFeeWebhookInb
 	if fresh.Status != model.TaskStatusSuccess && fresh.Status != model.TaskStatusFailure {
 		return fmt.Errorf("VideoFee terminal update not persisted")
 	}
+	// Polling may have won the terminal CAS after this callback loaded the task.
+	// Enrich only generic text in the winning row; do not rerun settlement.
+	if fresh.Status == model.TaskStatusFailure {
+		return enrichVideoFeeTerminalFailure(ctx, &fresh, event.Payload)
+	}
 	return nil
+}
+
+// The payload was authenticated and durably bound to this task at receipt.
+// Never use a contradictory event or overwrite an existing detailed reason.
+func enrichVideoFeeTerminalFailure(ctx context.Context, task *model.Task, raw string) error {
+	if !gjson.Valid(raw) {
+		return ErrVideoFeeWebhookPayload
+	}
+	data := gjson.Get(raw, "data")
+	if data.Get("task_id").String() != task.GetUpstreamTaskID() {
+		return ErrVideoFeeWebhookPayload
+	}
+	switch strings.ToUpper(data.Get("status").String()) {
+	case "FAILURE", "FAILED", "CANCELLED", "CANCELED":
+	default:
+		return nil
+	}
+	value := data.Get("fail_reason")
+	if value.Type != gjson.String || strings.TrimSpace(value.String()) == "" {
+		value = data.Get("error.message")
+	}
+	if value.Type != gjson.String {
+		return nil
+	}
+	reason := strings.TrimSpace(value.String())
+	candidate := *task
+	candidate.FailReason = reason
+	publicReason := PublicTaskFailure(&candidate)
+	if model.IsGenericTaskFailureReason(publicReason) || publicReason == "[redacted]" {
+		return nil
+	}
+	_, err := model.EnrichVideoFeeFailureReason(ctx, task, reason)
+	return err
 }
 
 func RunVideoFeeWebhookBatch() error {
