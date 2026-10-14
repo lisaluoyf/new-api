@@ -5217,5 +5217,9 @@
   "Optional 1-hour cache write price. When unset, Claude inherits 1.6 times the 5-minute price.": "可选的1小时缓存写入价格。未配置时，Claude 使用5分钟价格的1.6倍。",
   "Expression billing uses its tier prices. These are the configured base cache prices.": "表达式计费按各档位价格执行，此处显示配置的缓存基础价。",
   "Gemini Only": "仅限 Gemini 原生协议",
-  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "将此渠道限制为 Codex、Claude Code 或 Gemini 原生 API 协议。其他请求会自动跳过此渠道，定价 key_group 不变。"
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "将此渠道限制为 Codex、Claude Code 或 Gemini 原生 API 协议。其他请求会自动跳过此渠道，定价 key_group 不变。",
+  "Only detect channels in the top user-price ranks": "仅检测用户价格排名前 N 名的渠道",
+  "Top channel count": "前多少名",
+  "Ranks all channels of this model by current user price, lowest first, including enabled and disabled channels. Applies to scheduled model detection only. Skipped channels still occupy rank positions.": "按该模型全部渠道的当前用户价格从低到高排名，包括启用和禁用渠道。仅对自动模型检测生效；跳过检测的渠道仍占排名名额。",
+  "Enter a positive whole number no greater than 2147483647.": "请输入不大于 2147483647 的正整数。"
 }

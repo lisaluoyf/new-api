@@ -4841,5 +4841,9 @@
   "2K low": "2K 저화질",
   "2K medium": "2K 중화질",
   "Gemini Only": "Gemini Only",
-  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "이 채널을 Codex, Claude Code 또는 Gemini 네이티브 API로 제한합니다. 다른 요청은 이 채널을 건너뜁니다. 가격 key_group은 변경되지 않습니다."
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "이 채널을 Codex, Claude Code 또는 Gemini 네이티브 API로 제한합니다. 다른 요청은 이 채널을 건너뜁니다. 가격 key_group은 변경되지 않습니다.",
+  "Only detect channels in the top user-price ranks": "Only detect channels in the top user-price ranks",
+  "Top channel count": "Top channel count",
+  "Ranks all channels of this model by current user price, lowest first, including enabled and disabled channels. Applies to scheduled model detection only. Skipped channels still occupy rank positions.": "Ranks all channels of this model by current user price, lowest first, including enabled and disabled channels. Applies to scheduled model detection only. Skipped channels still occupy rank positions.",
+  "Enter a positive whole number no greater than 2147483647.": "Enter a positive whole number no greater than 2147483647."
 }

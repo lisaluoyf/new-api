@@ -4853,5 +4853,9 @@
   "Fingerprint version": "Phiên bản dấu vân tay",
   "Detector version": "Phiên bản bộ phát hiện",
   "Gemini Only": "Gemini Only",
-  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "Giới hạn kênh này cho Codex, Claude Code hoặc giao thức API gốc Gemini. Yêu cầu khác tự động bỏ qua kênh. key_group định giá không thay đổi."
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "Giới hạn kênh này cho Codex, Claude Code hoặc giao thức API gốc Gemini. Yêu cầu khác tự động bỏ qua kênh. key_group định giá không thay đổi.",
+  "Only detect channels in the top user-price ranks": "Only detect channels in the top user-price ranks",
+  "Top channel count": "Top channel count",
+  "Ranks all channels of this model by current user price, lowest first, including enabled and disabled channels. Applies to scheduled model detection only. Skipped channels still occupy rank positions.": "Ranks all channels of this model by current user price, lowest first, including enabled and disabled channels. Applies to scheduled model detection only. Skipped channels still occupy rank positions.",
+  "Enter a positive whole number no greater than 2147483647.": "Enter a positive whole number no greater than 2147483647."
 }
