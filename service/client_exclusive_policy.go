@@ -18,6 +18,7 @@ const (
 	ClientExclusiveNone       ClientExclusive = ""
 	ClientExclusiveCodex      ClientExclusive = "codex"
 	ClientExclusiveClaudeCode ClientExclusive = "claude_code"
+	ClientExclusiveGemini     ClientExclusive = "gemini"
 )
 
 // ClientType classifies the incoming request for routing.
@@ -27,9 +28,11 @@ const (
 	ClientTypeGeneric    ClientType = "generic"
 	ClientTypeCodex      ClientType = "codex"
 	ClientTypeClaudeCode ClientType = "claude_code"
+	ClientTypeGemini     ClientType = "gemini"
 )
 
 var (
+	ErrNonGeminiChannel           = errors.New("this channel only accepts the Gemini native API protocol")
 	ErrNonClaudeCodeClaudeChannel = errors.New("this model cannot use Claude Code-only channels from non-Claude Code clients")
 )
 
@@ -48,6 +51,8 @@ func ExtractClientExclusive(setting *string) ClientExclusive {
 	switch strings.ToLower(strings.TrimSpace(s.ClientExclusive)) {
 	case string(ClientExclusiveCodex):
 		return ClientExclusiveCodex
+	case string(ClientExclusiveGemini):
+		return ClientExclusiveGemini
 	case string(ClientExclusiveClaudeCode):
 		return ClientExclusiveClaudeCode
 	default:
@@ -76,8 +81,29 @@ func DetectClaudeCodeClient(c *gin.Context) bool {
 	return false
 }
 
+// isGeminiNativeRequest checks the incoming endpoint, never the model name
+// or client-supplied identity headers. OpenAI-compatible Gemini calls stay generic.
+func isGeminiNativeRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil || c.Request.Method != "POST" {
+		return false
+	}
+	path := c.Request.URL.Path
+	for _, prefix := range []string{"/v1beta/models/", "/v1/models/"} {
+		if strings.HasPrefix(path, prefix) {
+			modelAction := strings.TrimPrefix(path, prefix)
+			name, action, found := strings.Cut(modelAction, ":")
+			return found && name != "" && !strings.Contains(name, "/") &&
+				(action == "generateContent" || action == "streamGenerateContent" || action == "embedContent" || action == "batchEmbedContents")
+		}
+	}
+	return false
+}
+
 // DetectClientType classifies the caller independently of model names.
 func DetectClientType(c *gin.Context, _ string) ClientType {
+	if isGeminiNativeRequest(c) {
+		return ClientTypeGemini
+	}
 	if DetectCodexClient(c) {
 		return ClientTypeCodex
 	}
@@ -110,16 +136,18 @@ func clientTypeFromContext(c *gin.Context) ClientType {
 	}
 	s, _ := v.(string)
 	switch ClientType(s) {
-	case ClientTypeCodex, ClientTypeClaudeCode:
+	case ClientTypeCodex, ClientTypeClaudeCode, ClientTypeGemini:
 		return ClientType(s)
 	default:
 		return ClientTypeGeneric
 	}
 }
 
-// ChannelMatchesClientPolicy applies one-way client-exclusive rules (Codex + Claude Code).
+// ChannelMatchesClientPolicy applies one-way client and native-protocol restrictions.
 func ChannelMatchesClientPolicy(setting *string, clientType ClientType, _ string) bool {
 	switch ExtractClientExclusive(setting) {
+	case ClientExclusiveGemini:
+		return clientType == ClientTypeGemini
 	case ClientExclusiveCodex:
 		return clientType == ClientTypeCodex
 	case ClientExclusiveClaudeCode:
@@ -189,6 +217,9 @@ func ValidateChannelClientPolicy(c *gin.Context, channel *model.Channel, modelNa
 		return nil
 	}
 	exclusive := ExtractClientExclusive(channel.Setting)
+	if exclusive == ClientExclusiveGemini {
+		return ErrNonGeminiChannel
+	}
 	if exclusive == ClientExclusiveClaudeCode && clientType != ClientTypeClaudeCode {
 		return ErrNonClaudeCodeClaudeChannel
 	}
@@ -206,6 +237,8 @@ func ClientPolicyChannelError(c *gin.Context, modelName string) error {
 	InitClientPolicyContext(c, modelName)
 	clientType := clientTypeFromContext(c)
 	switch clientType {
+	case ClientTypeGemini:
+		return fmt.Errorf("no Gemini-compatible channel available for %s", modelName)
 	case ClientTypeCodex:
 		return fmt.Errorf("%w (%s)", ErrCodexClientNoChannel, modelName)
 	case ClientTypeClaudeCode:
@@ -223,6 +256,8 @@ func AppendClientExclusiveLogInfo(c *gin.Context, modelName string, other map[st
 	InitClientPolicyContext(c, modelName)
 	clientType := clientTypeFromContext(c)
 	switch clientType {
+	case ClientTypeGemini:
+		other["client_type"] = "gemini_compatible"
 	case ClientTypeCodex, ClientTypeClaudeCode:
 		other["client_type"] = string(clientType)
 	default:

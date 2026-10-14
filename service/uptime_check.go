@@ -845,6 +845,8 @@ func ChannelClientProbeFormat(ch *model.Channel) string {
 		return ""
 	}
 	switch ExtractClientExclusive(ch.Setting) {
+	case ClientExclusiveGemini:
+		return "gemini"
 	case ClientExclusiveClaudeCode:
 		return "claude-cli"
 	case ClientExclusiveCodex:

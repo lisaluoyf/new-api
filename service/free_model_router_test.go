@@ -385,7 +385,7 @@ func TestFreeModelSuccessTraceIsReadyBeforeConsumeLog(t *testing.T) {
 
 func TestFreeModelClientExclusiveFiltering(t *testing.T) {
 	db := setupFreeModelRouterDB(t)
-	for id, exclusive := range []string{"", "codex", "claude_code"} {
+	for id, exclusive := range []string{"", "codex", "claude_code", "gemini"} {
 		addFreeMember(t, db, id+1, fullMember())
 		require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", id+1).Update("setting", `{"client_exclusive":"`+exclusive+`"}`).Error)
 	}

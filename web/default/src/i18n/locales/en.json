@@ -5177,5 +5177,7 @@
   "Base cache prices": "Base cache prices",
   "Inherited": "Inherited",
   "Optional 1-hour cache write price. When unset, Claude inherits 1.6 times the 5-minute price.": "Optional 1-hour cache write price. When unset, Claude inherits 1.6 times the 5-minute price.",
-  "Expression billing uses its tier prices. These are the configured base cache prices.": "Expression billing uses its tier prices. These are the configured base cache prices."
+  "Expression billing uses its tier prices. These are the configured base cache prices.": "Expression billing uses its tier prices. These are the configured base cache prices.",
+  "Gemini Only": "Gemini Only",
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged."
 }

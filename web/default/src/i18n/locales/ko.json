@@ -4839,5 +4839,7 @@
   "1K low": "1K 저화질",
   "1K medium": "1K 중화질",
   "2K low": "2K 저화질",
-  "2K medium": "2K 중화질"
+  "2K medium": "2K 중화질",
+  "Gemini Only": "Gemini Only",
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "이 채널을 Codex, Claude Code 또는 Gemini 네이티브 API로 제한합니다. 다른 요청은 이 채널을 건너뜁니다. 가격 key_group은 변경되지 않습니다."
 }

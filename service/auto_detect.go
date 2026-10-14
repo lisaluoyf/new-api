@@ -457,6 +457,8 @@ func RunChannelDetectionNow(ch *model.Channel, targetModel string) {
 // Returns "openai-compatible" if absent or unrecognized.
 func extractAPIFormat(setting *string) string {
 	switch ExtractClientExclusive(setting) {
+	case ClientExclusiveGemini:
+		return "gemini"
 	case ClientExclusiveClaudeCode:
 		return "claude-cli"
 	case ClientExclusiveCodex:

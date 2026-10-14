@@ -26,9 +26,11 @@ func TestExtractAPIFormatHonorsClientExclusive(t *testing.T) {
 	cc := `{"api_format":"openai-compatible","client_exclusive":"claude_code"}`
 	codex := `{"api_format":"openai-compatible","client_exclusive":"codex"}`
 	plain := `{"api_format":"anthropic"}`
+	gemini := `{"api_format":"openai-compatible","client_exclusive":"gemini"}`
 
 	require.Equal(t, "claude-cli", extractAPIFormat(&cc))
 	require.Equal(t, "codex-cli", extractAPIFormat(&codex))
+	require.Equal(t, "gemini", extractAPIFormat(&gemini))
 	require.Equal(t, "anthropic", extractAPIFormat(&plain))
 	require.Equal(t, "openai-compatible", extractAPIFormat(nil))
 }
@@ -37,9 +39,11 @@ func TestChannelClientProbeFormatUsesStructuredSetting(t *testing.T) {
 	cc := `{"key_group":"Claude Max（仅限CC）","client_exclusive":"claude_code"}`
 	codex := `{"key_group":"codex","client_exclusive":"codex"}`
 	labelOnly := `{"key_group":"cc"}`
+	gemini := `{"client_exclusive":"gemini"}`
 
 	require.Equal(t, "claude-cli", ChannelClientProbeFormat(&model.Channel{Setting: &cc}))
 	require.Equal(t, "codex-cli", ChannelClientProbeFormat(&model.Channel{Setting: &codex}))
+	require.Equal(t, "gemini", ChannelClientProbeFormat(&model.Channel{Setting: &gemini}))
 	require.Empty(t, ChannelClientProbeFormat(&model.Channel{Setting: &labelOnly}))
 	require.Empty(t, ChannelClientProbeFormat(nil))
 }

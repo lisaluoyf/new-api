@@ -25,7 +25,6 @@ import {
   useRef,
 } from 'react'
 import { useController, useForm, type Control } from 'react-hook-form'
-import { ModelGroupRatiosField } from '../model-group-ratios-field'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -162,6 +161,7 @@ import {
 } from '../dialogs/missing-models-confirmation-dialog'
 import { ParamOverrideEditorDialog } from '../dialogs/param-override-editor-dialog'
 import { StatusCodeRiskDialog } from '../dialogs/status-code-risk-dialog'
+import { ModelGroupRatiosField } from '../model-group-ratios-field'
 import { ModelMappingEditor } from '../model-mapping-editor'
 
 const MANUAL_PRICING_KEY_GROUP = '__manual_pricing__'
@@ -349,7 +349,9 @@ function KeyGroupField({
                 ]}
                 value={field.value || MANUAL_PRICING_KEY_GROUP}
                 onValueChange={(value) =>
-                  field.onChange(value === MANUAL_PRICING_KEY_GROUP ? '' : value)
+                  field.onChange(
+                    value === MANUAL_PRICING_KEY_GROUP ? '' : value
+                  )
                 }
               >
                 <FormControl>
@@ -364,7 +366,10 @@ function KeyGroupField({
                     </SelectItem>
                     {groupEntries.map(([k, v]) => (
                       <SelectItem key={k} value={k}>
-                        {k} <span className='text-muted-foreground ml-1 text-xs'>(×{v})</span>
+                        {k}{' '}
+                        <span className='text-muted-foreground ml-1 text-xs'>
+                          (×{v})
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -398,7 +403,9 @@ function KeyGroupField({
             <p className='text-destructive text-xs'>{fetchError}</p>
           )}
           <FormDescription>
-            {t('The pricing group this API key belongs to on the supplier station (e.g. aws-q, cc-sale)')}
+            {t(
+              'The pricing group this API key belongs to on the supplier station (e.g. aws-q, cc-sale)'
+            )}
           </FormDescription>
           <FormMessage />
         </FormItem>
@@ -411,6 +418,7 @@ const CLIENT_EXCLUSIVE_OPTIONS = [
   { value: 'none', label: 'Available to all clients' },
   { value: 'codex', label: 'Codex only' },
   { value: 'claude_code', label: 'Claude Code only' },
+  { value: 'gemini', label: 'Gemini Only' },
 ] as const
 
 const GPT_IMAGE_2_CAPABILITIES_TEMPLATE = {
@@ -481,7 +489,9 @@ function ClientExclusiveField({
             </SelectContent>
           </Select>
           <FormDescription>
-            {t('Restrict this channel to Codex or Claude Code clients. Pricing key_group is unchanged.')}
+            {t(
+              'Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.'
+            )}
           </FormDescription>
           <FormMessage />
         </FormItem>
@@ -515,7 +525,9 @@ function ManualGroupRatioField({
             />
           </FormControl>
           <FormDescription>
-            {t('Positive values override the upstream group_ratio. Leave blank or 0 to use the upstream value.')}
+            {t(
+              'Positive values override the upstream group_ratio. Leave blank or 0 to use the upstream value.'
+            )}
           </FormDescription>
           <FormMessage />
         </FormItem>
@@ -524,11 +536,14 @@ function ManualGroupRatioField({
   )
 }
 
-const RECHARGE_PRESET_USD = '1usdt'  // 1 USDT = 1 USDT → rate 1.0
-const RECHARGE_PRESET_RMB = '1rmb'   // 1 RMB  = 1 USDT → rate 1/cny
+const RECHARGE_PRESET_USD = '1usdt' // 1 USDT = 1 USDT → rate 1.0
+const RECHARGE_PRESET_RMB = '1rmb' // 1 RMB  = 1 USDT → rate 1/cny
 const RECHARGE_PRESET_CUSTOM = 'custom'
 
-function guessPreset(value: number | null | undefined, cnyRate: number): string {
+function guessPreset(
+  value: number | null | undefined,
+  cnyRate: number
+): string {
   if (value == null) return RECHARGE_PRESET_USD
   if (Math.abs(value - 1) < 0.001) return RECHARGE_PRESET_USD
   if (Math.abs(value - 1 / cnyRate) < 0.001) return RECHARGE_PRESET_RMB
@@ -544,13 +559,18 @@ function RechargeRateField({
   const [cnyRate, setCnyRate] = useState<number>(7.3)
   const [preset, setPreset] = useState<string>(RECHARGE_PRESET_USD)
 
-  const { field, fieldState } = useController({ control, name: 'recharge_rate' })
+  const { field, fieldState } = useController({
+    control,
+    name: 'recharge_rate',
+  })
 
   // Fetch live CNY rate once on mount
   useEffect(() => {
     fetch('/api/admin/exchange-rate')
       .then((r) => r.json())
-      .then((j) => { if (j.success && j.rate > 0) setCnyRate(j.rate) })
+      .then((j) => {
+        if (j.success && j.rate > 0) setCnyRate(j.rate)
+      })
       .catch(() => {})
   }, [])
 
@@ -559,15 +579,16 @@ function RechargeRateField({
     if (field.value != null) {
       setPreset(guessPreset(field.value, cnyRate))
     }
-  // Only run when the field value changes (e.g. drawer opens with existing channel)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Only run when the field value changes (e.g. drawer opens with existing channel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [field.value])
 
   function applyPreset(p: string | null) {
     const nextPreset = p ?? RECHARGE_PRESET_CUSTOM
     setPreset(nextPreset)
     if (nextPreset === RECHARGE_PRESET_USD) field.onChange(1)
-    else if (nextPreset === RECHARGE_PRESET_RMB) field.onChange(parseFloat((1 / cnyRate).toFixed(6)))
+    else if (nextPreset === RECHARGE_PRESET_RMB)
+      field.onChange(parseFloat((1 / cnyRate).toFixed(6)))
     // custom: leave current value, user types in the input
   }
 
@@ -579,17 +600,25 @@ function RechargeRateField({
           <SelectTrigger className='w-52 shrink-0'>
             <span className='truncate'>
               {preset === RECHARGE_PRESET_USD && '1 USDT = 1 USDT'}
-              {preset === RECHARGE_PRESET_RMB && `1 RMB = 1 USDT (≈${(1 / cnyRate).toFixed(4)})`}
+              {preset === RECHARGE_PRESET_RMB &&
+                `1 RMB = 1 USDT (≈${(1 / cnyRate).toFixed(4)})`}
               {preset === RECHARGE_PRESET_CUSTOM && t('Custom')}
             </span>
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value={RECHARGE_PRESET_USD}>1 USDT = 1 USDT</SelectItem>
-              <SelectItem value={RECHARGE_PRESET_RMB}>
-                1 RMB = 1 USDT <span className='text-muted-foreground ml-1 text-xs'>(≈{(1 / cnyRate).toFixed(4)})</span>
+              <SelectItem value={RECHARGE_PRESET_USD}>
+                1 USDT = 1 USDT
               </SelectItem>
-              <SelectItem value={RECHARGE_PRESET_CUSTOM}>{t('Custom')}</SelectItem>
+              <SelectItem value={RECHARGE_PRESET_RMB}>
+                1 RMB = 1 USDT{' '}
+                <span className='text-muted-foreground ml-1 text-xs'>
+                  (≈{(1 / cnyRate).toFixed(4)})
+                </span>
+              </SelectItem>
+              <SelectItem value={RECHARGE_PRESET_CUSTOM}>
+                {t('Custom')}
+              </SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>
@@ -605,16 +634,27 @@ function RechargeRateField({
         </FormControl>
       </div>
       <FormDescription>
-        {t('USD cost per 1 USDT of upstream credit. Used to calculate real cost in USDT.')}
+        {t(
+          'USD cost per 1 USDT of upstream credit. Used to calculate real cost in USDT.'
+        )}
       </FormDescription>
-      {fieldState.error && <p className='text-destructive text-xs'>{fieldState.error.message}</p>}
+      {fieldState.error && (
+        <p className='text-destructive text-xs'>{fieldState.error.message}</p>
+      )}
     </FormItem>
   )
 }
 
-function ModelPriceRatioField({ control }: { control: Control<ChannelFormValues> }) {
+function ModelPriceRatioField({
+  control,
+}: {
+  control: Control<ChannelFormValues>
+}) {
   const { t } = useTranslation()
-  const { field, fieldState } = useController({ control, name: 'model_price_ratio' })
+  const { field, fieldState } = useController({
+    control,
+    name: 'model_price_ratio',
+  })
 
   return (
     <FormItem>
@@ -629,16 +669,27 @@ function ModelPriceRatioField({ control }: { control: Control<ChannelFormValues>
         />
       </FormControl>
       <FormDescription>
-        {t('When upstream has no /api/pricing, use romaapi public model price × this ratio as fallback; leave blank or 0 to disable')}
+        {t(
+          'When upstream has no /api/pricing, use romaapi public model price × this ratio as fallback; leave blank or 0 to disable'
+        )}
       </FormDescription>
-      {fieldState.error && <p className='text-destructive text-xs'>{fieldState.error.message}</p>}
+      {fieldState.error && (
+        <p className='text-destructive text-xs'>{fieldState.error.message}</p>
+      )}
     </FormItem>
   )
 }
 
-function ApimasterPriceRatioField({ control }: { control: Control<ChannelFormValues> }) {
+function ApimasterPriceRatioField({
+  control,
+}: {
+  control: Control<ChannelFormValues>
+}) {
   const { t } = useTranslation()
-  const { field, fieldState } = useController({ control, name: 'apimaster_price_ratio' })
+  const { field, fieldState } = useController({
+    control,
+    name: 'apimaster_price_ratio',
+  })
 
   return (
     <FormItem>
@@ -653,9 +704,13 @@ function ApimasterPriceRatioField({ control }: { control: Control<ChannelFormVal
         />
       </FormControl>
       <FormDescription>
-        {t('User final price = procurement price × this ratio. Leave blank or 1.0 for no markup. Affects actual billing and marketplace display.')}
+        {t(
+          'User final price = procurement price × this ratio. Leave blank or 1.0 for no markup. Affects actual billing and marketplace display.'
+        )}
       </FormDescription>
-      {fieldState.error && <p className='text-destructive text-xs'>{fieldState.error.message}</p>}
+      {fieldState.error && (
+        <p className='text-destructive text-xs'>{fieldState.error.message}</p>
+      )}
     </FormItem>
   )
 }
@@ -673,7 +728,8 @@ function ModelPriceRatiosField({
   const { field } = useController({ control, name: 'model_price_ratios' })
 
   const rows = useMemo(() => {
-    if (!field.value?.trim()) return [] as { model: string; ratio: number | '' }[]
+    if (!field.value?.trim())
+      return [] as { model: string; ratio: number | '' }[]
     try {
       const parsed = JSON.parse(field.value) as Record<string, number>
       return Object.entries(parsed).map(([model, ratio]) => ({ model, ratio }))
@@ -693,7 +749,9 @@ function ModelPriceRatiosField({
     field.onChange(Object.keys(map).length > 0 ? JSON.stringify(map) : '')
   }
 
-  const [draft, setDraft] = useState<{ model: string; ratio: number | '' }[] | null>(null)
+  const [draft, setDraft] = useState<
+    { model: string; ratio: number | '' }[] | null
+  >(null)
   const displayRows = draft ?? rows
 
   const commit = (next: { model: string; ratio: number | '' }[]) => {
@@ -713,7 +771,9 @@ function ModelPriceRatiosField({
               className='border-input bg-background h-9 flex-1 rounded-md border px-2 text-sm'
               value={row.model}
               onChange={(e) => {
-                const next = displayRows.map((r, i) => (i === idx ? { ...r, model: e.target.value } : r))
+                const next = displayRows.map((r, i) =>
+                  i === idx ? { ...r, model: e.target.value } : r
+                )
                 commit(next)
               }}
             >
@@ -733,11 +793,12 @@ function ModelPriceRatiosField({
               placeholder='e.g. 1.5'
               value={row.ratio === '' ? undefined : row.ratio}
               onValueChange={(v) => {
-                const next: { model: string; ratio: number | '' }[] = displayRows.map((r, i) =>
-                  i === idx
-                    ? { ...r, ratio: v == null || v === '' ? '' : Number(v) }
-                    : r,
-                )
+                const next: { model: string; ratio: number | '' }[] =
+                  displayRows.map((r, i) =>
+                    i === idx
+                      ? { ...r, ratio: v == null || v === '' ? '' : Number(v) }
+                      : r
+                  )
                 commit(next)
               }}
             />
@@ -762,7 +823,9 @@ function ModelPriceRatiosField({
         </Button>
       </div>
       <FormDescription>
-        {t('Overrides the User Price Ratio above for specific models. Models not listed keep using the channel-level ratio.')}
+        {t(
+          'Overrides the User Price Ratio above for specific models. Models not listed keep using the channel-level ratio.'
+        )}
       </FormDescription>
     </FormItem>
   )
@@ -1121,9 +1184,7 @@ export function ChannelMutateDrawer({
         readAdvancedSettingsPreference() || hasAdvancedSettingsValues(defaults)
       )
       // Store initial values for comparison
-      initialModelsRef.current = parseModelsString(
-        loadedChannel.models || ''
-      )
+      initialModelsRef.current = parseModelsString(loadedChannel.models || '')
       initialModelMappingRef.current = loadedChannel.model_mapping || ''
       initialStatusCodeMappingRef.current =
         loadedChannel.status_code_mapping || ''
@@ -2982,7 +3043,10 @@ export function ChannelMutateDrawer({
 
                 <ManualGroupRatioField control={form.control} />
 
-                <ModelGroupRatiosField control={form.control} modelOptions={currentModelsArray} />
+                <ModelGroupRatiosField
+                  control={form.control}
+                  modelOptions={currentModelsArray}
+                />
 
                 <RechargeRateField control={form.control} />
 
@@ -2990,7 +3054,10 @@ export function ChannelMutateDrawer({
 
                 <ApimasterPriceRatioField control={form.control} />
 
-                <ModelPriceRatiosField control={form.control} modelOptions={currentModelsArray} />
+                <ModelPriceRatiosField
+                  control={form.control}
+                  modelOptions={currentModelsArray}
+                />
               </div>
 
               <Collapsible
@@ -3482,7 +3549,9 @@ export function ChannelMutateDrawer({
                                           <SelectValue />
                                         </SelectTrigger>
                                       </FormControl>
-                                      <SelectContent alignItemWithTrigger={false}>
+                                      <SelectContent
+                                        alignItemWithTrigger={false}
+                                      >
                                         <SelectGroup>
                                           <SelectItem value='auto'>
                                             {t('Auto (legacy compatibility)')}
@@ -3512,7 +3581,9 @@ export function ChannelMutateDrawer({
                                             {t('GPT-Image-2 capabilities')}
                                           </FormLabel>
                                           <FormDescription>
-                                            {t('Defines compatible image endpoints and request parameters. Configured capabilities override legacy channel-ID rules.')}
+                                            {t(
+                                              'Defines compatible image endpoints and request parameters. Configured capabilities override legacy channel-ID rules.'
+                                            )}
                                           </FormDescription>
                                         </div>
                                         <div className='flex shrink-0 gap-2'>
@@ -3520,7 +3591,15 @@ export function ChannelMutateDrawer({
                                             type='button'
                                             variant='outline'
                                             size='sm'
-                                            onClick={() => field.onChange(JSON.stringify(GPT_IMAGE_2_CAPABILITIES_TEMPLATE, null, 2))}
+                                            onClick={() =>
+                                              field.onChange(
+                                                JSON.stringify(
+                                                  GPT_IMAGE_2_CAPABILITIES_TEMPLATE,
+                                                  null,
+                                                  2
+                                                )
+                                              )
+                                            }
                                           >
                                             {t('Generation template')}
                                           </Button>
@@ -3540,7 +3619,11 @@ export function ChannelMutateDrawer({
                                           value={field.value || ''}
                                           onChange={field.onChange}
                                           disabled={isSubmitting}
-                                          placeholder={JSON.stringify(GPT_IMAGE_2_CAPABILITIES_TEMPLATE, null, 2)}
+                                          placeholder={JSON.stringify(
+                                            GPT_IMAGE_2_CAPABILITIES_TEMPLATE,
+                                            null,
+                                            2
+                                          )}
                                         />
                                       </FormControl>
                                       <FormMessage />
@@ -3786,7 +3869,10 @@ export function ChannelMutateDrawer({
                                 onCheckedChange={(checked) => {
                                   field.onChange(checked)
                                   if (checked) {
-                                    form.setValue('strip_prefix_think_block', false)
+                                    form.setValue(
+                                      'strip_prefix_think_block',
+                                      false
+                                    )
                                   }
                                 }}
                               />
@@ -3801,7 +3887,9 @@ export function ChannelMutateDrawer({
                         render={({ field }) => (
                           <FormItem className='flex items-center justify-between px-4 py-3'>
                             <div className='space-y-0.5'>
-                              <FormLabel>{t('Strip Prefix Think Block')}</FormLabel>
+                              <FormLabel>
+                                {t('Strip Prefix Think Block')}
+                              </FormLabel>
                               <FormDescription>
                                 {t(
                                   'Remove only a leading <think>...</think> block from responses; upstream reasoning tokens are still billed'
@@ -3850,7 +3938,9 @@ export function ChannelMutateDrawer({
                       name='strip_prefix_think_models'
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t('Prefix Think Filter Models')}</FormLabel>
+                          <FormLabel>
+                            {t('Prefix Think Filter Models')}
+                          </FormLabel>
                           <FormControl>
                             <Input placeholder='grok-4.5' {...field} />
                           </FormControl>

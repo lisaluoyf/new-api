@@ -4851,5 +4851,7 @@
   "2K low": "2K 低品質",
   "2K medium": "2K 中品質",
   "Fingerprint version": "指紋バージョン",
-  "Detector version": "検出プログラムのバージョン"
+  "Detector version": "検出プログラムのバージョン",
+  "Gemini Only": "Gemini Only",
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "このチャネルを Codex、Claude Code、または Gemini ネイティブ API に制限します。他のリクエストはこのチャネルをスキップします。価格の key_group は変更しません。"
 }

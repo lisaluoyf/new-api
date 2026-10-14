@@ -147,3 +147,44 @@ func TestClientExclusiveAllModelsRouting(t *testing.T) {
 		}
 	}
 }
+
+func TestGeminiOnlyIncomingProtocolRouting(t *testing.T) {
+	for _, tc := range []struct {
+		path, method string
+		allowed      bool
+	}{
+		{"/v1beta/models/gemini-4-argon:generateContent", "POST", true},
+		{"/v1beta/models/gemini-4-argon:streamGenerateContent?alt=sse", "POST", true},
+		{"/v1/models/custom-alias:generateContent", "POST", true},
+		{"/v1/chat/completions", "POST", false},
+		{"/v1/responses", "POST", false},
+		{"/v1/messages", "POST", false},
+		{"/v1beta/openai/chat/completions", "POST", false},
+		{"/v1beta/models/gemini-4-argon:generateContent", "GET", false},
+		{"/v1beta/models/gemini-4-argon:unknown", "POST", false},
+	} {
+		t.Run(tc.path+tc.method, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"model":"gemini-4-argon"}`))
+			c.Request.Header.Set("User-Agent", "Gemini SDK")
+			ch := &model.Channel{Setting: strPtr(`{"client_exclusive":"gemini"}`)}
+			generic := &model.Channel{Setting: strPtr(`{}`)}
+			for attempt := 0; attempt < 2; attempt++ {
+				require.Equal(t, tc.allowed, ChannelPickFilter(c, "custom-alias")(ch))
+				require.True(t, ChannelPickFilter(c, "custom-alias")(generic))
+			}
+			err := ValidateChannelClientPolicy(c, ch, "custom-alias")
+			if tc.allowed {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, ErrNonGeminiChannel)
+			}
+			other := map[string]interface{}{}
+			AppendClientExclusiveLogInfo(c, "custom-alias", other)
+			if tc.allowed {
+				require.Equal(t, "gemini_compatible", other["client_type"])
+			}
+		})
+	}
+	require.Equal(t, ClientExclusiveGemini, ExtractClientExclusive(strPtr(`{"client_exclusive":"gemini"}`)))
+}

@@ -85,7 +85,7 @@ interface ModelDataItem {
   priority: number
   group: string
   key_group: string
-  client_exclusive?: string // '' | codex | claude_code
+  client_exclusive?: string // '' | codex | claude_code | gemini
   // null when upstream /api/pricing returned 401/404 or cookie-only auth —
   // we have no idea how much this channel costs. UI renders these as "—".
   model_price: number | null // 渠道原价 = input_price / group_ratio (base price the channel claims)
@@ -289,10 +289,12 @@ function MediaPriceTable({
 function ClientExclusiveBadge({ value }: { value?: string }) {
   if (!value) return <span className='text-gray-300'>—</span>
   const styles: Record<string, string> = {
+    gemini: 'bg-blue-100 text-blue-800',
     codex: 'bg-cyan-100 text-cyan-800',
     claude_code: 'bg-violet-100 text-violet-800',
   }
   const labels: Record<string, string> = {
+    gemini: 'Gemini Only',
     codex: 'Codex',
     claude_code: 'CC',
   }
@@ -451,8 +453,10 @@ function DotGrid({
             .map((p, i) => {
               let cls = 'bg-gray-200'
               if (p?.status === 'pass') cls = 'bg-emerald-500'
-              else if (p?.status === 'suspicious') cls = video ? 'bg-red-400' : 'bg-amber-400'
-              else if (p?.status === 'notcomplete') cls = video ? 'bg-amber-400' : 'bg-red-400'
+              else if (p?.status === 'suspicious')
+                cls = video ? 'bg-red-400' : 'bg-amber-400'
+              else if (p?.status === 'notcomplete')
+                cls = video ? 'bg-amber-400' : 'bg-red-400'
 
               const dotEl = (
                 <div

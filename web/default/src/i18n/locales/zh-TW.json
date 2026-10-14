@@ -4840,5 +4840,7 @@
   "1K low": "1K 低品質",
   "1K medium": "1K 中等品質",
   "2K low": "2K 低品質",
-  "2K medium": "2K 中等品質"
+  "2K medium": "2K 中等品質",
+  "Gemini Only": "Gemini Only",
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "將此渠道限制為 Codex、Claude Code 或 Gemini 原生 API 協定。其他請求會自動略過此渠道，定價 key_group 不變。"
 }

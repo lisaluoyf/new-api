@@ -4805,5 +4805,7 @@
   "1K low": "1K niedrige Qualität",
   "1K medium": "1K mittlere Qualität",
   "2K low": "2K niedrige Qualität",
-  "2K medium": "2K mittlere Qualität"
+  "2K medium": "2K mittlere Qualität",
+  "Gemini Only": "Gemini Only",
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "Diesen Kanal auf Codex, Claude Code oder das native Gemini-API-Protokoll beschränken. Andere Anfragen überspringen ihn. Die Preisgruppe key_group bleibt unverändert."
 }

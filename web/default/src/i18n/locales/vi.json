@@ -4851,5 +4851,7 @@
   "2K low": "2K chất lượng thấp",
   "2K medium": "2K chất lượng trung bình",
   "Fingerprint version": "Phiên bản dấu vân tay",
-  "Detector version": "Phiên bản bộ phát hiện"
+  "Detector version": "Phiên bản bộ phát hiện",
+  "Gemini Only": "Gemini Only",
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "Giới hạn kênh này cho Codex, Claude Code hoặc giao thức API gốc Gemini. Yêu cầu khác tự động bỏ qua kênh. key_group định giá không thay đổi."
 }

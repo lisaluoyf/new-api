@@ -61,7 +61,7 @@ type ModelDataItem struct {
 	Priority          int64    `json:"priority"`
 	Group             string   `json:"group"`
 	KeyGroup          string   `json:"key_group"`
-	ClientExclusive   string   `json:"client_exclusive"` // "" | codex | claude_code
+	ClientExclusive   string   `json:"client_exclusive"` // "" | codex | claude_code | gemini
 	// Pricing fields: nil = no pricing row (upstream 401/404 / cookie-only auth / no endpoint).
 	// Frontend renders nil as "—".
 	ModelPrice                 *float64                   `json:"model_price"`              // 渠道原价/计费基准价 ($/1M); nil = unknown
@@ -1253,7 +1253,7 @@ type PublicDetectPoint struct {
 // channel configuration must never cross the public API boundary.
 type PublicMarketplaceItem struct {
 	ChannelID             int                          `json:"channel_id"`
-	ClientExclusive       string                       `json:"client_exclusive"` // "" | "codex" | "claude_code"
+	ClientExclusive       string                       `json:"client_exclusive"` // "" | "codex" | "claude_code" | "gemini"
 	UserPrice             *float64                     `json:"user_price"`
 	ActualOutputUserPrice *float64                     `json:"actual_output_user_price"`
 	OfficialInputPrice    *float64                     `json:"official_input_price"`

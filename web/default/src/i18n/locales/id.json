@@ -4839,5 +4839,7 @@
   "1K low": "1K kualitas rendah",
   "1K medium": "1K kualitas sedang",
   "2K low": "2K kualitas rendah",
-  "2K medium": "2K kualitas sedang"
+  "2K medium": "2K kualitas sedang",
+  "Gemini Only": "Gemini Only",
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "Batasi channel ini untuk Codex, Claude Code, atau protokol API native Gemini. Permintaan lain melewati channel ini. key_group harga tidak berubah."
 }

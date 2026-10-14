@@ -5215,5 +5215,7 @@
   "Base cache prices": "缓存基础价格",
   "Inherited": "继承默认值",
   "Optional 1-hour cache write price. When unset, Claude inherits 1.6 times the 5-minute price.": "可选的1小时缓存写入价格。未配置时，Claude 使用5分钟价格的1.6倍。",
-  "Expression billing uses its tier prices. These are the configured base cache prices.": "表达式计费按各档位价格执行，此处显示配置的缓存基础价。"
+  "Expression billing uses its tier prices. These are the configured base cache prices.": "表达式计费按各档位价格执行，此处显示配置的缓存基础价。",
+  "Gemini Only": "仅限 Gemini 原生协议",
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "将此渠道限制为 Codex、Claude Code 或 Gemini 原生 API 协议。其他请求会自动跳过此渠道，定价 key_group 不变。"
 }

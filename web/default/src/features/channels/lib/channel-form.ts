@@ -60,7 +60,9 @@ export const channelFormSchema = z.object({
   strip_prefix_think_block: z.boolean().optional(),
   strip_prefix_think_models: z.string().optional(),
   cache_exclusive_models: z.string().optional(),
-  image_resolution_model_mapping: z.record(z.string(), z.record(z.string(), z.string())).optional(),
+  image_resolution_model_mapping: z
+    .record(z.string(), z.record(z.string(), z.string()))
+    .optional(),
   proxy: z.string().optional(),
   pass_through_body_enabled: z.boolean().optional(),
   system_prompt: z.string().optional(),
@@ -88,7 +90,11 @@ export const channelFormSchema = z.object({
       if (!value?.trim()) return true
       try {
         const parsed = JSON.parse(value)
-        return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+        return (
+          parsed !== null &&
+          typeof parsed === 'object' &&
+          !Array.isArray(parsed)
+        )
       } catch {
         return false
       }
@@ -101,18 +107,27 @@ export const channelFormSchema = z.object({
   key_group: z.string().optional(),
   // Channel default override; zero/blank preserves the upstream group ratio.
   manual_group_ratio: z.number().min(0).optional(),
-  model_group_ratios: z.array(z.object({
-    model: z.string().trim().min(1, 'Select model'),
-    ratio: z.number().positive('Group Ratio must be greater than zero'),
-  })).superRefine((rows, ctx) => {
-    const seen = new Set<string>()
-    rows.forEach((row, index) => {
-      if (seen.has(row.model)) {
-        ctx.addIssue({ code: 'custom', path: [index, 'model'], message: 'Model already has a Group Ratio' })
-      }
-      seen.add(row.model)
+  model_group_ratios: z
+    .array(
+      z.object({
+        model: z.string().trim().min(1, 'Select model'),
+        ratio: z.number().positive('Group Ratio must be greater than zero'),
+      })
+    )
+    .superRefine((rows, ctx) => {
+      const seen = new Set<string>()
+      rows.forEach((row, index) => {
+        if (seen.has(row.model)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [index, 'model'],
+            message: 'Model already has a Group Ratio',
+          })
+        }
+        seen.add(row.model)
+      })
     })
-  }).optional(),
+    .optional(),
   // 充值汇率：USD cost per 1 USDT of upstream credit (e.g. 1.0 for USD direct, 1/7.3 for 1RMB=1USDT)
   recharge_rate: z.number().min(0).optional(),
   // APIMaster 价格倍率：用户最终价格 = 采购价 × 此倍率；留空/0 = 1.0（不加价），影响实际计费与广场展示价
@@ -124,7 +139,7 @@ export const channelFormSchema = z.object({
   // 检测接口格式：fingerprint 调用时使用的 API 格式（openai-compatible / anthropic）
   api_format: z.string().optional(),
   // 客户端专属：空=通用 / codex / claude_code
-  client_exclusive: z.enum(['', 'codex', 'claude_code']).optional(),
+  client_exclusive: z.enum(['', 'codex', 'claude_code', 'gemini']).optional(),
 })
 
 export type ChannelFormValues = z.infer<typeof channelFormSchema>
@@ -215,7 +230,10 @@ export function transformChannelToFormDefaults(
     strip_prefix_think_block: false,
     strip_prefix_think_models: '',
     cache_exclusive_models: '',
-    image_resolution_model_mapping: {} as Record<string, Record<string, string>>,
+    image_resolution_model_mapping: {} as Record<
+      string,
+      Record<string, string>
+    >,
     proxy: '',
     pass_through_body_enabled: false,
     system_prompt: '',
@@ -225,7 +243,7 @@ export function transformChannelToFormDefaults(
     model_group_ratios: [] as { model: string; ratio: number }[],
     model_price_ratio: 0,
     api_format: 'openai-compatible',
-    client_exclusive: '' as '' | 'codex' | 'claude_code',
+    client_exclusive: '' as '' | 'codex' | 'claude_code' | 'gemini',
   }
 
   if (channel.setting) {
@@ -235,28 +253,35 @@ export function transformChannelToFormDefaults(
         force_format: parsed.force_format || false,
         thinking_to_content: parsed.thinking_to_content || false,
         strip_prefix_think_block: parsed.strip_prefix_think_block || false,
-        strip_prefix_think_models: Array.isArray(parsed.strip_prefix_think_models)
+        strip_prefix_think_models: Array.isArray(
+          parsed.strip_prefix_think_models
+        )
           ? parsed.strip_prefix_think_models.join(',')
           : '',
         cache_exclusive_models: Array.isArray(parsed.cache_exclusive_models)
           ? parsed.cache_exclusive_models.join(',')
           : '',
-        image_resolution_model_mapping: parsed.image_resolution_model_mapping || {},
+        image_resolution_model_mapping:
+          parsed.image_resolution_model_mapping || {},
         proxy: parsed.proxy || '',
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
         key_group: parsed.key_group || '',
         manual_group_ratio: parsed.manual_group_ratio || 0,
-        model_group_ratios: Object.entries(parsed.model_group_ratios || {}).map(([model, ratio]) => ({
-          model,
-          ratio: Number(ratio),
-        })),
+        model_group_ratios: Object.entries(parsed.model_group_ratios || {}).map(
+          ([model, ratio]) => ({
+            model,
+            ratio: Number(ratio),
+          })
+        ),
         model_price_ratio: parsed.model_price_ratio || 0,
         api_format: parsed.api_format || 'openai-compatible',
-        client_exclusive: (parsed.client_exclusive === 'codex' || parsed.client_exclusive === 'claude_code'
+        client_exclusive: (parsed.client_exclusive === 'gemini' ||
+        parsed.client_exclusive === 'codex' ||
+        parsed.client_exclusive === 'claude_code'
           ? parsed.client_exclusive
-          : '') as '' | 'codex' | 'claude_code',
+          : '') as '' | 'codex' | 'claude_code' | 'gemini',
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -279,10 +304,8 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateCheckEnabled = false
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
-  let imageGenerationSubmitPath:
-    | 'auto'
-    | 'generations'
-    | 'generations_async' = 'auto'
+  let imageGenerationSubmitPath: 'auto' | 'generations' | 'generations_async' =
+    'auto'
   let gptImage2Capabilities = ''
 
   if (channel.settings) {
@@ -308,13 +331,16 @@ export function transformChannelToFormDefaults(
       )
         ? parsed.upstream_model_update_ignored_models.join(',')
         : ''
-      imageGenerationSubmitPath =
-        parsed.image_generation_submit_path || 'auto'
+      imageGenerationSubmitPath = parsed.image_generation_submit_path || 'auto'
       if (
         parsed.gpt_image2_capabilities &&
         typeof parsed.gpt_image2_capabilities === 'object'
       ) {
-        gptImage2Capabilities = JSON.stringify(parsed.gpt_image2_capabilities, null, 2)
+        gptImage2Capabilities = JSON.stringify(
+          parsed.gpt_image2_capabilities,
+          null,
+          2
+        )
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -389,16 +415,24 @@ function buildSettingJSON(formData: ChannelFormValues): string {
       .split(',')
       .map((model) => model.trim())
       .filter(Boolean),
-    image_resolution_model_mapping: formData.image_resolution_model_mapping || {},
+    image_resolution_model_mapping:
+      formData.image_resolution_model_mapping || {},
     proxy: formData.proxy || '',
     pass_through_body_enabled: formData.pass_through_body_enabled || false,
     system_prompt: formData.system_prompt || '',
     system_prompt_override: formData.system_prompt_override || false,
     key_group: formData.key_group || '',
     manual_group_ratio: formData.manual_group_ratio || 0,
-    model_group_ratios: Object.fromEntries((formData.model_group_ratios || []).map(({ model, ratio }) => [model, ratio])),
+    model_group_ratios: Object.fromEntries(
+      (formData.model_group_ratios || []).map(({ model, ratio }) => [
+        model,
+        ratio,
+      ])
+    ),
     model_price_ratio: formData.model_price_ratio || 0,
-    ...(formData.client_exclusive ? { client_exclusive: formData.client_exclusive } : {}),
+    ...(formData.client_exclusive
+      ? { client_exclusive: formData.client_exclusive }
+      : {}),
   }
   return JSON.stringify(settingObj)
 }
@@ -473,7 +507,9 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       delete settingsObj.image_generation_submit_path
     }
     if (formData.gpt_image2_capabilities?.trim()) {
-      settingsObj.gpt_image2_capabilities = JSON.parse(formData.gpt_image2_capabilities)
+      settingsObj.gpt_image2_capabilities = JSON.parse(
+        formData.gpt_image2_capabilities
+      )
     } else {
       delete settingsObj.gpt_image2_capabilities
     }

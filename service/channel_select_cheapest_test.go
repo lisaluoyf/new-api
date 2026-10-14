@@ -1,7 +1,9 @@
 package service
 
 import (
+	"github.com/gin-gonic/gin"
 	"math"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -206,4 +208,45 @@ func TestDeepSeekTimedRoutePriceUsesOfficialBaseAndChannelMultipliers(t *testing
 	got, ok = routeCandidateUserInputPriceAt(candidate, "deepseek-flash", 9, beijingTime(t, 15, 0))
 	require.True(t, ok)
 	require.InDelta(t, 0.3*0.8*0.5*1.1, got, 1e-9)
+}
+
+func TestGeminiOnlyCheapestSelectionAndRetry(t *testing.T) {
+	oldDB := model.DB
+	t.Cleanup(func() { model.DB = oldDB })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.ChannelModelPricing{}, &model.Ability{}))
+	name := "gemini-protocol-routing-regression"
+	exclusive := model.Channel{Name: "gemini-only", Key: "test", Models: name, Status: 1, Group: AutoCheapestGroup, Setting: strPtr(`{"client_exclusive":"gemini"}`)}
+	generic := model.Channel{Name: "generic", Key: "test", Models: name, Status: 1, Group: AutoCheapestGroup}
+	require.NoError(t, db.Create(&exclusive).Error)
+	require.NoError(t, db.Create(&generic).Error)
+	require.NoError(t, db.Create(&[]model.ChannelModelPricing{
+		{ChannelId: exclusive.Id, ModelName: name, InputPrice: 0.1, GroupRatio: 1, PricingSource: "api"},
+		{ChannelId: generic.Id, ModelName: name, InputPrice: 1, GroupRatio: 1, PricingSource: "api"},
+	}).Error)
+	for _, tc := range []struct {
+		path string
+		want int
+	}{
+		{"/v1/chat/completions", generic.Id},
+		{"/v1/responses", generic.Id},
+		{"/v1/messages", generic.Id},
+		{"/v1beta/models/custom-alias:generateContent", exclusive.Id},
+		{"/v1beta/models/custom-alias:streamGenerateContent?alt=sse", exclusive.Id},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", tc.path, nil)
+		ch, err := SelectCheapestEnabledChannelExcludingWithFilter(name, nil, ChannelPickFilter(c, name))
+		require.NoError(t, err)
+		require.Equal(t, tc.want, ch.Id)
+		ch, err = SelectCheapestEnabledChannelExcludingWithFilter(name, []int{tc.want}, ChannelPickFilter(c, name))
+		if tc.want == exclusive.Id {
+			require.NoError(t, err)
+			require.Equal(t, generic.Id, ch.Id)
+		} else {
+			require.ErrorIs(t, err, ErrNoCheapestChannel)
+		}
+	}
 }

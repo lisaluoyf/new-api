@@ -4853,5 +4853,7 @@
   "2K low": "2K низкое качество",
   "2K medium": "2K среднее качество",
   "Fingerprint version": "Версия отпечатка",
-  "Detector version": "Версия детектора"
+  "Detector version": "Версия детектора",
+  "Gemini Only": "Gemini Only",
+  "Restrict this channel to Codex, Claude Code, or the Gemini native API protocol. Other requests skip this channel. Pricing key_group is unchanged.": "Ограничить канал клиентами Codex, Claude Code или нативным API Gemini. Другие запросы пропускают канал. Ценовая группа key_group не меняется."
 }
