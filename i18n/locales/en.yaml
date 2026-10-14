@@ -422,3 +422,5 @@ setup.success: "System initialization completed"
 quota.pending_settlement: "A previous request has an unpaid billing settlement. Please restore the original funding balance or contact support. This is separate from the five-hour subscription limit."
 
 token.quota_insufficient: "Insufficient API key quota for this request. Increase the key quota limit in Console > API Keys. Account balance and API key quota are separate."
+
+distributor.video_model_text_endpoint: "Video model {{.Model}} is not supported on this endpoint. Use POST /v1/videos/generations to create a video."

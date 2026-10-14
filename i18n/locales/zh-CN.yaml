@@ -423,3 +423,5 @@ setup.success: "系统初始化成功"
 quota.pending_settlement: "历史请求仍有未结清账单，请补足原资金来源的余额或联系客服。这与订阅五小时额度限制不同。"
 
 token.quota_insufficient: "此请求所需额度超过 API Key 的剩余额度。请在控制台 > API 密钥中提高该密钥的额度上限。账户余额与密钥额度相互独立。"
+
+distributor.video_model_text_endpoint: "视频模型 {{.Model}} 不支持此接口。请使用 POST /v1/videos/generations 创建视频任务。"

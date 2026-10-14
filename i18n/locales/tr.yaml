@@ -368,3 +368,5 @@ setup.success: "System initialization completed"
 quota.pending_settlement: "Önceki bir isteğin ödenmemiş hesabı var. Asıl bakiyeyi yükleyin veya destekle iletişime geçin. Bu durum aboneliğin beş saatlik sınırından ayrıdır."
 
 token.quota_insufficient: "API anahtarının kotası bu istek için yetersiz. Konsol > API Anahtarları bölümünden anahtarın kota sınırını artırın. Hesap bakiyesi ve API anahtarı kotası ayrıdır."
+
+distributor.video_model_text_endpoint: "{{.Model}} video modeli bu uç noktayı desteklemiyor. Video oluşturmak için POST /v1/videos/generations kullanın."

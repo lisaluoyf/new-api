@@ -368,3 +368,5 @@ setup.success: "System initialization completed"
 quota.pending_settlement: "Permintaan sebelumnya memiliki tagihan yang belum diselesaikan. Isi ulang saldo asal atau hubungi dukungan. Ini terpisah dari batas lima jam langganan."
 
 token.quota_insufficient: "Kuota kunci API tidak cukup untuk permintaan ini. Naikkan batas kuota di Konsol > Kunci API. Saldo akun dan kuota kunci API terpisah."
+
+distributor.video_model_text_endpoint: "Model video {{.Model}} tidak mendukung endpoint ini. Gunakan POST /v1/videos/generations untuk membuat video."

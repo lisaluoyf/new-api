@@ -368,3 +368,5 @@ setup.success: "System initialization completed"
 quota.pending_settlement: "Một yêu cầu trước đó có khoản phí chưa thanh toán. Hãy nạp số dư ban đầu hoặc liên hệ hỗ trợ. Việc này khác với giới hạn năm giờ của gói đăng ký."
 
 token.quota_insufficient: "Hạn mức của khóa API không đủ cho yêu cầu này. Hãy tăng hạn mức tại Bảng điều khiển > Khóa API. Số dư tài khoản và hạn mức khóa API được tính riêng."
+
+distributor.video_model_text_endpoint: "Mô hình video {{.Model}} không hỗ trợ endpoint này. Hãy dùng POST /v1/videos/generations để tạo video."

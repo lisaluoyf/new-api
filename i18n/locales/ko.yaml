@@ -368,3 +368,5 @@ setup.success: "System initialization completed"
 quota.pending_settlement: "이전 요청에 미결제 청구가 있습니다. 기존 잔액을 충전하거나 지원팀에 문의하세요. 구독의 5시간 한도와는 별개의 문제입니다."
 
 token.quota_insufficient: "이 요청에 필요한 API 키 할당량이 부족합니다. 콘솔 > API 키에서 키의 한도를 높이세요. 계정 잔액과 API 키 할당량은 별개입니다."
+
+distributor.video_model_text_endpoint: "동영상 모델 {{.Model}}은 이 엔드포인트를 지원하지 않습니다. 동영상을 생성하려면 POST /v1/videos/generations를 사용하세요."

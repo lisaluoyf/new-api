@@ -67,6 +67,11 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		// Reject an incompatible endpoint before channel selection, pricing,
+		// billing, or fallback. Provider errors cannot fix a request shape.
+		if rejectVideoModelOnTextEndpoint(c, modelRequest.Model) {
+			return
+		}
 		if c.Request.Method == http.MethodGet && c.GetInt("relay_mode") == relayconstant.RelayModeVideoFetchByID {
 			id := c.Param("video_id")
 			if id == "" {
@@ -650,6 +655,16 @@ func extractModelNameFromGeminiPath(path string) string {
 func isTextCompletionPath(path string) bool {
 	return strings.HasSuffix(path, "/chat/completions") ||
 		(strings.HasSuffix(path, "/completions") && !strings.Contains(path, "/images/"))
+}
+
+func rejectVideoModelOnTextEndpoint(c *gin.Context, modelName string) bool {
+	if !common.IsVideoGenerationModel(modelName) || !isTextCompletionPath(c.Request.URL.Path) {
+		return false
+	}
+	abortWithOpenAiMessage(c, http.StatusBadRequest,
+		i18n.T(c, i18n.MsgDistributorVideoModelTextEndpoint, map[string]any{"Model": modelName}),
+		types.ErrorCode("model_not_supported_on_endpoint"))
+	return true
 }
 
 func abortImageModelOnTextEndpoint(c *gin.Context, model string) {
