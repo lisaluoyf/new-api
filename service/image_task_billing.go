@@ -2,8 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"gorm.io/gorm"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -79,6 +83,17 @@ func RefundImageAsyncTaskQuota(ctx context.Context, task *model.Task, reason str
 	if task.Status != model.TaskStatusFailure {
 		return
 	}
+	if item, err := model.GetImageTaskRefund(task.UserId, task.TaskID); err == nil {
+		if item.Mode == "refund" {
+			if _, err := model.ApplyImageTaskRefund(item.ID); err != nil {
+				logger.LogWarn(ctx, "image refund replay failed: "+err.Error())
+			}
+		}
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.LogWarn(ctx, "image refund receipt lookup failed: "+err.Error())
+		return
+	}
 	if refunded, err := model.HasRefundLogForTask(task.UserId, task.TaskID); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("refund lookup failed for task %s: %v", task.TaskID, err))
 		return
@@ -115,32 +130,6 @@ func RefundImageAsyncTaskQuota(ctx context.Context, task *model.Task, reason str
 		}
 	}
 
-	switch billingSource {
-	case BillingSourceSubscription:
-		subID := intFromLogOther(otherMap, "subscription_id")
-		if subID <= 0 {
-			logger.LogWarn(ctx, fmt.Sprintf("skip subscription refund for task %s: missing subscription_id", task.TaskID))
-			return
-		}
-		if err := model.PostConsumeUserSubscriptionDelta(subID, -int64(quota)); err != nil {
-			logger.LogWarn(ctx, fmt.Sprintf("subscription refund failed for task %s: %v", task.TaskID, err))
-			return
-		}
-	default:
-		if err := model.IncreaseUserQuota(task.UserId, quota, false); err != nil {
-			logger.LogWarn(ctx, fmt.Sprintf("wallet refund failed for task %s: %v", task.TaskID, err))
-			return
-		}
-	}
-
-	if row.TokenId > 0 {
-		if tokenKey := resolveTokenKey(ctx, row.TokenId, task.TaskID); tokenKey != "" {
-			if err := model.IncreaseTokenQuota(row.TokenId, tokenKey, quota); err != nil {
-				logger.LogWarn(ctx, fmt.Sprintf("token refund failed for task %s: %v", task.TaskID, err))
-			}
-		}
-	}
-
 	refundOther := map[string]interface{}{
 		"task_id":       task.TaskID,
 		"reason":        reason,
@@ -160,24 +149,37 @@ func RefundImageAsyncTaskQuota(ctx context.Context, task *model.Task, reason str
 		}
 	}
 
-	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
-		UserId:    task.UserId,
-		LogType:   model.LogTypeRefund,
-		Content:   reason,
-		ChannelId: row.ChannelId,
-		ModelName: row.ModelName,
-		Quota:     quota,
-		TokenId:   row.TokenId,
-		Group:     row.Group,
-		Other:     refundOther,
-	})
+	refund := &model.Log{UserId: row.UserId, Username: row.Username, CreatedAt: common.GetTimestamp(), Type: model.LogTypeRefund,
+		Content: reason, TokenId: row.TokenId, TokenName: row.TokenName, ModelName: row.ModelName, Quota: quota,
+		ChannelId: row.ChannelId, Group: row.Group, Other: common.MapToJsonStr(refundOther)}
+	item, err := model.FreezeImageTaskRefund(task, row, refund, billingSource, intFromLogOther(otherMap, "subscription_id"))
+	if err != nil {
+		logger.LogWarn(ctx, "image refund freeze failed: "+err.Error())
+		return
+	}
+	if _, err := model.ApplyImageTaskRefund(item.ID); err != nil {
+		logger.LogWarn(ctx, "image refund apply/publication pending: "+err.Error())
+		return
+	}
+	logger.LogInfo(ctx, fmt.Sprintf("refunded image async task %s user=%d quota=%s", task.TaskID, task.UserId, logger.LogQuota(quota)))
+}
 
-	_ = model.UpdateLogResultByTaskID(task.UserId, task.TaskID, 0, map[string]interface{}{
-		"task_refunded": true,
-	})
+var imageRefundWorkerOnce sync.Once
 
-	logger.LogInfo(ctx, fmt.Sprintf(
-		"refunded image async task %s user=%d quota=%s reason=%s",
-		task.TaskID, task.UserId, logger.LogQuota(quota), reason,
-	))
+func StartImageTaskRefundWorker() {
+	if !common.IsMasterNode {
+		return
+	}
+	imageRefundWorkerOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(20 * time.Second)
+			defer ticker.Stop()
+			for {
+				if err := model.RetryImageTaskRefunds(); err != nil {
+					common.SysError("image refund recovery: " + err.Error())
+				}
+				<-ticker.C
+			}
+		}()
+	})
 }

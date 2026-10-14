@@ -357,6 +357,7 @@ func migrateDB() error {
 		&VideoSubmission{},
 		&ImagineBillingEvent{},
 		&ImagineLogDelivery{},
+		&ImageTaskRefund{}, &ImageRefundLogDelivery{},
 		&GAPurchaseLog{},
 		&CryptoDepositIntent{},
 		&CryptoChainScanCursor{},
@@ -446,6 +447,7 @@ func migrateDBFast() error {
 		{&VideoSubmission{}, "VideoSubmission"},
 		{&ImagineBillingEvent{}, "ImagineBillingEvent"},
 		{&ImagineLogDelivery{}, "ImagineLogDelivery"},
+		{&ImageTaskRefund{}, "ImageTaskRefund"}, {&ImageRefundLogDelivery{}, "ImageRefundLogDelivery"},
 		{&Model{}, "Model"},
 		{&Vendor{}, "Vendor"},
 		{&PrefillGroup{}, "PrefillGroup"},
@@ -518,6 +520,9 @@ func migrateDBFast() error {
 
 func migrateLOGDB() error {
 	var err error
+	if err = autoMigrateWithLimits(LOG_DB, &ImageRefundLogDelivery{}); err != nil {
+		return err
+	}
 	if err = autoMigrateWithLimits(LOG_DB, &ImagineLogDelivery{}); err != nil {
 		return err
 	}
