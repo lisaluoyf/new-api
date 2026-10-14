@@ -326,12 +326,17 @@ func TestTextSettlementDeletedTokenWrongOwnerRollsBack(t *testing.T) {
 	require.Zero(t, user.UsedQuota)
 }
 
-func TestPendingPromotionalExceptionRequiresOnlyVerifiedFreeOverflow(t *testing.T) {
-	for _, kind := range []string{"free", "wallet", "paid", "paid_snapshot", "not_overflow", "wrong_owner", "mixed", "unknown_error"} {
+func TestPendingPromotionalExceptionRequiresVerifiedWalletOrFreeDebt(t *testing.T) {
+	for _, kind := range []string{"free", "wallet", "paid", "paid_snapshot", "not_overflow", "wrong_owner", "mixed", "unknown_error", "token_shortfall", "wallet_token_shortfall"} {
 		t.Run(kind, func(t *testing.T) {
 			item := freeCreditSettlementFixture(t, SubscriptionPlanTypeGPTReferralReward, 10)
 			require.NoError(t, DB.Model(item).Update("last_error", ErrSettlementBalance.Error()).Error)
 			switch kind {
+			case "token_shortfall", "wallet_token_shortfall":
+				require.NoError(t, DB.Model(&Token{}).Where("id = ?", item.TokenId).Update("remain_quota", 0).Error)
+				if kind == "wallet_token_shortfall" {
+					require.NoError(t, DB.Model(item).Update("funding_source", "wallet").Error)
+				}
 			case "wallet":
 				require.NoError(t, DB.Model(item).Update("funding_source", "wallet").Error)
 			case "paid":
@@ -347,9 +352,9 @@ func TestPendingPromotionalExceptionRequiresOnlyVerifiedFreeOverflow(t *testing.
 			case "unknown_error":
 				require.NoError(t, DB.Model(item).Update("last_error", "subscription reservation mismatch").Error)
 			}
-			allowed, err := HasOnlyPendingGPTPromotionalOverflow(1)
+			allowed, err := HasOnlyPendingWalletOrGPTPromotionalDebt(1)
 			require.NoError(t, err)
-			require.Equal(t, kind == "free", allowed)
+			require.Equal(t, kind == "free" || kind == "wallet", allowed)
 		})
 	}
 }

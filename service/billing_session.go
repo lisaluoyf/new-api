@@ -904,11 +904,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return types.NewErrorWithStatusCode(fmt.Errorf("previous request has a pending billing settlement; restore wallet/key/subscription quota and retry"), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithClientMessage(i18n.MsgQuotaPendingSettlement, nil))
 	}
 	if pending {
-		promotionalOnly, checkErr := model.HasOnlyPendingGPTPromotionalOverflow(relayInfo.UserId)
+		independentlyFunded, checkErr := model.HasOnlyPendingWalletOrGPTPromotionalDebt(relayInfo.UserId)
 		if checkErr != nil {
 			return nil, types.NewError(checkErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
-		if !promotionalOnly {
+		if !independentlyFunded {
 			return nil, pendingSettlementError()
 		}
 	}
@@ -1099,7 +1099,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	if pending {
-		// An unpaid promotional bill never transfers to the paid subscription.
+		// An unpaid wallet/promotional bill never transfers to the paid subscription.
 		// Only a separately funded, eligible paid GPT request may proceed.
 		if session, apiErr := tryGPTPaidSubscription(); apiErr != nil {
 			return nil, apiErr

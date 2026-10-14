@@ -89,8 +89,8 @@ func TestNewBillingSessionSettlesFreeCreditOverflowAndUsesSameKeyWallet(t *testi
 	require.Equal(t, 80, user.Quota)
 }
 
-func TestPromotionalDebtAllowsOnlyEligiblePaidGPTAfterRollingRecovery(t *testing.T) {
-	for _, kind := range []string{"ready", "five_hour", "seven_day", "expired", "wrong_model", "wallet_debt"} {
+func TestWalletAndPromotionalDebtAllowOnlyEligiblePaidGPTAfterRollingRecovery(t *testing.T) {
+	for _, kind := range []string{"ready", "five_hour", "seven_day", "expired", "wrong_model", "wallet_debt", "wallet_five_hour", "wallet_seven_day", "wallet_expired", "wallet_wrong_model", "wallet_no_paid"} {
 		t.Run(kind, func(t *testing.T) {
 			truncate(t)
 			seedUser(t, 1, 0)
@@ -99,7 +99,7 @@ func TestPromotionalDebtAllowsOnlyEligiblePaidGPTAfterRollingRecovery(t *testing
 			seedSubscriptionPlan(t, 101, "Referral", model.SubscriptionPlanTypeGPTReferralReward)
 			seedUserSubscriptionWithPlan(t, 201, 1, 101, 30, 10)
 			item := &model.TextSettlement{UserId: 1, TokenId: 2, ChannelId: 94, RequestId: "old-free-overflow", FundingSource: "subscription", SubscriptionId: 201, PreConsumedQuota: 10, TokenConsumed: 10, Quota: 50}
-			if kind == "wallet_debt" {
+			if kind == "wallet_debt" || kind == "wallet_five_hour" || kind == "wallet_seven_day" || kind == "wallet_expired" || kind == "wallet_wrong_model" || kind == "wallet_no_paid" {
 				item.FundingSource = "wallet"
 			}
 			require.NoError(t, model.DB.Create(&model.SubscriptionPreConsumeRecord{UserId: 1, UserSubscriptionId: 201, RequestId: item.RequestId, PreConsumed: 10}).Error)
@@ -109,16 +109,16 @@ func TestPromotionalDebtAllowsOnlyEligiblePaidGPTAfterRollingRecovery(t *testing
 			require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 103).Updates(map[string]any{"price_amount": 20, "model_allowlist": "gpt-5", "five_hour_amount": 500, "seven_day_amount": 1000}).Error)
 			model.InvalidateSubscriptionPlanCache(103)
 			require.NoError(t, model.DB.Model(&model.UserSubscription{}).Where("id = ?", 203).Updates(map[string]any{"five_hour_amount": 500, "seven_day_amount": 1000, "paid_amount_snapshot": 20}).Error)
-			if kind == "expired" {
+			if kind == "expired" || kind == "wallet_expired" {
 				require.NoError(t, model.DB.Model(&model.UserSubscription{}).Where("id = ?", 203).Update("end_time", time.Now().Add(-time.Hour).Unix()).Error)
 			}
-			if kind == "ready" || kind == "five_hour" || kind == "seven_day" {
+			if kind == "ready" || kind == "wallet_debt" || kind == "five_hour" || kind == "wallet_five_hour" || kind == "seven_day" || kind == "wallet_seven_day" {
 				amount := int64(500)
 				at := time.Now().Unix()
-				if kind == "ready" {
+				if kind == "ready" || kind == "wallet_debt" {
 					at = time.Now().Add(-6 * time.Hour).Unix()
 				}
-				if kind == "seven_day" {
+				if kind == "seven_day" || kind == "wallet_seven_day" {
 					amount = 1000
 					at = time.Now().Add(-6 * time.Hour).Unix()
 				}
@@ -127,15 +127,15 @@ func TestPromotionalDebtAllowsOnlyEligiblePaidGPTAfterRollingRecovery(t *testing
 			}
 			info := seedGPTTrialBillingInfo("gpt-5", "subscription_first")
 			info.HasActiveGPTTrial = false
-			info.HasActiveGPTSubscription = true
+			info.HasActiveGPTSubscription = kind != "wallet_no_paid"
 			info.HasActiveGPTReferralReward = true
 			info.RequestId = "new-paid-request"
 			info.ForcePreConsume = true
-			if kind == "wrong_model" {
+			if kind == "wrong_model" || kind == "wallet_wrong_model" {
 				info.OriginModelName = "claude-opus-5-5"
 			}
 			session, apiErr := NewBillingSession(retryBillingContext(), info, 120)
-			if kind == "ready" {
+			if kind == "ready" || kind == "wallet_debt" {
 				require.Nil(t, apiErr)
 				require.NotNil(t, session)
 				require.Equal(t, 203, info.SubscriptionId)
@@ -144,7 +144,7 @@ func TestPromotionalDebtAllowsOnlyEligiblePaidGPTAfterRollingRecovery(t *testing
 			} else {
 				require.NotNil(t, apiErr)
 				require.Nil(t, session)
-				if kind == "five_hour" || kind == "seven_day" {
+				if kind == "five_hour" || kind == "wallet_five_hour" || kind == "seven_day" || kind == "wallet_seven_day" {
 					require.Equal(t, types.ErrorCodeGPTSubscriptionRollingLimit, apiErr.GetErrorCode())
 				}
 			}
