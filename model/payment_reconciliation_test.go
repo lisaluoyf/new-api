@@ -90,6 +90,71 @@ func TestPaymentReconciliationRetriesInterruptedAndAtomicFailure(t *testing.T) {
 	require.Equal(t, "queued", queued.Status)
 	require.Greater(t, queued.NextAttempt, now)
 }
+func TestPaymentReconciliationRetryBackoffAndAttemptLimit(t *testing.T) {
+	setupPaymentReconciliationTest(t)
+	require.NoError(t, QueuePaymentReconciliation("2026-10-14", "epay", 0, false))
+	job, err := ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	for attempt := 1; attempt <= 3; attempt++ {
+		require.Equal(t, attempt, job.Attempts)
+		require.NoError(t, FinishPaymentReconciliation(job, []PaymentReconciliationItem{{Purpose: "coverage", Result: "unverified", Problem: "official_statement_unavailable"}}, false))
+		var saved PaymentReconciliationJob
+		var run PaymentReconciliationRun
+		require.NoError(t, DB.First(&saved, job.ID).Error)
+		require.NoError(t, DB.First(&run, job.RunID).Error)
+		require.Equal(t, "incomplete", run.Status)
+		require.Zero(t, saved.LeaseUntil)
+		if attempt == 3 {
+			require.Equal(t, "done", saved.Status)
+			require.Zero(t, saved.NextAttempt)
+			next, err := ClaimPaymentReconciliationJob(run.FinishedAt + 24*3600)
+			require.NoError(t, err)
+			require.Nil(t, next)
+			break
+		}
+		require.Equal(t, "queued", saved.Status)
+		require.Equal(t, run.FinishedAt+int64(attempt)*3600, saved.NextAttempt)
+		early, err := ClaimPaymentReconciliationJob(saved.NextAttempt - 1)
+		require.NoError(t, err)
+		require.Nil(t, early)
+		job, err = ClaimPaymentReconciliationJob(saved.NextAttempt)
+		require.NoError(t, err)
+		require.NotNil(t, job)
+	}
+	// An explicit rerun starts a fresh budget without deleting the old runs.
+	require.NoError(t, QueuePaymentReconciliation("2026-10-14", "epay", 1, true))
+	job, err = ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.Equal(t, 1, job.Attempts)
+	var count int64
+	require.NoError(t, DB.Model(&PaymentReconciliationRun{}).Count(&count).Error)
+	require.EqualValues(t, 4, count)
+}
+
+func TestPaymentReconciliationSuccessfulRetryStopsBackoff(t *testing.T) {
+	setupPaymentReconciliationTest(t)
+	require.NoError(t, QueuePaymentReconciliation("2026-10-14", "epay", 0, false))
+	job, err := ClaimPaymentReconciliationJob(time.Now().Unix())
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.NoError(t, FinishPaymentReconciliation(job, []PaymentReconciliationItem{{Purpose: "coverage", Result: "unverified", Problem: "official_statement_unavailable"}}, false))
+	var saved PaymentReconciliationJob
+	require.NoError(t, DB.First(&saved, job.ID).Error)
+	job, err = ClaimPaymentReconciliationJob(saved.NextAttempt)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.Equal(t, 2, job.Attempts)
+	require.NoError(t, FinishPaymentReconciliation(job, []PaymentReconciliationItem{{TradeNo: "anonymous", Result: "matched"}}, false))
+	require.NoError(t, DB.First(&saved, job.ID).Error)
+	require.Equal(t, "done", saved.Status)
+	require.Zero(t, saved.NextAttempt)
+	next, err := ClaimPaymentReconciliationJob(time.Now().Unix() + 24*3600)
+	require.NoError(t, err)
+	require.Nil(t, next)
+}
+
 func TestPaymentReconciliationConcurrentClaims(t *testing.T) {
 	setupPaymentReconciliationTest(t)
 	require.NoError(t, QueuePaymentReconciliation("2026-09-30", "epay", 1, true))

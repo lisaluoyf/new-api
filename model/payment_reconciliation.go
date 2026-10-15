@@ -237,7 +237,9 @@ func FinishPaymentReconciliation(j *PaymentReconciliationJob, items []PaymentRec
 		next := int64(0)
 		if r.UnverifiedCount > 0 && j.Attempts < 3 {
 			status = "queued"
-			next = r.FinishedAt + 300
+			// Allow daily statements time to become available: wait one hour
+			// after the first attempt, then two hours after the second.
+			next = r.FinishedAt + int64(time.Hour/time.Second)*int64(j.Attempts)
 		}
 		return tx.Model(&lock).Updates(map[string]any{"status": status, "next_attempt": next, "lease_until": 0}).Error
 	})
