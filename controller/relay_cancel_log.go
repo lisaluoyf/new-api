@@ -47,6 +47,13 @@ func recordCanceledRelayLog(c *gin.Context, info *relaycommon.RelayInfo) {
 	if info.FirstResponseTime.After(start) {
 		other["frt"] = info.FirstResponseTime.Sub(start).Milliseconds()
 	}
+	if info.StreamOutput != nil {
+		first := info.StreamOutput.FirstUsableOutput()
+		other["upstream_usable_output_received"] = !first.IsZero()
+		if !first.IsZero() {
+			other["first_usable_output_ms"] = first.Sub(start).Milliseconds()
+		}
+	}
 	if info.StreamStatus != nil {
 		other["stream_status"] = map[string]interface{}{
 			"status": "canceled", "end_reason": string(info.StreamStatus.EndReason),
@@ -73,28 +80,59 @@ func recordCanceledRelayLog(c *gin.Context, info *relaycommon.RelayInfo) {
 // Observe only the failed final dispatched attempt. The per-attempt error path
 // continues to ignore client cancellation, including canceled hedge losers.
 func observeCanceledRelayHealth(c *gin.Context, info *relaycommon.RelayInfo, other map[string]interface{}) {
-	if c.Request == nil || c.Request.Context().Err() == nil || info.ChannelMeta == nil || c.GetBool("channel_health_hedged_request") || c.GetBool("client_cancel_health_recorded") ||
+	finalHedgePrimary := c.GetBool("channel_health_final_hedge_primary") && info.StreamOutput != nil
+	if c.Request == nil || c.Request.Context().Err() == nil || info.ChannelMeta == nil || (c.GetBool("channel_health_hedged_request") && !finalHedgePrimary) || c.GetBool("client_cancel_health_recorded") ||
 		c.GetInt("channel_health_attempt_channel_id") != info.ChannelId || info.ChannelId <= 0 {
 		return
 	}
 	raw, exists := c.Get("channel_health_attempt_started_at")
 	start, valid := raw.(time.Time)
-	if !exists || !valid || start.IsZero() || info.FirstResponseTime.After(start) || !info.LastDataTime.IsZero() {
+	if !exists || !valid || start.IsZero() {
+		return
+	}
+	tracked := info.StreamOutput != nil
+	if tracked {
+		if !info.StreamOutput.FirstUsableOutput().IsZero() {
+			return
+		}
+	} else if info.FirstResponseTime.After(start) || !info.LastDataTime.IsZero() || info.ReceivedResponseCount != 0 {
+		// Adapters without semantic output tracking retain the original rule.
 		return
 	}
 	elapsed := time.Since(start)
+	if finalHedgePrimary {
+		finished, ok := c.Get("channel_health_attempt_finished_at")
+		end, valid := finished.(time.Time)
+		if !ok || !valid || end.Before(start) || end.After(time.Now()) {
+			return
+		}
+		// Waiting for the backup to finish must not lengthen this attempt.
+		elapsed = end.Sub(start)
+	}
 	target := relayProbeTarget(info)
-	if !service.ChannelNoResponseCancellationEligible(target, elapsed, info.ReceivedResponseCount) {
+	if !service.ChannelNoResponseCancellationEligible(target, elapsed, 0) {
 		return
 	}
 	c.Set("client_cancel_health_recorded", true)
 	channel := *types.NewChannelError(info.ChannelId, info.ChannelType, c.GetString("channel_name"), info.ChannelIsMultiKey, info.ApiKey, common.GetContextKeyBool(c, constant.ContextKeyChannelAutoBan))
-	action, reason := service.EvaluateChannelNoResponseCancellation(channel, target, elapsed, info.ReceivedResponseCount)
-	other["channel_health_observation"] = "suspected_upstream_no_response"
+	var action service.HealthAction
+	var reason string
+	code := types.ErrorCode("upstream_no_response_before_cancel")
+	if tracked {
+		action, reason = service.EvaluateChannelNoUsableOutputCancellation(channel, target, elapsed)
+		other["channel_health_observation"] = "suspected_upstream_no_usable_output"
+		code = types.ErrorCode("upstream_no_usable_output_before_cancel")
+	} else {
+		action, reason = service.EvaluateChannelNoResponseCancellation(channel, target, elapsed, 0)
+		other["channel_health_observation"] = "suspected_upstream_no_response"
+	}
 	other["channel_health_attempt_duration_ms"] = elapsed.Milliseconds()
+	if finalHedgePrimary {
+		other["channel_health_observation_scope"] = "hedge_primary_no_winner"
+	}
 	other["channel_health_probe_requested"] = action == service.HealthProbeBeforeDisable
 	if action == service.HealthProbeBeforeDisable {
-		err := types.NewOpenAIError(errors.New(reason), types.ErrorCode("upstream_no_response_before_cancel"), 502)
+		err := types.NewOpenAIError(errors.New(reason), code, 502)
 		gopool.Go(func() { probeBeforeDisablingChannel(channel, err, reason, target.ModelName, target) })
 	}
 }

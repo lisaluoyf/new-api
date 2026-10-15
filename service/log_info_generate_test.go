@@ -17,7 +17,7 @@ func TestAppendChannelActualPriceUsesDeepSeekRequestStartTime(t *testing.T) {
 	require.NoError(t, err)
 	model.DB = db
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, model_mapping text, setting text, recharge_rate real,
+		id integer primary key, base_url text, model_mapping text, setting text, recharge_rate real,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (

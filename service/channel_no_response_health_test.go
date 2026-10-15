@@ -70,3 +70,37 @@ func TestNoResponseCancellationExclusionsAndSwitches(t *testing.T) {
 	action, _ := EvaluateChannelNoResponseCancellation(ch, target, 180*time.Second, 0)
 	require.Equal(t, HealthSkip, action, "disabled health switches must not accumulate faults")
 }
+
+func TestNoUsableOutputCancellationRequiresFailedProbePolicy(t *testing.T) {
+	previous := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() { common.AutomaticDisableChannelEnabled = previous; ClearChannelHealth(265) })
+	ClearChannelHealth(265)
+	channel := types.ChannelError{ChannelId: 265, AutoBan: true}
+	target := types.ChannelProbeTarget{ModelName: "gpt-6-astra", EndpointType: constant.EndpointTypeOpenAIResponse, IsStream: true}
+	for n := 0; n < 10; n++ {
+		action, _ := EvaluateChannelNoUsableOutputCancellation(channel, target, 30*time.Second)
+		require.Equal(t, HealthSkip, action)
+		channel.AutoBan = false
+		action, _ = EvaluateChannelNoUsableOutputCancellation(channel, target, 180*time.Second)
+		require.Equal(t, HealthSkip, action)
+		channel.AutoBan = true
+		common.AutomaticDisableChannelEnabled = false
+		action, _ = EvaluateChannelNoUsableOutputCancellation(channel, target, 180*time.Second)
+		require.Equal(t, HealthSkip, action)
+		common.AutomaticDisableChannelEnabled = true
+	}
+	for n := 0; n < 4; n++ {
+		action, _ := EvaluateChannelNoUsableOutputCancellation(channel, target, 180*time.Second)
+		require.Equal(t, HealthSkip, action)
+	}
+	other := target
+	other.ModelName = "gpt-6-sol"
+	action, _ := EvaluateChannelNoUsableOutputCancellation(channel, other, 180*time.Second)
+	require.Equal(t, HealthSkip, action)
+	action, _ = EvaluateChannelNoUsableOutputCancellation(channel, target, 180*time.Second)
+	require.Equal(t, HealthProbeBeforeDisable, action)
+	ClearChannelHealth(265, target)
+	action, _ = EvaluateChannelNoUsableOutputCancellation(channel, target, 180*time.Second)
+	require.Equal(t, HealthSkip, action)
+}

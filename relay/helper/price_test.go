@@ -59,7 +59,7 @@ func TestDeepSeekV4PriceUsesOfficialScheduleAndUserMultiplier(t *testing.T) {
 	require.NoError(t, err)
 	model.DB = db
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		id integer primary key, base_url text, recharge_rate real, model_mapping text, setting text,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
@@ -191,7 +191,7 @@ func TestModelPriceHelperPerCallMediaBaseUsesChannelUserPrice(t *testing.T) {
 	require.NoError(t, err)
 	model.DB = db
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		id integer primary key, base_url text, recharge_rate real, model_mapping text, setting text,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO channels
@@ -246,7 +246,7 @@ func TestImagePriceUsesResolutionBaseAndAllChannelCoefficients(t *testing.T) {
 	require.NoError(t, err)
 	model.DB = db
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		id integer primary key, base_url text, recharge_rate real, model_mapping text, setting text,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO channels
@@ -315,7 +315,7 @@ func TestDeepSeekV4RetryKeepsRequestTimeButRefreshesChannelMultiplier(t *testing
 	require.NoError(t, err)
 	model.DB = db
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		id integer primary key, base_url text, recharge_rate real, model_mapping text, setting text,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
@@ -361,7 +361,7 @@ func TestRefreshModelPriceForRetryUsesFallbackChannelPricing(t *testing.T) {
 	model.DB = db
 
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		id integer primary key, base_url text, recharge_rate real, model_mapping text, setting text,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
@@ -410,7 +410,7 @@ func TestBuildGPTTrialPriceDataIgnoresChannelPricing(t *testing.T) {
 	model.DB = db
 
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		id integer primary key, base_url text, recharge_rate real, model_mapping text, setting text,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
@@ -657,7 +657,7 @@ func TestTieredWalletUsesSelectedChannelUserPriceWhileTrialUsesOfficialPrice(t *
 	require.NoError(t, err)
 	model.DB = db
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		id integer primary key, base_url text, recharge_rate real, model_mapping text, setting text,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
@@ -790,7 +790,7 @@ func TestGrokImageReserveUsesReferencesAndAllCoefficients(t *testing.T) {
 	require.NoError(t, err)
 	model.DB = db
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, recharge_rate real, model_mapping text, setting text,
+		id integer primary key, base_url text, recharge_rate real, model_mapping text, setting text,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO channels

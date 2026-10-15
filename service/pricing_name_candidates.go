@@ -137,6 +137,7 @@ func LookupPreferredChannelPricingRow(channelID int, canonical string, modelMapp
 }
 
 type channelPricingResolveContext struct {
+	BaseURL             string
 	ModelMapping        *string
 	Setting             *string
 	RechargeRate        float64
@@ -152,6 +153,7 @@ func (ctx channelPricingResolveContext) EffectivePriceRatio(modelName string) fl
 
 func loadChannelPricingResolveContext(channelID int) (channelPricingResolveContext, error) {
 	var ch struct {
+		BaseURL             string
 		ModelMapping        *string
 		Setting             *string
 		RechargeRate        *float64
@@ -159,12 +161,13 @@ func loadChannelPricingResolveContext(channelID int) (channelPricingResolveConte
 		ModelPriceRatios    *string
 	}
 	if err := model.DB.Table("channels").
-		Select("model_mapping, setting, recharge_rate, apimaster_price_ratio, model_price_ratios").
+		Select("base_url, model_mapping, setting, recharge_rate, apimaster_price_ratio, model_price_ratios").
 		Where("id = ?", channelID).
 		Scan(&ch).Error; err != nil {
 		return channelPricingResolveContext{}, err
 	}
 	out := channelPricingResolveContext{
+		BaseURL:             ch.BaseURL,
 		ModelMapping:        ch.ModelMapping,
 		Setting:             ch.Setting,
 		RechargeRate:        1.0,

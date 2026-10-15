@@ -28,7 +28,7 @@ func TestChannelModelPriceDataUsesModelMapping(t *testing.T) {
 
 	require.NoError(t, db.Exec(`
 		CREATE TABLE channels (
-			id integer primary key,
+			id integer primary key, base_url text,
 			recharge_rate real,
 			model_mapping text,
 			setting text,
@@ -72,7 +72,7 @@ func TestChannelModelPriceDataWithoutMappingUsesCanonicalPrice(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
-	require.NoError(t, db.Exec(`CREATE TABLE channels (id integer primary key, recharge_rate real, model_mapping text, setting text, apimaster_price_ratio real, model_price_ratios text)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE channels (id integer primary key, base_url text, recharge_rate real, model_mapping text, setting text, apimaster_price_ratio real, model_price_ratios text)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
 		id integer primary key, channel_id integer not null, model_name text not null,
 		input_price real, output_price real, cache_price real, cache_creation_price real,
@@ -102,7 +102,7 @@ func TestChannelActualPricesResolvedFallsBackToManualPricing(t *testing.T) {
 
 	require.NoError(t, db.Exec(`
 		CREATE TABLE channels (
-			id integer primary key,
+			id integer primary key, base_url text,
 			recharge_rate real,
 			apimaster_price_ratio real,
 			model_mapping text,

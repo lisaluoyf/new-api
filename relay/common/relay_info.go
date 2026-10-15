@@ -221,6 +221,7 @@ type RelayInfo struct {
 	FinalRequestRelayFormat types.RelayFormat
 
 	StreamStatus *StreamStatus
+	StreamOutput *StreamOutputProgress
 
 	// HedgeState 非 nil 表示当前 RelayInfo 是 clientgone fallback 竞速的一个 attempt，
 	// 计费会被延迟到竞速终局由控制器统一结算。nil = 完全现状路径。
@@ -893,6 +894,7 @@ func (info *RelayInfo) CloneForHedgeAttempt(role string) *RelayInfo {
 	clone.ReceivedResponseCount = 0
 	clone.LastDataTime = time.Time{}
 	clone.StreamStatus = nil
+	clone.StreamOutput = nil
 	clone.CanceledStreamUsage = nil
 	clone.LastError = nil
 	clone.ChannelMeta = nil
