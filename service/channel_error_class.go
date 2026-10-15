@@ -256,10 +256,20 @@ func isModelAccessForbiddenError(err *types.NewAPIError) bool {
 }
 
 func isUpstreamModelUnavailableError(err *types.NewAPIError) bool {
-	if err == nil || (err.StatusCode != 400 && err.StatusCode != 404) {
+	if err == nil {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
+	// Relay providers can report model/group access failures as bad requests.
+	// Confirm availability with a probe before disabling only this model.
+	if (err.StatusCode == 400 || err.StatusCode == 403 || err.StatusCode == 404) &&
+		strings.Contains(msg, "model ") &&
+		strings.Contains(msg, " is not enabled for your selected share group") {
+		return true
+	}
+	if err.StatusCode != 400 && err.StatusCode != 404 {
+		return false
+	}
 	markers := []string{
 		"unknown provider for model",
 		"unknown model provider",
