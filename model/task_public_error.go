@@ -102,16 +102,25 @@ func findPublicVideoError(value map[string]any, depth int) (string, string) {
 }
 
 func taskFailureDetails(task *Task) (string, string) {
+	// Some compatible channels put an explicit official code in fail_reason
+	// rather than in an error object. This is parsing, never a guess from prose.
+	textCode, textMessage := taskFailureTextDetails(task.FailReason)
 	// A failed material preparation/submission may still carry the first route's
 	// response. It must never replace the final recovery failure with stale data.
 	fallbackFailed := task.PrivateData.SeedanceFallback != nil && task.PrivateData.SeedanceFallback.Started && task.PrivateData.SeedanceFallback.Stage == "failed"
 	if !fallbackFailed {
 		var data map[string]any
 		if common.Unmarshal(task.Data, &data) == nil {
-			if code, message := findPublicVideoError(data, 0); code != "" {
+			if code, message := findPublicVideoError(data, 0); code != "" && code != "task_failed" && code != "generation_failed" {
+				if textCode != "" && (code == "nsfw_content_detected" || code == "invalid_request") {
+					return textCode, textMessage
+				}
 				return code, message
 			}
 		}
+	}
+	if textCode != "" {
+		return textCode, textMessage
 	}
 	if index := strings.Index(task.FailReason, "{"); index >= 0 {
 		var data map[string]any
@@ -128,6 +137,16 @@ func taskFailureDetails(task *Task) (string, string) {
 		return "submission_outcome_unknown", task.FailReason
 	case "Backup channel submission failed":
 		return "video_service_error", task.FailReason
+	}
+	return "", ""
+}
+
+func taskFailureTextDetails(reason string) (string, string) {
+	reason = strings.TrimSpace(reason)
+	if index := strings.Index(reason, ":"); index > 0 && index <= 128 {
+		if code := PublicVideoErrorCode(strings.TrimSpace(reason[:index])); code != "" {
+			return code, strings.TrimSpace(reason[index+1:])
+		}
 	}
 	return "", ""
 }
@@ -211,7 +230,7 @@ func taskFailureReason(task *Task) string {
 	}
 	if NormalizeVerifiedVideoModel(task.Properties.OriginModelName) != "" {
 		_, message := taskFailureDetails(task)
-		if message != "" {
+		if message != "" && !IsGenericTaskFailureReason(message) {
 			return message
 		}
 	}

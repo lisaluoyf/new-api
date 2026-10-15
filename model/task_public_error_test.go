@@ -51,6 +51,21 @@ func TestSeedancePublicErrorsSafeFallbackAndFinalRecovery(t *testing.T) {
 	require.Nil(t, PublicTaskError(nil))
 }
 
+func TestSeedanceExplicitTextErrorAndDetailedReasonPrecedence(t *testing.T) {
+	task := &Task{Status: TaskStatusFailure, Properties: Properties{OriginModelName: "seedance-2.0"},
+		FailReason: "InputImageSensitiveContentDetected: The input image may contain sensitive information. Bearer private-secret",
+		Data:       []byte(`{"error":{"code":"generation_failed","message":"Video generation failed"}}`)}
+	public := PublicTaskError(task)
+	require.Equal(t, "InputImageSensitiveContentDetected", public.Code)
+	require.Equal(t, "The input image may contain sensitive information. [redacted]", public.Message)
+	task.FailReason = "Image width must be at least 300 pixels"
+	require.Equal(t, "task_failed", PublicTaskError(task).Code)
+	require.Equal(t, task.FailReason, PublicTaskError(task).Message)
+	task.Data = []byte(`{"error":{"code":"InvalidParameter","message":"Task failed"}}`)
+	require.Equal(t, "InvalidParameter", PublicTaskError(task).Code)
+	require.Equal(t, task.FailReason, PublicTaskError(task).Message)
+}
+
 func TestSeedanceWebhookUsesSameErrorWithinTransaction(t *testing.T) {
 	db := webhookTestDB(t) // Deliberately limited to a single SQLite connection.
 	require.NoError(t, db.AutoMigrate(&Channel{}, &SeedanceResource{}))

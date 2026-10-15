@@ -28,6 +28,8 @@ Official input/output sensitive-content codes retain their exact classification
 and subcodes such as `.PolicyViolation` and `.PrivacyInformation`. Supported
 parameter and quota error families also retain their codes. Messages are
 filtered to remove credentials, private URLs, internal routing and material IDs.
+Explicit `Code: message` failure strings are also separated into code/message;
+an existing detailed reason takes precedence over a generic wrapper message.
 Unknown or missing provider codes use a generic `task_failed` for generation
 failures or `invalid_request` for rejected submissions; no specific review
 reason is inferred from an ambiguous failure. Server/credential failures return
