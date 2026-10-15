@@ -74,7 +74,7 @@ export function DailyStatsPage() {
           isFetching={isFetching}
           hideMobile
           showPagination={false}
-          tableClassName='[&_table]:min-w-[1960px] [&_table]:text-xs [&_th]:h-9 [&_th]:overflow-hidden [&_th]:px-1 [&_th]:text-xs [&_th]:whitespace-nowrap [&_td]:overflow-hidden [&_td]:px-1 [&_td]:py-2'
+          tableClassName='[&_table]:min-w-[2064px] [&_table]:text-xs [&_th]:h-9 [&_th]:overflow-hidden [&_th]:px-1 [&_th]:text-xs [&_th]:whitespace-nowrap [&_td]:overflow-hidden [&_td]:px-1 [&_td]:py-2'
           emptyTitle={isError ? t('Failed to load') : t('No Data')}
           getRowClassName={(row) =>
             row.original.isTotal ? 'bg-muted/40 border-b-2' : undefined

@@ -97,6 +97,13 @@ export function buildDailyStatsColumns(
         ),
     },
     {
+      accessorKey: 'first_purchase_count',
+      size: 104,
+      header: () => <span>{t('New Paying Users')}</span>,
+      cell: ({ row }) =>
+        numericCell(row.original.first_purchase_count, row.original.isTotal),
+    },
+    {
       accessorKey: 'paying_user_count',
       size: 78,
       header: () => <span>{t('Paying Users')}</span>,
