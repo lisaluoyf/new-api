@@ -512,6 +512,9 @@ func chooseUnifiedSeedanceRoute(c *gin.Context, fields map[string]any, banned []
 	}
 	filter := ChannelPickFilter(c, name)
 	eligible := func(ch *model.Channel) bool {
+		if target := c.GetInt("seedance_fallback_target_channel"); target > 0 && ch.Id != target {
+			return false
+		}
 		if !unifiedSeedanceLibraryEligible(c, ch, name) || (filter != nil && !filter(ch)) {
 			return false
 		}

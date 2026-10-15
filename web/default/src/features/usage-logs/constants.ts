@@ -182,6 +182,7 @@ export const TASK_STATUS = {
   FAILURE: 'FAILURE', // 失败
   QUEUED: 'QUEUED', // 排队中
   UNKNOWN: 'UNKNOWN', // 未知
+  RETRYING: 'RETRYING', // 自动恢复中
 } as const
 
 /**
@@ -297,6 +298,7 @@ export const TASK_STATUS_MAPPINGS: Record<string, StatusMapping> = {
   [TASK_STATUS.FAILURE]: { label: 'Failed', variant: 'red' },
   [TASK_STATUS.QUEUED]: { label: 'Queued', variant: 'orange' },
   [TASK_STATUS.UNKNOWN]: { label: 'Unknown', variant: 'neutral' },
+  [TASK_STATUS.RETRYING]: { label: 'In Progress', variant: 'blue' },
 }
 
 /**

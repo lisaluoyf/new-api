@@ -81,7 +81,7 @@ func SeedanceCompatibleTaskResponse(task *model.Task) map[string]any {
 		status = "succeeded"
 	case model.TaskStatusFailure:
 		status = "failed"
-	case model.TaskStatusQueued, model.TaskStatusSubmitted, model.TaskStatusNotStart:
+	case model.TaskStatusQueued, model.TaskStatusSubmitted, model.TaskStatusNotStart, model.TaskStatusRetrying:
 		status = "queued"
 	}
 	format := "mp4"
@@ -94,6 +94,9 @@ func SeedanceCompatibleTaskResponse(task *model.Task) map[string]any {
 	}
 	if task.Status == model.TaskStatusFailure {
 		out["error"] = map[string]any{"code": "task_failed", "message": PublicTaskFailure(task)}
+	}
+	if f := task.PrivateData.SeedanceFallback; f != nil && f.Started {
+		out["metadata"] = map[string]any{"recovery_stage": f.Stage}
 	}
 	AddSeedanceResultFields(task, out)
 	return map[string]any{"code": "success", "message": "", "data": out}

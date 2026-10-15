@@ -19,7 +19,7 @@ type TaskStatus string
 func (t TaskStatus) ToVideoStatus() string {
 	var status string
 	switch t {
-	case TaskStatusNotStart, TaskStatusQueued, TaskStatusSubmitted:
+	case TaskStatusNotStart, TaskStatusQueued, TaskStatusSubmitted, TaskStatusRetrying:
 		status = dto.VideoStatusQueued
 	case TaskStatusInProgress:
 		status = dto.VideoStatusInProgress
@@ -41,6 +41,7 @@ const (
 	TaskStatusFailure               = "FAILURE"
 	TaskStatusSuccess               = "SUCCESS"
 	TaskStatusUnknown               = "UNKNOWN"
+	TaskStatusRetrying              = "RETRYING"
 )
 
 type Task struct {
@@ -99,15 +100,16 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
-	Webhook                       *TaskWebhookConfig      `json:"task_webhook,omitempty"`
-	SeedanceBillingReceiptEnabled bool                    `json:"seedance_billing_receipt_enabled,omitempty"`
-	SeedanceOutput                *SeedanceOutputDuration `json:"seedance_output,omitempty"`
-	SeedanceRequest               map[string]any          `json:"seedance_request,omitempty"`
-	ImageResultURLs               []string                `json:"image_result_urls,omitempty"`
-	Key                           string                  `json:"key,omitempty"`
-	UpstreamTaskID                string                  `json:"upstream_task_id,omitempty"` // 上游真实 task ID
-	ResultURL                     string                  `json:"result_url,omitempty"`       // 返回给客户端的视频 URL（通常为代理地址）
-	UpstreamVideoURL              string                  `json:"upstream_video_url,omitempty"`
+	SeedanceFallback              *SeedanceFallbackRequest `json:"seedance_fallback,omitempty"`
+	Webhook                       *TaskWebhookConfig       `json:"task_webhook,omitempty"`
+	SeedanceBillingReceiptEnabled bool                     `json:"seedance_billing_receipt_enabled,omitempty"`
+	SeedanceOutput                *SeedanceOutputDuration  `json:"seedance_output,omitempty"`
+	SeedanceRequest               map[string]any           `json:"seedance_request,omitempty"`
+	ImageResultURLs               []string                 `json:"image_result_urls,omitempty"`
+	Key                           string                   `json:"key,omitempty"`
+	UpstreamTaskID                string                   `json:"upstream_task_id,omitempty"` // 上游真实 task ID
+	ResultURL                     string                   `json:"result_url,omitempty"`       // 返回给客户端的视频 URL（通常为代理地址）
+	UpstreamVideoURL              string                   `json:"upstream_video_url,omitempty"`
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）
 	BillingSource  string              `json:"billing_source,omitempty"`  // "wallet" 或 "subscription"
 	SubscriptionId int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
@@ -320,7 +322,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
 	err := DB.Where("progress != ?", "100%").
-		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
+		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess, TaskStatusRetrying}).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
 		Limit(limit).
@@ -335,7 +337,7 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
+	err = DB.Where("progress != ?", "100%").Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess, TaskStatusRetrying}).Limit(limit).Order("id").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -467,9 +469,21 @@ func (t *Task) Update() error {
 
 // Persist the CAS terminal transition and durable event in the same transaction.
 func (t *Task) UpdateWithStatus(fromStatus TaskStatus) (bool, error) {
+	return t.updateWithStatus(fromStatus, nil)
+}
+
+// Channel guard rejects late primary poll responses after recovery switched it.
+func (t *Task) UpdateWithStatusAndChannel(fromStatus TaskStatus, channelID int) (bool, error) {
+	return t.updateWithStatus(fromStatus, &channelID)
+}
+func (t *Task) updateWithStatus(fromStatus TaskStatus, channelID *int) (bool, error) {
 	won := false
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		res := tx.Session(&gorm.Session{SkipHooks: true}).Model(t).Where("status = ?", fromStatus).Select("*").Updates(t)
+		query := tx.Session(&gorm.Session{SkipHooks: true}).Model(t).Where("status = ?", fromStatus)
+		if channelID != nil {
+			query = query.Where("channel_id = ?", *channelID)
+		}
+		res := query.Select("*").Updates(t)
 		if res.Error != nil {
 			return res.Error
 		}
@@ -608,5 +622,8 @@ func (t *Task) ToOpenAIVideo() *dto.OpenAIVideo {
 	openAIVideo.CreatedAt = t.CreatedAt
 	openAIVideo.CompletedAt = t.UpdatedAt
 	openAIVideo.SetMetadata("url", t.GetResultURL())
+	if f := t.PrivateData.SeedanceFallback; f != nil && f.Started {
+		openAIVideo.SetMetadata("recovery_stage", f.Stage)
+	}
 	return openAIVideo
 }

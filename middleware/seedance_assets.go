@@ -72,6 +72,8 @@ func PrepareSeedanceAssetGeneration() gin.HandlerFunc {
 				return
 			}
 		}
+		_, userPinned := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
+		c.Set("seedance_user_pinned_channel", userPinned)
 		asset, err := service.SeedanceAssetRouting(c, fields)
 		if err != nil {
 			seedanceRoutingError(c, err)

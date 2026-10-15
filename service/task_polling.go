@@ -60,6 +60,9 @@ func sweepTimedOutTasks(ctx context.Context) {
 	timedOutCount := 0
 
 	for _, task := range tasks {
+		if task.Status == model.TaskStatusRetrying {
+			continue
+		}
 		isLegacy := task.SubmitTime > 0 && task.SubmitTime < legacyTaskCutoff
 
 		oldStatus := task.Status
@@ -72,7 +75,7 @@ func sweepTimedOutTasks(ctx context.Context) {
 			task.FailReason = reason
 		}
 
-		won, err := task.UpdateWithStatus(oldStatus)
+		won, err := task.UpdateWithStatusAndChannel(oldStatus, task.ChannelId)
 		if err != nil {
 			logger.LogError(ctx, fmt.Sprintf("sweepTimedOutTasks CAS update error for task %s: %v", task.TaskID, err))
 			continue
@@ -95,6 +98,7 @@ func sweepTimedOutTasks(ctx context.Context) {
 
 // TaskPollingLoop 主轮询循环，每 15 秒检查一次未完成的任务
 func TaskPollingLoop() {
+	startSeedanceTaskFallbackWorker()
 	for {
 		time.Sleep(time.Duration(15) * time.Second)
 		common.SysLog("任务进度轮询开始")
@@ -107,6 +111,9 @@ func TaskPollingLoop() {
 		allTasks := model.GetAllUnFinishSyncTasks(constant.TaskQueryLimit)
 		platformTask := make(map[constant.TaskPlatform][]*model.Task)
 		for _, t := range allTasks {
+			if t.Status == model.TaskStatusRetrying {
+				continue
+			}
 			platformTask[t.Platform] = append(platformTask[t.Platform], t)
 		}
 		for platform, tasks := range platformTask {
@@ -371,6 +378,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		logger.LogError(ctx, fmt.Sprintf("Task %s not found in taskM", taskId))
 		return fmt.Errorf("task %s not found", taskId)
 	}
+	if task.Status == model.TaskStatusRetrying {
+		return nil
+	}
 	previousTaskData := task.Data
 	key := ch.Key
 
@@ -462,11 +472,28 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		}
 	}
 
+	if taskResult.Status == model.TaskStatusFailure && seedanceAsyncFailureRetryable(taskResult.Reason) {
+		started, fallbackErr := beginSeedanceTaskFallback(ctx, task, snap.Status, taskResult.Reason)
+		if fallbackErr != nil {
+			return fallbackErr
+		}
+		if started {
+			return nil
+		}
+	}
+
 	shouldRefund := false
 	shouldSettle := false
 	quota := task.Quota
 
 	task.Status = model.TaskStatus(taskResult.Status)
+	if f := task.PrivateData.SeedanceFallback; f != nil && f.Started {
+		if task.Status == model.TaskStatusSuccess {
+			f.Stage = "completed"
+		} else if task.Status == model.TaskStatusFailure {
+			f.Stage = "failed"
+		}
+	}
 	switch taskResult.Status {
 	case model.TaskStatusSubmitted:
 		task.Progress = taskcommon.ProgressSubmitted
@@ -524,7 +551,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	isDone := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure
 	terminalLogged := false
 	if isDone && snap.Status != task.Status {
-		won, err := task.UpdateWithStatus(snap.Status)
+		won, err := task.UpdateWithStatusAndChannel(snap.Status, ch.Id)
 		if err != nil {
 			logger.LogError(ctx, fmt.Sprintf("UpdateWithStatus failed for task %s: %s", task.TaskID, err.Error()))
 			if ch.Id == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(task.Properties.OriginModelName) {
@@ -540,7 +567,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			terminalLogged = true
 		}
 	} else if !snap.Equal(task.Snapshot()) {
-		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
+		if _, err := task.UpdateWithStatusAndChannel(snap.Status, ch.Id); err != nil {
 			logger.LogError(ctx, fmt.Sprintf("Failed to update task %s: %s", task.TaskID, err.Error()))
 			if ch.Id == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(task.Properties.OriginModelName) {
 				return err

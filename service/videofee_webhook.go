@@ -235,6 +235,9 @@ func processVideoFeeWebhook(ctx context.Context, event *model.VideoFeeWebhookInb
 	if err = model.DB.WithContext(ctx).First(&fresh, task.ID).Error; err != nil {
 		return err
 	}
+	if fresh.Status == model.TaskStatusRetrying {
+		return nil
+	}
 	if fresh.Status != model.TaskStatusSuccess && fresh.Status != model.TaskStatusFailure {
 		return fmt.Errorf("VideoFee terminal update not persisted")
 	}

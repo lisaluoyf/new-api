@@ -1852,6 +1852,7 @@ func RelayTask(c *gin.Context) {
 				task.PrivateData.SeedanceRequest[key] = value
 			}
 		}
+		service.CaptureSeedanceFallbackRequest(c, task)
 		task.Quota = result.Quota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action

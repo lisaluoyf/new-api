@@ -174,6 +174,11 @@ func BackfillTaskLogOnComplete(ctx context.Context, task *model.Task, taskResult
 	if task == nil || task.UserId <= 0 || strings.TrimSpace(task.TaskID) == "" {
 		return
 	}
+	if f := task.PrivateData.SeedanceFallback; f != nil && f.Started {
+		if err := backfillSeedanceFallbackAccounting(task); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("Video recovery accounting pending for %s: %v", task.TaskID, err))
+		}
+	}
 	elapsed := TaskLogElapsedSeconds(task)
 	extra := map[string]interface{}{}
 	if tokens, ok := SeedanceCompletionTokens(task); ok {
@@ -355,6 +360,12 @@ func taskModelName(task *model.Task) string {
 // RefundTaskQuota 统一的任务失败退款逻辑。
 // 当异步任务失败时，将预扣的 quota 退还给用户（支持钱包和订阅），并退还令牌额度。
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
+	if f := task.PrivateData.SeedanceFallback; f != nil && f.Started {
+		if err := refundSeedanceFallbackTask(task, reason); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("Video recovery refund pending for %s: %v", task.TaskID, err))
+		}
+		return
+	}
 	quota := task.Quota
 	if quota == 0 {
 		CompleteSeedanceBillingReceipt(task, true, nil)
