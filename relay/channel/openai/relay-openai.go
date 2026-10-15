@@ -209,10 +209,11 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var reportedUsage *dto.Usage
 	reportedInvalid := false
 	var pendingFrames []string
+	var pendingFrameBytes int
 	outputProgress := &relaycommon.StreamOutputProgress{}
 	info.StreamOutput = outputProgress
-	outputDiagnostics := helper.StreamOutputDiagnostics{Protocol: "openai_chat"}
-	defer func() { c.Set(helper.ContextKeyStreamOutputDiagnostics, outputDiagnostics) }()
+	outputDiagnostics := chatStreamOutputDiagnostics{data: helper.StreamOutputDiagnostics{Protocol: "openai_chat"}}
+	defer func() { c.Set(helper.ContextKeyStreamOutputDiagnostics, outputDiagnostics.snapshot()) }()
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
@@ -255,16 +256,9 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		frame := inspectChatStreamOutput(data)
-		outputDiagnostics.Frames++
-		outputDiagnostics.ContentChars += frame.contentChars
-		outputDiagnostics.ReasoningChars += frame.reasoningChars
-		outputDiagnostics.ToolValueChars += frame.toolValueChars
-		outputDiagnostics.RefusalChars += frame.refusalChars
-		if upstreamErr, eventType, isErrorEvent := openAIStreamErrorEvent(data); isErrorEvent {
-			outputDiagnostics.LastFrameKind = "error"
-			if outputDiagnostics.FirstFrameKind == "" {
-				outputDiagnostics.FirstFrameKind = "error"
-			}
+		upstreamErr, eventType, isErrorEvent := openAIStreamErrorEvent(data)
+		outputDiagnostics.observe(frame, isErrorEvent)
+		if isErrorEvent {
 			if !falseSuccessFallbackEnabled() {
 				// 关闭假成功判定：恢复上线前的窄口径与通用错误，不带诊断信息。
 				sr.Stop(fmt.Errorf("upstream returned an error event"))
@@ -290,16 +284,9 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			sr.Stop(streamEventErr)
 			return
 		}
-		outputDiagnostics.LastFrameKind = frame.kind
-		if outputDiagnostics.FirstFrameKind == "" {
-			outputDiagnostics.FirstFrameKind = frame.kind
-		}
 		if frame.usable {
 			outputProgress.MarkUsableOutput()
 			validOutput = true
-			if outputDiagnostics.FirstUsableKind == "" {
-				outputDiagnostics.FirstUsableKind = frame.kind
-			}
 		}
 		if reported, id, terminal := reportedChatUsage(data); reported != nil && !reportedInvalid {
 			if reportedUsage == nil || reported.CompletionTokens >= reportedUsage.CompletionTokens {
@@ -321,15 +308,15 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		}
 		if !outputCommitted {
 			if !frame.usable {
-				if len(pendingFrames) >= maxChatPreOutputFrames || outputDiagnostics.BufferedBytes+len(data) > maxChatPreOutputBytes {
-					outputDiagnostics.BufferLimitReached = true
+				if len(pendingFrames) >= maxChatPreOutputFrames || pendingFrameBytes+len(data) > maxChatPreOutputBytes {
+					outputDiagnostics.buffer(0, true)
 					streamEventErr = types.NewOpenAIError(fmt.Errorf("upstream exceeded the pre-output buffer without usable output"), types.ErrorCode("empty_response"), http.StatusBadGateway)
 					streamEventErr = markResponsesFalseSuccess(streamEventErr, falseSuccessTriggerEmptyStream, resp.StatusCode, true, "", nil, nil, nil, false, false, "")
 					sr.Stop(streamEventErr)
 					return
 				}
-				outputDiagnostics.BufferedFrames++
-				outputDiagnostics.BufferedBytes += len(data)
+				outputDiagnostics.buffer(len(data), false)
+				pendingFrameBytes += len(data)
 			}
 			pendingFrames = append(pendingFrames, data)
 			if !frame.usable {

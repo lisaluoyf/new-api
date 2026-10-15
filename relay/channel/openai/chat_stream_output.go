@@ -2,11 +2,13 @@ package openai
 
 import (
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/relay/helper"
 )
 
 const (
@@ -21,6 +23,51 @@ type chatStreamFrameOutput struct {
 	reasoningChars int
 	toolValueChars int
 	refusalChars   int
+}
+
+// Scanner cleanup can return while a blocked downstream writer is still
+// exiting. Take immutable, synchronized snapshots for the retry log.
+type chatStreamOutputDiagnostics struct {
+	mu   sync.Mutex
+	data helper.StreamOutputDiagnostics
+}
+
+func (d *chatStreamOutputDiagnostics) observe(frame chatStreamFrameOutput, errorEvent bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.data.Frames++
+	d.data.ContentChars += frame.contentChars
+	d.data.ReasoningChars += frame.reasoningChars
+	d.data.ToolValueChars += frame.toolValueChars
+	d.data.RefusalChars += frame.refusalChars
+	kind := frame.kind
+	if errorEvent {
+		kind = "error"
+	}
+	d.data.LastFrameKind = kind
+	if d.data.FirstFrameKind == "" {
+		d.data.FirstFrameKind = kind
+	}
+	if !errorEvent && frame.usable && d.data.FirstUsableKind == "" {
+		d.data.FirstUsableKind = kind
+	}
+}
+
+func (d *chatStreamOutputDiagnostics) buffer(bytes int, limitReached bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if limitReached {
+		d.data.BufferLimitReached = true
+		return
+	}
+	d.data.BufferedFrames++
+	d.data.BufferedBytes += bytes
+}
+
+func (d *chatStreamOutputDiagnostics) snapshot() helper.StreamOutputDiagnostics {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.data
 }
 
 func inspectChatStreamOutput(data string) chatStreamFrameOutput {
