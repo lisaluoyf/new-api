@@ -1442,9 +1442,9 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 
 	// Rewrite upstream image URLs before returning to client (sync responses).
 	if info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits {
-		// gpt-image-2 and APIMart Gemini may require URL output upstream.
+		// gpt-image-2 and Gemini image providers may require URL output upstream.
 		// Honor the client's requested format after the image has completed.
-		if clientFmt := service.GptImage2ClientResponseFormat(c); clientFmt == "b64_json" || c.GetString(apimartGeminiResponseFormatKey) == "b64_json" {
+		if clientFmt := service.GptImage2ClientResponseFormat(c); clientFmt == "b64_json" || c.GetString(apimartGeminiResponseFormatKey) == "b64_json" || c.GetString(subrouterGeminiResponseFormatKey) == "b64_json" {
 			// Keep a cached URL for the usage-log preview while returning the image
 			// as base64 to the client.
 			var previewURL string

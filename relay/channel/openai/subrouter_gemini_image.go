@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,12 +13,16 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
+
+const subrouterGeminiResponseFormatKey = "subrouter_gemini_client_response_format"
 
 var subrouterGeminiDownload = service.DoDownloadRequest
 
@@ -34,6 +39,14 @@ func isSubrouterGeminiImage(info *relaycommon.RelayInfo, model string) bool {
 		return true
 	}
 	return false
+}
+
+// IsSubrouterGeminiImage identifies requests that require provider adaptation,
+// including when the channel otherwise passes request bodies through.
+func IsSubrouterGeminiImage(info *relaycommon.RelayInfo) bool {
+	return info != nil && info.ChannelMeta != nil && info.ChannelType == constant.ChannelTypeOpenAI &&
+		(info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits) &&
+		isSubrouterGeminiImage(info, info.OriginModelName)
 }
 
 // This upstream's Images API reads aspect ratio from pixel dimensions, not
@@ -63,8 +76,8 @@ func normalizeSubrouterGeminiImageRequest(info *relaycommon.RelayInfo, request *
 	request.Size = fmt.Sprintf("%dx%d", size[0]*scale, size[1]*scale)
 }
 
-// The upstream ignores image_urls on generations. Download references while
-// their signed URLs are valid and upload their bytes to its native edits API.
+// The upstream ignores image_urls on generations. Resolve URL and inline
+// references to image bytes and upload them to its native edits API.
 func convertSubrouterGeminiReferences(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (*bytes.Buffer, error) {
 	responseFormat := request.ResponseFormat
 	request, err := helper.ConvertImageEditsToGeneration(c, request)
@@ -99,19 +112,11 @@ func convertSubrouterGeminiReferences(c *gin.Context, info *relaycommon.RelayInf
 		}
 	}
 	for index, reference := range request.ImageUrls {
-		parsed, err := url.Parse(reference)
-		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
-			return nil, fmt.Errorf("reference %d must be an HTTP or HTTPS image URL", index+1)
-		}
-		response, err := subrouterGeminiDownload(reference, "subrouter_gemini_reference")
+		data, err := readSubrouterGeminiReference(reference, index+1)
 		if err != nil {
-			return nil, fmt.Errorf("unable to download reference image %d", index+1)
+			return nil, err
 		}
-		data, readErr := io.ReadAll(io.LimitReader(response.Body, (20<<20)+1))
-		response.Body.Close()
-		if response.StatusCode != http.StatusOK || readErr != nil || len(data) == 0 || len(data) > 20<<20 {
-			return nil, fmt.Errorf("reference image %d is unavailable or exceeds 20 MB", index+1)
-		}
+
 		mimeType := http.DetectContentType(data)
 		switch mimeType {
 		case "image/png", "image/jpeg", "image/webp", "image/gif":
@@ -136,4 +141,40 @@ func convertSubrouterGeminiReferences(c *gin.Context, info *relaycommon.RelayInf
 	c.Set("subrouter_gemini_edit_content_type", writer.FormDataContentType())
 	c.Set("subrouter_gemini_native_edit", true)
 	return &body, nil
+}
+
+// Inline data never enters the HTTP downloader. Remote references retain the
+// shared downloader's SSRF checks; both forms retain the same size/MIME limits.
+func readSubrouterGeminiReference(reference string, index int) ([]byte, error) {
+	const limit = 20 << 20
+	var data []byte
+	if strings.HasPrefix(reference, "data:") {
+		header, encoded, ok := strings.Cut(reference, ",")
+		if !ok || !strings.HasPrefix(header, "data:image/") || !strings.HasSuffix(header, ";base64") || len(encoded) > base64.StdEncoding.EncodedLen(limit) {
+			return nil, fmt.Errorf("reference image %d must be a base64 image data URI of at most 20 MB", index)
+		}
+		var err error
+		data, err = base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return nil, fmt.Errorf("reference image %d contains invalid base64", index)
+		}
+	} else {
+		parsed, err := url.Parse(reference)
+		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Hostname() == "" {
+			return nil, fmt.Errorf("reference %d must be an HTTP/HTTPS image URL or base64 image data URI", index)
+		}
+		response, err := subrouterGeminiDownload(reference, "subrouter_gemini_reference")
+		if err != nil {
+			return nil, fmt.Errorf("unable to download reference image %d", index)
+		}
+		defer response.Body.Close()
+		data, err = io.ReadAll(io.LimitReader(response.Body, limit+1))
+		if response.StatusCode != http.StatusOK || err != nil {
+			return nil, fmt.Errorf("reference image %d is unavailable", index)
+		}
+	}
+	if len(data) == 0 || len(data) > limit {
+		return nil, fmt.Errorf("reference image %d is empty or exceeds 20 MB", index)
+	}
+	return data, nil
 }

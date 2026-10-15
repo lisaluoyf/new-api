@@ -503,6 +503,7 @@ func imageEditsViaGenerations(info *relaycommon.RelayInfo) bool {
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
 	c.Set("subrouter_gemini_native_edit", false)
+	c.Set(subrouterGeminiResponseFormatKey, "")
 	c.Set(apimartGeminiResponseFormatKey, "")
 	if IsAPIMartGeminiImage(info) {
 		body, err := convertAPIMartGeminiImageRequest(c, info, request)
@@ -511,14 +512,21 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		}
 		return body, nil
 	}
-	if isSubrouterGeminiImage(info, request.Model) && isJSONRequest(c) &&
-		(len(request.ImageUrls) > 0 || (len(request.Image) > 0 && string(request.Image) != "null") || (len(request.Images) > 0 && string(request.Images) != "null")) {
-		body, err := convertSubrouterGeminiReferences(c, info, request)
-		if err != nil {
-			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	if isSubrouterGeminiImage(info, request.Model) {
+		if request.ResponseFormat != "" && request.ResponseFormat != "url" && request.ResponseFormat != "b64_json" {
+			return nil, types.NewErrorWithStatusCode(fmt.Errorf("unsupported response_format"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		return body, nil
+		c.Set(subrouterGeminiResponseFormatKey, request.ResponseFormat)
+		request.ResponseFormat = "url"
+		if info.RelayMode == relayconstant.RelayModeImagesEdits || len(request.ImageUrls) > 0 || (len(request.Image) > 0 && string(request.Image) != "null") || (len(request.Images) > 0 && string(request.Images) != "null") {
+			body, err := convertSubrouterGeminiReferences(c, info, request)
+			if err != nil {
+				return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			return body, nil
+		}
 	}
+
 	if nanoBanana21ImageBridge(info) || nanoBanana21NativeImages(info) {
 		body, err := convertNanoBanana21ImageRequest(c, info, request)
 		if err != nil {
