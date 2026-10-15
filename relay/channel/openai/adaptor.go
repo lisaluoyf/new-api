@@ -287,6 +287,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
+	helper.NormalizeGemini4Continuation(info.UpstreamModelName, request)
 	reasoningModel := info.UpstreamModelName
 	if !isGLM53Model(reasoningModel) {
 		reasoningModel = info.OriginModelName

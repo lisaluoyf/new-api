@@ -200,6 +200,7 @@ func ThinkingAdaptor(geminiRequest *dto.GeminiChatRequest, info *relaycommon.Rel
 
 // Setting safety to the lowest possible values since Gemini is already powerless enough
 func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, info *relaycommon.RelayInfo) (*dto.GeminiChatRequest, error) {
+	helper.NormalizeGemini4Continuation(info.UpstreamModelName, &textRequest)
 
 	geminiRequest := dto.GeminiChatRequest{
 		Contents: make([]dto.GeminiChatContent, 0, len(textRequest.Messages)),
@@ -208,7 +209,7 @@ func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, i
 		},
 	}
 
-	if textRequest.TopP != nil && *textRequest.TopP > 0 {
+	if textRequest.TopP != nil {
 		geminiRequest.GenerationConfig.TopP = common.GetPointer(*textRequest.TopP)
 	}
 
@@ -753,6 +754,16 @@ func cleanFunctionParametersWithDepth(params interface{}, depth int) interface{}
 		}
 
 		normalizeGeminiSchemaTypeAndNullable(cleanedMap)
+		if _, hasType := cleanedMap["type"]; !hasType {
+			if _, hasProps := cleanedMap["properties"]; hasProps {
+				cleanedMap["type"] = "OBJECT"
+			}
+		}
+
+		if typ, ok := cleanedMap["type"].(string); ok && typ != "OBJECT" {
+			delete(cleanedMap, "properties")
+			delete(cleanedMap, "required")
+		}
 
 		// Clean properties
 		if props, ok := cleanedMap["properties"].(map[string]interface{}); ok && props != nil {
