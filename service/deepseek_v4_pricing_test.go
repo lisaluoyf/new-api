@@ -127,7 +127,7 @@ func TestDeepSeekV4ChannelPricingAppliesGroupRechargeAndUserOverride(t *testing.
 	require.NoError(t, err)
 	model.DB = db
 	require.NoError(t, db.Exec(`CREATE TABLE channels (
-		id integer primary key, model_mapping text, setting text, recharge_rate real,
+		id integer primary key, base_url text, model_mapping text, setting text, recharge_rate real,
 		apimaster_price_ratio real, model_price_ratios text
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE channel_model_pricings (
@@ -152,6 +152,23 @@ func TestDeepSeekV4ChannelPricingAppliesGroupRechargeAndUserOverride(t *testing.
 	require.InDelta(t, 0.0088, prices.InputPrice, 0.0000001)
 	require.InDelta(t, 0.0264, prices.OutputPrice, 0.0000001)
 	require.InDelta(t, 0.00028, prices.CachePrice, 0.0000001)
+
+	// The supplier exception changes procurement only, including when the
+	// channel has no stored pricing row and uses a manual group multiplier.
+	require.NoError(t, db.Exec(`UPDATE channels SET base_url = 'https://ark.cn-beijing.volces.com',
+		setting = '{"manual_group_ratio":0.4}' WHERE id = 1`).Error)
+	for _, hour := range []int{8, 10} {
+		at := beijingTime(t, hour, 0)
+		official, ok := DeepSeekV4OfficialPricingAt("deepseek-flash", at)
+		require.True(t, ok)
+		procurement, ok := DeepSeekV4ProcurementPricingAt(1, "deepseek-flash", at)
+		require.True(t, ok)
+		require.InDelta(t, official.InputPrice*0.4*0.1, procurement.InputPrice, 1e-12)
+		require.InDelta(t, official.CachePrice*0.1, procurement.CachePrice, 1e-12)
+		retail, ok := DeepSeekV4UserPricingAt(1, "deepseek-flash", at)
+		require.True(t, ok)
+		require.InDelta(t, official.CachePrice*0.4*0.1*1.5, retail.CachePrice, 1e-12)
+	}
 }
 
 func TestDeepSeekV4OfficialPricingRejectsOtherModels(t *testing.T) {
@@ -159,4 +176,27 @@ func TestDeepSeekV4OfficialPricingRejectsOtherModels(t *testing.T) {
 	require.False(t, ok)
 	_, ok = DeepSeekV4OfficialPricingAt("deepseek-v4-flash-none-max", beijingTime(t, 10, 0))
 	require.False(t, ok)
+}
+
+func TestVolcengineFlashProcurementDoesNotDiscountCacheHits(t *testing.T) {
+	for _, hour := range []int{8, 9, 12, 14, 18} {
+		at := beijingTime(t, hour, 0)
+		official, ok := DeepSeekV4OfficialPricingAt("deepseek-flash", at)
+		require.True(t, ok)
+		for _, baseURL := range []string{"https://ark.cn-beijing.volces.com", "https://ark.cn-beijing.volces.com/api/v3"} {
+			got := DeepSeekV4ChannelProcurementPrices(official, "deepseek-flash", baseURL, 0.4, 0.8)
+			require.InDelta(t, official.InputPrice*0.4*0.8, got.InputPrice, 1e-12)
+			require.InDelta(t, official.OutputPrice*0.4*0.8, got.OutputPrice, 1e-12)
+			require.InDelta(t, official.CachePrice*0.8, got.CachePrice, 1e-12)
+			require.InDelta(t, official.CacheCreationPrice*0.4*0.8, got.CacheCreationPrice, 1e-12)
+		}
+		for _, baseURL := range []string{"https://other-provider.example", "https://ark.cn-beijing.volces.com.example"} {
+			got := DeepSeekV4ChannelProcurementPrices(official, "deepseek-flash", baseURL, 0.4, 0.8)
+			require.InDelta(t, official.CachePrice*0.4*0.8, got.CachePrice, 1e-12)
+		}
+		pro, ok := DeepSeekV4OfficialPricingAt("deepseek-v4-pro", at)
+		require.True(t, ok)
+		got := DeepSeekV4ChannelProcurementPrices(pro, "deepseek-v4-pro", "https://ark.cn-beijing.volces.com", 0.4, 0.8)
+		require.InDelta(t, pro.CachePrice*0.4*0.8, got.CachePrice, 1e-12)
+	}
 }
