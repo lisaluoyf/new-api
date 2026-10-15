@@ -1,6 +1,7 @@
 package service
 
 import (
+	"net/url"
 	"strings"
 	"time"
 
@@ -114,8 +115,29 @@ func DeepSeekV4ProcurementPricingAt(channelID int, modelName string, at time.Tim
 	if !ok {
 		return ModelUnitPricesUSD{}, false
 	}
-	groupRatio, rechargeRate, _ := deepSeekV4ChannelMultipliers(channelID, modelName)
-	return scaleModelUnitPrices(prices, groupRatio*rechargeRate), true
+	groupRatio, rechargeRate, _, baseURL := deepSeekV4ChannelMultipliers(channelID, modelName)
+	return DeepSeekV4ChannelProcurementPrices(prices, modelName, baseURL, groupRatio, rechargeRate), true
+}
+
+// DeepSeekV4ChannelProcurementPrices applies supplier discounts to the timed
+// official tuple. Volcengine's V4.1 Flash bill discounts uncached input/output,
+// but its cache-hit elements have no group discount. Recharge conversion still
+// applies to every element. Retail prices retain their existing policy.
+func DeepSeekV4ChannelProcurementPrices(prices ModelUnitPricesUSD, modelName, baseURL string, groupRatio, rechargeRate float64) ModelUnitPricesUSD {
+	procurement := scaleModelUnitPrices(prices, groupRatio*rechargeRate)
+	canonical, ok := deepSeekV4PricingModel(modelName)
+	upstream, err := url.Parse(baseURL)
+	if !ok || canonical != "deepseek-flash" || err != nil {
+		return procurement
+	}
+	host := strings.ToLower(upstream.Hostname())
+	if strings.HasPrefix(host, "ark.") && strings.HasSuffix(host, ".volces.com") {
+		if rechargeRate <= 0 {
+			rechargeRate = 1
+		}
+		procurement.CachePrice = prices.CachePrice * rechargeRate
+	}
+	return procurement
 }
 
 // DeepSeekV4UserPricingAt preserves the existing channel selling-price chain:
@@ -125,11 +147,11 @@ func DeepSeekV4UserPricingAt(channelID int, modelName string, at time.Time) (Mod
 	if !ok {
 		return ModelUnitPricesUSD{}, false
 	}
-	groupRatio, rechargeRate, userPriceRatio := deepSeekV4ChannelMultipliers(channelID, modelName)
+	groupRatio, rechargeRate, userPriceRatio, _ := deepSeekV4ChannelMultipliers(channelID, modelName)
 	return scaleModelUnitPrices(prices, groupRatio*rechargeRate*userPriceRatio), true
 }
 
-func deepSeekV4ChannelMultipliers(channelID int, modelName string) (groupRatio, rechargeRate, userPriceRatio float64) {
+func deepSeekV4ChannelMultipliers(channelID int, modelName string) (groupRatio, rechargeRate, userPriceRatio float64, baseURL string) {
 	groupRatio, rechargeRate, userPriceRatio = 1, 1, 1
 	if channelID <= 0 || model.DB == nil {
 		return
@@ -140,6 +162,7 @@ func deepSeekV4ChannelMultipliers(channelID int, modelName string) (groupRatio, 
 		return
 	}
 	rechargeRate = ch.RechargeRate
+	baseURL = ch.BaseURL
 	userPriceRatio = ch.EffectivePriceRatio(modelName)
 
 	if manualGroupRatio := EffectiveManualGroupRatio(ch.Setting, modelName); manualGroupRatio > 0 {

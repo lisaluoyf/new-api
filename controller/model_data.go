@@ -551,6 +551,12 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 
 			cache, cacheCreation := deepSeekTimedPrice.CachePrice*gr, deepSeekTimedPrice.CacheCreationPrice*gr
 			actualCache, actualCacheCreation := cache*rechargeRate, cacheCreation*rechargeRate
+			baseURL := ""
+			if r.BaseURL != nil {
+				baseURL = *r.BaseURL
+			}
+			procurement := service.DeepSeekV4ChannelProcurementPrices(deepSeekTimedPrice, modelName, baseURL, gr, rechargeRate)
+			actualCache = procurement.CachePrice
 			cachePricePtr, cacheCreationPricePtr = &cache, &cacheCreation
 			actualCachePricePtr, actualCacheCreationPricePtr = &actualCache, &actualCacheCreation
 		}
