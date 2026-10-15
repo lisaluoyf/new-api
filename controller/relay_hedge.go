@@ -285,6 +285,15 @@ func runClientGoneHedgedRelay(c *gin.Context, relayInfo *relaycommon.RelayInfo, 
 			c.Set("clientgone_hedge_error", hedge.err.MaskSensitiveErrorWithStatusCode())
 		}
 		backfillRelayInfoFromAttempt(relayInfo, primary.info)
+		// With no winner, a real client cancellation can observe the primary's
+		// tracked output. Successful races and internally canceled losers never
+		// enter this path; only the primary is counted once per final request.
+		if c.Request.Context().Err() != nil && primary.info.StreamOutput != nil {
+			c.Set("channel_health_final_hedge_primary", true)
+			c.Set("channel_health_attempt_started_at", primary.startedAt)
+			c.Set("channel_health_attempt_finished_at", primary.finishedAt)
+			c.Set("channel_health_attempt_channel_id", primary.channel.Id)
+		}
 		if hedgeArmed {
 			notifyClientGoneHedgeResult(c, relayInfo, thresholdSeconds, len(bodyBytes), primary, hedge, nil, primary.err)
 		}
@@ -825,6 +834,7 @@ func backfillRelayInfoFromAttempt(dst, src *relaycommon.RelayInfo) {
 	dst.ReceivedResponseCount = src.ReceivedResponseCount
 	dst.LastDataTime = src.LastDataTime
 	dst.StreamStatus = src.StreamStatus
+	dst.StreamOutput = src.StreamOutput
 	dst.FinalRequestRelayFormat = src.FinalRequestRelayFormat
 	dst.RequestConversionChain = src.RequestConversionChain
 	dst.PriceData = src.PriceData

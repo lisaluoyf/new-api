@@ -89,7 +89,10 @@ func TestOaiResponsesStreamHandlerRejectsLifecycleOnlyHTTP200(t *testing.T) {
 		"data: {\"type\":\"response.in_progress\",\"response\":{\"status\":\"in_progress\"}}\n\n" +
 		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n"
 
-	_, err := OaiResponsesStreamHandler(c, responsesStreamTestInfo(), responsesHTTPStream(body))
+	info := responsesStreamTestInfo()
+	_, err := OaiResponsesStreamHandler(c, info, responsesHTTPStream(body))
+	require.NotNil(t, info.StreamOutput)
+	require.True(t, info.StreamOutput.FirstUsableOutput().IsZero())
 	require.NotNil(t, err)
 	require.Equal(t, types.ErrorCodeEmptyResponse, err.GetErrorCode())
 	require.NotNil(t, err.UpstreamFalseSuccess)
@@ -142,7 +145,9 @@ func TestOaiResponsesStreamHandlerAcceptsRealOutput(t *testing.T) {
 		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n" +
 		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\"}]}],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n"
 
-	usage, err := OaiResponsesStreamHandler(c, responsesStreamTestInfo(), responsesHTTPStream(body))
+	info := responsesStreamTestInfo()
+	usage, err := OaiResponsesStreamHandler(c, info, responsesHTTPStream(body))
+	require.False(t, info.StreamOutput.FirstUsableOutput().IsZero())
 	require.Nil(t, err)
 	require.NotNil(t, usage)
 	require.True(t, c.Writer.Written())
@@ -186,6 +191,8 @@ func TestOaiResponsesToChatStreamHandlerRejectsLifecycleOnlyHTTP200(t *testing.T
 		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n"
 
 	_, err := OaiResponsesToChatStreamHandler(c, info, responsesHTTPStream(body))
+	require.NotNil(t, info.StreamOutput)
+	require.Equal(t, true, info.StreamOutput.FirstUsableOutput().IsZero())
 	require.NotNil(t, err)
 	require.Equal(t, types.ErrorCodeEmptyResponse, err.GetErrorCode())
 	require.False(t, c.Writer.Written())
@@ -217,6 +224,8 @@ func TestOaiResponsesToChatStreamHandlerAcceptsTerminalOnlyText(t *testing.T) {
 		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"terminal hello\"}]}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"total_tokens\":3}}}\n\n"
 
 	_, err := OaiResponsesToChatStreamHandler(c, info, responsesHTTPStream(body))
+	require.NotNil(t, info.StreamOutput)
+	require.Equal(t, false, info.StreamOutput.FirstUsableOutput().IsZero())
 	require.Nil(t, err)
 	require.Contains(t, recorder.Body.String(), "terminal hello")
 }

@@ -24,6 +24,16 @@ func EvaluateChannelNoResponseCancellation(channel types.ChannelError, target ty
 	return EvaluateChannelHealth(channel, err, target)
 }
 
+// Lifecycle events do not prove that the upstream produced usable output.
+// Reuse the conservative wait/window/probe policy for confirmed output tracking.
+func EvaluateChannelNoUsableOutputCancellation(channel types.ChannelError, target types.ChannelProbeTarget, elapsed time.Duration) (HealthAction, string) {
+	if !ChannelNoResponseCancellationEligible(target, elapsed, 0) {
+		return HealthSkip, ""
+	}
+	err := types.NewOpenAIError(errors.New("suspected upstream no usable output before client cancellation (wait >=120s)"), types.ErrorCode("upstream_no_usable_output_before_cancel"), 502)
+	return EvaluateChannelHealth(channel, err, target)
+}
+
 func ChannelNoResponseCancellationEligible(target types.ChannelProbeTarget, elapsed time.Duration, receivedResponses int) bool {
 	if elapsed < ChannelNoResponseCancelThreshold || receivedResponses != 0 || !target.Valid() || !target.IsStream {
 		return false

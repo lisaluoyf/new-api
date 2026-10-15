@@ -118,6 +118,8 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	// transparently fall back to another channel.
 	var pendingFrames []string
 	outputCommitted := false
+	progress := &relaycommon.StreamOutputProgress{}
+	info.StreamOutput = progress
 	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
 		// 检查当前数据是否包含 completed 状态和 usage 信息
@@ -165,6 +167,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 		if streamResponse.Type == "response.incomplete" && responsesResponseHasValidEmptyTerminal(streamResponse.Response) {
 			validOutput = true
+		}
+		if validOutput {
+			progress.MarkUsableOutput()
 		}
 		// Capture billing evidence before forwarding a terminal event: clients
 		// may close the request from inside that write/flush.

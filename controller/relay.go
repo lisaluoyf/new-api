@@ -325,7 +325,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 	for ; retryParam.GetRetry() <= maxRetries; retryParam.IncreaseRetry() {
 		c.Set("channel_health_attempt_started_at", time.Time{})
+		c.Set("channel_health_attempt_finished_at", time.Time{})
 		c.Set("channel_health_attempt_channel_id", 0)
+		c.Set("channel_health_final_hedge_primary", false)
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		isFallbackAttempt := relayInfo.ChannelMeta != nil
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
@@ -348,6 +350,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		attemptStartedAt := time.Now()
 		// Transport errors and upstream response IDs belong to this attempt.
 		relayInfo.StreamStatus = nil
+		relayInfo.StreamOutput = nil
 		c.Set("stream_status", nil)
 		c.Set("downstream_delivery_failed", false)
 		if service.IsFreeModel(relayInfo.OriginModelName) {

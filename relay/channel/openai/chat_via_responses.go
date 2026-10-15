@@ -357,6 +357,8 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		return sendChatChunk(chunk)
 	}
 
+	progress := &relaycommon.StreamOutputProgress{}
+	info.StreamOutput = progress
 	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if streamErr != nil {
 			sr.Stop(streamErr)
@@ -373,6 +375,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		lastResponse = streamResp.Response
 		if streamResp.Response != nil {
 			sr.ObserveResponseID(streamResp.Response.ID)
+		}
+		if responsesStreamEventHasUsableOutput(streamResp) || responsesResponseHasUsableOutput(streamResp.Response) ||
+			(streamResp.Type == "response.incomplete" && responsesResponseHasValidEmptyTerminal(streamResp.Response)) {
+			progress.MarkUsableOutput()
 		}
 		if !validOutput && len(observedFrames) < 64 {
 			observedFrames = append(observedFrames, data)
