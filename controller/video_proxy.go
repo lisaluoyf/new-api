@@ -52,13 +52,14 @@ func VideoProxy(c *gin.Context) {
 	}
 
 	if task.Status == model.TaskStatusFailure {
+		publicError := service.PublicTaskError(task)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "failed",
 			"task_id": task.TaskID,
 			"error": gin.H{
 				"type":    "invalid_request_error",
-				"code":    "task_failed",
-				"message": service.PublicTaskFailure(task),
+				"code":    publicError.Code,
+				"message": publicError.Message,
 			},
 		})
 		return

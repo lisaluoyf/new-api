@@ -1908,22 +1908,31 @@ func RelayTask(c *gin.Context) {
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
+	isSeedance := model.NormalizeVerifiedVideoModel(common.GetContextKeyString(c, constant.ContextKeyOriginalModel)) != ""
 	if apiErr, ok := taskErr.Error.(*types.NewAPIError); ok {
 		taskErr.Message = localizeRelayClientMessage(c, apiErr)
 	}
-	if taskErr.StatusCode == http.StatusTooManyRequests {
+	if taskErr.StatusCode == http.StatusTooManyRequests && !isSeedance {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
-	if name := common.GetContextKeyString(c, constant.ContextKeyOriginalModel); name == "seedance-2.5" || service.IsSeedance20Variant(name) {
+	if isSeedance {
 		// Transport and request-building failures can also contain private URLs.
 		taskErr.Message = service.PublicTaskFailure(&model.Task{
 			Status: model.TaskStatusFailure, FailReason: taskErr.Message,
 			ChannelId:   common.GetContextKeyInt(c, constant.ContextKeyChannelId),
 			PrivateData: model.TaskPrivateData{Key: common.GetContextKeyString(c, constant.ContextKeyChannelKey)},
 		})
-		if taskErr.StatusCode == http.StatusTooManyRequests {
+		if taskErr.StatusCode == http.StatusTooManyRequests && taskErr.Message == "" {
 			taskErr.Message = "Request rate limit reached; retry later"
 		}
+		// Keep legacy task fields while exposing the official error envelope.
+		// Internal transport errors retain their code; upstream codes have already
+		// passed the public-code allowlist in PublicVideoSubmitError.
+		c.JSON(taskErr.StatusCode, gin.H{
+			"error": &dto.OpenAIVideoError{Code: taskErr.Code, Message: taskErr.Message},
+			"code":  taskErr.Code, "message": taskErr.Message, "data": taskErr.Data,
+		})
+		return
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
 }

@@ -619,6 +619,10 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 	if env.Code != 0 && env.Code != http.StatusOK {
+		if model.NormalizeVerifiedVideoModel(info.OriginModelName) != "" && (env.Code == http.StatusBadRequest || env.Code == http.StatusUnprocessableEntity || env.Code == http.StatusTooManyRequests) {
+			taskErr = service.PublicVideoSubmitError(env.Code, responseBody, info.ApiKey, info.ChannelId)
+			return
+		}
 		msg := fmt.Sprintf("upstream code %d", env.Code)
 		if env.Error != nil && env.Error.Message != "" {
 			msg = env.Error.Message

@@ -634,7 +634,7 @@ func sanitizeOpenAIVideoTaskFailure(task *model.Task, body []byte) ([]byte, erro
 	if err := common.Unmarshal(body, &response); err != nil {
 		return nil, err
 	}
-	response["error"] = &dto.OpenAIVideoError{Code: "task_failed", Message: service.PublicTaskFailure(task)}
+	response["error"] = service.PublicTaskError(task)
 	return common.Marshal(response)
 }
 

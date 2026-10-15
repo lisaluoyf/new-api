@@ -101,6 +101,18 @@ func TestDoResponseHidesProviderSubmissionError(t *testing.T) {
 	require.NotContains(t, taskErr.Message, "provider-specific")
 }
 
+func TestSeedanceDoResponsePreservesWrappedClientError(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"code":422,"error":{"code":"InputImageSensitiveContentDetected","message":"The input image may contain sensitive information. Bearer private-key"}}`))}
+	_, _, taskErr := (&TaskAdaptor{}).DoResponse(c, resp, &relaycommon.RelayInfo{OriginModelName: "seedance-2.0", ChannelMeta: &relaycommon.ChannelMeta{ApiKey: "private-key"}})
+	require.NotNil(t, taskErr)
+	require.Equal(t, 422, taskErr.StatusCode)
+	require.Equal(t, "InputImageSensitiveContentDetected", taskErr.Code)
+	require.NotContains(t, taskErr.Message, "private-key")
+	require.True(t, taskErr.LocalError)
+}
+
 func TestNormalizeModel(t *testing.T) {
 	require.Equal(t, "sora-2", normalizeModel("sora"))
 	require.True(t, IsVideoModel("sora"))

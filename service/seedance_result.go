@@ -93,7 +93,7 @@ func SeedanceCompatibleTaskResponse(task *model.Task) map[string]any {
 		out["url"] = fmt.Sprintf("%s/v1/videos/%s/content", system_setting.ServerAddress, task.TaskID)
 	}
 	if task.Status == model.TaskStatusFailure {
-		out["error"] = map[string]any{"code": "task_failed", "message": PublicTaskFailure(task)}
+		out["error"] = PublicTaskError(task)
 	}
 	if f := task.PrivateData.SeedanceFallback; f != nil && f.Started {
 		out["metadata"] = map[string]any{"recovery_stage": f.Stage}

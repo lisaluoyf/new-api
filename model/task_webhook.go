@@ -175,7 +175,11 @@ func (t *Task) enqueueWebhook(tx *gorm.DB) error {
 			}
 		}
 	}
-	return enqueueTaskWebhook(tx, t.PrivateData.Webhook, fmt.Sprintf("task:%d:terminal", t.ID), t.TaskID, t.Properties.OriginModelName, kind, status, t.UserId, t.FinishTime, outputs, nil)
+	var extra map[string]any
+	if status == "failed" && NormalizeVerifiedVideoModel(t.Properties.OriginModelName) != "" {
+		extra = map[string]any{"error": publicTaskErrorWithDB(tx, t)}
+	}
+	return enqueueTaskWebhook(tx, t.PrivateData.Webhook, fmt.Sprintf("task:%d:terminal", t.ID), t.TaskID, t.Properties.OriginModelName, kind, status, t.UserId, t.FinishTime, outputs, extra)
 }
 
 func EnqueueImagineWebhook(tx *gorm.DB, b *ImagineBatch, t *ImagineTask) error {

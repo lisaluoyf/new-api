@@ -82,6 +82,7 @@ func TestVideoResponsesExposeNestedReviewWithoutProviderPayload(t *testing.T) {
 	require.NoError(t, err)
 	for _, body := range [][]byte{compatibility, openAI} {
 		require.Contains(t, string(body), reason)
+		require.Contains(t, string(body), `"code":"InputImageSensitiveContentDetected.PolicyViolation"`)
 		for _, forbidden := range []string{"provider-task-id", `"cost"`, `"upstream"`, `"private_data"`} {
 			require.NotContains(t, string(body), forbidden)
 		}
