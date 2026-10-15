@@ -67,7 +67,7 @@ func PublicVideoErrorCode(code string) string {
 		"OutputTextRiskDetection", "OutputImageRiskDetection", "OutputVideoRiskDetection", "OutputAudioRiskDetection",
 		"InvalidParameter", "InvalidParameterValue", "MissingParameter", "MissingParameterValue", "UnsupportedParameter",
 		"ResourceNotFound", "ResourceUnavailable", "LimitExceeded", "QuotaExceeded", "Throttling", "TooManyRequests", "InternalError", "ServiceUnavailable", "TaskExpired",
-		"nsfw_content_detected", "invalid_asset_material", "content_policy_violation", "invalid_request", "invalid_request_error", "rate_limit_exceeded", "video_service_error", "task_failed", "generation_failed":
+		"nsfw_content_detected", "invalid_asset_material", "content_policy_violation", "invalid_request", "invalid_request_error", "rate_limit_exceeded", "video_service_error", "task_failed", "generation_failed", "upstream_material_api_failed":
 		return code
 	}
 	return ""
@@ -109,6 +109,14 @@ func taskFailureDetails(task *Task) (string, string) {
 	// response. It must never replace the final recovery failure with stale data.
 	fallbackFailed := task.PrivateData.SeedanceFallback != nil && task.PrivateData.SeedanceFallback.Started && task.PrivateData.SeedanceFallback.Stage == "failed"
 	if !fallbackFailed {
+		if task.Platform == "videofee" {
+			if code, message := VideoFeeFailureDetails(task.Data); code != "" {
+				if textCode != "" && (code == "task_failed" || code == "upstream_material_api_failed") {
+					return textCode, textMessage
+				}
+				return code, message
+			}
+		}
 		var data map[string]any
 		if common.Unmarshal(task.Data, &data) == nil {
 			if code, message := findPublicVideoError(data, 0); code != "" && code != "task_failed" && code != "generation_failed" {

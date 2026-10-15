@@ -464,6 +464,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	if err := service.SyncSeedanceUsageLog(originTask); err != nil {
 		logger.LogWarn(c.Request.Context(), "Unable to backfill video usage log")
 	}
+	service.RefreshVideoFeeFailureDetails(c.Request.Context(), originTask)
 	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
 
 	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态

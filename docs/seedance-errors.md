@@ -44,3 +44,14 @@ the first route. Existing fallback eligibility and settlement remain unchanged.
 Historical task queries can expose a saved structured error without rewriting
 task, billing or audit records. Previously delivered webhook events remain
 immutable and are not replayed by this change.
+
+For compatible routes that initially report only a generic terminal failure,
+task queries and failed-content requests may retrieve late failure details.
+These lookups enrich the response without changing stored terminal state,
+billing or previously delivered webhooks. They are bounded to five seconds,
+coalesced across concurrent requests and cached for five minutes per worker.
+For a material import failure, the explicit provider code
+`upstream_material_api_failed` is preserved when no official code is available;
+the message can contain the specific input constraint, for example
+`Width must be between 300px and 6000px.`. The server does not infer an official
+review or parameter code from message text.

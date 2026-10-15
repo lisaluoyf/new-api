@@ -52,6 +52,7 @@ func VideoProxy(c *gin.Context) {
 	}
 
 	if task.Status == model.TaskStatusFailure {
+		service.RefreshVideoFeeFailureDetails(c.Request.Context(), task)
 		publicError := service.PublicTaskError(task)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "failed",
