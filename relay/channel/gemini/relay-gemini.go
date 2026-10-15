@@ -200,6 +200,10 @@ func ThinkingAdaptor(geminiRequest *dto.GeminiChatRequest, info *relaycommon.Rel
 
 // Setting safety to the lowest possible values since Gemini is already powerless enough
 func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, info *relaycommon.RelayInfo) (*dto.GeminiChatRequest, error) {
+	thinkingConfig, thinkingLevelModel, err := normalizeThinkingLevel(textRequest, info.UpstreamModelName)
+	if err != nil {
+		return nil, err
+	}
 	helper.NormalizeGemini4Continuation(info.UpstreamModelName, &textRequest)
 
 	geminiRequest := dto.GeminiChatRequest{
@@ -354,7 +358,12 @@ func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, i
 		}
 	}
 
-	if !adaptorWithExtraBody {
+	if thinkingLevelModel {
+		geminiRequest.GenerationConfig.ThinkingConfig = thinkingConfig
+		if thinkingConfig != nil {
+			info.ReasoningEffort = thinkingConfig.ThinkingLevel
+		}
+	} else if !adaptorWithExtraBody {
 		ThinkingAdaptor(&geminiRequest, info, textRequest)
 	}
 
