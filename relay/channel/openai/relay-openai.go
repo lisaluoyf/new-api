@@ -186,38 +186,6 @@ func openAIStreamErrorEvent(data string) (*types.OpenAIError, string, bool) {
 	return upstreamErr, eventType, true
 }
 
-func chatStreamDataHasUsableOutput(data string) bool {
-	var response dto.ChatCompletionsStreamResponse
-	if common.UnmarshalJsonStr(data, &response) != nil {
-		return false
-	}
-	for _, choice := range response.Choices {
-		if choice.Delta.GetContentString() != "" ||
-			choice.Delta.GetReasoningContent() != "" ||
-			len(choice.Delta.ToolCalls) > 0 {
-			return true
-		}
-		if choice.FinishReason != nil && *choice.FinishReason == constant.FinishReasonContentFilter {
-			return true
-		}
-	}
-	// Older providers encode tool calls as delta.function_call, which is not
-	// represented by the normalized DTO but is still usable output.
-	var envelope struct {
-		Choices []struct {
-			Delta map[string]any `json:"delta"`
-		} `json:"choices"`
-	}
-	if common.UnmarshalJsonStr(data, &envelope) == nil {
-		for _, choice := range envelope.Choices {
-			if choice.Delta["function_call"] != nil {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {
 		logger.LogError(c, "invalid response or response body")
@@ -241,6 +209,10 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var reportedUsage *dto.Usage
 	reportedInvalid := false
 	var pendingFrames []string
+	outputProgress := &relaycommon.StreamOutputProgress{}
+	info.StreamOutput = outputProgress
+	outputDiagnostics := helper.StreamOutputDiagnostics{Protocol: "openai_chat"}
+	defer func() { c.Set(helper.ContextKeyStreamOutputDiagnostics, outputDiagnostics) }()
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
@@ -282,7 +254,17 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	}
 
 	streamStatus := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		frame := inspectChatStreamOutput(data)
+		outputDiagnostics.Frames++
+		outputDiagnostics.ContentChars += frame.contentChars
+		outputDiagnostics.ReasoningChars += frame.reasoningChars
+		outputDiagnostics.ToolValueChars += frame.toolValueChars
+		outputDiagnostics.RefusalChars += frame.refusalChars
 		if upstreamErr, eventType, isErrorEvent := openAIStreamErrorEvent(data); isErrorEvent {
+			outputDiagnostics.LastFrameKind = "error"
+			if outputDiagnostics.FirstFrameKind == "" {
+				outputDiagnostics.FirstFrameKind = "error"
+			}
 			if !falseSuccessFallbackEnabled() {
 				// 关闭假成功判定：恢复上线前的窄口径与通用错误，不带诊断信息。
 				sr.Stop(fmt.Errorf("upstream returned an error event"))
@@ -308,8 +290,16 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			sr.Stop(streamEventErr)
 			return
 		}
-		if chatStreamDataHasUsableOutput(data) {
+		outputDiagnostics.LastFrameKind = frame.kind
+		if outputDiagnostics.FirstFrameKind == "" {
+			outputDiagnostics.FirstFrameKind = frame.kind
+		}
+		if frame.usable {
+			outputProgress.MarkUsableOutput()
 			validOutput = true
+			if outputDiagnostics.FirstUsableKind == "" {
+				outputDiagnostics.FirstUsableKind = frame.kind
+			}
 		}
 		if reported, id, terminal := reportedChatUsage(data); reported != nil && !reportedInvalid {
 			if reportedUsage == nil || reported.CompletionTokens >= reportedUsage.CompletionTokens {
@@ -330,8 +320,19 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			reportedUsage = nil
 		}
 		if !outputCommitted {
+			if !frame.usable {
+				if len(pendingFrames) >= maxChatPreOutputFrames || outputDiagnostics.BufferedBytes+len(data) > maxChatPreOutputBytes {
+					outputDiagnostics.BufferLimitReached = true
+					streamEventErr = types.NewOpenAIError(fmt.Errorf("upstream exceeded the pre-output buffer without usable output"), types.ErrorCode("empty_response"), http.StatusBadGateway)
+					streamEventErr = markResponsesFalseSuccess(streamEventErr, falseSuccessTriggerEmptyStream, resp.StatusCode, true, "", nil, nil, nil, false, false, "")
+					sr.Stop(streamEventErr)
+					return
+				}
+				outputDiagnostics.BufferedFrames++
+				outputDiagnostics.BufferedBytes += len(data)
+			}
 			pendingFrames = append(pendingFrames, data)
-			if !chatStreamDataHasUsableOutput(data) {
+			if !frame.usable {
 				return
 			}
 			validOutput = true

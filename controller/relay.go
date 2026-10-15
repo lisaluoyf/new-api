@@ -324,6 +324,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		maxRetries = service.GetFreeModelSettings().MaxAttempts - 1
 	}
 	for ; retryParam.GetRetry() <= maxRetries; retryParam.IncreaseRetry() {
+		c.Set(helper.ContextKeyStreamOutputDiagnostics, nil)
 		c.Set("channel_health_attempt_started_at", time.Time{})
 		c.Set("channel_health_attempt_finished_at", time.Time{})
 		c.Set("channel_health_attempt_channel_id", 0)
@@ -1041,6 +1042,9 @@ func setRetryDecision(c *gin.Context, decision retryDecision) {
 	detail := retryDecisionToMap(decision)
 	if common.GetContextKeyBool(c, constant.ContextKeyIsStream) {
 		detail["stream_output_state"] = helper.StreamOutputState(c)
+		if value, ok := c.Get(helper.ContextKeyStreamOutputDiagnostics); ok && value != nil {
+			detail["stream_output_diagnostics"] = value
+		}
 	}
 	c.Set("retry_decision", detail)
 }
