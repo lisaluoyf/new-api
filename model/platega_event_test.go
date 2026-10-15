@@ -268,3 +268,40 @@ func TestPlategaSubscriptionDescendantPreventsAutomaticReversal(t *testing.T) {
 	require.Equal(t, "active", entitlement.Status)
 	require.Equal(t, 100, plategaQuota(t))
 }
+
+func TestPlategaSubscriptionMerchantRefundClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name, apiJSON, status string
+		refund, chargeback    float64
+	}{
+		{"merchant refund", `{"status":"CHARGEBACKED","refundStatus":"COMPLETED"}`, "refunded", 10, 0},
+		{"chargeback without refund receipt", `{"status":"CHARGEBACKED"}`, "chargeback", 0, 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			proof := setupPlategaEventTest(t, common.TopUpStatusSuccess)
+			sub := SubscriptionOrder{UserId: 1, TradeNo: proof.TradeNo, Money: 10, PaymentProvider: PaymentProviderPlatega, Status: common.TopUpStatusSuccess}
+			require.NoError(t, DB.Create(&sub).Error)
+			entitlement := UserSubscription{UserId: 1, CurrentCycleId: sub.Id, Status: "active", AmountTotal: 5000000, AmountUsed: 1000000}
+			require.NoError(t, DB.Create(&entitlement).Error)
+			amount := 100.0
+			proof.Status, proof.APIJSON = "CHARGEBACKED", tc.apiJSON
+			proof.CumulativeReversalRub, proof.ReversalEvidence = &amount, "verified-receipt"
+			for _, payload := range []string{"first", "duplicate"} {
+				e := plategaTestEvent(t, payload, "CHARGEBACKED")
+				require.NoError(t, ApplyVerifiedPlategaEvent(e.Id, proof))
+			}
+			require.NoError(t, DB.First(&sub, sub.Id).Error)
+			require.Equal(t, tc.status, sub.Status)
+			require.Equal(t, tc.refund, sub.RefundAmount)
+			require.Equal(t, tc.chargeback, sub.ChargebackAmount)
+			require.Equal(t, tc.status, GetTopUpByTradeNo(proof.TradeNo).Status)
+			require.NoError(t, DB.First(&entitlement, entitlement.Id).Error)
+			require.Equal(t, "cancelled", entitlement.Status)
+			require.EqualValues(t, 1000000, entitlement.AmountUsed)
+			require.Equal(t, 100, plategaQuota(t))
+			var providerOrder PlategaOrder
+			require.NoError(t, DB.Where("trade_no = ?", proof.TradeNo).First(&providerOrder).Error)
+			require.Equal(t, PlategaStatusChargeback, providerOrder.PlategaStatus)
+		})
+	}
+}

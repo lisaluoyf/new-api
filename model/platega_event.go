@@ -230,6 +230,17 @@ func ApplyVerifiedPlategaEvent(eventID int, proof VerifiedPlategaState) error {
 			}
 		case PlategaStatusChargeback:
 			order.PlategaStatus = PlategaStatusChargeback
+			// Platega also uses CHARGEBACKED for merchant refunds. Preserve
+			// that raw provider status, but classify a completed refund correctly
+			// in our customer-facing order and accounting fields.
+			reversalType := "chargeback"
+			var reversalResponse struct {
+				RefundStatus string `json:"refundStatus"`
+			}
+			if common.UnmarshalJsonStr(proof.APIJSON, &reversalResponse) == nil &&
+				strings.EqualFold(strings.TrimSpace(reversalResponse.RefundStatus), "COMPLETED") {
+				reversalType = "refund"
+			}
 			if proof.CumulativeReversalRub == nil || strings.TrimSpace(proof.ReversalEvidence) == "" {
 				review("returned_funds_amount_unverified")
 				break
@@ -264,7 +275,7 @@ func ApplyVerifiedPlategaEvent(eventID int, proof VerifiedPlategaState) error {
 				if order.ReversedRub == order.RubAmount {
 					break
 				}
-				if err := reverseSubscriptionOrderWithDB(tx, order.TradeNo, sub.Money, "chargeback", proof.ReversalEvidence); err != nil {
+				if err := reverseSubscriptionOrderWithDB(tx, order.TradeNo, sub.Money, reversalType, proof.ReversalEvidence); err != nil {
 					return err
 				}
 				event.EntitlementAction = "revoked_subscription_preserved_usage"
