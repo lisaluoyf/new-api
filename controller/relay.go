@@ -334,7 +334,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
-			newAPIError = channelErr
+			newAPIError = imageChannelExhaustedError(relayInfo, channelErr)
 			break
 		}
 		if isFallbackAttempt {
@@ -935,6 +935,16 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 		// Best-effort: leave CombineText empty to avoid large allocations.
 	}
 	return meta
+}
+
+// A failed image fallback must not be replaced by an internal routing 500.
+// Keep the per-attempt errors in admin logs and expose a retryable public error.
+func imageChannelExhaustedError(info *relaycommon.RelayInfo, channelErr *types.NewAPIError) *types.NewAPIError {
+	if info != nil && info.LastError != nil && channelErr != nil && channelErr.GetErrorCode() == types.ErrorCodeGetChannelFailed &&
+		(info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits) {
+		return types.WithOpenAIError(types.OpenAIError{Message: "No image generation channel could complete this request. Please retry later.", Type: "server_error", Code: "image_channels_exhausted"}, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+	}
+	return channelErr
 }
 
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {

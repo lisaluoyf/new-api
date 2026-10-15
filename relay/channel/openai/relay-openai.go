@@ -1377,7 +1377,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 			asyncCheck.Data[0].TaskID != "" &&
 			asyncCheck.Data[0].Status == "submitted" {
 			taskID := asyncCheck.Data[0].TaskID
-			if apimartWebhookEnabled(c) && !dto.IsGrokImage20(info.OriginModelName) {
+			if apimartWebhookEnabled(c) && !IsAPIMartGeminiImage(info) && !dto.IsGrokImage20(info.OriginModelName) {
 				var publicTaskID string
 				responseBody, publicTaskID = trackSubmittedImageTask(c, info, responseBody, taskID)
 				c.Set(imagePollTaskIDContextKey, publicTaskID)
@@ -1442,9 +1442,9 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 
 	// Rewrite upstream image URLs before returning to client (sync responses).
 	if info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits {
-		// gpt-image-2 strips response_format upstream (no enabled channel accepts it),
-		// so honor the client's requested format here by transforming the payload.
-		if clientFmt := service.GptImage2ClientResponseFormat(c); clientFmt == "b64_json" {
+		// gpt-image-2 and APIMart Gemini may require URL output upstream.
+		// Honor the client's requested format after the image has completed.
+		if clientFmt := service.GptImage2ClientResponseFormat(c); clientFmt == "b64_json" || c.GetString(apimartGeminiResponseFormatKey) == "b64_json" {
 			// Keep a cached URL for the usage-log preview while returning the image
 			// as base64 to the client.
 			var previewURL string

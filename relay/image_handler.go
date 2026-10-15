@@ -63,7 +63,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	convertEdits := relayconstant.IsImageEditsPath(c.Request.URL.Path) &&
 		service.GptImage2EditsViaGenerations(info.ChannelId, info.OriginModelName)
-	if !convertEdits && !dto.IsGrokImage20(info.OriginModelName) && (model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) && !helper.HasImageResolutionModelMapping(info) {
+	if !convertEdits && !openai.IsAPIMartGeminiImage(info) && !dto.IsGrokImage20(info.OriginModelName) && (model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) && !helper.HasImageResolutionModelMapping(info) {
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())

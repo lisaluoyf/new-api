@@ -97,6 +97,9 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if IsAPIMartGeminiImage(info) {
+		return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, "/v1/images/generations", info.ChannelType), nil
+	}
 	if nanoBanana21GeminiBridge(info) {
 		base := strings.TrimSuffix(strings.TrimRight(info.ChannelBaseUrl, "/"), "/v1")
 		return base + "/v1beta/models/" + url.PathEscape(info.UpstreamModelName) + ":generateContent", nil
@@ -500,6 +503,14 @@ func imageEditsViaGenerations(info *relaycommon.RelayInfo) bool {
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
 	c.Set("subrouter_gemini_native_edit", false)
+	c.Set(apimartGeminiResponseFormatKey, "")
+	if IsAPIMartGeminiImage(info) {
+		body, err := convertAPIMartGeminiImageRequest(c, info, request)
+		if err != nil {
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		return body, nil
+	}
 	if isSubrouterGeminiImage(info, request.Model) && isJSONRequest(c) &&
 		(len(request.ImageUrls) > 0 || (len(request.Image) > 0 && string(request.Image) != "null") || (len(request.Images) > 0 && string(request.Images) != "null")) {
 		body, err := convertSubrouterGeminiReferences(c, info, request)
@@ -846,7 +857,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
-	if nanoBanana21NativeImages(info) || nanoBanana21GeminiBridge(info) {
+	if IsAPIMartGeminiImage(info) || nanoBanana21NativeImages(info) || nanoBanana21GeminiBridge(info) {
 		// ConvertImageRequest produces JSON even for multipart client edits.
 		// Change only this upstream attempt; retain client mode/path for retries
 		// and billing logs.
