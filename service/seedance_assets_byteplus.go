@@ -93,6 +93,10 @@ func loadBytePlusAssetCredentials(channelID int) (bytePlusAssetCredentials, erro
 var bytePlusAssetEndpoint = func(region string) string { return "https://ark." + region + ".byteplusapi.com/" }
 
 func bytePlusAssetRequest(ctx context.Context, resource *model.SeedanceResource, action string, payload map[string]any) (map[string]any, error) {
+	return bytePlusAssetRequestWithErrorDetails(ctx, resource, action, payload, false)
+}
+
+func bytePlusAssetRequestWithErrorDetails(ctx context.Context, resource *model.SeedanceResource, action string, payload map[string]any, exposeReviewError bool) (map[string]any, error) {
 	credentials, err := loadBytePlusAssetCredentials(resource.ChannelID)
 	if err != nil {
 		return nil, err
@@ -138,6 +142,12 @@ func bytePlusAssetRequest(ctx context.Context, resource *model.SeedanceResource,
 	if response.StatusCode < 200 || response.StatusCode >= 300 || failed || envelope["error"] != nil {
 		if seedanceString(detail, "Code") == "SubscriptionRequired" {
 			return nil, seedanceError(403, "Media library permissions are not enabled; contact support", "entitlement_required")
+		}
+		if exposeReviewError && response.StatusCode >= 400 && response.StatusCode < 500 {
+			message := sanitizeTaskFailure(seedanceString(detail, "Message"), credentials.AccessKeyID, credentials.SecretAccessKey, credentials.SessionToken, resource.SourceURL, resource.UpstreamID)
+			if message != "" {
+				return nil, seedanceError(response.StatusCode, message, seedanceString(detail, "Code"))
+			}
 		}
 		status := response.StatusCode
 		if status < 400 || status == 401 || status == 403 {

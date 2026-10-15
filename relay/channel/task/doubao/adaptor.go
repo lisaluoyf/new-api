@@ -260,7 +260,70 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 
 // DoRequest delegates to common helper.
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
-	return channel.DoTaskApiRequest(a, c, info, requestBody)
+	if info.ChannelId != 272 || !service.IsSeedanceLibraryModel(info.OriginModelName) {
+		return channel.DoTaskApiRequest(a, c, info, requestBody)
+	}
+	raw, err := io.ReadAll(requestBody)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := channel.DoTaskApiRequest(a, c, info, bytes.NewReader(raw))
+	if err != nil || resp == nil || resp.StatusCode != http.StatusBadRequest {
+		return resp, err
+	}
+	rejected, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(rejected))
+	if c.GetBool("seedance_automatic_review_attempted") || !service.ShouldAutomaticallyReviewSeedance(info.ChannelId, resp.StatusCode, info.OriginModelName, rejected) {
+		return resp, nil
+	}
+	c.Set("seedance_automatic_review_attempted", true)
+	// The first response explicitly rejected the video. Keep the same wallet
+	// reservation and public task ID; never retry a transport-ambiguous POST.
+	reviewed, reviewErr := service.PrepareAutomaticSeedanceReview(c, info.OriginModelName, a.apiKey, info.PublicTaskID, raw)
+	if reviewErr != nil {
+		code := "material_review_failed"
+		if detail, ok := reviewErr.(*service.SeedanceAPIError); ok && detail.Code != "" {
+			code = detail.Code
+		}
+		body, _ := common.Marshal(map[string]any{"error": map[string]any{"code": code, "message": reviewErr.Error(), "type": "BadRequest"}})
+		resp.StatusCode = http.StatusBadRequest
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		resp.ContentLength = int64(len(body))
+		return resp, nil
+	}
+	_ = resp.Body.Close()
+	if err := service.MarkAutomaticSeedanceReviewSending(c.GetInt("id"), info.PublicTaskID, ""); err != nil {
+		_ = service.QueueAutomaticSeedanceReviewCleanup(c.GetInt("id"), info.PublicTaskID)
+		return nil, err
+	}
+	retry, err := channel.DoTaskApiRequest(a, c, info, bytes.NewReader(reviewed))
+	if err != nil || retry == nil {
+		return retry, err
+	}
+	if retry.StatusCode >= 400 && retry.StatusCode < 500 {
+		_ = service.QueueAutomaticSeedanceReviewCleanup(c.GetInt("id"), info.PublicTaskID)
+	}
+	if retry.StatusCode == http.StatusOK {
+		data, readErr := io.ReadAll(retry.Body)
+		_ = retry.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		retry.Body = io.NopCloser(bytes.NewReader(data))
+		var accepted struct {
+			ID string `json:"id"`
+		}
+		if common.Unmarshal(data, &accepted) == nil && accepted.ID != "" {
+			if persistErr := service.MarkAutomaticSeedanceReviewSending(c.GetInt("id"), info.PublicTaskID, accepted.ID); persistErr != nil {
+				return nil, persistErr
+			}
+		}
+	}
+	return retry, nil
 }
 
 // DoResponse handles upstream response, returns taskID etc.
