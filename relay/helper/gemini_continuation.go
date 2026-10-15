@@ -12,7 +12,7 @@ func NormalizeGemini4Continuation(model string, request *dto.GeneralOpenAIReques
 		return
 	}
 	last := request.Messages[len(request.Messages)-1]
-	if last.Role != "assistant" || len(last.ToolCalls) > 0 {
+	if last.Role != "assistant" || len(last.ParseToolCalls()) > 0 {
 		return
 	}
 	messages := make([]dto.Message, len(request.Messages), len(request.Messages)+1)

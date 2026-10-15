@@ -22,4 +22,10 @@ func TestNormalizeGemini4Continuation(t *testing.T) {
 	r := dto.GeneralOpenAIRequest{Messages: []dto.Message{{Role: "assistant", ToolCalls: []byte(`[{"id":"call_1"}]`)}}}
 	NormalizeGemini4Continuation("gemini-4-argon", &r)
 	require.Len(t, r.Messages, 1)
+	for _, empty := range []string{"null", "[]"} {
+		r := dto.GeneralOpenAIRequest{Messages: []dto.Message{{Role: "assistant", Content: "Start", ToolCalls: []byte(empty)}}}
+		NormalizeGemini4Continuation("gemini-4-argon", &r)
+		require.Len(t, r.Messages, 2)
+	}
+
 }
