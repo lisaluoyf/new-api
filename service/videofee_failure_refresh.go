@@ -26,8 +26,9 @@ var videoFailureRefreshCache = struct {
 	entries map[string]*videoFailureRefreshEntry
 }{entries: make(map[string]*videoFailureRefreshEntry)}
 
-// RefreshVideoFeeFailureDetails enriches an ownership-checked task in memory.
-// It never changes terminal state, stored task evidence, billing or webhooks.
+// RefreshVideoFeeFailureDetails enriches an ownership-checked task. Persist only
+// generic failure text with CAS so task lists also show the authenticated detail.
+// Terminal state, saved response evidence, billing and webhooks remain unchanged.
 // Empty failures may gain a useful reason later at the provider. Coalesce and
 // cache both successful/empty lookups, with a bounded cache and request timeout.
 func RefreshVideoFeeFailureDetails(ctx context.Context, task *model.Task) {
@@ -73,6 +74,17 @@ func RefreshVideoFeeFailureDetails(ctx context.Context, task *model.Task) {
 	}
 	if entry.error == nil {
 		return
+	}
+	// Reuse the same restricted, compare-and-set update as late supplier callbacks.
+	// Never rerun task completion or refund processing for a terminal task.
+	reason := entry.error.Message
+	if entry.error.Code != "task_failed" && entry.error.Code != "generation_failed" {
+		// Preserve the public code through the existing code: message format;
+		// the original supplier response stays immutable for audit purposes.
+		reason = entry.error.Code + ": " + reason
+	}
+	if _, err := model.EnrichVideoFeeFailureReason(ctx, task, reason); err != nil {
+		common.SysError("Unable to persist refreshed video task failure detail")
 	}
 	var data map[string]any
 	if common.Unmarshal(task.Data, &data) != nil || data == nil {

@@ -134,3 +134,15 @@ func TestVideoFeeLateFailureEnrichesPollingWinnerWithoutRefund(t *testing.T) {
 	fresh := assertLateFailureNoFinancialEffects(t, task)
 	require.Contains(t, fresh.FailReason, "InputImageSensitiveContentDetected")
 }
+
+func TestVideoFeeLateFailureReplacesPendingPlaceholderWithoutFinancialEffects(t *testing.T) {
+	task, event := lateFailureFixture(t)
+	task.FailReason = "原因待核查（任务 supplier-late-error）"
+	require.NoError(t, model.DB.Model(task).Update("fail_reason", task.FailReason).Error)
+	require.NoError(t, processVideoFeeWebhook(context.Background(), event))
+	fresh := assertLateFailureNoFinancialEffects(t, task)
+	require.Contains(t, PublicTaskFailure(&fresh), "InputImageSensitiveContentDetected")
+	require.NotContains(t, PublicTaskFailure(&fresh), "private-secret")
+	require.NoError(t, processVideoFeeWebhook(context.Background(), event))
+	assertLateFailureNoFinancialEffects(t, task)
+}

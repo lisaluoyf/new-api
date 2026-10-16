@@ -28,7 +28,7 @@ func resetVideoFailureRefreshCache(t *testing.T) {
 	})
 }
 
-func TestVideoFeeFailureReadRefreshCoalescesWithoutChangingStoredTask(t *testing.T) {
+func TestVideoFeeFailureReadRefreshCoalescesAndPersistsOnlyFailureText(t *testing.T) {
 	db := seedanceTestDB(t)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
@@ -75,7 +75,8 @@ func TestVideoFeeFailureReadRefreshCoalescesWithoutChangingStoredTask(t *testing
 	var saved model.Task
 	require.NoError(t, db.First(&saved, task.ID).Error)
 	require.Equal(t, task.Status, saved.Status)
-	require.Equal(t, task.FailReason, saved.FailReason)
+	require.Equal(t, "upstream_material_api_failed", PublicTaskError(&saved).Code)
+	require.Equal(t, "Width must be between 300px and 6000px.", PublicTaskFailure(&saved))
 	require.Equal(t, task.Data, saved.Data)
 	require.Equal(t, task.FinishTime, saved.FinishTime)
 	require.Equal(t, task.Quota, saved.Quota)
@@ -110,5 +111,46 @@ func TestVideoFeeFailureRefreshRejectsOtherTasksAndNonFailure(t *testing.T) {
 	copy := *task
 	copy.FailReason = "Specific existing error"
 	RefreshVideoFeeFailureDetails(context.Background(), &copy)
+	require.EqualValues(t, 1, calls.Load())
+}
+
+func TestVideoFeePendingFailureRefreshExposesCopyrightAndKeepsEvidence(t *testing.T) {
+	db := seedanceTestDB(t)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.Task{}))
+	resetVideoFailureRefreshCache(t)
+	if GetHttpClient() == nil {
+		InitHttpClient()
+	}
+	const reason = "The request failed because the output video may be related to copyright restrictions."
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":"success","data":{"task_id":"provider-copyright-task","status":"FAILURE","error_code":"success","fail_reason":"` + reason + `","billing":{"reservation_status":"released"}}}`))
+	}))
+	defer server.Close()
+	base := server.URL
+	require.NoError(t, db.Create(&model.Channel{Id: 273, BaseURL: &base, Key: "supplier-key"}).Error)
+	const placeholder = "原因待核查（任务 provider-copyright-task）"
+	task := &model.Task{TaskID: "public-copyright-task", UserId: 42, Platform: constant.TaskPlatformVideoFee, ChannelId: 273, Status: model.TaskStatusFailure, FailReason: placeholder, FinishTime: 100, Quota: 1234, Properties: model.Properties{OriginModelName: "seedance-2.5"}, PrivateData: model.TaskPrivateData{Key: "supplier-key", UpstreamTaskID: "provider-copyright-task"}, Data: []byte(`{"data":{"task_id":"provider-copyright-task","status":"FAILURE","error_code":"TASK_FAILED","fail_reason":"原因待核查（任务 provider-copyright-task）"}}`)}
+	require.NoError(t, db.Create(task).Error)
+	original := *task
+	RefreshVideoFeeFailureDetails(context.Background(), task)
+	public := PublicTaskError(task)
+	require.Equal(t, "task_failed", public.Code, "the upstream's success code must never become a public failure code")
+	require.Equal(t, reason, public.Message)
+	var saved model.Task
+	require.NoError(t, db.First(&saved, task.ID).Error)
+	require.Equal(t, reason, PublicTaskFailure(&saved), "task lists must also see the enriched detail")
+	require.Equal(t, original.Data, saved.Data)
+	require.Equal(t, original.Status, saved.Status)
+	require.Equal(t, original.FinishTime, saved.FinishTime)
+	require.Equal(t, original.Quota, saved.Quota)
+	require.Equal(t, original.PrivateData, saved.PrivateData)
+	// A subsequent request with a specific stored reason must not query again.
+	RefreshVideoFeeFailureDetails(context.Background(), &saved)
 	require.EqualValues(t, 1, calls.Load())
 }
