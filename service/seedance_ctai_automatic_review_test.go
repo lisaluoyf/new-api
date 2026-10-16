@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/require"
 )
@@ -165,4 +166,24 @@ func TestCtaiUnconfirmedUploadIsNotRepeated(t *testing.T) {
 	var resources []model.SeedanceResource
 	require.NoError(t, db.Where("channel_id = ?", 298).Find(&resources).Error)
 	require.Len(t, resources, 2)
+}
+
+func TestCtaiAdminPinnedMaterialScope(t *testing.T) {
+	db := seedanceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.Create(&model.User{Id: 1, Username: "ctai-admin", AffCode: "ctai-admin", Role: 100, Status: 1}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 2, Username: "ctai-user", AffCode: "ctai-user", Role: 1, Status: 1}).Error)
+	base := "https://ai.ctaigw.cn"
+	ch := &model.Channel{Id: 298, Type: 54, Key: "private-key", BaseURL: &base, Status: 1, Models: "seedance-2.5", Group: "ctai_seedance_acceptance"}
+	c := seedanceContext(1)
+	require.False(t, ctaiMaterialAdminPinned(c, ch, "seedance-2.5"))
+	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, "298")
+	require.True(t, ctaiMaterialAdminPinned(c, ch, "seedance-2.5"))
+	require.False(t, ctaiMaterialAdminPinned(c, ch, "seedance-2.0"))
+	ch.Status = 2
+	require.False(t, ctaiMaterialAdminPinned(c, ch, "seedance-2.5"))
+	ch.Status = 1
+	c = seedanceContext(2)
+	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, "298")
+	require.False(t, ctaiMaterialAdminPinned(c, ch, "seedance-2.5"))
 }

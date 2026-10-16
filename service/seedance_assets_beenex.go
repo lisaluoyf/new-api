@@ -225,5 +225,5 @@ func beeNexMaterialAdminPinned(c *gin.Context, ch *model.Channel, name string) b
 }
 
 func seedanceLibraryChannelAllowed(c *gin.Context, ch *model.Channel, name string) bool {
-	return seedanceChannelAllowed(c, ch, name) || beeNexMaterialAdminPinned(c, ch, name)
+	return seedanceChannelAllowed(c, ch, name) || beeNexMaterialAdminPinned(c, ch, name) || ctaiMaterialAdminPinned(c, ch, name)
 }

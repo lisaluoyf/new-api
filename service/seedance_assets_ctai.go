@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-gonic/gin"
 )
 
 func IsCtaiSeedanceBaseURL(base string) bool {
@@ -134,4 +135,23 @@ func ctaiAssetRequest(ctx context.Context, ch *model.Channel, key, action string
 		}
 	}
 	return result(data)
+}
+
+// As on the existing admin-pinned video route, permit an explicitly pinned
+// enabled CTAI channel for an administrator. Normal API users retain all group
+// restrictions. Client/provider policies and model allowlists still apply.
+func ctaiMaterialAdminPinned(c *gin.Context, ch *model.Channel, name string) bool {
+	if !isCtaiSeedanceChannel(ch) || ch.Status != common.ChannelStatusEnabled {
+		return false
+	}
+	pinned, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
+	if !ok || pinned != "298" || !model.IsAdmin(c.GetInt("id")) || !ProviderChannelAllowed(ProviderPolicyForModel(c, name), ch.Id) || ValidateChannelClientPolicy(c, ch, name) != nil || ValidateSeedanceModelAccess(c, name) != nil {
+		return false
+	}
+	for _, m := range ch.GetModels() {
+		if m == name {
+			return true
+		}
+	}
+	return false
 }
