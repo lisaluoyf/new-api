@@ -57,6 +57,7 @@ func TestVideoFeeTaskQueriesRefreshOnlyOwnedGenericFailure(t *testing.T) {
 	require.EqualValues(t, 1, calls.Load())
 	var stored model.Task
 	require.NoError(t, db.First(&stored, task.ID).Error)
-	require.Equal(t, task.FailReason, stored.FailReason)
+	require.Equal(t, "upstream_material_api_failed", service.PublicTaskError(&stored).Code)
+	require.Equal(t, "Width must be between 300px and 6000px.", service.PublicTaskFailure(&stored))
 	require.Equal(t, task.Data, stored.Data)
 }

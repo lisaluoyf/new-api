@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"regexp"
 	"strings"
 )
 
@@ -21,6 +22,10 @@ type VideoFeeWebhookInbox struct {
 	Attempts    int
 }
 
+// The provider may first return this placeholder and publish a detailed reason
+// later. Match only the exact placeholder, including its sanitized public form.
+var pendingTaskFailureReason = regexp.MustCompile(`^原因待核查(?:（任务 (?:[A-Za-z0-9_-]{1,191}|\[redacted\])）|\(任务 (?:[A-Za-z0-9_-]{1,191}|\[redacted\])\))?$`)
+
 // Only generic failure text may be enriched. Financial state, finish time and
 // customer terminal events remain unchanged, including on concurrent replay.
 func IsGenericTaskFailureReason(reason string) bool {
@@ -28,7 +33,7 @@ func IsGenericTaskFailureReason(reason string) bool {
 	case "", "video generation failed", "generation failed", "task failed":
 		return true
 	default:
-		return false
+		return pendingTaskFailureReason.MatchString(strings.TrimSpace(reason))
 	}
 }
 
