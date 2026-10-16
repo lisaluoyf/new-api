@@ -90,3 +90,26 @@ func TestCtaiAdaptorReviewsAndResubmitsOnSameChannel(t *testing.T) {
 	require.NoError(t, db.Model(&model.SeedanceResource{}).Where("channel_id = ?", 298).Count(&count).Error)
 	require.EqualValues(t, 2, count)
 }
+
+func TestCtaiFetchDoesNotAdvertiseAnAbsentJSONBody(t *testing.T) {
+	transport := ctaiReviewTransport(func(r *http.Request) (*http.Response, error) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "https://ai.ctaigw.cn/v1/contents/generations/tasks/native-task", r.URL.String())
+		require.Equal(t, "Bearer inference-key", r.Header.Get("Authorization"))
+		require.Empty(t, r.Header.Get("Content-Type"))
+		require.Nil(t, r.Body)
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"native-task","status":"succeeded","content":{"video_url":"https://example.com/result.mp4"}}`))}, nil
+	})
+	if service.GetHttpClient() == nil {
+		service.InitHttpClient()
+	}
+	client := service.GetHttpClient()
+	old := client.Transport
+	client.Transport = transport
+	t.Cleanup(func() { client.Transport = old })
+	a := &TaskAdaptor{}
+	resp, err := a.FetchTask("https://ai.ctaigw.cn", "inference-key", map[string]any{"task_id": "native-task"}, "")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, 200, resp.StatusCode)
+}

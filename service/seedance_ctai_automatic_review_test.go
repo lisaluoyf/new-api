@@ -42,6 +42,7 @@ func TestCtaiRetainedAutomaticReview(t *testing.T) {
 				var body string
 				if r.Method == http.MethodPost {
 					require.Equal(t, "/v1/api/assets/upload", r.URL.Path)
+					require.Equal(t, "application/json", r.Header.Get("Content-Type"))
 					var fields map[string]any
 					require.NoError(t, common.DecodeJson(r.Body, &fields))
 					require.Equal(t, "https://example.com/reference.png", fields["url"])
@@ -54,6 +55,7 @@ func TestCtaiRetainedAutomaticReview(t *testing.T) {
 					body = `{"code":0,"data":{"Id":"369481078005587968"}}`
 				} else {
 					require.Equal(t, "/v1/api/assets/369481078005587968", r.URL.Path)
+					require.Empty(t, r.Header.Get("Content-Type"))
 					body = `{"code":0,"data":{"Id":"369481078005587968","Status":"` + tc.review + `","FailureReason":"Image did not pass review; ctai-private-key https://private.example/signed"}}`
 				}
 				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
