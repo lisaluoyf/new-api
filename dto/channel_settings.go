@@ -3,6 +3,8 @@ package dto
 import "fmt"
 
 type ChannelSettings struct {
+	// NativeAnthropicOnly excludes converted requests from upstreams requiring native Messages input.
+	NativeAnthropicOnly bool `json:"native_anthropic_only,omitempty"`
 	// BeeNexQueryProtocols selects a documented read-only task API per public model.
 	BeeNexQueryProtocols map[string]string `json:"beenex_query_protocols,omitempty"`
 	// ImageResolutionModelMapping selects an upstream model by client model and resolution.

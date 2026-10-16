@@ -104,6 +104,25 @@ func getChannelQuery(group string, model string, retry int, scopes ...*ChannelPi
 }
 
 func GetChannel(group string, model string, retry int, filter ChannelPickFilter, scopes ...*ChannelPickScope) (*Channel, error) {
+	// Match cache routing: determine priority only among compatible candidates.
+	if filter != nil {
+		idsQuery := applyChannelPickScope(DB.Model(&Ability{}), scopes).
+			Select("channel_id").Where(commonGroupCol+" = ? AND model = ? AND enabled = ?", group, model, true)
+		var candidates []Channel
+		if err := DB.Where("id IN (?) AND status = ?", idsQuery, common.ChannelStatusEnabled).Find(&candidates).Error; err != nil {
+			return nil, err
+		}
+		ids := make([]int, 0, len(candidates))
+		for i := range candidates {
+			if filter(&candidates[i]) {
+				ids = append(ids, candidates[i].Id)
+			}
+		}
+		if len(ids) == 0 {
+			return nil, nil
+		}
+		scopes = append(append([]*ChannelPickScope{}, scopes...), &ChannelPickScope{Include: true, IDs: ids})
+	}
 	var abilities []Ability
 
 	var err error = nil

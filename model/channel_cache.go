@@ -133,6 +133,25 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, filter Cha
 		}
 	}
 
+	// Compatibility must narrow the candidate pool before choosing a priority.
+	// Otherwise an incompatible highest-priority channel hides valid lower ones.
+	if filter != nil {
+		eligible := make([]int, 0, len(channels))
+		for _, id := range channels {
+			channel, ok := channelsIDM[id]
+			if !ok {
+				return nil, fmt.Errorf("channel #%d is missing from the channel cache", id)
+			}
+			if filter(channel) {
+				eligible = append(eligible, id)
+			}
+		}
+		channels = eligible
+		if len(channels) == 0 {
+			return nil, nil
+		}
+	}
+
 	if len(channels) == 1 {
 		if channel, ok := channelsIDM[channels[0]]; ok {
 			if filter != nil && !filter(channel) {

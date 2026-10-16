@@ -60,5 +60,21 @@ func TestProviderScopeFiltersBeforePrioritySelection(t *testing.T) {
 		channel, err = GetRandomSatisfiedChannel("scope-group", "scope-test", 0, nil)
 		require.NoError(t, err)
 		require.Equal(t, 1, channel.Id)
+		// A protocol filter must also run before priority selection, alone or
+		// combined with provider/resolution scopes, in both DB and cache modes.
+		filter := func(ch *Channel) bool { return ch.Id != 1 }
+		for retry := 0; retry < 2; retry++ {
+			picked, err := GetRandomSatisfiedChannel("scope-group", "scope-test", retry, filter)
+			require.NoError(t, err)
+			require.NotNil(t, picked)
+			require.Equal(t, 2+retry, picked.Id)
+		}
+		picked, err := GetRandomSatisfiedChannel("scope-group", "scope-test", 0, filter, &ChannelPickScope{Include: false, IDs: []int{3}})
+		require.NoError(t, err)
+		require.NotNil(t, picked)
+		require.Equal(t, 2, picked.Id)
+		picked, err = GetRandomSatisfiedChannel("scope-group", "scope-test", 0, func(*Channel) bool { return false })
+		require.NoError(t, err)
+		require.Nil(t, picked)
 	}
 }
