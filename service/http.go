@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -35,12 +36,17 @@ func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 	// For example, Postman will report error, and we cannot check the response at all.
 	if src != nil {
 		for k, v := range src.Header {
-			// avoid setting Content-Length
-			if k == "Content-Length" {
+			// The gateway ID correlates this response with local logs and billing.
+			// A nested gateway may return the same header with its own ID.
+			if strings.EqualFold(k, "Content-Length") || strings.EqualFold(k, common.RequestIdKey) || len(v) == 0 {
 				continue
 			}
 			c.Writer.Header().Set(k, v[0])
 		}
+	}
+	// Freeze the local ID before WriteHeader/Flush commits the response.
+	if requestID := c.GetString(common.RequestIdKey); requestID != "" {
+		c.Writer.Header().Set(common.RequestIdKey, requestID)
 	}
 
 	// set Content-Length header manually BEFORE calling WriteHeader
