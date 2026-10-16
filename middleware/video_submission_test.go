@@ -139,3 +139,17 @@ func TestDurableSubmissionFingerprintPrecisionNotificationsAndMultipart(t *testi
 	require.Equal(t, 400, postSubmission(r, "/v1/videos", "short", body).Code)
 	require.Equal(t, 400, postSubmission(r, "/v1/videos", "unsupported-001", `{"model":"sora-2"}`).Code)
 }
+
+func TestDurableSubmissionAutomaticReviewRejectionIsNotAmbiguous(t *testing.T) {
+	r := durableSubmissionRouter(t, func(c *gin.Context) {
+		require.NoError(t, service.MarkVideoSubmissionSending(c, 292))
+		c.Set("xingchi_automatic_review_rejected", true)
+		c.JSON(400, gin.H{"error": "Image did not pass material review"})
+	})
+	body := `{"model":"seedance-2.5","prompt":"cartoon"}`
+	require.Equal(t, 400, postSubmission(r, "/v1/videos", "review-rejected-001", body).Code)
+	replay := postSubmission(r, "/v1/videos", "review-rejected-001", body)
+	require.Equal(t, 202, replay.Code)
+	require.Contains(t, replay.Body.String(), "not_accepted")
+	require.NotContains(t, replay.Body.String(), "acceptance_unknown")
+}

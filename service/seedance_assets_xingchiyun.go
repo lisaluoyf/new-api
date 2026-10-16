@@ -31,6 +31,10 @@ func supportsSeedanceH5(ch *model.Channel) bool {
 // Action management shares Ark payloads, but gateway authentication must never
 // send official control-plane AK/SK to the gateway.
 func seedanceActionRequest(ctx context.Context, resource *model.SeedanceResource, action string, payload map[string]any) (map[string]any, error) {
+	return seedanceActionRequestWithReviewDetails(ctx, resource, action, payload, false)
+}
+
+func seedanceActionRequestWithReviewDetails(ctx context.Context, resource *model.SeedanceResource, action string, payload map[string]any, exposeReviewError bool) (map[string]any, error) {
 	ch, err := model.GetChannelById(resource.ChannelID, true)
 	if err != nil || ch == nil || ch.Status != common.ChannelStatusEnabled {
 		return nil, seedanceError(503, "Media library is temporarily unavailable")
@@ -94,6 +98,15 @@ func seedanceActionRequest(ctx context.Context, resource *model.SeedanceResource
 			}
 			if response.StatusCode == 400 && strings.TrimSpace(message) == "validation is not pending or successful" {
 				return nil, seedanceError(400, "Owner verification failed or expired", "verification_failed_or_expired")
+			}
+		}
+		if exposeReviewError && response.StatusCode >= 400 && response.StatusCode < 500 {
+			if detail == nil {
+				detail, _ = envelope["error"].(map[string]any)
+			}
+			message := sanitizeTaskFailure(seedanceString(detail, "Message", "message"), key, resource.SourceURL, resource.UpstreamID)
+			if message != "" && message != "Task failed" {
+				return nil, seedanceError(response.StatusCode, message, "invalid_asset_material")
 			}
 		}
 		status := response.StatusCode

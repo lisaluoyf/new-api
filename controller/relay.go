@@ -1307,6 +1307,10 @@ func evaluateTaskRetry(c *gin.Context, channelId int, taskErr *dto.TaskError, re
 	}
 	decision.StatusCode = taskErr.StatusCode
 	decision.ErrorCode = taskErr.Code
+	if c != nil && c.GetBool("xingchi_automatic_review_attempted") {
+		decision.Reason = "automatic_material_review_attempted"
+		return decision
+	}
 	if isContentSafetyRejection(taskErr.Code, "", taskErr.Message) {
 		decision.Reason = "content_safety_rejection"
 		return decision
@@ -1793,7 +1797,7 @@ func RelayTask(c *gin.Context) {
 		}
 
 		retryDecision := evaluateTaskRetry(c, channel.Id, taskErr, retryParam.GetRetry(), common.RetryTimes-retryParam.GetRetry())
-		if c.GetBool("seedance_unified_routing") {
+		if c.GetBool("seedance_unified_routing") && !c.GetBool("xingchi_automatic_review_attempted") {
 			retryDecision.ShouldRetry = false
 			retryDecision.Reason = "material_submission_not_confirmed_rejected"
 			if !c.GetBool("seedance_unified_explicit_channel") && c.GetBool("seedance_confirmed_not_accepted") && taskErr.StatusCode == 429 && retryParam.GetRetry() < maxTaskRetries {
