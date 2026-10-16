@@ -586,7 +586,7 @@ func DeleteSeedanceResource(c *gin.Context, resource *model.SeedanceResource) er
 
 func seedancePublicSourceURL(resource *model.SeedanceResource) string {
 	ch, _ := model.GetChannelById(resource.ChannelID, true)
-	if (isXingchiyunSeedanceChannel(ch) || isTokenHubSeedanceChannel(ch)) || (isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(resource.Model)) {
+	if (isXingchiyunSeedanceChannel(ch) || isTokenHubSeedanceChannel(ch) || isCtaiSeedanceChannel(ch)) || (isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(resource.Model)) {
 		return seedanceGatewayPublicPreview(resource)
 	}
 	if resource.GroupType == "real_person" {
@@ -597,7 +597,7 @@ func seedancePublicSourceURL(resource *model.SeedanceResource) string {
 
 func isSeedanceActionTask(task *model.SeedanceResource) bool {
 	ch, err := model.GetChannelById(task.ChannelID, true)
-	return err == nil && (isBytePlusSeedanceChannel(ch) || (isXingchiyunSeedanceChannel(ch) || isTokenHubSeedanceChannel(ch)) || (isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(task.Model)))
+	return err == nil && (isBytePlusSeedanceChannel(ch) || (isXingchiyunSeedanceChannel(ch) || isTokenHubSeedanceChannel(ch) || isCtaiSeedanceChannel(ch)) || (isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(task.Model)))
 }
 
 func seedanceAssetReviewFailure(asset *model.SeedanceResource, result map[string]any) string {

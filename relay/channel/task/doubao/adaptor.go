@@ -143,6 +143,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 // BuildRequestURL constructs the upstream URL.
 func (a *TaskAdaptor) BuildRequestURL(_ *relaycommon.RelayInfo) (string, error) {
+	if service.IsCtaiSeedanceBaseURL(a.baseURL) {
+		return "https://ai.ctaigw.cn/v1/contents/generations/tasks", nil
+	}
 	if service.IsTokenHubSeedanceBaseURL(a.baseURL) {
 		return "https://ai-tokenhub.ai/api/v2/contents/generations/tasks", nil
 	}
@@ -381,6 +384,9 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 
 	uri := fmt.Sprintf("%s/api/v3/contents/generations/tasks/%s", baseUrl, taskID)
+	if service.IsCtaiSeedanceBaseURL(baseUrl) {
+		uri = "https://ai.ctaigw.cn/v1/contents/generations/tasks/" + taskID
+	}
 	if service.IsTokenHubSeedanceBaseURL(baseUrl) {
 		uri = "https://ai-tokenhub.ai/api/v2/contents/generations/tasks/" + taskID
 	}

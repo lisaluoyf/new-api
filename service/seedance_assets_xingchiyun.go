@@ -42,6 +42,13 @@ func seedanceActionRequestWithReviewDetails(ctx context.Context, resource *model
 	if isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(resource.Model) {
 		return beeNexAssetRequest(ctx, resource, action, payload)
 	}
+	if isCtaiSeedanceChannel(ch) {
+		key, _, err := SeedanceResourceKey(ch, resource.KeyFingerprint)
+		if err != nil {
+			return nil, err
+		}
+		return ctaiAssetRequest(ctx, ch, key, action, payload, exposeReviewError)
+	}
 	if isTokenHubSeedanceChannel(ch) {
 		return tokenHubAssetRequest(ctx, resource, ch, action, payload, exposeReviewError)
 	}
@@ -127,7 +134,7 @@ func validXingchiyunVerificationToken(token string) bool {
 
 func seedanceGatewayPreviewData(asset *model.SeedanceResource, result map[string]any) string {
 	ch, _ := model.GetChannelById(asset.ChannelID, true)
-	if !isTokenHubSeedanceChannel(ch) && !isXingchiyunSeedanceChannel(ch) && !(isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(asset.Model)) {
+	if !isCtaiSeedanceChannel(ch) && !isTokenHubSeedanceChannel(ch) && !isXingchiyunSeedanceChannel(ch) && !(isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(asset.Model)) {
 		return asset.ResultData
 	}
 	preview := seedanceString(result, "URL")

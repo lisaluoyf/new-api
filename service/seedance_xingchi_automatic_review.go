@@ -48,7 +48,7 @@ func DoXingchiAutomaticReview(c *gin.Context, channelID int, name, key, taskID s
 			Code string `json:"code"`
 		} `json:"error"`
 	}
-	if common.Unmarshal(rejected, &envelope) != nil || envelope.ID != "" || envelope.TaskID != "" || envelope.UpstreamTaskID != "" || envelope.Error.Code != "InputImageSensitiveContentDetected.PrivacyInformation" || c.GetBool("xingchi_automatic_review_attempted") {
+	if common.Unmarshal(rejected, &envelope) != nil || envelope.ID != "" || envelope.TaskID != "" || envelope.UpstreamTaskID != "" || !retainedSeedancePrivacyRejection(channelID, envelope.Error.Code) || c.GetBool("xingchi_automatic_review_attempted") {
 		return resp, nil
 	}
 	c.Set("xingchi_automatic_review_attempted", true)
@@ -105,16 +105,17 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 		item   map[string]json.RawMessage
 		image  map[string]json.RawMessage
 		source string
+		kind   string
 	}
 	images := []reference{}
 	for _, item := range content {
 		var kind string
 		_ = common.Unmarshal(item["type"], &kind)
-		if kind != "image_url" {
+		if kind != "image_url" && !(channelID == 298 && kind == "video_url") {
 			continue
 		}
 		var image map[string]json.RawMessage
-		if err := common.Unmarshal(item["image_url"], &image); err != nil {
+		if err := common.Unmarshal(item[kind], &image); err != nil {
 			return nil, err
 		}
 		var source string
@@ -127,7 +128,7 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 		if err := ValidateSeedanceAssetSubmission(&SeedanceAssetSubmission{Model: name, Assets: []SeedanceAssetInput{{URL: source}}}); err != nil {
 			return nil, err
 		}
-		images = append(images, reference{item, image, source})
+		images = append(images, reference{item, image, source, kind})
 	}
 	if len(images) == 0 || len(images) > 9 {
 		return nil, seedanceError(400, "No eligible reference images for automatic material review", "invalid_asset_material")
@@ -161,8 +162,11 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 		asset.CredentialFingerprint = group.CredentialFingerprint
 		asset.SourceURL = image.source
 		asset.AssetType = "Image"
+		if image.kind == "video_url" {
+			asset.AssetType = "Video"
+		}
 		asset.Name = asset.ID
-		if err := createXingchiAutomaticReviewResource(ctx, asset, "CreateAsset", map[string]any{"GroupId": group.UpstreamID, "URL": image.source, "AssetType": "Image", "Name": asset.ID}); err != nil {
+		if err := createXingchiAutomaticReviewResource(ctx, asset, "CreateAsset", map[string]any{"GroupId": group.UpstreamID, "URL": image.source, "AssetType": asset.AssetType, "Name": asset.ID}); err != nil {
 			return nil, err
 		}
 		for {
@@ -212,7 +216,7 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 				if err != nil {
 					return nil, err
 				}
-				image.item["image_url"], err = common.Marshal(image.image)
+				image.item[image.kind], err = common.Marshal(image.image)
 				if err != nil {
 					return nil, err
 				}
@@ -284,4 +288,10 @@ func xingchiAutomaticReviewFailure(reason string, sensitive ...string) string {
 }
 func xingchiAutomaticReviewAction(ctx context.Context, r *model.SeedanceResource, action string, fields map[string]any) (map[string]any, error) {
 	return seedanceActionRequestWithReviewDetails(ctx, r, action, fields, true)
+}
+
+// Only explicit privacy rejections without an upstream task permit a reviewed
+// retry. Other moderation decisions and unknown transport outcomes are final.
+func retainedSeedancePrivacyRejection(channelID int, code string) bool {
+	return code == "InputImageSensitiveContentDetected.PrivacyInformation" || (channelID == 298 && code == "InputVideoSensitiveContentDetected.PrivacyInformation")
 }
