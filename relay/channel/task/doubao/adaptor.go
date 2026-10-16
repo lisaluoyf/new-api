@@ -398,7 +398,11 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
-	return client.Do(req)
+	resp, err := client.Do(req)
+	if err == nil && service.IsTokenHubSeedanceBaseURL(baseUrl) {
+		return service.NormalizeTokenHubVideoResponse(resp)
+	}
+	return resp, err
 }
 
 func (a *TaskAdaptor) GetModelList() []string {

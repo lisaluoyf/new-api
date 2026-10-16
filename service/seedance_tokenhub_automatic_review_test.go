@@ -236,3 +236,23 @@ func TestTokenHubResponseErrorAndCredentialBinding(t *testing.T) {
 	_, err = loadTokenHubAssetCredentials(297)
 	require.Error(t, err)
 }
+
+func TestTokenHubQueryResultSummary(t *testing.T) {
+	raw := `{"id":"tenant-task","status":"succeeded","resultSummary":{"id":"private-provider-id","content":{"video_url":"https://example.com/video.mp4","last_frame_url":"https://example.com/frame.png"},"duration":4,"resolution":"480p","usage":{"completion_tokens":38400,"total_tokens":38400}}}`
+	resp, err := NormalizeTokenHubVideoResponse(&http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))})
+	require.NoError(t, err)
+	var d map[string]any
+	require.NoError(t, common.DecodeJson(resp.Body, &d))
+	require.Equal(t, "tenant-task", d["id"])
+	require.Equal(t, "succeeded", d["status"])
+	require.Equal(t, float64(4), d["duration"])
+	require.Equal(t, "https://example.com/video.mp4", d["content"].(map[string]any)["video_url"])
+	require.Equal(t, float64(38400), d["usage"].(map[string]any)["completion_tokens"])
+	for _, status := range []string{"expired", "cancelled"} {
+		resp, err = NormalizeTokenHubVideoResponse(&http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"tenant-task","status":"` + status + `"}`))})
+		require.NoError(t, err)
+		require.NoError(t, common.DecodeJson(resp.Body, &d))
+		require.Equal(t, "failed", d["status"])
+		require.Contains(t, d["error"].(map[string]any)["message"], status)
+	}
+}

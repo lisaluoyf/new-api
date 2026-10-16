@@ -171,6 +171,36 @@ func NormalizeTokenHubVideoResponse(resp *http.Response) (*http.Response, error)
 	}
 	var fields map[string]json.RawMessage
 	if common.Unmarshal(raw, &fields) == nil {
+		// The deployed v2 query endpoint wraps Ark content/usage in resultSummary.
+		// Keep the platform task id; copy only generation-result fields.
+		var summary map[string]json.RawMessage
+		if common.Unmarshal(fields["resultSummary"], &summary) == nil && summary != nil {
+			for _, key := range []string{"content", "usage", "duration", "resolution", "ratio", "seed", "framespersecond", "tools", "service_tier", "draft", "error"} {
+				if value, ok := summary[key]; ok {
+					fields[key] = value
+				}
+			}
+		}
+		var wrapperErrorCode, wrapperErrorMessage string
+		_ = common.Unmarshal(fields["errorCode"], &wrapperErrorCode)
+		_ = common.Unmarshal(fields["errorMessage"], &wrapperErrorMessage)
+		if wrapperErrorCode != "" || wrapperErrorMessage != "" {
+			fields["error"], _ = common.Marshal(map[string]string{"code": wrapperErrorCode, "message": wrapperErrorMessage})
+		}
+		if _, ok := fields["content"]; !ok {
+			var videoURL string
+			if common.Unmarshal(fields["videoUrl"], &videoURL) == nil && videoURL != "" {
+				fields["content"], _ = common.Marshal(map[string]string{"video_url": videoURL})
+			}
+		}
+		var status string
+		_ = common.Unmarshal(fields["status"], &status)
+		if status == "expired" || status == "cancelled" || status == "canceled" {
+			fields["status"], _ = common.Marshal("failed")
+			if wrapperErrorCode == "" && wrapperErrorMessage == "" {
+				fields["error"], _ = common.Marshal(map[string]string{"code": status, "message": "Video task " + status})
+			}
+		}
 		var code string
 		if common.Unmarshal(fields["error"], &code) == nil && code != "" {
 			var message string
@@ -179,10 +209,10 @@ func NormalizeTokenHubVideoResponse(resp *http.Response) (*http.Response, error)
 			if err != nil {
 				return nil, err
 			}
-			raw, err = common.Marshal(fields)
-			if err != nil {
-				return nil, err
-			}
+		}
+		raw, err = common.Marshal(fields)
+		if err != nil {
+			return nil, err
 		}
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(raw))
