@@ -67,7 +67,7 @@ func DurableSeedanceSubmission() gin.HandlerFunc {
 		// receipt. After send began, failures are conservative and never requeued.
 		defer func() {
 			status := model.VideoSubmissionNotAccepted
-			if c.GetBool(service.VideoSubmissionSentContextKey) {
+			if c.GetBool(service.VideoSubmissionSentContextKey) && !c.GetBool("xingchi_automatic_review_rejected") {
 				status = model.VideoSubmissionUnknown
 			}
 			current, err := model.GetVideoSubmission(record.UserID, record.ID)

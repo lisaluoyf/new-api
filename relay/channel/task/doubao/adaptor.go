@@ -260,6 +260,11 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 
 // DoRequest delegates to common helper.
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
+	if info.ChannelId == 292 {
+		return service.DoXingchiAutomaticReview(c, info.ChannelId, info.OriginModelName, a.apiKey, info.PublicTaskID, requestBody, func(body io.Reader) (*http.Response, error) {
+			return channel.DoTaskApiRequest(a, c, info, body)
+		})
+	}
 	if info.ChannelId != 272 || !service.IsSeedanceLibraryModel(info.OriginModelName) {
 		return channel.DoTaskApiRequest(a, c, info, requestBody)
 	}
