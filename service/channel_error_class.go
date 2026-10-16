@@ -18,7 +18,8 @@ const (
 	CategoryDisableWindow
 	CategoryRateLimitWindow // 429 codex cooldown — higher threshold before disable
 	CategoryProbeBeforeDisable
-	CategoryCredentialInvalid // Account/key failures affect every model using the key.
+	CategoryCredentialInvalid  // Account/key failures affect every model using the key.
+	CategoryModelQuotaCooldown // Model account-pool quota exhaustion, not wallet debt.
 )
 
 var (
@@ -92,6 +93,9 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 	if isPlatformUserQuotaError(err) {
 		return CategorySkip
 	}
+	if isModelQuotaCooldown(err) {
+		return CategoryModelQuotaCooldown
+	}
 	if isUpstreamGroupUnavailableError(err) {
 		return CategoryCredentialInvalid
 	}
@@ -154,6 +158,23 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 	}
 
 	return CategorySkip
+}
+
+func isModelQuotaCooldown(err *types.NewAPIError) bool {
+	if err == nil || (err.StatusCode != 429 && err.StatusCode != 503) {
+		return false
+	}
+	switch err.GetErrorType() {
+	case types.ErrorTypeOpenAIError, types.ErrorTypeClaudeError, types.ErrorTypeUpstreamError:
+	default:
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	if string(err.GetErrorCode()) == "model_cooldown" && strings.Contains(message, "cooling down") {
+		return true
+	}
+	return strings.Contains(message, "individual quota reached") &&
+		(strings.Contains(message, "auth_unavailable") || strings.Contains(message, "cooling down") || strings.Contains(message, "resource_exhausted"))
 }
 
 func isUpstreamGroupUnavailableError(err *types.NewAPIError) bool {

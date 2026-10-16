@@ -1586,7 +1586,7 @@ func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *t
 	case service.CategoryUpstreamRecharge:
 		service.NotifyUpstreamRecharge(channelError, classificationErr)
 		service.DisableChannel(channelError, reason)
-	case service.CategoryDisableImmediate, service.CategoryDisableWindow, service.CategoryRateLimitWindow, service.CategoryProbeBeforeDisable:
+	case service.CategoryDisableImmediate, service.CategoryDisableWindow, service.CategoryRateLimitWindow, service.CategoryProbeBeforeDisable, service.CategoryModelQuotaCooldown:
 		service.DisableChannelModel(channelError, modelName, reason, probeTargets...)
 	}
 
