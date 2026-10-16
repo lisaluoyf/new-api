@@ -23,7 +23,7 @@ const xingchiAutomaticReviewDescription = "Retained automatic review after expli
 // is repeated, and only after an explicit, task-less face rejection and Active
 // review. Never retry ambiguous transport outcomes or other safety rejections.
 func DoXingchiAutomaticReview(c *gin.Context, channelID int, name, key, taskID string, body io.Reader, send func(io.Reader) (*http.Response, error)) (*http.Response, error) {
-	if channelID != 292 || !IsSeedanceLibraryModel(name) {
+	if !SupportsRetainedSeedanceAutomaticReview(channelID) || !IsSeedanceLibraryModel(name) {
 		return send(body)
 	}
 	raw, err := io.ReadAll(body)
@@ -41,16 +41,18 @@ func DoXingchiAutomaticReview(c *gin.Context, channelID int, name, key, taskID s
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(rejected))
 	var envelope struct {
-		ID    string `json:"id"`
-		Error struct {
+		ID             string `json:"id"`
+		TaskID         string `json:"task_id"`
+		UpstreamTaskID string `json:"upstreamTaskId"`
+		Error          struct {
 			Code string `json:"code"`
 		} `json:"error"`
 	}
-	if common.Unmarshal(rejected, &envelope) != nil || envelope.ID != "" || envelope.Error.Code != "InputImageSensitiveContentDetected.PrivacyInformation" || c.GetBool("xingchi_automatic_review_attempted") {
+	if common.Unmarshal(rejected, &envelope) != nil || envelope.ID != "" || envelope.TaskID != "" || envelope.UpstreamTaskID != "" || envelope.Error.Code != "InputImageSensitiveContentDetected.PrivacyInformation" || c.GetBool("xingchi_automatic_review_attempted") {
 		return resp, nil
 	}
 	c.Set("xingchi_automatic_review_attempted", true)
-	reviewed, err := prepareXingchiAutomaticReview(c, name, key, taskID, raw)
+	reviewed, err := prepareRetainedSeedanceAutomaticReview(c, channelID, name, key, taskID, raw)
 	if err != nil {
 		// No second video POST has occurred. Leave materials for inspection and do
 		// not misclassify this confirmed rejection as an ambiguous paid submission.
@@ -74,13 +76,17 @@ func DoXingchiAutomaticReview(c *gin.Context, channelID int, name, key, taskID s
 }
 
 func prepareXingchiAutomaticReview(c *gin.Context, name, key, taskID string, raw []byte) ([]byte, error) {
+	return prepareRetainedSeedanceAutomaticReview(c, 292, name, key, taskID, raw)
+}
+
+func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name, key, taskID string, raw []byte) ([]byte, error) {
 	if c.GetInt("id") <= 0 || taskID == "" {
 		return nil, seedanceError(400, "Automatic material review requires an authenticated video request", "invalid_asset_material")
 	}
 	if err := ValidateSeedanceModelAccess(c, name); err != nil {
 		return nil, err
 	}
-	ch, err := model.GetChannelById(292, true)
+	ch, err := model.GetChannelById(channelID, true)
 	if err != nil || ch == nil || ch.Status != common.ChannelStatusEnabled {
 		return nil, seedanceError(503, "Media library is temporarily unavailable")
 	}
@@ -129,21 +135,30 @@ func prepareXingchiAutomaticReview(c *gin.Context, name, key, taskID string, raw
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 90*time.Second)
 	defer cancel()
 	scope := strconv.Itoa(c.GetInt("id")) + ":" + name + ":" + SeedanceKeyFingerprint(key) + ":" + taskID
+	if channelID != 292 {
+		scope = strconv.Itoa(channelID) + ":" + scope
+	}
 	metadata, err := common.Marshal(map[string]any{"video_task_id": taskID, "automatic_review": true})
 	if err != nil {
 		return nil, err
 	}
 	resource := func(kind, suffix string) *model.SeedanceResource {
-		return &model.SeedanceResource{ID: kind + "_xcauto_" + SeedanceKeyFingerprint(scope + suffix)[:36], Kind: kind, UserID: c.GetInt("id"), ChannelID: 292, KeyFingerprint: SeedanceKeyFingerprint(key), ProjectName: "default", GroupType: "virtual", Model: name, Status: "Creating", Description: xingchiAutomaticReviewDescription, RequestData: string(metadata)}
+		return &model.SeedanceResource{ID: kind + "_xcauto_" + SeedanceKeyFingerprint(scope + suffix)[:36], Kind: kind, UserID: c.GetInt("id"), ChannelID: channelID, KeyFingerprint: SeedanceKeyFingerprint(key), ProjectName: "default", GroupType: "virtual", Model: name, Status: "Creating", Description: xingchiAutomaticReviewDescription, RequestData: string(metadata)}
 	}
 	group := resource("group", ":group")
 	group.Name = group.ID
+	if isTokenHubSeedanceChannel(ch) {
+		if err := bindTokenHubAssetContext(group); err != nil {
+			return nil, err
+		}
+	}
 	if err := createXingchiAutomaticReviewResource(ctx, group, "CreateAssetGroup", map[string]any{"Name": group.Name, "GroupType": "AIGC"}); err != nil {
 		return nil, err
 	}
 	for i, image := range images {
 		asset := resource("asset", fmt.Sprintf(":image:%d:%s", i, image.source))
 		asset.GroupID = group.ID
+		asset.CredentialFingerprint = group.CredentialFingerprint
 		asset.SourceURL = image.source
 		asset.AssetType = "Image"
 		asset.Name = asset.ID
@@ -172,7 +187,13 @@ func prepareXingchiAutomaticReview(c *gin.Context, name, key, taskID string, raw
 				if message == "" {
 					message = seedanceString(result, "FailReason", "fail_reason", "Message", "message")
 				}
-				asset.FailReason = xingchiAutomaticReviewFailure(message, key, image.source, asset.UpstreamID, group.UpstreamID)
+				sensitive := []string{key, image.source, asset.UpstreamID, group.UpstreamID}
+				if isTokenHubSeedanceChannel(ch) {
+					if creds, e := loadTokenHubAssetCredentials(channelID); e == nil {
+						sensitive = append(sensitive, creds.AccessKeyID, creds.SecretAccessKey)
+					}
+				}
+				asset.FailReason = xingchiAutomaticReviewFailure(message, sensitive...)
 				if asset.FailReason == "" || asset.FailReason == "Task failed" {
 					asset.FailReason = "Reference image did not pass material review"
 				}

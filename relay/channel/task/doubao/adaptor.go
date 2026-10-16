@@ -143,6 +143,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 // BuildRequestURL constructs the upstream URL.
 func (a *TaskAdaptor) BuildRequestURL(_ *relaycommon.RelayInfo) (string, error) {
+	if service.IsTokenHubSeedanceBaseURL(a.baseURL) {
+		return "https://ai-tokenhub.ai/api/v2/contents/generations/tasks", nil
+	}
 	return fmt.Sprintf("%s/api/v3/contents/generations/tasks", a.baseURL), nil
 }
 
@@ -260,9 +263,13 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 
 // DoRequest delegates to common helper.
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
-	if info.ChannelId == 292 {
+	if service.SupportsRetainedSeedanceAutomaticReview(info.ChannelId) {
 		return service.DoXingchiAutomaticReview(c, info.ChannelId, info.OriginModelName, a.apiKey, info.PublicTaskID, requestBody, func(body io.Reader) (*http.Response, error) {
-			return channel.DoTaskApiRequest(a, c, info, body)
+			resp, err := channel.DoTaskApiRequest(a, c, info, body)
+			if err == nil && service.IsTokenHubSeedanceBaseURL(a.baseURL) {
+				return service.NormalizeTokenHubVideoResponse(resp)
+			}
+			return resp, err
 		})
 	}
 	if info.ChannelId != 272 || !service.IsSeedanceLibraryModel(info.OriginModelName) {
@@ -374,6 +381,9 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 
 	uri := fmt.Sprintf("%s/api/v3/contents/generations/tasks/%s", baseUrl, taskID)
+	if service.IsTokenHubSeedanceBaseURL(baseUrl) {
+		uri = "https://ai-tokenhub.ai/api/v2/contents/generations/tasks/" + taskID
+	}
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
