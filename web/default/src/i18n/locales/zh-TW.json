@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Payment verification timed out. Please contact support with your transaction hash.": "付款核驗逾時，請提供交易雜湊並聯絡客服。",
     "No matching models": "沒有符合的模型",
     "Codex-only channel": "僅限 Codex 用戶端",
     "Claude Code-only channel": "僅限 Claude Code 用戶端",

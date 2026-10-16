@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Payment verification timed out. Please contact support with your transaction hash.": "支払い確認がタイムアウトしました。取引ハッシュを添えてサポートにお問い合わせください。",
     "No matching models": "一致するモデルはありません",
     "Codex-only channel": "Codex クライアント専用",
     "Claude Code-only channel": "Claude Code クライアント専用",

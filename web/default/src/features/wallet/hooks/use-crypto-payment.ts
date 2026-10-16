@@ -451,6 +451,15 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
         if (status.status === 'failed' || status.status === 'expired') {
           clearPendingCryptoDeposit(pendingDepositId)
           if (presentPendingConfirmationRef.current) {
+            if (status.status === 'expired') {
+              setError(
+                i18next.t(
+                  'Payment verification timed out. Please contact support with your transaction hash.'
+                )
+              )
+            } else {
+              setError(status.error || i18next.t('Payment failed'))
+            }
             setStep('failed')
           }
           setPendingDepositId(null)
@@ -638,8 +647,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           if (token.isNative) {
             if (!intentRes.nativeAssetAmount)
               throw new Error(i18next.t('Failed to quote native asset'))
-            if (isCurrentAttempt())
-              setNativePrice(intentRes.assetUsdPrice ?? 0)
+            if (isCurrentAttempt()) setNativePrice(intentRes.assetUsdPrice ?? 0)
             const value = baseUnitAmount
             hash = (await selectedProvider.ethereum.request({
               method: 'eth_sendTransaction',
@@ -664,8 +672,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           if (token.isNative) {
             if (!intentRes.nativeAssetAmount)
               throw new Error(i18next.t('Failed to quote native asset'))
-            if (isCurrentAttempt())
-              setNativePrice(intentRes.assetUsdPrice ?? 0)
+            if (isCurrentAttempt()) setNativePrice(intentRes.assetUsdPrice ?? 0)
             transaction =
               await selectedProvider.tronWeb.transactionBuilder.sendTrx(
                 depositAddress,
@@ -713,8 +720,7 @@ export function useCryptoPayment(): UseCryptoPaymentReturn {
           if (token.isNative) {
             if (!intentRes.nativeAssetAmount)
               throw new Error(i18next.t('Failed to quote native asset'))
-            if (isCurrentAttempt())
-              setNativePrice(intentRes.assetUsdPrice ?? 0)
+            if (isCurrentAttempt()) setNativePrice(intentRes.assetUsdPrice ?? 0)
             transaction.add(
               SystemProgram.transfer({
                 fromPubkey: fromKey,

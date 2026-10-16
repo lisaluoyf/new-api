@@ -130,17 +130,36 @@ func markCryptoIntentExpired(intent *model.CryptoDepositIntent) {
 	if intent == nil {
 		return
 	}
+	transitioned := false
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var current model.CryptoDepositIntent
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", intent.Id).First(&current).Error; err != nil {
+			return err
+		}
+		if current.Status != model.CryptoDepositIntentStatusPending {
+			return nil
+		}
+		message := "deposit intent expired"
+		if current.TxHash != nil && strings.TrimSpace(*current.TxHash) != "" {
+			message = "Payment verification timed out. Please contact support with your transaction hash."
+			if current.ErrorMessage != "" {
+				message += " Last verification error: " + current.ErrorMessage
+			}
+		}
 		result := tx.Model(&model.CryptoDepositIntent{}).
 			Where("id = ? AND status = ?", intent.Id, model.CryptoDepositIntentStatusPending).
 			Updates(map[string]interface{}{
 				"status":        model.CryptoDepositIntentStatusExpired,
-				"error_message": "deposit intent expired",
+				"error_message": message,
 				"next_check_at": 0,
 			})
 		if result.Error != nil || result.RowsAffected == 0 {
 			return result.Error
 		}
+		current.Status = model.CryptoDepositIntentStatusExpired
+		current.ErrorMessage = message
+		*intent = current
+		transitioned = true
 		if intent.Purpose == cryptoIntentPurposeWalletTopup && intent.TopUpTradeNo != "" {
 			return tx.Model(&model.TopUp{}).
 				Where("trade_no = ? AND payment_provider = ? AND status = ?", intent.TopUpTradeNo, model.PaymentProviderCrypto, common.TopUpStatusPending).
@@ -150,6 +169,11 @@ func markCryptoIntentExpired(intent *model.CryptoDepositIntent) {
 	})
 	if err != nil {
 		common.SysLog(fmt.Sprintf("crypto: expire intent failed intent=%s err=%v", intent.Id, err))
+		return
+	}
+	if transitioned && intent.TxHash != nil && strings.TrimSpace(*intent.TxHash) != "" {
+		recordCryptoIntentLog(intent.UserId, intent.ErrorMessage, intent,
+			map[string]interface{}{"stage": "verification_timeout", "manual_review_required": true})
 	}
 }
 

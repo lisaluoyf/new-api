@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Payment verification timed out. Please contact support with your transaction hash.": "Ödeme doğrulaması zaman aşımına uğradı. İşlem karmanızla birlikte destek ekibiyle iletişime geçin.",
     "No matching models": "Eşleşen model yok",
     "Codex-only channel": "Yalnızca Codex istemcileri için",
     "Claude Code-only channel": "Yalnızca Claude Code istemcileri için",

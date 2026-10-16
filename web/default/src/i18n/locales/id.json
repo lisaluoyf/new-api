@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Payment verification timed out. Please contact support with your transaction hash.": "Verifikasi pembayaran kehabisan waktu. Hubungi dukungan dengan menyertakan hash transaksi Anda.",
     "No matching models": "Tidak ada model yang cocok",
     "Codex-only channel": "Khusus klien Codex",
     "Claude Code-only channel": "Khusus klien Claude Code",

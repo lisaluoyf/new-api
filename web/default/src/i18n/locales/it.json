@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Payment verification timed out. Please contact support with your transaction hash.": "La verifica del pagamento è scaduta. Contatta il supporto indicando l’hash della transazione.",
     "No matching models": "Nessun modello corrispondente",
     "Codex-only channel": "Solo per client Codex",
     "Claude Code-only channel": "Solo per client Claude Code",

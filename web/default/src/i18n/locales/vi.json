@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Payment verification timed out. Please contact support with your transaction hash.": "Xác minh thanh toán đã hết thời gian chờ. Vui lòng liên hệ hỗ trợ và cung cấp mã băm giao dịch.",
     "No matching models": "Không có mô hình phù hợp",
     "Codex-only channel": "Chỉ dành cho ứng dụng Codex",
     "Claude Code-only channel": "Chỉ dành cho ứng dụng Claude Code",

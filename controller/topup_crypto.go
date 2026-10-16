@@ -1256,7 +1256,10 @@ func verifyAndCredit(intentId string) {
 			}
 			model.DB.Model(&model.CryptoDepositIntent{}).
 				Where("id = ? AND status = ?", intent.Id, model.CryptoDepositIntentStatusPending).
-				Update("next_check_at", common.GetTimestamp()+retryAfter)
+				Updates(map[string]interface{}{
+					"next_check_at": common.GetTimestamp() + retryAfter,
+					"error_message": err.Error(),
+				})
 			return
 		}
 		markCryptoIntentFailed(intentId, err)
@@ -1518,6 +1521,18 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid payment amount"})
 		return
 	}
+	// Freeze the same six-decimal USD amount that the intent stores in SQL.
+	// In particular, upgrade credits can produce sub-micro-dollar fractions;
+	// signing those fractions would make the quote disagree with its own row.
+	expectedUsdAmount, _ = decimal.NewFromFloat(expectedUsdAmount).Round(6).Float64()
+	creditUsdAmount, _ = decimal.NewFromFloat(creditUsdAmount).Round(6).Float64()
+	if expectedUsdAmount <= 0 || creditUsdAmount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid payment amount"})
+		return
+	}
+	if plan != nil {
+		terms.Payable = expectedUsdAmount
+	}
 	if plan == nil && expectedUsdAmount+1e-9 < float64(getWalletMinTopupUSDForUser(userId, operation_setting.MinTopUp)) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "payment amount is below the minimum top-up"})
 		return
@@ -1560,7 +1575,11 @@ func CreateCryptoDepositIntent(c *gin.Context) {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "failed to quote native asset"})
 			return
 		}
-		intent.AssetUsdPrice = price
+		intent.AssetUsdPrice, _ = decimal.NewFromFloat(price).Round(10).Float64()
+		if intent.AssetUsdPrice <= 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "failed to quote native asset"})
+			return
+		}
 	}
 	expectedBaseUnits, err := cryptoExpectedBaseUnits(intent, cfg)
 	if err != nil {

@@ -563,6 +563,7 @@ export async function submitCryptoDeposit(
 export async function getCryptoDepositStatus(depositId: string): Promise<{
   status: 'pending' | 'confirmed' | 'failed' | 'expired'
   usdAdded?: number
+  error?: string
 }> {
   const res = await api.get(`/api/user/crypto/deposit/${depositId}`)
   return res.data
