@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
@@ -166,4 +167,17 @@ func TestVeoExplicitRejectionDoesNotCreateAmbiguousBillingHold(t *testing.T) {
 	_, _, taskErr = a.DoResponse(c, &http.Response{Body: io.NopCloser(strings.NewReader(`{"code":200,"data":[]}`))}, info)
 	require.NotNil(t, taskErr)
 	require.Equal(t, 502, taskErr.StatusCode, "unknown acceptance must stay ambiguous")
+}
+
+func TestVeoPublicProgressUsesOpenAIVideoNumericContract(t *testing.T) {
+	for _, progress := range []string{"0%", "50%", "100%"} {
+		task := &model.Task{TaskID: "task_public", Status: model.TaskStatusSuccess, Progress: progress, Properties: model.Properties{OriginModelName: Fast}, PrivateData: model.TaskPrivateData{UpstreamTaskID: "provider_private"}}
+		raw, err := (&TaskAdaptor{}).ConvertToOpenAIVideo(task)
+		require.NoError(t, err)
+		var video dto.OpenAIVideo
+		require.NoError(t, common.Unmarshal(raw, &video))
+		require.Equal(t, dto.VideoStatusCompleted, video.Status)
+		require.Contains(t, video.Metadata["url"], "/v1/videos/task_public/content")
+		require.NotContains(t, string(raw), "provider_private")
+	}
 }

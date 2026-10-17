@@ -503,9 +503,12 @@ func (a *TaskAdaptor) ParseTaskResult(raw []byte) (*relaycommon.TaskInfo, error)
 	return result, nil
 }
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
-	out := map[string]any{"id": task.TaskID, "task_id": task.TaskID, "object": "video", "model": task.Properties.OriginModelName, "status": task.Status.ToVideoStatus(), "progress": task.Progress, "created_at": task.CreatedAt}
+	progress := dto.NewOpenAIVideo()
+	progress.SetProgressStr(task.Progress)
+	out := map[string]any{"id": task.TaskID, "task_id": task.TaskID, "object": "video", "model": task.Properties.OriginModelName, "status": task.Status.ToVideoStatus(), "progress": progress.Progress, "created_at": task.CreatedAt}
 	if task.Status == model.TaskStatusSuccess {
 		out["url"] = taskcommon.BuildProxyURL(task.TaskID)
+		out["metadata"] = map[string]any{"url": taskcommon.BuildProxyURL(task.TaskID)}
 	}
 	if task.Status == model.TaskStatusFailure {
 		out["error"] = map[string]string{"code": "generation_failed", "message": service.PublicTaskFailure(task)}
