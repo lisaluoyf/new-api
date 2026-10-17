@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"net/http"
 	"slices"
 	"strings"
@@ -13,7 +14,30 @@ import (
 )
 
 type providerSettingsRequest struct {
-	Rules []dto.ProviderSetting `json:"rules"`
+	Rules          []dto.ProviderSetting `json:"rules"`
+	categoryFields []bool
+}
+
+// Track field presence so older clients can omit saved categories without
+// clearing them. Explicit null and [] are still changes to an existing rule.
+func (request *providerSettingsRequest) UnmarshalJSON(data []byte) error {
+	type plain providerSettingsRequest
+	var parsed plain
+	if err := common.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+	var raw struct {
+		Rules []map[string]json.RawMessage `json:"rules"`
+	}
+	if err := common.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*request = providerSettingsRequest(parsed)
+	request.categoryFields = make([]bool, len(raw.Rules))
+	for index, rule := range raw.Rules {
+		_, request.categoryFields[index] = rule["channel_categories"]
+	}
+	return nil
 }
 
 func providerSettingModels(user *model.User) []string {
@@ -30,6 +54,7 @@ func providerSettingModels(user *model.User) []string {
 }
 
 func GetProviderSettings(c *gin.Context) {
+	c.Header("Cache-Control", "private, no-store")
 	user, err := model.GetUserById(c.GetInt("id"), false)
 	if err != nil {
 		common.ApiError(c, err)
@@ -39,7 +64,7 @@ func GetProviderSettings(c *gin.Context) {
 	if rules == nil {
 		rules = []dto.ProviderSetting{}
 	}
-	common.ApiSuccess(c, gin.H{"rules": rules, "models": providerSettingModels(user)})
+	common.ApiSuccess(c, gin.H{"rules": rules, "models": providerSettingModels(user), "channel_categories_enabled": model.ChannelCategoriesEnabled()})
 }
 
 func SaveProviderSettings(c *gin.Context) {
@@ -49,17 +74,26 @@ func SaveProviderSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid provider settings"})
 		return
 	}
-	rules, err := service.NormalizeProviderSettings(request.Rules)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
-		return
-	}
 	user, err := model.GetUserById(c.GetInt("id"), false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	settings := user.GetSetting()
+	categoriesEnabled := model.ChannelCategoriesEnabled()
+	for index := range request.Rules {
+		request.Rules[index].Model = strings.TrimSpace(request.Rules[index].Model)
+		for _, saved := range settings.ProviderSettings {
+			if saved.Model == request.Rules[index].Model && !request.categoryFields[index] {
+				request.Rules[index].ChannelCategories = slices.Clone(saved.ChannelCategories)
+			}
+		}
+	}
+	rules, err := service.NormalizeProviderSettings(request.Rules)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	models := providerSettingModels(user)
 	for _, rule := range rules {
 		var previous *dto.ProviderSetting
@@ -67,6 +101,17 @@ func SaveProviderSettings(c *gin.Context) {
 			if saved.Model == rule.Model {
 				previous = &saved
 				break
+			}
+		}
+		if !categoriesEnabled && (len(rule.ChannelCategories) > 0 || (previous != nil && len(previous.ChannelCategories) > 0)) {
+			unchanged := false
+			if previous != nil {
+				normalized, normalizeErr := service.NormalizeProviderSettings([]dto.ProviderSetting{*previous})
+				unchanged = normalizeErr == nil && rule.Mode == normalized[0].Mode && slices.Equal(rule.ChannelIDs, normalized[0].ChannelIDs) && slices.Equal(rule.ChannelCategories, normalized[0].ChannelCategories)
+			}
+			if !unchanged {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Channel category selection is disabled"})
+				return
 			}
 		}
 		if !slices.Contains(models, rule.Model) && previous == nil {
@@ -89,10 +134,12 @@ func SaveProviderSettings(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"rules": rules})
+	c.Header("Cache-Control", "private, no-store")
+	common.ApiSuccess(c, gin.H{"rules": rules, "channel_categories_enabled": categoriesEnabled})
 }
 
 func GetProviderSettingChannels(c *gin.Context) {
+	c.Header("Cache-Control", "private, no-store")
 	name := strings.TrimSpace(c.Query("model"))
 	user, err := model.GetUserById(c.GetInt("id"), false)
 	if err != nil {
@@ -105,7 +152,11 @@ func GetProviderSettingChannels(c *gin.Context) {
 	}
 	items := make([]PublicMarketplaceItem, 0)
 	for _, row := range publicMarketplacePricingRows(name) {
-		items = append(items, publicMarketplacePriceItem(name, row))
+		item := publicMarketplacePriceItem(name, row)
+		if !model.ChannelCategoriesEnabled() {
+			item.ChannelCategory = ""
+		}
+		items = append(items, item)
 	}
 	sortPublicMarketplaceItems(items)
 	common.ApiSuccess(c, items)

@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "Kategori kanal",
+    "Enable channel categories": "Aktifkan kategori kanal",
+    "Show marketplace category labels to all users": "Tampilkan label kategori pasar ke semua pengguna",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "Aktifkan pemilihan kanal berdasarkan kategori dan label kategori di pasar. Aturan yang sudah ada tetap aktif saat dinonaktifkan.",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "Jika nonaktif, hanya administrator terverifikasi yang melihat label kategori. Kategori kanal harus diaktifkan.",
+    "Existing channel restriction (still active)": "Pembatasan kanal yang ada (tetap aktif)",
+    "Channel category selection is disabled": "Pemilihan kategori kanal dinonaktifkan",
     "Default discount": "Koefisien default",
     "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Digunakan jika tidak ada aturan model yang cocok. Kosongkan atau isi 1 untuk tanpa diskon tambahan. Koefisien model dan default tidak dikalikan satu sama lain.",
     "Video availability depends on its storage provider. Download it promptly.": "Ketersediaan video bergantung pada penyedia penyimpanan. Segera unduh video.",

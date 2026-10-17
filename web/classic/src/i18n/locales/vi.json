@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "Phân loại kênh",
+    "Enable channel categories": "Bật phân loại kênh",
+    "Show marketplace category labels to all users": "Hiển thị nhãn phân loại cho mọi người dùng",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "Cho phép chọn kênh theo loại và hiển thị nhãn trên chợ. Quy tắc hiện có vẫn có hiệu lực khi tắt.",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "Khi tắt, chỉ quản trị viên đã xác minh thấy nhãn phân loại. Cần bật phân loại kênh.",
+    "Existing channel restriction (still active)": "Giới hạn kênh hiện có (vẫn có hiệu lực)",
+    "Channel category selection is disabled": "Lựa chọn loại kênh đã bị tắt",
     "Channel category": "Danh mục kênh",
     "Cloud Providers": "Nhà cung cấp đám mây",
     "Official": "Chính thức",

@@ -2,7 +2,10 @@ import { api } from '@/lib/api'
 import type { ProviderSettingsValues } from './lib/schema'
 
 type Response<Data> = { success: boolean; message?: string; data: Data }
-export type ProviderSettingsData = ProviderSettingsValues & { models: string[] }
+export type ProviderSettingsData = ProviderSettingsValues & {
+  models: string[]
+  channel_categories_enabled?: boolean
+}
 export type ProviderChannel = {
   channel_id: number
   channel_category?: 'default' | 'cloud' | 'official'
@@ -24,11 +27,10 @@ export async function getProviderSettings(): Promise<ProviderSettingsData> {
 
 export async function saveProviderSettings(
   values: ProviderSettingsValues
-): Promise<ProviderSettingsValues> {
-  const response = await api.put<Response<ProviderSettingsValues>>(
-    '/api/user/provider-settings',
-    values
-  )
+): Promise<ProviderSettingsValues & { channel_categories_enabled?: boolean }> {
+  const response = await api.put<
+    Response<ProviderSettingsValues & { channel_categories_enabled?: boolean }>
+  >('/api/user/provider-settings', values)
   if (!response.data.success) throw new Error(response.data.message)
   return response.data.data
 }

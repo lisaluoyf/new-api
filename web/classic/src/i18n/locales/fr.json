@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "Catégories de canaux",
+    "Enable channel categories": "Activer les catégories de canaux",
+    "Show marketplace category labels to all users": "Afficher les catégories du marché à tous",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "Active la sélection par catégorie et les étiquettes du marché. Les règles existantes restent actives après désactivation.",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "Si désactivé, seuls les administrateurs vérifiés voient les catégories du marché. Nécessite les catégories de canaux.",
+    "Existing channel restriction (still active)": "Restriction de canal existante (toujours active)",
+    "Channel category selection is disabled": "La sélection par catégorie est désactivée",
     "Channel category": "Catégorie de canal",
     "Cloud Providers": "Fournisseur cloud",
     "Official": "Officiel",

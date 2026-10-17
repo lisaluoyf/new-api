@@ -181,6 +181,8 @@ export type ModelSettings = {
 }
 
 export type BillingSettings = {
+  ChannelCategoriesEnabled: boolean
+  ChannelCategoriesPublicEnabled: boolean
   QuotaForNewUser: number
   PreConsumedQuota: number
   QuotaForInviter: number

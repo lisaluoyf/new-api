@@ -18,6 +18,7 @@ import (
 )
 
 func TestProviderSettingsCatalogAndNewRuleRoundTrip(t *testing.T) {
+	setChannelCategoriesEnabledForTest(t, false)
 	oldDB, oldLogDB := model.DB, model.LOG_DB
 	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
 	initModelListColumnNames(t)
@@ -26,7 +27,7 @@ func TestProviderSettingsCatalogAndNewRuleRoundTrip(t *testing.T) {
 	user := model.User{Id: 1, Username: "provider-catalog-owner", Group: "default"}
 	require.NoError(t, model.DB.Create(&user).Error)
 	baseURL, priceRatio := "https://private-provider.invalid", 1.0
-	channel := model.Channel{Id: 38, Name: "private-provider-name", Key: "private-provider-key", BaseURL: &baseURL, Models: "provider-catalog-model", Group: "default", Status: 1, ApimasterPriceRatio: &priceRatio}
+	channel := model.Channel{Id: 38, Name: "private-provider-name", Key: "private-provider-key", BaseURL: &baseURL, Models: "provider-catalog-model", Group: "default", Status: 1, ApimasterPriceRatio: &priceRatio, ChannelCategory: common.GetPointer("cloud")}
 	require.NoError(t, model.DB.Create(&channel).Error)
 	require.NoError(t, channel.AddAbilities(nil))
 	require.NoError(t, model.DB.Create(&model.ChannelModelPricing{ChannelId: 38, ModelName: channel.Models, InputPrice: 2, OutputPrice: 4, GroupRatio: 1, PricingSource: "api"}).Error)
@@ -35,6 +36,7 @@ func TestProviderSettingsCatalogAndNewRuleRoundTrip(t *testing.T) {
 	ctx.Set("id", 1)
 	GetProviderSettings(ctx)
 	require.Contains(t, recorder.Body.String(), `"rules":[]`)
+	require.Contains(t, recorder.Body.String(), `"channel_categories_enabled":false`)
 	require.Contains(t, recorder.Body.String(), "provider-catalog-model")
 	recorder = httptest.NewRecorder()
 	ctx, _ = gin.CreateTestContext(recorder)
@@ -43,6 +45,8 @@ func TestProviderSettingsCatalogAndNewRuleRoundTrip(t *testing.T) {
 	GetProviderSettingChannels(ctx)
 	require.Contains(t, recorder.Body.String(), `"channel_id":38`)
 	require.Contains(t, recorder.Body.String(), `"user_price":2`)
+	require.NotContains(t, recorder.Body.String(), `"channel_category"`)
+	require.Equal(t, "private, no-store", recorder.Header().Get("Cache-Control"))
 	for _, secret := range []string{channel.Key, channel.Name, baseURL, "input_price", "recharge_rate"} {
 		require.NotContains(t, recorder.Body.String(), `"`+secret+`"`)
 	}
@@ -57,9 +61,19 @@ func TestProviderSettingsCatalogAndNewRuleRoundTrip(t *testing.T) {
 	saved, err := model.GetUserById(1, false)
 	require.NoError(t, err)
 	require.Equal(t, []int{38}, saved.GetSetting().ProviderSettings[0].ChannelIDs)
+	t.Run("category candidates return after enabling", func(t *testing.T) {
+		setChannelCategoriesEnabledForTest(t, true)
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Set("id", 1)
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/provider-settings/channels?model=provider-catalog-model", nil)
+		GetProviderSettingChannels(ctx)
+		require.Contains(t, recorder.Body.String(), `"channel_category":"cloud"`)
+	})
 }
 
 func TestProviderSettingsSavePreservesOtherUserSettings(t *testing.T) {
+	setChannelCategoriesEnabledForTest(t, true)
 	setupUserAffRatioOverrideControllerTestDB(t)
 	user := model.User{Id: 1, Username: "provider-owner", Group: "default", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
 	user.SetSetting(dto.UserSetting{Language: "zh", ModelDiscountRatios: map[string]float64{"test-model": .8}, ProviderSettings: []dto.ProviderSetting{{Model: "test-model", Mode: "include", ChannelIDs: []int{39}}}})
@@ -94,6 +108,78 @@ func TestProviderSettingsSavePreservesOtherUserSettings(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"success":true`)
 	require.NoError(t, model.DB.First(&user, 1).Error)
 	require.Equal(t, []string{"cloud", "official"}, user.GetSetting().ProviderSettings[0].ChannelCategories)
+}
+
+func setChannelCategoriesEnabledForTest(t *testing.T, enabled bool) {
+	t.Helper()
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = map[string]string{}
+	}
+	old, exists := common.OptionMap[model.ChannelCategoriesEnabledOption]
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	common.OptionMap[model.ChannelCategoriesEnabledOption] = value
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if exists {
+			common.OptionMap[model.ChannelCategoriesEnabledOption] = old
+		} else {
+			delete(common.OptionMap, model.ChannelCategoriesEnabledOption)
+		}
+	})
+}
+
+func TestDisabledCategorySettingsPreserveRulesAndRejectChanges(t *testing.T) {
+	setChannelCategoriesEnabledForTest(t, false)
+	setupUserAffRatioOverrideControllerTestDB(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.Channel{}, &model.Ability{}, &model.ChannelModelPricing{}))
+	original := dto.ProviderSetting{Model: "saved-model", Enabled: true, Mode: "include", ChannelIDs: []int{39}, ChannelCategories: []string{"official"}}
+	user := model.User{Id: 1, Username: "category-switch-owner", Group: "default"}
+	user.SetSetting(dto.UserSetting{Language: "zh", ProviderSettings: []dto.ProviderSetting{original, {Model: "id-model", Mode: "exclude", ChannelIDs: []int{40}}}})
+	require.NoError(t, model.DB.Create(&user).Error)
+	for _, test := range []struct {
+		name, body string
+		success    bool
+	}{
+		{"omitted categories", `{"rules":[{"enabled":false,"model":"saved-model","mode":"include","channel_ids":[39]}]}`, true},
+		{"unchanged categories", `{"rules":[{"enabled":true,"model":"saved-model","mode":"include","channel_ids":[39],"channel_categories":["official"]}]}`, true},
+		{"clear categories", `{"rules":[{"enabled":true,"model":"saved-model","mode":"include","channel_ids":[39],"channel_categories":[]}]}`, false},
+		{"null categories", `{"rules":[{"enabled":true,"model":"saved-model","mode":"include","channel_ids":[39],"channel_categories":null}]}`, false},
+		{"changed categories", `{"rules":[{"enabled":true,"model":"saved-model","mode":"include","channel_ids":[39],"channel_categories":["cloud"]}]}`, false},
+		{"changed ids", `{"rules":[{"enabled":true,"model":"saved-model","mode":"include","channel_ids":[40]}]}`, false},
+		{"changed mode", `{"rules":[{"enabled":true,"model":"saved-model","mode":"exclude","channel_ids":[39]}]}`, false},
+		{"new category model", `{"rules":[{"enabled":true,"model":"new-model","mode":"include","channel_ids":[],"channel_categories":["cloud"]}]}`, false},
+		{"edit id rule and preserve category", `{"rules":[{"enabled":true,"model":"saved-model","mode":"include","channel_ids":[39]},{"enabled":true,"model":"id-model","mode":"include","channel_ids":[40]}]}`, true},
+		{"delete rules", `{"rules":[]}`, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// Reset between cases and invalidate the user cache through the normal path.
+			require.NoError(t, user.UpdateSetting(dto.UserSetting{Language: "zh", ProviderSettings: []dto.ProviderSetting{original, {Model: "id-model", Mode: "exclude", ChannelIDs: []int{40}}}}))
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Set("id", 1)
+			ctx.Request = httptest.NewRequest(http.MethodPut, "/api/user/provider-settings", strings.NewReader(test.body))
+			ctx.Request.Header.Set("Content-Type", "application/json")
+			SaveProviderSettings(ctx)
+			if test.success {
+				require.Equal(t, http.StatusOK, recorder.Code)
+				require.Contains(t, recorder.Body.String(), `"success":true`)
+			} else {
+				require.Equal(t, http.StatusBadRequest, recorder.Code)
+			}
+			saved, err := model.GetUserById(1, false)
+			require.NoError(t, err)
+			require.Equal(t, "zh", saved.GetSetting().Language)
+			if test.name != "delete rules" {
+				require.Equal(t, []string{"official"}, saved.GetSetting().ProviderSettings[0].ChannelCategories)
+			}
+		})
+	}
 }
 
 func TestProviderSettingsSupportUsableMarketplaceHiddenModels(t *testing.T) {

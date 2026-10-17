@@ -61,6 +61,9 @@ const BILLING_SECTIONS = [
     build: (settings: BillingSettings) => (
       <QuotaSettingsSection
         defaultValues={{
+          ChannelCategoriesEnabled: settings.ChannelCategoriesEnabled,
+          ChannelCategoriesPublicEnabled:
+            settings.ChannelCategoriesPublicEnabled,
           QuotaForNewUser: settings.QuotaForNewUser,
           PreConsumedQuota: settings.PreConsumedQuota,
           QuotaForInviter: settings.QuotaForInviter,

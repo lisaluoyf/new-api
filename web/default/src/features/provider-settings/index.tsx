@@ -24,6 +24,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -50,6 +51,7 @@ export function ProviderSettings() {
   const query = useQuery({
     queryKey: ['provider-settings'],
     queryFn: getProviderSettings,
+    refetchOnWindowFocus: 'always',
   })
   const form = useForm<ProviderSettingsValues>({
     resolver: zodResolver(createProviderSettingsSchema(t)),
@@ -62,13 +64,18 @@ export function ProviderSettings() {
     onSuccess: (data) => {
       queryClient.setQueryData<ProviderSettingsData>(
         ['provider-settings'],
-        (previous) => ({ models: previous?.models ?? [], rules: data.rules })
+        (previous) => ({
+          models: previous?.models ?? [],
+          rules: data.rules,
+          channel_categories_enabled: data.channel_categories_enabled === true,
+        })
       )
       form.reset(data)
       void queryClient.invalidateQueries({ queryKey: ['provider-settings'] })
       toast.success(t('Settings updated successfully'))
     },
     onError: (error) => {
+      void queryClient.invalidateQueries({ queryKey: ['provider-settings'] })
       const message =
         error instanceof AxiosError
           ? error.response?.data?.message
@@ -78,10 +85,10 @@ export function ProviderSettings() {
     },
   })
 
+  const savedRules = query.data?.rules
   useEffect(() => {
-    if (query.data && !form.formState.isDirty)
-      form.reset({ rules: query.data.rules })
-  }, [query.data, form, form.formState.isDirty])
+    if (savedRules && !form.formState.isDirty) form.reset({ rules: savedRules })
+  }, [savedRules, form, form.formState.isDirty])
 
   const models = [
     ...new Set([
@@ -90,6 +97,10 @@ export function ProviderSettings() {
     ]),
   ]
   const disabled = query.isPending || query.isError || mutation.isPending
+  const categoriesEnabled = query.data?.channel_categories_enabled === true
+  const categoryRuleLocked = (index: number) =>
+    !categoriesEnabled &&
+    Boolean(watchedRules[index]?.channel_categories?.length)
 
   return (
     <Main>
@@ -162,30 +173,34 @@ export function ProviderSettings() {
                         <FormItem>
                           <FormLabel>{t('Model')}</FormLabel>
                           <FormControl>
-                            <Combobox
-                              options={models.map((model) => ({
-                                value: model,
-                                label: model,
-                              }))}
-                              value={field.value}
-                              onValueChange={(value) => {
-                                if (!disabled && value !== field.value) {
-                                  field.onChange(value ?? '')
-                                  form.setValue(
-                                    `rules.${index}.channel_ids`,
-                                    [],
-                                    { shouldDirty: true }
-                                  )
-                                  form.setValue(
-                                    `rules.${index}.channel_categories`,
-                                    [],
-                                    { shouldDirty: true }
-                                  )
-                                }
-                              }}
-                              placeholder={t('Select a model')}
-                              emptyText={t('No matching models')}
-                            />
+                            {categoryRuleLocked(index) ? (
+                              <Input readOnly value={field.value} />
+                            ) : (
+                              <Combobox
+                                options={models.map((model) => ({
+                                  value: model,
+                                  label: model,
+                                }))}
+                                value={field.value}
+                                onValueChange={(value) => {
+                                  if (!disabled && value !== field.value) {
+                                    field.onChange(value ?? '')
+                                    form.setValue(
+                                      `rules.${index}.channel_ids`,
+                                      [],
+                                      { shouldDirty: true }
+                                    )
+                                    form.setValue(
+                                      `rules.${index}.channel_categories`,
+                                      [],
+                                      { shouldDirty: true }
+                                    )
+                                  }
+                                }}
+                                placeholder={t('Select a model')}
+                                emptyText={t('No matching models')}
+                              />
+                            )}
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -200,7 +215,7 @@ export function ProviderSettings() {
                           <Select
                             value={field.value}
                             onValueChange={field.onChange}
-                            disabled={disabled}
+                            disabled={disabled || categoryRuleLocked(index)}
                           >
                             <FormControl>
                               <SelectTrigger className='h-10 w-full'>
@@ -227,23 +242,38 @@ export function ProviderSettings() {
                         <FormItem>
                           <FormLabel>{t('Channels')}</FormLabel>
                           <FormControl>
-                            <ChannelPicker
-                              model={watchedRules[index]?.model ?? ''}
-                              value={field.value}
-                              onChange={field.onChange}
-                              categories={
-                                watchedRules[index]?.channel_categories ?? []
-                              }
-                              onCategoriesChange={(value) =>
-                                form.setValue(
-                                  `rules.${index}.channel_categories`,
-                                  value,
-                                  { shouldDirty: true, shouldValidate: true }
-                                )
-                              }
-                              mode={watchedRules[index]?.mode ?? 'include'}
-                              disabled={disabled}
-                            />
+                            {categoryRuleLocked(index) ? (
+                              <p className='text-muted-foreground rounded-md border px-3 py-2 text-sm'>
+                                {t(
+                                  'Existing channel restriction (still active)'
+                                )}
+                              </p>
+                            ) : (
+                              <ChannelPicker
+                                model={watchedRules[index]?.model ?? ''}
+                                value={field.value}
+                                onChange={field.onChange}
+                                categories={
+                                  watchedRules[index]?.channel_categories ?? []
+                                }
+                                onCategoriesChange={(value) =>
+                                  form.setValue(
+                                    `rules.${index}.channel_categories`,
+                                    value,
+                                    { shouldDirty: true, shouldValidate: true }
+                                  )
+                                }
+                                mode={watchedRules[index]?.mode ?? 'include'}
+                                disabled={disabled}
+                                categoriesEnabled={categoriesEnabled}
+                                onOpen={() => {
+                                  void query.refetch()
+                                  void queryClient.invalidateQueries({
+                                    queryKey: ['provider-channels'],
+                                  })
+                                }}
+                              />
+                            )}
                           </FormControl>
                           <FormMessage />
                         </FormItem>

@@ -9,7 +9,7 @@ import (
 
 // Never mutate the shared marketplace cache while stripping viewer-only fields.
 func marketplaceItemsForViewer(c *gin.Context, items []PublicMarketplaceItem) []PublicMarketplaceItem {
-	if model.ChannelCategoriesPublicEnabled() || (c.GetInt("id") > 0 && model.IsAdmin(c.GetInt("id"))) {
+	if model.ChannelCategoriesEnabled() && (model.ChannelCategoriesPublicEnabled() || (c.GetInt("id") > 0 && model.IsAdmin(c.GetInt("id")))) {
 		return items
 	}
 	result := slices.Clone(items)

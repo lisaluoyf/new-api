@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "Kategorie kanałów",
+    "Enable channel categories": "Włącz kategorie kanałów",
+    "Show marketplace category labels to all users": "Pokaż etykiety kategorii wszystkim użytkownikom",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "Włącza wybór kanałów według kategorii i etykiety w rynku. Istniejące reguły pozostają aktywne po wyłączeniu.",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "Po wyłączeniu etykiety widzą tylko zweryfikowani administratorzy. Wymaga włączenia kategorii kanałów.",
+    "Existing channel restriction (still active)": "Istniejące ograniczenie kanału (nadal aktywne)",
+    "Channel category selection is disabled": "Wybór kategorii kanałów jest wyłączony",
     "Default discount": "Domyślny współczynnik",
     "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Stosowany, gdy nie pasuje żadna reguła modelu. Puste pole lub 1 oznacza brak dodatkowego rabatu. Współczynniki modelu i domyślny nie są przez siebie mnożone.",
     "Video availability depends on its storage provider. Download it promptly.": "Dostępność filmu zależy od dostawcy przechowywania. Pobierz go jak najszybciej.",

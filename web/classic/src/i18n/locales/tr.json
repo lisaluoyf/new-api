@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "Kanal kategorileri",
+    "Enable channel categories": "Kanal kategorilerini etkinleştir",
+    "Show marketplace category labels to all users": "Pazar kategori etiketlerini herkese göster",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "Kategoriye göre kanal seçimini ve pazar etiketlerini etkinleştirir. Kapatıldığında mevcut kurallar geçerli kalır.",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "Kapalıysa etiketleri yalnızca doğrulanmış yöneticiler görür. Kanal kategorileri etkin olmalıdır.",
+    "Existing channel restriction (still active)": "Mevcut kanal kısıtlaması (hâlâ etkin)",
+    "Channel category selection is disabled": "Kanal kategorisi seçimi devre dışı",
     "Channel category": "Kanal kategorisi",
     "Cloud Providers": "Bulut sağlayıcısı",
     "Official": "Resmî",

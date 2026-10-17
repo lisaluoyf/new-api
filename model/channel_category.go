@@ -7,7 +7,14 @@ import (
 	"gorm.io/gorm"
 )
 
+const ChannelCategoriesEnabledOption = "ChannelCategoriesEnabled"
 const ChannelCategoriesPublicEnabledOption = "ChannelCategoriesPublicEnabled"
+
+func ChannelCategoriesEnabled() bool {
+	common.OptionMapRWMutex.RLock()
+	defer common.OptionMapRWMutex.RUnlock()
+	return common.OptionMap[ChannelCategoriesEnabledOption] == "true"
+}
 
 func ChannelCategoriesPublicEnabled() bool {
 	common.OptionMapRWMutex.RLock()

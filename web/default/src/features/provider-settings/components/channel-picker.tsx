@@ -25,13 +25,19 @@ type ChannelPickerProps = {
   onCategoriesChange: (value: ChannelCategory[]) => void
   mode: 'include' | 'exclude'
   disabled?: boolean
+  categoriesEnabled?: boolean
+  onOpen?: () => void
 }
 
 export function ChannelPicker(props: ChannelPickerProps) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const query = useQuery({
-    queryKey: ['provider-channels', props.model],
+    queryKey: [
+      'provider-channels',
+      props.model,
+      props.categoriesEnabled === true,
+    ],
     queryFn: () => getProviderChannels(props.model),
     enabled: Boolean(props.model),
     staleTime: 30_000,
@@ -43,7 +49,7 @@ export function ChannelPicker(props: ChannelPickerProps) {
     return t('Others')
   }
   const selectionLabels = [
-    ...props.categories.map(categoryLabel),
+    ...(props.categoriesEnabled ? props.categories.map(categoryLabel) : []),
     ...props.value.map((channelID) => `#${channelID}`),
   ]
   const availableCount = availableChannelCount(
@@ -64,7 +70,11 @@ export function ChannelPicker(props: ChannelPickerProps) {
 
   return (
     <div>
-      <Popover>
+      <Popover
+        onOpenChange={(open) => {
+          if (open) props.onOpen?.()
+        }}
+      >
         <PopoverTrigger
           id={props.id}
           aria-label={t('Select channels')}
@@ -88,33 +98,35 @@ export function ChannelPicker(props: ChannelPickerProps) {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <fieldset className='mt-3 border-b pb-3' disabled={props.disabled}>
-            <legend className='text-muted-foreground mb-2 text-xs'>
-              {t('Channel category')}
-            </legend>
-            <div className='flex flex-wrap gap-x-4 gap-y-2'>
-              {CHANNEL_CATEGORIES.map((category) => (
-                <label
-                  key={category}
-                  className='flex cursor-pointer items-center gap-2 text-sm'
-                >
-                  <Checkbox
-                    checked={props.categories.includes(category)}
-                    onCheckedChange={(checked) =>
-                      props.onCategoriesChange(
-                        checked
-                          ? [...props.categories, category]
-                          : props.categories.filter(
-                              (value) => value !== category
-                            )
-                      )
-                    }
-                  />
-                  {categoryLabel(category)}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          {props.categoriesEnabled && (
+            <fieldset className='mt-3 border-b pb-3' disabled={props.disabled}>
+              <legend className='text-muted-foreground mb-2 text-xs'>
+                {t('Channel category')}
+              </legend>
+              <div className='flex flex-wrap gap-x-4 gap-y-2'>
+                {CHANNEL_CATEGORIES.map((category) => (
+                  <label
+                    key={category}
+                    className='flex cursor-pointer items-center gap-2 text-sm'
+                  >
+                    <Checkbox
+                      checked={props.categories.includes(category)}
+                      onCheckedChange={(checked) =>
+                        props.onCategoriesChange(
+                          checked
+                            ? [...props.categories, category]
+                            : props.categories.filter(
+                                (value) => value !== category
+                              )
+                        )
+                      }
+                    />
+                    {categoryLabel(category)}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <div className='mt-2 max-h-72 space-y-1 overflow-y-auto'>
             {query.isPending && (
               <p className='p-2 text-sm'>{t('Loading...')}</p>
@@ -139,7 +151,9 @@ export function ChannelPicker(props: ChannelPickerProps) {
               )
               const category = channel?.channel_category ?? 'default'
               const covered = Boolean(
-                channel && props.categories.includes(category)
+                props.categoriesEnabled &&
+                channel &&
+                props.categories.includes(category)
               )
               const discount =
                 channel?.user_price != null &&
@@ -170,11 +184,13 @@ export function ChannelPicker(props: ChannelPickerProps) {
                   <span className='min-w-0 text-sm'>
                     <span className='font-medium'>
                       {t('Channel')} #{channelID}
-                      {channel && category !== 'default' && (
-                        <span className='text-muted-foreground ml-2 text-xs'>
-                          {categoryLabel(category)}
-                        </span>
-                      )}
+                      {props.categoriesEnabled &&
+                        channel &&
+                        category !== 'default' && (
+                          <span className='text-muted-foreground ml-2 text-xs'>
+                            {categoryLabel(category)}
+                          </span>
+                        )}
                     </span>
                     {covered && (
                       <span className='text-muted-foreground block text-xs'>

@@ -40,6 +40,8 @@ import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 
 const quotaSchema = z.object({
+  ChannelCategoriesEnabled: z.boolean(),
+  ChannelCategoriesPublicEnabled: z.boolean(),
   QuotaForNewUser: z.coerce.number().min(0),
   PreConsumedQuota: z.coerce.number().min(0),
   QuotaForInviter: z.coerce.number().min(0),
@@ -113,6 +115,60 @@ export function QuotaSettingsSection({
       <Form {...form}>
         <form onSubmit={handleSubmit} className='space-y-6'>
           <FormDirtyIndicator isDirty={isDirty} />
+          <div className='space-y-4'>
+            <h3 className='font-medium'>{t('Channel categories')}</h3>
+            <FormField
+              control={form.control}
+              name='ChannelCategoriesEnabled'
+              render={({ field }) => (
+                <FormItem className='flex items-center justify-between gap-4 rounded-lg border p-4'>
+                  <div className='space-y-1'>
+                    <FormLabel>{t('Enable channel categories')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.'
+                      )}
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={updateOption.isPending}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='ChannelCategoriesPublicEnabled'
+              render={({ field }) => (
+                <FormItem className='flex items-center justify-between gap-4 rounded-lg border p-4'>
+                  <div className='space-y-1'>
+                    <FormLabel>
+                      {t('Show marketplace category labels to all users')}
+                    </FormLabel>
+                    <FormDescription>
+                      {t(
+                        'When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.'
+                      )}
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={
+                        updateOption.isPending ||
+                        !form.watch('ChannelCategoriesEnabled')
+                      }
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
           <FormField
             control={form.control}
             name='QuotaForNewUser'

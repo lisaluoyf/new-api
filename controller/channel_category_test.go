@@ -19,6 +19,8 @@ func TestMarketplaceCategoryVisibilityDoesNotMutateCache(t *testing.T) {
 		common.OptionMap = make(map[string]string)
 	}
 	old, exists := common.OptionMap[model.ChannelCategoriesPublicEnabledOption]
+	oldEnabled, enabledExists := common.OptionMap[model.ChannelCategoriesEnabledOption]
+	common.OptionMap[model.ChannelCategoriesEnabledOption] = "true"
 	common.OptionMap[model.ChannelCategoriesPublicEnabledOption] = "false"
 	common.OptionMapRWMutex.Unlock()
 	t.Cleanup(func() {
@@ -28,6 +30,11 @@ func TestMarketplaceCategoryVisibilityDoesNotMutateCache(t *testing.T) {
 			common.OptionMap[model.ChannelCategoriesPublicEnabledOption] = old
 		} else {
 			delete(common.OptionMap, model.ChannelCategoriesPublicEnabledOption)
+		}
+		if enabledExists {
+			common.OptionMap[model.ChannelCategoriesEnabledOption] = oldEnabled
+		} else {
+			delete(common.OptionMap, model.ChannelCategoriesEnabledOption)
 		}
 	})
 	items := []PublicMarketplaceItem{{ChannelID: 1, ChannelCategory: "official"}}
@@ -43,4 +50,12 @@ func TestMarketplaceCategoryVisibilityDoesNotMutateCache(t *testing.T) {
 	common.OptionMapRWMutex.Unlock()
 	ctx.Set("id", 0)
 	require.Equal(t, "official", marketplaceItemsForViewer(ctx, items)[0].ChannelCategory)
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap[model.ChannelCategoriesEnabledOption] = "false"
+	common.OptionMapRWMutex.Unlock()
+	for _, id := range []int{0, 81, 82} {
+		ctx.Set("id", id)
+		require.Empty(t, marketplaceItemsForViewer(ctx, items)[0].ChannelCategory)
+	}
+	require.Equal(t, "official", items[0].ChannelCategory)
 }

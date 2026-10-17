@@ -33,6 +33,8 @@ export default function SettingsCreditLimit(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     QuotaForNewUser: '',
+    ChannelCategoriesEnabled: false,
+    ChannelCategoriesPublicEnabled: false,
     PreConsumedQuota: '',
     QuotaForInviter: '',
     QuotaForInvitee: '',
@@ -77,10 +79,17 @@ export default function SettingsCreditLimit(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
+    const currentInputs = {
+      ChannelCategoriesEnabled: false,
+      ChannelCategoriesPublicEnabled: false,
+    };
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
-        currentInputs[key] = props.options[key];
+        currentInputs[key] =
+          key === 'ChannelCategoriesEnabled' ||
+          key === 'ChannelCategoriesPublicEnabled'
+            ? props.options[key] === true || props.options[key] === 'true'
+            : props.options[key];
       }
     }
     setInputs(currentInputs);
@@ -96,6 +105,32 @@ export default function SettingsCreditLimit(props) {
           style={{ marginBottom: 15 }}
         >
           <Form.Section text={t('额度设置')}>
+            <Form.Section text={t('Channel categories')}>
+              <Form.Switch
+                field='ChannelCategoriesEnabled'
+                label={t('Enable channel categories')}
+                extraText={t(
+                  'Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.',
+                )}
+                onChange={(value) =>
+                  setInputs({ ...inputs, ChannelCategoriesEnabled: value })
+                }
+              />
+              <Form.Switch
+                field='ChannelCategoriesPublicEnabled'
+                label={t('Show marketplace category labels to all users')}
+                extraText={t(
+                  'When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.',
+                )}
+                disabled={!inputs.ChannelCategoriesEnabled}
+                onChange={(value) =>
+                  setInputs({
+                    ...inputs,
+                    ChannelCategoriesPublicEnabled: value,
+                  })
+                }
+              />
+            </Form.Section>
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber

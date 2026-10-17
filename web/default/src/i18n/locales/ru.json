@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "Категории каналов",
+    "Enable channel categories": "Включить категории каналов",
+    "Show marketplace category labels to all users": "Показывать категории на рынке всем пользователям",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "Включает выбор каналов по категориям и метки на рынке. Существующие правила действуют и после отключения.",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "Если выключено, метки видят только проверенные администраторы. Требуется включить категории каналов.",
+    "Existing channel restriction (still active)": "Существующее ограничение каналов (действует)",
+    "Channel category selection is disabled": "Выбор категорий каналов отключён",
     "Default discount": "Коэффициент по умолчанию",
     "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Применяется, если нет правила для модели. Пустое поле или 1 — без дополнительной скидки. Коэффициенты модели и по умолчанию не перемножаются.",
     "Video availability depends on its storage provider. Download it promptly.": "Срок доступности видео зависит от поставщика хранилища. Скачайте видео заранее.",

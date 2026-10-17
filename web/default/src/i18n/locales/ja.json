@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "チャネル分類",
+    "Enable channel categories": "チャネル分類を有効化",
+    "Show marketplace category labels to all users": "市場の分類ラベルを全ユーザーに表示",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "カテゴリ別のチャネル選択と市場の分類ラベルを有効にします。無効にしても既存のカテゴリルールは適用されます。",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "オフの場合、確認済みの管理者のみ市場の分類ラベルを表示できます。チャネル分類の有効化が必要です。",
+    "Existing channel restriction (still active)": "既存のチャネル制限（適用中）",
+    "Channel category selection is disabled": "チャネルのカテゴリ選択は無効です",
     "Default discount": "デフォルト係数",
     "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "モデルのルールに一致しない場合に適用します。空欄または 1 は追加割引なしです。モデル係数とデフォルト係数は掛け合わせません。",
     "Video availability depends on its storage provider. Download it promptly.": "動画の有効期間はストレージ提供元によって異なります。早めにダウンロードしてください。",

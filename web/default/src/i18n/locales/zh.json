@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "渠道分类",
+    "Enable channel categories": "启用渠道分类",
+    "Show marketplace category labels to all users": "向所有用户展示市场分类标签",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "开启后允许用户按类别选择渠道，并显示市场分类标签。关闭后，已有类别规则仍继续生效。",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "关闭时，市场分类标签仅对已核验的管理员可见。需先启用渠道分类。",
+    "Existing channel restriction (still active)": "已有渠道限制（继续生效）",
+    "Channel category selection is disabled": "渠道类别选择已关闭",
     "Default discount": "默认系数",
     "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "没有匹配的模型规则时使用。留空或填 1 表示不额外打折；模型系数与默认系数不叠乘。",
     "Video availability depends on its storage provider. Download it promptly.": "视频可用期限由存储服务方决定，请及时下载。",

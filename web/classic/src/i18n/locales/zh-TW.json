@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "渠道分類",
+    "Enable channel categories": "啟用渠道分類",
+    "Show marketplace category labels to all users": "向所有使用者顯示市場分類標籤",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "開啟後允許使用者按類別選擇渠道，並顯示市場分類標籤。關閉後，既有類別規則仍繼續生效。",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "關閉時，市場分類標籤僅對已驗證的管理員可見。需先啟用渠道分類。",
+    "Existing channel restriction (still active)": "既有渠道限制（繼續生效）",
+    "Channel category selection is disabled": "渠道類別選擇已關閉",
     "Channel category": "渠道分類",
     "Cloud Providers": "雲端供應商",
     "Official": "官方",

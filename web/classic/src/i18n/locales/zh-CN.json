@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "渠道分类",
+    "Enable channel categories": "启用渠道分类",
+    "Show marketplace category labels to all users": "向所有用户展示市场分类标签",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "开启后允许用户按类别选择渠道，并显示市场分类标签。关闭后，已有类别规则仍继续生效。",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "关闭时，市场分类标签仅对已核验的管理员可见。需先启用渠道分类。",
+    "Existing channel restriction (still active)": "已有渠道限制（继续生效）",
+    "Channel category selection is disabled": "渠道类别选择已关闭",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",

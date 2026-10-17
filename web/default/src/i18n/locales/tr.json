@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "Kanal kategorileri",
+    "Enable channel categories": "Kanal kategorilerini etkinleştir",
+    "Show marketplace category labels to all users": "Pazar kategori etiketlerini herkese göster",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "Kategoriye göre kanal seçimini ve pazar etiketlerini etkinleştirir. Kapatıldığında mevcut kurallar geçerli kalır.",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "Kapalıysa etiketleri yalnızca doğrulanmış yöneticiler görür. Kanal kategorileri etkin olmalıdır.",
+    "Existing channel restriction (still active)": "Mevcut kanal kısıtlaması (hâlâ etkin)",
+    "Channel category selection is disabled": "Kanal kategorisi seçimi devre dışı",
     "Default discount": "Varsayılan katsayı",
     "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Eşleşen model kuralı yoksa uygulanır. Boş veya 1, ek indirim olmadığı anlamına gelir. Model ve varsayılan katsayılar birbiriyle çarpılmaz.",
     "Video availability depends on its storage provider. Download it promptly.": "Videonun kullanılabilirliği depolama sağlayıcısına bağlıdır. Videoyu zamanında indirin.",

@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "채널 분류",
+    "Enable channel categories": "채널 분류 활성화",
+    "Show marketplace category labels to all users": "모든 사용자에게 마켓 분류 라벨 표시",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "분류별 채널 선택과 마켓 라벨을 활성화합니다. 비활성화해도 기존 분류 규칙은 계속 적용됩니다.",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "끄면 확인된 관리자만 마켓 분류 라벨을 볼 수 있습니다. 채널 분류를 활성화해야 합니다.",
+    "Existing channel restriction (still active)": "기존 채널 제한 (계속 적용 중)",
+    "Channel category selection is disabled": "채널 분류 선택이 비활성화되었습니다",
     "Channel category": "채널 분류",
     "Cloud Providers": "클라우드 제공업체",
     "Official": "공식",

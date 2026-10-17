@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "Channel categories",
+    "Enable channel categories": "Enable channel categories",
+    "Show marketplace category labels to all users": "Show marketplace category labels to all users",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.",
+    "Existing channel restriction (still active)": "Existing channel restriction (still active)",
+    "Channel category selection is disabled": "Channel category selection is disabled",
     "Default discount": "Default discount",
     "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.",
     "Video availability depends on its storage provider. Download it promptly.": "Video availability depends on its storage provider. Download it promptly.",

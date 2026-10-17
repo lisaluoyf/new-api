@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Channel categories": "Kanalkategorien",
+    "Enable channel categories": "Kanalkategorien aktivieren",
+    "Show marketplace category labels to all users": "Marktplatz-Kategorielabels allen Nutzern anzeigen",
+    "Enable category selection in provider settings and category labels in the marketplace. Existing category rules remain active when disabled.": "Aktiviert die Kanalauswahl nach Kategorie und Kategorielabels im Marktplatz. Bestehende Kategorieregeln bleiben bei Deaktivierung aktiv.",
+    "When off, marketplace category labels are visible only to verified administrators. Requires channel categories to be enabled.": "Wenn ausgeschaltet, sehen nur verifizierte Administratoren die Marktplatz-Kategorielabels. Kanalkategorien müssen aktiviert sein.",
+    "Existing channel restriction (still active)": "Bestehende Kanalbeschränkung (weiterhin aktiv)",
+    "Channel category selection is disabled": "Kanalauswahl nach Kategorie ist deaktiviert",
     "Default discount": "Standardfaktor",
     "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Gilt, wenn keine Modellregel zutrifft. Leer oder 1 bedeutet keinen zusätzlichen Rabatt. Modell- und Standardfaktor werden nicht miteinander multipliziert.",
     "Video availability depends on its storage provider. Download it promptly.": "Die Verfügbarkeit des Videos hängt vom Speicheranbieter ab. Laden Sie es zeitnah herunter.",
