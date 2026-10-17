@@ -564,8 +564,12 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	if channel == nil {
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
-	if policyErr := service.ValidateChannelClientPolicy(c, channel, modelName); policyErr != nil {
-		return types.NewErrorWithStatusCode(policyErr, types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+	// Internal channel probes set up metadata before constructing their body.
+	// Real relay requests already carry the parsed request body here.
+	if c.Request != nil && c.Request.Body != nil {
+		if policyErr := service.ValidateAnthropicToolHistory(c, channel, modelName); policyErr != nil {
+			return types.NewErrorWithStatusCode(policyErr, types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+		}
 	}
 	common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
 	service.RecordImageRoutingSelected(c, channel.Id)

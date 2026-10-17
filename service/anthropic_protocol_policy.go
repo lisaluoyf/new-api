@@ -37,6 +37,14 @@ func channelMatchesAnthropicProtocol(c *gin.Context, ch *model.Channel, modelNam
 	return !restricted || anthropicHistoryCompatible(c)
 }
 
+// ValidateAnthropicToolHistory guards direct fallback paths as well as normal selectors.
+func ValidateAnthropicToolHistory(c *gin.Context, ch *model.Channel, modelName string) error {
+	if ch == nil || channelMatchesAnthropicProtocol(c, ch, modelName) {
+		return nil
+	}
+	return ErrNativeAnthropicChannel
+}
+
 type anthropicHistoryItem struct {
 	Type       string `json:"type"`
 	ID         string `json:"id"`
@@ -58,6 +66,9 @@ func anthropicHistoryCompatible(c *gin.Context) bool {
 	}
 	if cached, ok := c.Get(anthropicHistoryContextKey); ok {
 		return cached == true
+	}
+	if c.Request.Body == nil {
+		return false
 	}
 	allowed := false
 	defer func() { c.Set(anthropicHistoryContextKey, allowed) }()
