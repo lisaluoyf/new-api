@@ -56,6 +56,16 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 		if value, ok := fields["aspect_ratio"]; ok {
 			req.Metadata["ratio"] = value
 		}
+		if value, ok := fields["Moderation"]; ok {
+			if !service.IsTokenHubSeedanceBaseURL(a.baseURL) {
+				return invalid(fmt.Errorf("Moderation is unsupported by this generation route"))
+			}
+			policy, err := service.ParseSeedanceModeration(value)
+			if err != nil {
+				return invalid(err)
+			}
+			req.Metadata["Moderation"] = policy
+		}
 		if value, ok := fields["audio"]; ok {
 			if _, explicit := fields["generate_audio"]; !explicit {
 				req.Metadata["generate_audio"] = value
@@ -104,6 +114,10 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 				}
 				defaultRole := ""
 				switch item["type"] {
+				case "image_url":
+					if service.IsTokenHubSeedanceBaseURL(a.baseURL) {
+						defaultRole = "reference_image"
+					}
 				case "video_url":
 					defaultRole = "reference_video"
 				case "audio_url":
@@ -121,6 +135,14 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 	body, err := a.convertToRequestPayload(&req)
 	if err != nil {
 		return invalid(err)
+	}
+	if body.Moderation != nil {
+		if !service.IsTokenHubSeedanceBaseURL(a.baseURL) {
+			return invalid(fmt.Errorf("Moderation is unsupported by this generation route"))
+		}
+		if _, err := service.ParseSeedanceModeration(body.Moderation); err != nil {
+			return invalid(err)
+		}
 	}
 	seconds := 5
 	if body.Duration != nil {

@@ -30,6 +30,7 @@ type SeedanceAssetInput struct {
 }
 
 type SeedanceAssetSubmission struct {
+	Moderation      *SeedanceModeration  `json:"Moderation,omitempty"`
 	SubmissionHash  string               `json:"-"`
 	ReplicaParentID string               `json:"-"`
 	LogicalAssetIDs []string             `json:"-"`
@@ -44,6 +45,11 @@ type SeedanceAssetSubmission struct {
 }
 
 func ValidateSeedanceAssetSubmission(input *SeedanceAssetSubmission) error {
+	if input.Moderation != nil {
+		if _, err := ParseSeedanceModeration(input.Moderation); err != nil {
+			return seedanceError(400, err.Error())
+		}
+	}
 	if input.URL != nil {
 		if len(input.Assets) > 0 {
 			return seedanceError(400, "Use assets or url, not both")
@@ -154,6 +160,9 @@ func CreateSeedanceGroup(c *gin.Context, name string, input SeedanceGroupInput) 
 }
 
 func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model.SeedanceResource, error) {
+	if input.Moderation != nil && input.GroupID == "" && (input.Group == nil || input.Group.ChannelID == 0) {
+		return nil, seedanceError(400, "Moderation requires an explicit TokenHub material group or channel")
+	}
 	if !c.GetBool("seedance_replica_internal") {
 		if input.GroupID != "" {
 			g, err := model.GetSeedanceResource(c.GetInt("id"), "group", input.GroupID)
@@ -202,6 +211,23 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 }
 
 func submitSeedanceAssetsSingle(c *gin.Context, input SeedanceAssetSubmission) (*model.SeedanceResource, error) {
+	if input.Moderation != nil {
+		channelID := 0
+		if input.Group != nil {
+			channelID = input.Group.ChannelID
+		}
+		if input.GroupID != "" {
+			group, err := model.GetSeedanceResource(c.GetInt("id"), "group", input.GroupID)
+			if err != nil {
+				return nil, seedanceError(404, "Media group not found")
+			}
+			channelID = group.ChannelID
+		}
+		ch, err := model.GetChannelById(channelID, true)
+		if err != nil || !isTokenHubSeedanceChannel(ch) {
+			return nil, seedanceError(400, "Moderation requires an explicit TokenHub material group or channel")
+		}
+	}
 	input.Assets = append([]SeedanceAssetInput(nil), input.Assets...)
 	idempotency := c.GetHeader("Idempotency-Key")
 	if input.GroupID != "" {
@@ -294,6 +320,7 @@ func submitSeedanceAssetsSingle(c *gin.Context, input SeedanceAssetSubmission) (
 		if len(input.LogicalAssetIDs) > i {
 			asset.ParentID = input.LogicalAssetIDs[i]
 		}
+		asset.RequestData = seedanceModerationData(input.Moderation, false)
 		assetIDs = append(assetIDs, asset.ID)
 		assets = append(assets, asset)
 	}
@@ -318,6 +345,9 @@ func submitSeedanceAssetsSingle(c *gin.Context, input SeedanceAssetSubmission) (
 		providerAssets[i] = SeedanceAssetInput{URL: item.URL, Name: assets[i].ID}
 	}
 	payload := map[string]any{"model": input.Model, "group_id": group.UpstreamID, "project_name": "default", "asset_type": input.AssetType, "assets": providerAssets}
+	if input.Moderation != nil {
+		payload["Moderation"] = input.Moderation
+	}
 	if input.Model == "doubao-seedance-2.0" {
 		payload["model"] = "seedance-2.0"
 	}
@@ -348,6 +378,9 @@ func SeedanceAssetDTO(resource *model.SeedanceResource) map[string]any {
 		return unifiedSeedanceAssetDTO(resource)
 	}
 	dto := map[string]any{"id": resource.ID, "asset_id": resource.ID, "asset_url": "asset://" + resource.ID, "name": resource.Name, "asset_type": resource.AssetType, "group_id": resource.GroupID, "status": resource.Status, "url": seedancePublicSourceURL(resource), "created_at": resource.CreatedAt, "updated_at": resource.UpdatedAt}
+	if moderation := seedanceModerationDTO(resource); moderation != nil {
+		dto["moderation"] = moderation
+	}
 	if resource.ChannelID == constant.VideoFeeSeedanceChannelID {
 		dto["material_purpose"] = resource.GroupType
 		dto["verification_method"] = "channel_material_review"

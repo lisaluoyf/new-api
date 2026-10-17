@@ -148,6 +148,9 @@ func unifiedPhysicalGroup(c *gin.Context, g *model.SeedanceResource, ch int, nam
 	return &slot, nil
 }
 func submitUnifiedSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission, g *model.SeedanceResource) (*model.SeedanceResource, error) {
+	if input.Moderation != nil {
+		return nil, seedanceError(400, "Moderation requires an explicit TokenHub material group or channel")
+	}
 	if !ValidVideoSubmissionKey(c.GetHeader("Idempotency-Key")) {
 		return nil, seedanceError(400, "Idempotency-Key of 8–128 visible ASCII characters is required")
 	}

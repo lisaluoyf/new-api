@@ -45,6 +45,27 @@ func postSubmission(r *gin.Engine, path, key, body string) *httptest.ResponseRec
 	r.ServeHTTP(w, q)
 	return w
 }
+
+func TestDurableSubmissionConfirmedParameterRejectionIsSafeToCorrect(t *testing.T) {
+	calls := 0
+	r := durableSubmissionRouter(t, func(c *gin.Context) {
+		calls++
+		require.NoError(t, service.MarkVideoSubmissionSending(c, 297))
+		body := []byte(`{"error":{"code":"InvalidParameter","message":"role must be specified for image contents"}}`)
+		c.Set("seedance_confirmed_not_accepted", service.SeedanceExplicitSubmissionRejection(400, body))
+		c.Data(400, "application/json", body)
+	})
+	body := `{"model":"seedance-2.5","prompt":"synthetic people"}`
+	require.Equal(t, 400, postSubmission(r, "/v1/videos/generations", "rejected-297-one", body).Code)
+	replay := postSubmission(r, "/v1/videos/generations", "rejected-297-one", body)
+	require.Equal(t, 202, replay.Code)
+	require.Contains(t, replay.Body.String(), `"status":"not_accepted"`)
+	require.Contains(t, replay.Body.String(), `"new_submission_safe":true`)
+	require.Equal(t, 1, calls)
+	// A corrected request must use a new key; the old key never repeats a POST.
+	require.Equal(t, 400, postSubmission(r, "/v1/videos/generations", "rejected-297-two", body).Code)
+	require.Equal(t, 2, calls)
+}
 func TestDurableSubmissionConcurrentReplayDoesNotSubmitOrChargeAgain(t *testing.T) {
 	var submits, charges atomic.Int32
 	entered, release := make(chan struct{}), make(chan struct{})

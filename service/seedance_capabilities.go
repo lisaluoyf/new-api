@@ -45,6 +45,13 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 			if !configured {
 				reason = "Separate asset API credentials are not configured"
 			}
+		} else if isTokenHubSeedanceChannel(ch) {
+			mode, reason = "virtual_or_ordinary", "TokenHub supports AIGC material groups and review; this does not establish real-person H5 verification or moderation-strategy effectiveness"
+			_, err := loadTokenHubAssetCredentials(ch.Id)
+			configured = err == nil
+			if !configured {
+				reason = "Separate TokenHub material credentials are not configured"
+			}
 		} else if isXingchiyunSeedanceChannel(ch) {
 			mode, configured, reason = "official_h5", ch.Key != "", "Gateway provides official H5 sessions and server-side result polling; complete owner verification before importing real-person assets"
 		} else if ch.Id == constant.VideoFeeSeedanceChannelID {
@@ -53,6 +60,17 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 			mode, reason = "virtual_or_ordinary", "Material library integration exists; this integration does not expose real-person H5 verification"
 		}
 		entry := map[string]any{"model": name, "channel_id": ch.Id, "method": mode, "configured": configured, "real_person_verified": false, "reason": reason, "hosted_callback": mode == "official_h5" && !isXingchiyunSeedanceChannel(ch), "live_acceptance": "not_tested"}
+		if isTokenHubSeedanceChannel(ch) {
+			entry["material_capabilities"] = map[string]any{"ordinary_or_virtual": true, "upstream_group_type": "AIGC", "upload": true, "review": true, "crud": true, "official_h5": false, "liveness": false, "generation_reference_acceptance": "not_tested", "moderation_strategy_passthrough": []string{"Skip"}, "moderation_strategy_effect": "not_confirmed_by_provider"}
+			entry["generation_route_enabled"] = seedanceChannelAllowed(c, ch, name)
+			if credentials, err := loadTokenHubAssetCredentials(ch.Id); err == nil {
+				var evidence struct{ VerifiedAt int64 }
+				if err := model.DB.Model(&model.SeedanceResource{}).Select("COALESCE(MAX(updated_at), 0) AS verified_at").Where("channel_id = ? AND model = ? AND kind = ? AND status = ? AND credential_fingerprint = ?", ch.Id, name, "asset", "Active", tokenHubCredentialFingerprint(credentials)).Scan(&evidence).Error; err == nil && evidence.VerifiedAt > 0 {
+					entry["live_acceptance"] = "ordinary_asset_lifecycle_observed"
+					entry["material_verified_at"] = evidence.VerifiedAt
+				}
+			}
+		}
 		if isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(name) {
 			if credentials, err := loadBeeNexAssetCredentials(ch.Id); err == nil {
 				entry["project_scope"] = credentials.ProjectMode

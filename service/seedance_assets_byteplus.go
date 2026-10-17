@@ -207,7 +207,15 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 				if err := seedanceDB().Model(asset).Update("status", "Submitting").Error; err != nil {
 					return nil, err
 				}
-				envelope, err := seedanceActionRequest(ctx, asset, "CreateAsset", map[string]any{"GroupId": group.UpstreamID, "URL": asset.SourceURL, "AssetType": asset.AssetType, "Name": asset.ID})
+				native := map[string]any{"GroupId": group.UpstreamID, "URL": asset.SourceURL, "AssetType": asset.AssetType, "Name": asset.ID}
+				if policy, ok := fields["Moderation"]; ok {
+					ch, err := model.GetChannelById(asset.ChannelID, true)
+					if err != nil || !isTokenHubSeedanceChannel(ch) {
+						return nil, seedanceError(400, "Moderation is unsupported by this material route")
+					}
+					native["Moderation"] = policy
+				}
+				envelope, err := seedanceActionRequest(ctx, asset, "CreateAsset", native)
 				if err != nil {
 					return nil, err
 				}
@@ -215,7 +223,14 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 				if upstream == "" {
 					return nil, seedanceError(502, "Invalid media import response")
 				}
-				if err = seedanceDB().Model(asset).Updates(map[string]any{"upstream_id": upstream, "status": "Processing"}).Error; err != nil {
+				if policy, ok := fields["Moderation"]; ok {
+					moderation, err := ParseSeedanceModeration(policy)
+					if err != nil {
+						return nil, err
+					}
+					asset.RequestData = seedanceModerationData(moderation, true)
+				}
+				if err = seedanceDB().Model(asset).Updates(map[string]any{"upstream_id": upstream, "status": "Processing", "request_data": asset.RequestData}).Error; err != nil {
 					return nil, err
 				}
 			}

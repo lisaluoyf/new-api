@@ -22,6 +22,24 @@ func SeedanceExplicitRateRejection(status int, body []byte) bool {
 	text := strings.ToLower(gjson.GetBytes(body, "error").String() + " " + gjson.GetBytes(body, "message").String())
 	return strings.Contains(text, "rate") || strings.Contains(text, "too many") || strings.Contains(text, "flow control") || strings.Contains(text, "throttl")
 }
+
+// A structured parameter rejection without any task identity confirms that
+// submission was rejected. HTTP 400 alone, malformed bodies and transport
+// failures remain uncertain.
+func SeedanceExplicitSubmissionRejection(status int, body []byte) bool {
+	if SeedanceExplicitRateRejection(status, body) {
+		return true
+	}
+	if status != 400 || !gjson.ValidBytes(body) || gjson.GetBytes(body, "error.code").String() != "InvalidParameter" {
+		return false
+	}
+	for _, path := range []string{"task_id", "id", "data.task_id", "data.id", "Result.Id", "task.id", "upstream_task_id"} {
+		if gjson.GetBytes(body, path).Exists() {
+			return false
+		}
+	}
+	return strings.TrimSpace(gjson.GetBytes(body, "error.message").String()) != ""
+}
 func ResetRejectedUnifiedSubmission(c *gin.Context, channel int) error {
 	record := VideoSubmissionFromContext(c)
 	if record == nil {

@@ -294,7 +294,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			logger.LogWarn(c.Request.Context(), fmt.Sprintf("task upstream request failed with status %d: %.2048s", resp.StatusCode, string(responseBody)))
 		}
 		_ = resp.Body.Close()
-		c.Set("seedance_confirmed_not_accepted", service.SeedanceExplicitRateRejection(resp.StatusCode, responseBody))
+		c.Set("seedance_confirmed_not_accepted", service.SeedanceExplicitSubmissionRejection(resp.StatusCode, responseBody))
 		return nil, service.PublicVideoSubmitError(resp.StatusCode, responseBody, common.GetContextKeyString(c, constant.ContextKeyChannelKey), info.ChannelId)
 	}
 
