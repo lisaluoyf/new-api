@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"net/http"
 	"testing"
 
@@ -25,7 +26,6 @@ func TestModelRequestFailureRequiresIndependentProbe(t *testing.T) {
 		{"context overflow", "maximum context length exceeded", "context_length_exceeded", 400, CategorySkip},
 		{"quoted diagnosis", "Invalid parameter: 模型请求失败，请稍后重试或更换模型。", "", 400, CategorySkip},
 		{"different status", "模型请求失败，请稍后重试或更换模型。", "", 422, CategorySkip},
-		{"user quota takes precedence", "模型请求失败，请稍后重试或更换模型。", string(types.ErrorCodeInsufficientUserQuota), 400, CategorySkip},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := types.WithOpenAIError(types.OpenAIError{Message: tc.message, Type: "invalid_request_error", Code: tc.code}, tc.status)
@@ -42,6 +42,14 @@ func TestModelRequestFailureRequiresIndependentProbe(t *testing.T) {
 				require.Equal(t, HealthSkip, action)
 			}
 		})
+	}
+	// Local APIMaster quota failures remain excluded. Upstream quota codes are
+	// deliberately distinct from local quota failures in the current classifier.
+	for _, code := range []types.ErrorCode{types.ErrorCodeInsufficientUserQuota, types.ErrorCodePreConsumeTokenQuotaFailed} {
+		err := types.NewErrorWithStatusCode(errors.New("模型请求失败，请稍后重试或更换模型。"), code, http.StatusBadRequest)
+		require.Equal(t, CategorySkip, ClassifyChannelError(err))
+		action, _ := EvaluateChannelHealth(types.ChannelError{ChannelId: 216, AutoBan: true}, err)
+		require.Equal(t, HealthSkip, action)
 	}
 	common.AutomaticDisableChannelEnabled = false
 	err := types.WithOpenAIError(types.OpenAIError{Message: "模型请求失败，请稍后重试或更换模型。", Type: "invalid_request_error"}, http.StatusBadRequest)
