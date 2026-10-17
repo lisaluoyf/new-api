@@ -18,7 +18,7 @@ import (
 	"github.com/samber/hot"
 )
 
-const channelRoutingCacheNamespace = "new-api:channel_routing:v1"
+const channelRoutingCacheNamespace = "new-api:channel_routing:v2"
 const channelRoutingCacheTTL = 10 * time.Second
 
 var (
@@ -324,10 +324,9 @@ func selectPricedChannelIDFromDBScoped(modelName string, bannedIDs []int, ascend
 		// target can be resolved in Go without database-specific JSON operators.
 		// applyPricedCandidateRow filters unrelated model rows below.
 		Joins(pricingJoin).
-		Joins("LEFT JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND "+abilityGroupCol+" = 'default'", modelName).
+		Joins("JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND "+abilityGroupCol+" = ? AND a.enabled = ?", modelName, AutoCheapestGroup, true).
 		Where("c.status = 1").
-		Where(modelsMatchClause, modelsMatchArgs...).
-		Where("COALESCE(a.enabled, true) = true")
+		Where(modelsMatchClause, modelsMatchArgs...)
 
 	if len(bannedIDs) > 0 {
 		q = q.Where("c.id NOT IN ?", bannedIDs)

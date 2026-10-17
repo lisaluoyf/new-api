@@ -14,16 +14,19 @@ import (
 
 func TestModelNotFoundDisableProbeProtectsChannelModels(t *testing.T) {
 	for _, tc := range []struct {
-		name        string
-		model       string
-		probeOK     bool
-		wantProbes  int
-		wantDisable bool
+		name          string
+		model         string
+		probeOK       bool
+		wantProbes    int
+		wantDisable   bool
+		requestFailed bool
 	}{
-		{"probe passes", "gpt-6-astra", true, 1, false},
-		{"probe confirms failure", "gpt-6-astra", false, 1, true},
-		{"user misspells model", "gpt-6-atsra", false, 0, false},
-		{"empty model", "", false, 0, false},
+		{"probe passes", "gpt-6-astra", true, 1, false, false},
+		{"probe confirms failure", "gpt-6-astra", false, 1, true, false},
+		{"user misspells model", "gpt-6-atsra", false, 0, false, false},
+		{"empty model", "", false, 0, false, false},
+		{"model request failure probe passes", "gpt-6-astra", true, 1, false, true},
+		{"model request failure probe confirms failure", "gpt-6-astra", false, 1, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := setupModelDataToggleTestDB(t)
@@ -59,6 +62,11 @@ func TestModelNotFoundDisableProbeProtectsChannelModels(t *testing.T) {
 			err := types.WithOpenAIError(types.OpenAIError{
 				Message: "Model is not supported by any configured account in this group", Type: "model_not_found",
 			}, http.StatusNotFound)
+			if tc.requestFailed {
+				err = types.WithOpenAIError(types.OpenAIError{
+					Message: "模型请求失败，请稍后重试或更换模型。", Type: "invalid_request_error",
+				}, http.StatusBadRequest)
+			}
 			probeBeforeDisablingChannel(types.ChannelError{ChannelId: channel.Id, ChannelName: channel.Name, AutoBan: true}, err, err.ErrorWithStatusCode(), tc.model)
 			require.Equal(t, tc.wantProbes, probeCount)
 			if probeCount > 0 {

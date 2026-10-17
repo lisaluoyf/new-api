@@ -22,7 +22,7 @@ func TestClassifyChannelErrorStructuredRateLimit(t *testing.T) {
 		{"unrelated 429", "Try again later", "upstream_error", "other", "", 429, CategorySkip},
 		{"parameter mention", "Try again later", "upstream_error", "other", `{"param":"rate_limit_error","metadata":{"code":"luna_rpm_exceeded"}}`, 429, CategorySkip},
 		{"non 429", "Try again later", "rate_limit_error", "luna_rpm_exceeded", "", 400, CategorySkip},
-		{"user quota priority", "用户额度不足", "rate_limit_error", "luna_rpm_exceeded", "", 429, CategorySkip},
+		{"upstream quota is not local quota", "用户额度不足", "rate_limit_error", "luna_rpm_exceeded", "", 429, CategoryUpstreamRecharge},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := types.WithOpenAIError(types.OpenAIError{Message: tc.message, Type: tc.errorType, Code: tc.code}, tc.status)

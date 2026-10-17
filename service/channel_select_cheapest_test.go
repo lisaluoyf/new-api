@@ -177,6 +177,8 @@ func TestFreeModelRoutePriceDoesNotAffectOrdinaryCheapestSelection(t *testing.T)
 	}
 	require.NoError(t, db.Create(&freeChannel).Error)
 	require.NoError(t, db.Create(&ordinaryChannel).Error)
+	require.NoError(t, freeChannel.AddAbilities(nil))
+	require.NoError(t, ordinaryChannel.AddAbilities(nil))
 	require.NoError(t, db.Create(&[]model.ChannelModelPricing{
 		{ChannelId: freeChannel.Id, ModelName: FreeModelID, InputPrice: 0.0001, GroupRatio: 1, PricingSource: "free_model"},
 		{ChannelId: freeChannel.Id, ModelName: "provider/real-free", InputPrice: 1, GroupRatio: 1, PricingSource: "api"},
@@ -222,6 +224,8 @@ func TestGeminiOnlyCheapestSelectionAndRetry(t *testing.T) {
 	generic := model.Channel{Name: "generic", Key: "test", Models: name, Status: 1, Group: AutoCheapestGroup}
 	require.NoError(t, db.Create(&exclusive).Error)
 	require.NoError(t, db.Create(&generic).Error)
+	require.NoError(t, exclusive.AddAbilities(nil))
+	require.NoError(t, generic.AddAbilities(nil))
 	require.NoError(t, db.Create(&[]model.ChannelModelPricing{
 		{ChannelId: exclusive.Id, ModelName: name, InputPrice: 0.1, GroupRatio: 1, PricingSource: "api"},
 		{ChannelId: generic.Id, ModelName: name, InputPrice: 1, GroupRatio: 1, PricingSource: "api"},

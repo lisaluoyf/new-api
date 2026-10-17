@@ -3,8 +3,12 @@ package dto
 import "fmt"
 
 type ChannelSettings struct {
-	// NativeAnthropicOnly excludes converted requests from upstreams requiring native Messages input.
+	// NativeAnthropicOnly is the legacy channel-wide tool-history restriction.
+	// New configuration should use AnthropicToolHistoryModels.
 	NativeAnthropicOnly bool `json:"native_anthropic_only,omitempty"`
+	// AnthropicToolHistoryModels lists models rejecting OpenAI-style tool IDs.
+	// It constrains request history, not the client's API endpoint.
+	AnthropicToolHistoryModels []string `json:"anthropic_tool_history_models,omitempty"`
 	// BeeNexQueryProtocols selects a documented read-only task API per public model.
 	BeeNexQueryProtocols map[string]string `json:"beenex_query_protocols,omitempty"`
 	// ImageResolutionModelMapping selects an upstream model by client model and resolution.
