@@ -54,7 +54,13 @@ func ResolveTokenBillingExpression(channelID int, modelName string, procurement 
 			return snap, nil
 		}
 	}
-	if row != nil && row.BillingMode == "tiered_expr" && strings.TrimSpace(row.BillingExpr) != "" {
+	// Customer Grok tiers follow the official prompt boundary even when a
+	// supplier publishes a flat/legacy schedule. Keep that supplier schedule
+	// for procurement, and preserve the selected channel's base retail prices.
+	_, isGrok := billing_setting.GrokOfficialBillingExpr(modelName)
+	_, hasGlobalSchedule := GlobalTokenBillingExpression(modelName)
+	useGlobalGrokRetail := !procurement && isGrok && hasGlobalSchedule
+	if !useGlobalGrokRetail && row != nil && row.BillingMode == "tiered_expr" && strings.TrimSpace(row.BillingExpr) != "" {
 		// Check token identifiers before compiling: expressions for images/video
 		// may use a different upstream dialect (e.g. fixed()).
 		if IsTokenBillingExpression(row.BillingExpr) {

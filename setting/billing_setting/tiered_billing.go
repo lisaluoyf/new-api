@@ -2,6 +2,7 @@ package billing_setting
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/setting/config"
@@ -14,6 +15,17 @@ const (
 	BillingModeField      = "billing_mode"
 	BillingExprField      = "billing_expr"
 )
+
+var defaultBillingMode = map[string]string{
+	"grok-4.5": BillingModeTieredExpr,
+	"grok-4.6": BillingModeTieredExpr,
+	"grok-4.7": BillingModeTieredExpr,
+}
+var defaultBillingExpr = map[string]string{
+	"grok-4.5": Grok45BillingExpr,
+	"grok-4.6": Grok46BillingExpr,
+	"grok-4.7": Grok47BillingExpr,
+}
 
 // BillingSetting is managed by config.GlobalConfig.Register.
 // DB keys: billing_setting.billing_mode, billing_setting.billing_expr
@@ -39,20 +51,35 @@ func GetBillingMode(model string) string {
 	if mode, ok := billingSetting.BillingMode[model]; ok {
 		return mode
 	}
+	if _, ok := GrokOfficialBillingExpr(model); ok {
+		canonical := strings.TrimPrefix(strings.TrimSpace(model), "x-ai/")
+		if mode, exists := billingSetting.BillingMode[canonical]; exists {
+			return mode
+		}
+		return BillingModeTieredExpr
+	}
 	return BillingModeRatio
 }
 
 func GetBillingExpr(model string) (string, bool) {
-	expr, ok := billingSetting.BillingExpr[model]
-	return expr, ok
+	if expr, ok := billingSetting.BillingExpr[model]; ok {
+		return expr, true
+	}
+	if _, ok := GrokOfficialBillingExpr(model); ok {
+		canonical := strings.TrimPrefix(strings.TrimSpace(model), "x-ai/")
+		if expr, exists := billingSetting.BillingExpr[canonical]; exists {
+			return expr, true
+		}
+	}
+	return GrokOfficialBillingExpr(model)
 }
 
 func GetBillingModeCopy() map[string]string {
-	return lo.Assign(billingSetting.BillingMode)
+	return lo.Assign(defaultBillingMode, billingSetting.BillingMode)
 }
 
 func GetBillingExprCopy() map[string]string {
-	return lo.Assign(billingSetting.BillingExpr)
+	return lo.Assign(defaultBillingExpr, billingSetting.BillingExpr)
 }
 
 func GetPricingSyncData(base map[string]any) map[string]any {

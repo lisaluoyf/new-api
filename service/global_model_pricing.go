@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
@@ -64,9 +65,15 @@ func GlobalVideoMediaPricingUSD(canonical string) (VideoMediaPricingUSD, bool) {
 }
 
 // GlobalModelPricingUSDAt is the time-aware form used by tests and request
-// snapshots. DeepSeek V4 has an official peak/off-peak schedule; all other
-// models continue to resolve from the operator's static global settings.
+// snapshots. DeepSeek V4 has an official peak/off-peak schedule; Grok uses
+// its official short-context base. Other models use static global settings.
 func GlobalModelPricingUSDAt(canonical string, at time.Time) (input, output, cache, cacheCreation float64, ok bool) {
+	// Grok scales use the official short-context base, including its model-specific
+	// cache price; stale flat ratios must not change the tier coefficients.
+	if i, o, cr, cc, found := billing_setting.GrokOfficialBasePrices(canonical); found {
+		return i, o, cr, cc, true
+	}
+
 	if strings.EqualFold(canonical, "wan3.0-video-prime") {
 		base, found := ratio_setting.GetVideoModelBasePrice(canonical)
 		return base, 0, 0, 0, found

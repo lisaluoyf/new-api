@@ -1,0 +1,73 @@
+name: Grok official billing checks
+on:
+  push:
+    branches: ['feature/grok-official-tiers-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  billing:
+    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+          cache-dependency-path: ./go.sum
+      - name: Prepare embedded frontend fixtures
+        run: |
+          mkdir -p web/default/dist web/classic/dist
+          printf '%s\n' '<!doctype html><html><body>billing test fixture</body></html>' > web/default/dist/index.html
+          cp web/default/dist/index.html web/classic/dist/index.html
+      - name: Grok boundary, cache, wallet, token and accounting tests
+        run: go test -p 2 -count=1 -v ./setting/billing_setting ./service ./relay/helper -run 'TestGrok' > grok-targeted.log 2>&1
+      - name: Full Go regression
+        id: regression
+        continue-on-error: true
+        run: go test -p 2 -count=1 ./... > grok-regression.log 2>&1
+      - name: Race checks for changed billing paths
+        run: go test -race -p 2 -count=1 ./setting/billing_setting ./service ./relay/helper -run 'TestGrok' > grok-race.log 2>&1
+      - name: Vet billing packages
+        run: go vet ./setting/billing_setting ./service ./relay/helper
+      - name: Reproduce any full-suite failures on the unchanged baseline
+        if: steps.regression.outcome == 'failure'
+        env:
+          GROK_BASELINE_SHA: e1ac68f96331387661dcf931c8a5f1df51092ee8
+        run: |
+          git fetch --no-tags --depth=1 origin "$GROK_BASELINE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/grok-baseline" "$GROK_BASELINE_SHA"
+          baseline_dir="$RUNNER_TEMP/grok-baseline/."
+          mkdir -p "$baseline_dir/web/default/dist" "$baseline_dir/web/classic/dist"
+          cp web/default/dist/index.html "$baseline_dir/web/default/dist/index.html"
+          cp web/classic/dist/index.html "$baseline_dir/web/classic/dist/index.html"
+          set +e
+          (cd "$baseline_dir" && go test -p 2 -count=1 ./...) > grok-baseline.log 2>&1
+          baseline_status=$?
+          set -e
+          if [ "$baseline_status" -eq 0 ]; then
+            echo "Baseline passes but this branch fails" >&2
+            exit 1
+          fi
+          python3 - <<'PYCODE'
+          import re
+          from pathlib import Path
+          def failures(path):
+              text = Path(path).read_text()
+              tests = set(re.findall(r'^\s*--- FAIL: ([^ ]+)', text, re.M))
+              packages = set(re.findall(r'^FAIL\s+(\S+)', text, re.M))
+              return tests, packages
+          changed = failures('grok-regression.log')
+          baseline = failures('grok-baseline.log')
+          assert changed[0] and changed == baseline, (changed, baseline)
+          print('Full-suite failures match the unchanged baseline:', sorted(changed[0]))
+          PYCODE
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grok-billing-results
+          path: './*.log'
