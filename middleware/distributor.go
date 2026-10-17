@@ -564,6 +564,9 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	if channel == nil {
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
+	if policyErr := service.ValidateChannelClientPolicy(c, channel, modelName); policyErr != nil {
+		return types.NewErrorWithStatusCode(policyErr, types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+	}
 	common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
 	service.RecordImageRoutingSelected(c, channel.Id)
 	common.SetContextKey(c, constant.ContextKeyChannelName, channel.Name)

@@ -885,6 +885,11 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 
+	if err := channel.Channel.PreserveAnthropicRoutingSettings(originChannel); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
 	// OtherInfo contains server-managed routing state (for example per-model
