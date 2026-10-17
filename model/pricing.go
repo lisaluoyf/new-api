@@ -308,7 +308,7 @@ func updatePricing() {
 		}
 		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)
 		veoBase := modelPrice
-		if model == "veo-3.1-generate-preview" || model == "veo-3.1-fast-generate-preview" {
+		if model == "veo-3.1-generate-preview" || model == "veo-3.1-fast-generate-preview" || model == "veo-3.1-lite-generate-preview" {
 			if price, ok := ratio_setting.GetVideoModelBasePrice(model); ok {
 				veoBase = price
 			}

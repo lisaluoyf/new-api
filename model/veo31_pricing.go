@@ -9,12 +9,15 @@ import (
 // applyVeo31Pricing exposes the same per-second resolution/audio ratios used by
 // task billing, scaled to this site's configured retail base price.
 func applyVeo31Pricing(pricing *Pricing, name string, base float64) bool {
-	if name != "veo-3.1-generate-preview" && name != "veo-3.1-fast-generate-preview" {
+	if name != "veo-3.1-generate-preview" && name != "veo-3.1-fast-generate-preview" && name != "veo-3.1-lite-generate-preview" {
 		return false
 	}
 	tiers := map[string]float64{"720P": .4, "1080P": .4, "4K": .6, "720P-silent": .2, "1080P-silent": .2, "4K-silent": .4}
 	if name == "veo-3.1-fast-generate-preview" {
 		tiers = map[string]float64{"720P": .1, "1080P": .12, "4K": .3, "720P-silent": .08, "1080P-silent": .1, "4K-silent": .25}
+	}
+	if name == "veo-3.1-lite-generate-preview" {
+		tiers = map[string]float64{"720P": .05, "1080P": .08}
 	}
 	common.OptionMapRWMutex.RLock()
 	raw := common.OptionMap["VideoModelPricing"]

@@ -25,6 +25,7 @@ import (
 
 const Standard = "veo-3.1-generate-preview"
 const Fast = "veo-3.1-fast-generate-preview"
+const Lite = "veo-3.1-lite-generate-preview"
 const Platform constant.TaskPlatform = "apimart-veo"
 
 type TaskAdaptor struct {
@@ -32,7 +33,7 @@ type TaskAdaptor struct {
 	baseURL, apiKey string
 }
 
-func IsModel(name string) bool { return name == Standard || name == Fast }
+func IsModel(name string) bool { return name == Standard || name == Fast || name == Lite }
 func IsChannel(base string) bool {
 	u, err := url.Parse(base)
 	return err == nil && (strings.EqualFold(u.Hostname(), "api.apimart.ai") || strings.EqualFold(u.Hostname(), "api.apib.ai"))
@@ -47,6 +48,9 @@ func OfficialPrice(name, resolution string, audio bool) float64 {
 	prices := map[string]float64{"720p": .4, "1080p": .4, "4k": .6, "720p-silent": .2, "1080p-silent": .2, "4k-silent": .4}
 	if name == Fast {
 		prices = map[string]float64{"720p": .1, "1080p": .12, "4k": .3, "720p-silent": .08, "1080p-silent": .1, "4k-silent": .25}
+	}
+	if name == Lite {
+		prices = map[string]float64{"720p": .05, "1080p": .08}
 	}
 	key := strings.ToLower(resolution)
 	if !audio {
@@ -100,6 +104,12 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if name == Fast {
 		want = "veo3.1-fast"
 	}
+	if name == Lite {
+		want = "veo3.1-lite"
+		if upstream != want && upstream != want+"-ext" {
+			return fail(fmt.Errorf("Lite requires an Ext Lite model mapping"))
+		}
+	}
 	official := upstream == want+"-official"
 	if !official && upstream != want && upstream != want+"-ext" {
 		return fail(fmt.Errorf("Veo channel model mapping is not configured"))
@@ -126,6 +136,18 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	} else if fields["metadata"] != nil {
 		return fail(fmt.Errorf("metadata must be an object"))
 	}
+	// APIMart Lite exposes text generation only. Keep the public Google Lite
+	// capabilities and reject unsupported requests before reserving quota.
+	if name == Lite {
+		if info.Action == constant.TaskActionRemix {
+			return fail(fmt.Errorf("Lite does not support video extension"))
+		}
+		for _, key := range []string{"image_urls", "input_reference", "first_frame_image", "last_frame_image", "generation_type", "negative_prompt", "seed", "person_generation", "resize_mode", "enhance_prompt"} {
+			if _, exists := fields[key]; exists {
+				return fail(fmt.Errorf("Lite does not support %s", key))
+			}
+		}
+	}
 	prompt, ok := fields["prompt"].(string)
 	if !ok || strings.TrimSpace(prompt) == "" {
 		return fail(fmt.Errorf("prompt is required"))
@@ -150,6 +172,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	}
 	if seconds != 4 && seconds != 6 && seconds != 8 {
 		return fail(fmt.Errorf("Veo duration must be 4, 6 or 8 seconds"))
+	}
+	if name == Lite && seconds != 8 {
+		return fail(fmt.Errorf("Lite requires 8 seconds on this route"))
 	}
 	if !official && seconds != 8 {
 		return capability("this duration requires the official Veo channel")
@@ -217,6 +242,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if resolution != "720p" && resolution != "1080p" && resolution != "4k" {
 		return fail(fmt.Errorf("resolution must be 720p, 1080p or 4k"))
 	}
+	if name == Lite && resolution == "4k" {
+		return fail(fmt.Errorf("Google Veo 3.1 Lite does not support 4k output"))
+	}
 	if resolution != "720p" && seconds != 8 {
 		return fail(fmt.Errorf("1080p and 4k require 8 seconds"))
 	}
@@ -227,6 +255,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		if !valid {
 			return fail(fmt.Errorf("generate_audio must be boolean"))
 		}
+	}
+	if name == Lite && !audio {
+		return fail(fmt.Errorf("Lite requires audio generation"))
 	}
 	if !official && !audio {
 		return capability("silent generation requires the official Veo channel")
@@ -515,5 +546,5 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	}
 	return common.Marshal(out)
 }
-func (a *TaskAdaptor) GetModelList() []string { return []string{Standard, Fast} }
+func (a *TaskAdaptor) GetModelList() []string { return []string{Standard, Fast, Lite} }
 func (a *TaskAdaptor) GetChannelName() string { return "APIMart Veo 3.1" }
