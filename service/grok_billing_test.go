@@ -77,7 +77,7 @@ func TestGrokOfficialWalletTokenDebitAndLogs(t *testing.T) {
 					ctx.Set(common.RequestIdKey, "grok-tier-wallet-test")
 					expr, _ := billing_setting.GetBillingExpr(name)
 					snap := &billingexpr.BillingSnapshot{BillingMode: "tiered_expr", ModelName: name, ExprString: expr, ExprHash: billingexpr.ExprHashString(expr), QuotaPerUnit: common.QuotaPerUnit, GroupRatio: .37, EstimatedTier: "short_context"}
-					info := &relaycommon.RelayInfo{RequestId: "grok-tier-wallet-test", UserId: 1, UserQuota: initial, TokenId: 2, TokenKey: "grok-tier-test-key", TokenGroup: "default", UsingGroup: "default", OriginModelName: name, StartTime: time.Now(), ForcePreConsume: true, IsStream: stream, UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 94}, PriceData: types.PriceData{GroupRatioInfo: types.GroupRatioInfo{GroupRatio: .37, FinalUserRatio: .37}}}
+					info := &relaycommon.RelayInfo{RequestId: "grok-tier-wallet-test", UserId: 1, UserQuota: initial, TokenId: 2, TokenKey: "grok-tier-test-key", TokenGroup: "default", UsingGroup: "default", OriginModelName: name, StartTime: time.Now(), ForcePreConsume: true, IsStream: stream, UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 94}, PriceData: types.PriceData{GroupRatioInfo: types.GroupRatioInfo{GroupRatio: .37}}}
 					require.Nil(t, PreConsumeBilling(ctx, 1000, info))
 					info.TieredBillingSnapshot = snap
 					info.WalletTieredBillingSnapshot = snap
