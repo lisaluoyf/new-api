@@ -120,7 +120,7 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 	}
 	// Confirm advertised model failures with an independent probe before
 	// removing the model from this channel's routing abilities.
-	if code == types.ErrorCodeModelNotFound || isUpstreamModelUnavailableError(err) {
+	if code == types.ErrorCodeModelNotFound || isUpstreamModelUnavailableError(err) || isUpstreamModelRequestFailedError(err) {
 		return CategoryProbeBeforeDisable
 	}
 
@@ -277,6 +277,16 @@ func isModelAccessForbiddenError(err *types.NewAPIError) bool {
 		}
 	}
 	return false
+}
+
+// Some relays disguise a model execution failure as invalid_request_error/400.
+// Match only the known diagnosis; ordinary client validation errors stay excluded.
+func isUpstreamModelRequestFailedError(err *types.NewAPIError) bool {
+	if err == nil || err.StatusCode != 400 || err.GetErrorType() != types.ErrorTypeOpenAIError {
+		return false
+	}
+	message := strings.TrimSuffix(strings.TrimSpace(err.Error()), "。")
+	return message == "模型请求失败，请稍后重试或更换模型"
 }
 
 func isUpstreamModelUnavailableError(err *types.NewAPIError) bool {
