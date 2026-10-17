@@ -3229,6 +3229,14 @@ export function ChannelMutateDrawer({
                             <FormItem>
                               <FormLabel>{t('Channel category')}</FormLabel>
                               <Select
+                                items={[
+                                  { value: 'default', label: t('Default') },
+                                  {
+                                    value: 'cloud',
+                                    label: t('Cloud provider'),
+                                  },
+                                  { value: 'official', label: t('Official') },
+                                ]}
                                 value={field.value || 'default'}
                                 onValueChange={(value) =>
                                   field.onChange(
