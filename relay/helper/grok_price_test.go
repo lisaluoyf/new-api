@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -15,15 +16,18 @@ import (
 )
 
 func TestGrokOfficialPrechargeThenActualTier(t *testing.T) {
+	savedGroups := ratio_setting.GroupRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"grok-tier-test":1}`))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroups)) })
 	oldDB := model.DB
 	model.DB = nil
 	t.Cleanup(func() { model.DB = oldDB })
 	for _, name := range []string{"grok-4.5", "grok-4.6", "grok-4.7"} {
 		for _, prompt := range []int{199999, 200000, 200001} {
 			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-			ctx.Set("group", "default")
+			ctx.Set("group", "grok-tier-test")
 			ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
-			info := &relaycommon.RelayInfo{OriginModelName: name, UserGroup: "default", UsingGroup: "default", BillingRequestInput: &billingexpr.RequestInput{Body: []byte(`{"model":"` + name + `"}`)}}
+			info := &relaycommon.RelayInfo{OriginModelName: name, UserGroup: "grok-tier-test", UsingGroup: "grok-tier-test", BillingRequestInput: &billingexpr.RequestInput{Body: []byte(`{"model":"` + name + `"}`)}}
 			price, err := ModelPriceHelper(ctx, info, prompt, &types.TokenCountMeta{MaxTokens: 1000})
 			require.NoError(t, err)
 			require.NotNil(t, info.TieredBillingSnapshot)

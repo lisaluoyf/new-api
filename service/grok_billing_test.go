@@ -72,6 +72,7 @@ func TestGrokOfficialWalletTokenDebitAndLogs(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, bootstrapDB.Close())
 	model.DB, common.SQLitePath, common.IsMasterNode = oldDB, oldPath, oldMaster
+	require.NoError(t, model.DB.AutoMigrate(&model.ChannelModelPricing{}))
 
 	for _, name := range []string{"grok-4.5", "grok-4.6", "grok-4.7"} {
 		for _, prompt := range []int{199999, 200000, 200001} {
@@ -82,7 +83,14 @@ func TestGrokOfficialWalletTokenDebitAndLogs(t *testing.T) {
 						const initial = 10000000
 						seedUser(t, 1, initial)
 						seedToken(t, 2, 1, "grok-tier-test-key", initial)
-						require.NoError(t, model.DB.Create(&model.Channel{Id: 94, Name: "grok-tier-test"}).Error)
+						one := 1.0
+						require.NoError(t, model.DB.Create(&model.Channel{Id: 94, Name: "grok-tier-test", RechargeRate: &one, ApimasterPriceRatio: &one}).Error)
+						cacheBase := .5
+						if name == "grok-4.5" {
+							cacheBase = .3
+						}
+						require.NoError(t, model.DB.Create(&model.ChannelModelPricing{ChannelId: 94, ModelName: name, InputPrice: 2, OutputPrice: 6, CachePrice: cacheBase, GroupRatio: 1}).Error)
+						t.Cleanup(func() { model.DB.Where("channel_id = ?", 94).Delete(&model.ChannelModelPricing{}) })
 						ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 						ctx.Set("token_quota", initial)
 						ctx.Set("token_name", "grok-tier-test")
@@ -118,7 +126,7 @@ func TestGrokOfficialWalletTokenDebitAndLogs(t *testing.T) {
 						require.Equal(t, initial-want, token.RemainQuota)
 						require.NoError(t, model.LOG_DB.Where("request_id = ?", info.RequestId).Order("id desc").First(&log).Error)
 						require.Equal(t, want, log.Quota)
-						require.InDelta(t, float64(want)/common.QuotaPerUnit, log.AccountingUserFinalAmountUSD, 1e-9)
+						require.InDelta(t, float64(want)/common.QuotaPerUnit, log.AccountingUserFinalAmountUSD, 1e-9, log.AccountingSnapshot)
 						require.Contains(t, log.Other, `"billing_mode":"tiered_expr"`)
 						tier := "short_context"
 						if prompt >= 200000 {

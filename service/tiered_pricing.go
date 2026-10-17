@@ -54,6 +54,9 @@ func ResolveTokenBillingExpression(channelID int, modelName string, procurement 
 			return snap, nil
 		}
 	}
+	// Customer Grok tiers follow the official prompt boundary even when a
+	// supplier publishes a flat/legacy schedule. Keep that supplier schedule
+	// for procurement, and preserve the selected channel's base retail prices.
 	_, isGrok := billing_setting.GrokOfficialBillingExpr(modelName)
 	_, hasGlobalSchedule := GlobalTokenBillingExpression(modelName)
 	useGlobalGrokRetail := !procurement && isGrok && hasGlobalSchedule
