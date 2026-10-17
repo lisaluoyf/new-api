@@ -99,6 +99,9 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 	}
 	var moderation *SeedanceModeration
 	if isTokenHubSeedanceChannel(ch) {
+		// Automatic TokenHub ingestion defaults to Skip; explicit policies still
+		// pass the same validation as client-supplied moderation.
+		moderation = &SeedanceModeration{Strategy: "Skip"}
 		if value, exists := fields["Moderation"]; exists {
 			moderation, err = ParseSeedanceModeration(value)
 			if err != nil {
