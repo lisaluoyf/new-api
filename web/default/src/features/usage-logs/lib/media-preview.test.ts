@@ -166,6 +166,7 @@ test('Veo logs use authenticated video previews and hide failed outputs', () => 
   for (const model of [
     'veo-3.1-generate-preview',
     'veo-3.1-fast-generate-preview',
+    'veo-3.1-lite-generate-preview',
   ]) {
     const log = { type: 2, model_name: model } as never
     assert.equal(isLogMediaVideoModel(model), true)
