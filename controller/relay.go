@@ -323,7 +323,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if service.IsFreeModel(relayInfo.OriginModelName) {
 		maxRetries = service.GetFreeModelSettings().MaxAttempts - 1
 	}
+	// Response headers can change IsStream for an individual upstream attempt.
+	// Never carry that inferred format into the next channel's request/decoder.
+	clientRequestedStream := relayInfo.IsStream
 	for ; retryParam.GetRetry() <= maxRetries; retryParam.IncreaseRetry() {
+		relayInfo.IsStream = clientRequestedStream
 		c.Set(helper.ContextKeyStreamOutputDiagnostics, nil)
 		c.Set("channel_health_attempt_started_at", time.Time{})
 		c.Set("channel_health_attempt_finished_at", time.Time{})
