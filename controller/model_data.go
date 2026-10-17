@@ -591,6 +591,7 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 		if mediaPricing == nil {
 			mediaPricing = buildVideoMediaPricingView(modelName, mediaGroupRatio, rechargeRate, apimasterRatio)
 		}
+		filterVeoMediaPricingForRoute(mediaPricing, modelName, r.ModelMapping)
 		if mediaPricing != nil {
 			baseVariant := mediaPricing.BaseVariant
 			billingBase := mediaPricing.BillingPrices[baseVariant]
@@ -777,6 +778,29 @@ func getModelDataItems(ctx context.Context, modelName string) ([]ModelDataItem, 
 
 func modelDataExtractKeyGroup(setting *string) string {
 	return service.ExtractKeyGroup(setting)
+}
+
+// APIMart Ext always generates audio. Do not advertise silent tariffs on
+// those routes even though the shared Google model supports them via Official.
+func filterVeoMediaPricingForRoute(view *VideoMediaPricingView, modelName string, mapping *string) {
+	if view == nil || !service.IsVeo31VideoModel(modelName) || mapping == nil {
+		return
+	}
+	var mapped map[string]string
+	if common.UnmarshalJsonStr(*mapping, &mapped) != nil {
+		return
+	}
+	upstream := mapped[modelName]
+	if !strings.HasPrefix(upstream, "veo3.1-") || strings.HasSuffix(upstream, "-official") {
+		return
+	}
+	for _, prices := range []map[string]float64{view.OfficialPrices, view.ProcurementPrices, view.BillingPrices} {
+		for variant := range prices {
+			if strings.HasSuffix(strings.ToLower(variant), "-silent") {
+				delete(prices, variant)
+			}
+		}
+	}
 }
 
 func buildVideoMediaPricingView(modelName string, groupRatio, rechargeRate, apimasterRatio float64) *VideoMediaPricingView {
@@ -1218,6 +1242,7 @@ func publicMarketplacePriceItem(modelName string, row publicMarketplacePricingRo
 	if mediaPricing == nil {
 		mediaPricing = buildVideoMediaPricingView(modelName, mediaGroupRatio, rechargeRate, apimasterRatio)
 	}
+	filterVeoMediaPricingForRoute(mediaPricing, modelName, row.ModelMapping)
 	var publicMediaPricing *PublicVideoMediaPricingView
 	if mediaPricing != nil {
 		publicMediaPricing = &PublicVideoMediaPricingView{

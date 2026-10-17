@@ -38,7 +38,14 @@ export const MODEL_CATEGORY_FILTERS: Array<{
   { key: 'embeddings', label: 'Text Embeddings' },
 ]
 
-const FOREIGN_MODEL_PREFIXES = ['gpt-', 'claude-', 'gemini-', 'grok-', 'sora-']
+const FOREIGN_MODEL_PREFIXES = [
+  'gpt-',
+  'claude-',
+  'gemini-',
+  'grok-',
+  'sora-',
+  'veo-',
+]
 
 const DOMESTIC_MODEL_PREFIXES = [
   'deepseek-',
@@ -86,6 +93,10 @@ export function modelMatchesCategory(
 }
 
 const NON_LLM_MODEL_IDS = new Set([
+  'veo-3.1-generate-preview',
+  'veo-3.1-fast-generate-preview',
+  'veo-3.1-lite-generate-preview',
+
   'wan3.0-video-prime',
   'text-embedding-3-small',
   'bge-m3',
@@ -113,6 +124,10 @@ const NON_LLM_MODEL_IDS = new Set([
 ])
 
 const VIDEO_MODEL_IDS = new Set([
+  'veo-3.1-generate-preview',
+  'veo-3.1-fast-generate-preview',
+  'veo-3.1-lite-generate-preview',
+
   'wan3.0-video-prime',
   'seedance-2.0',
   'doubao-seedance-2.0',

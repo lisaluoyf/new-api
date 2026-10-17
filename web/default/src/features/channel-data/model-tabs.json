@@ -263,5 +263,20 @@
     "model_id": "wan3.0-video-prime",
     "label": "Wan 3.0 Prime",
     "accent": "#6366f1"
+  },
+  {
+    "model_id": "veo-3.1-generate-preview",
+    "label": "Veo 3.1",
+    "accent": "#4285f4"
+  },
+  {
+    "model_id": "veo-3.1-fast-generate-preview",
+    "label": "Veo 3.1 Fast",
+    "accent": "#4285f4"
+  },
+  {
+    "model_id": "veo-3.1-lite-generate-preview",
+    "label": "Veo 3.1 Lite",
+    "accent": "#4285f4"
   }
 ]

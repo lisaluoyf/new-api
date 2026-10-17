@@ -95,3 +95,16 @@ test('Wan Prime is a domestic video model with per-second prices', () => {
   assert.equal(getPriceUnit('wan3.0-video-prime'), '$/s')
   assert.equal(modelMatchesCategory('wan3.0-video-prime', 'domestic'), true)
 })
+
+test('Veo catalog entries are video models with per-second prices', () => {
+  for (const id of [
+    'veo-3.1-generate-preview',
+    'veo-3.1-fast-generate-preview',
+    'veo-3.1-lite-generate-preview',
+  ]) {
+    assert.equal(MODEL_TABS.filter((tab) => tab.modelId === id).length, 1)
+    assert.equal(getPriceUnit(id), '$/s')
+    assert.equal(isLLMModel(id), false)
+    assert.equal(modelMatchesCategory(id, 'foreign'), true)
+  }
+})
