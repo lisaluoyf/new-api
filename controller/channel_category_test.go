@@ -15,7 +15,9 @@ func TestMarketplaceCategoryVisibilityDoesNotMutateCache(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.User{Id: 81, Username: "category-admin", AffCode: "category-admin", Role: common.RoleAdminUser}).Error)
 	require.NoError(t, model.DB.Create(&model.User{Id: 82, Username: "category-user", AffCode: "category-user", Role: common.RoleCommonUser}).Error)
 	common.OptionMapRWMutex.Lock()
-	if common.OptionMap == nil { common.OptionMap = make(map[string]string) }
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
 	old, exists := common.OptionMap[model.ChannelCategoriesPublicEnabledOption]
 	common.OptionMap[model.ChannelCategoriesPublicEnabledOption] = "false"
 	common.OptionMapRWMutex.Unlock()

@@ -88,7 +88,7 @@ func TestProviderSettingsSavePreservesOtherUserSettings(t *testing.T) {
 	recorder = httptest.NewRecorder()
 	ctx, _ = gin.CreateTestContext(recorder)
 	ctx.Set("id", 1)
-	ctx.Request = httptest.NewRequest(http.MethodPut, "/api/user/provider-settings", strings.NewReader(`{"rules":[{"enabled":true,"model":"provider-catalog-model","mode":"include","channel_ids":[],"channel_categories":["official","cloud"]}]}`))
+	ctx.Request = httptest.NewRequest(http.MethodPut, "/api/user/provider-settings", strings.NewReader(`{"rules":[{"enabled":true,"model":"test-model","mode":"include","channel_ids":[],"channel_categories":["official","cloud"]}]}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 	SaveProviderSettings(ctx)
 	require.Contains(t, recorder.Body.String(), `"success":true`)
