@@ -99,6 +99,9 @@ export interface ImageAvailability {
 }
 
 export interface LogOtherData {
+  error_category?: string
+  error_code?: string
+  status_code?: number
   admin_info?: {
     is_multi_key?: boolean
     multi_key_index?: number

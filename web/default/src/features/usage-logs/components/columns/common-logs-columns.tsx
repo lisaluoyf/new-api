@@ -39,6 +39,7 @@ import { DataTableColumnHeader } from '@/components/data-table'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import type { UsageLog } from '../../data/schema'
 import { getDeepSeekV4TimedPricingDisplay } from '../../lib/deepseek-v4-pricing'
+import { getErrorCategory } from '../../lib/error-category'
 import {
   formatModelName,
   getCodingPlanEffectivePrices,
@@ -1095,6 +1096,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 onClick={() => setDialogOpen(true)}
                 title={t('Click to view full details')}
               >
+                {log.type === 5 && (
+                  <span className='text-muted-foreground shrink-0'>
+                    {t(getErrorCategory(log.content ?? '', other))}:
+                  </span>
+                )}
+
                 {showPricingBreakdown ? (
                   <span className='flex min-w-0 flex-col gap-0.5 leading-snug'>
                     {segments.map((segment) => (
