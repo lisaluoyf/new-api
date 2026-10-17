@@ -24,6 +24,7 @@ import (
 func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 
 	info.InitChannelMeta(c)
+	thinkingObservation := service.BeginClaudeThinkingObservation(c, info)
 
 	claudeReq, ok := info.Request.(*dto.ClaudeRequest)
 
@@ -155,6 +156,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
+		thinkingObservation.Record(c, nil, true)
 		requestBody = common.ReaderOnly(storage)
 	} else {
 		convertedRequest, err := adaptor.ConvertClaudeRequest(c, info, request)
@@ -180,6 +182,8 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 				return newAPIErrorFromParamOverride(err)
 			}
 		}
+
+		thinkingObservation.Record(c, jsonData, false)
 
 		if common.DebugEnabled {
 			println("requestBody: ", string(jsonData))
