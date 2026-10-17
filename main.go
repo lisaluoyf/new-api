@@ -150,6 +150,7 @@ func main() {
 
 	// Billing hold reconcile (HoldRefund timeout release)
 	service.StartBillingHoldReconcileTask()
+	service.StartVideoSubmissionReconcileTask()
 	service.StartTextSettlementTask()
 	service.StartImageTaskRefundWorker()
 	service.StartCancellationObservationTask()

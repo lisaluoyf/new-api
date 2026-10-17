@@ -70,6 +70,14 @@ func GetVideoSubmission(userID int, id string) (*VideoSubmission, error) {
 	if err := DB.Where("id = ? AND user_id = ?", id, userID).First(&record).Error; err != nil {
 		return nil, err
 	}
+	if !record.TaskReady && (record.Status == VideoSubmissionUnknown || record.Status == VideoSubmissionSubmitting || record.Status == VideoSubmissionAccepted) {
+		if err := ReconcileVideoSubmission(userID, id); err != nil {
+			return nil, err
+		}
+		if err := DB.Where("id = ? AND user_id = ?", id, userID).First(&record).Error; err != nil {
+			return nil, err
+		}
+	}
 	now := time.Now().Unix()
 	// A crashed pre-send owner cannot later pass MarkVideoSubmissionSending.
 	// A crashed post-send owner is always uncertain, never queued for resubmission.

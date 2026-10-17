@@ -1,12 +1,14 @@
 package channel_test
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
@@ -65,4 +67,60 @@ func TestDurableVideoSubmissionDoesNotFollowPaidPostRedirects(t *testing.T) {
 			require.False(t, rewind.Load())
 		})
 	}
+}
+
+// Cancel only after the provider has received the one original POST. Both
+// response headers and body must remain readable to save its acceptance ID.
+func TestDurableVideoSubmissionObservesOriginalResponseAfterClientDisconnect(t *testing.T) {
+	service.InitHttpClient()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var posts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posts.Add(1)
+		_, _ = io.Copy(io.Discard, r.Body)
+		cancel()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.(http.Flusher).Flush()
+		time.Sleep(20 * time.Millisecond)
+		_, _ = w.Write([]byte(`{"id":"original-upstream-task"}`))
+	}))
+	defer server.Close()
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/videos", strings.NewReader("{}")).WithContext(ctx)
+	c.Set(service.VideoSubmissionContextKey, &model.VideoSubmission{ID: "protected"})
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: server.URL, ApiKey: "fixture"}, TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_original"}}
+	adapter := &doubao.TaskAdaptor{}
+	adapter.Init(info)
+	resp, err := channel.DoTaskApiRequest(adapter, c, info, strings.NewReader(`{"model":"seedance-2.0"}`))
+	require.NoError(t, err)
+	deadline, bounded := resp.Request.Context().Deadline()
+	require.True(t, bounded)
+	require.Positive(t, time.Until(deadline))
+	require.LessOrEqual(t, time.Until(deadline), 90*time.Second)
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Contains(t, string(raw), "original-upstream-task")
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	require.EqualValues(t, 1, posts.Load())
+	require.Error(t, resp.Request.Context().Err())
+}
+
+func TestDurableVideoSubmissionDoesNotStartAfterClientAlreadyGone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var posts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { posts.Add(1) }))
+	defer server.Close()
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/videos", nil).WithContext(ctx)
+	c.Set(service.VideoSubmissionContextKey, &model.VideoSubmission{ID: "protected"})
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: server.URL}}
+	adapter := &doubao.TaskAdaptor{}
+	adapter.Init(info)
+	_, err := channel.DoTaskApiRequest(adapter, c, info, strings.NewReader("{}"))
+	require.ErrorIs(t, err, context.Canceled)
+	require.Zero(t, posts.Load())
 }

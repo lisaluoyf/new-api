@@ -586,8 +586,22 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
+	requestContext := c.Request.Context()
+	var cancel context.CancelFunc
+	if service.VideoSubmissionFromContext(c) != nil && c.Request.Method == http.MethodPost {
+		// The paid send boundary has already been persisted. A client disconnect
+		// must not discard its acceptance response. Observe this ONE request for
+		// a bounded period; never replay a POST to discover whether it succeeded.
+		if err := requestContext.Err(); err != nil {
+			return nil, err
+		}
+		requestContext, cancel = context.WithTimeout(context.WithoutCancel(requestContext), 90*time.Second)
+	}
+	req, err := http.NewRequestWithContext(requestContext, c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
 	req.GetBody = func() (io.ReadCloser, error) {
@@ -596,11 +610,33 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 
 	err = a.BuildRequestHeader(c, req, info)
 	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
 		return nil, fmt.Errorf("setup request header failed: %w", err)
 	}
 	resp, err := doRequest(c, req, info)
 	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
 		return nil, fmt.Errorf("do request failed: %w", err)
 	}
+	if cancel != nil {
+		// Keep the observation context alive until the adapter consumes the body.
+		resp.Body = &taskSubmissionBody{ReadCloser: resp.Body, cancel: cancel}
+	}
 	return resp, nil
+}
+
+// Closing the response releases the detached observation deadline.
+type taskSubmissionBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *taskSubmissionBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.cancel()
+	return err
 }
