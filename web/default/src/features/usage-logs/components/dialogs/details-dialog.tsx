@@ -52,6 +52,7 @@ import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import type { UsageLog } from '../../data/schema'
 import { getDeepSeekV4TimedPricingDisplay } from '../../lib/deepseek-v4-pricing'
+import { getErrorCategory } from '../../lib/error-category'
 import {
   getCodingPlanEffectivePrices,
   parseLogOther,
@@ -691,6 +692,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
         <ScrollArea className='max-h-[70vh] min-w-0 overflow-hidden pr-2 max-sm:max-h-[calc(100dvh-7rem)] sm:pr-4'>
           <div className='w-full max-w-full min-w-0 space-y-2.5 overflow-hidden py-1 sm:space-y-3'>
             {/* Overview section - key identifiers */}
+            {props.log.type === 5 && (
+              <DetailRow
+                label={t('Error category')}
+                value={t(getErrorCategory(details, other))}
+              />
+            )}
+
             <div className='min-w-0 space-y-1'>
               {props.log.request_id && (
                 <DetailRow

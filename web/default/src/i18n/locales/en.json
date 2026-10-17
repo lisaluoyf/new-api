@@ -5200,5 +5200,15 @@
   "Only detect channels in the top user-price ranks": "Only detect channels in the top user-price ranks",
   "Top channel count": "Top channel count",
   "Ranks all channels of this model by current user price, lowest first, including enabled and disabled channels. Applies to scheduled model detection only. Skipped channels still occupy rank positions.": "Ranks all channels of this model by current user price, lowest first, including enabled and disabled channels. Applies to scheduled model detection only. Skipped channels still occupy rank positions.",
-  "Enter a positive whole number no greater than 2147483647.": "Enter a positive whole number no greater than 2147483647."
+  "Enter a positive whole number no greater than 2147483647.": "Enter a positive whole number no greater than 2147483647.",
+  "Error category": "Error category",
+  "Request parameter error": "Request parameter error",
+  "Account or plan quota limit": "Account or plan quota limit",
+  "Content policy rejection": "Content policy rejection",
+  "Client disconnected": "Client disconnected",
+  "Upstream rate limit": "Upstream rate limit",
+  "Upstream failure": "Upstream failure",
+  "Other error": "Other error",
+  "GPT-6.1 Sol reasoning effort: low, medium (default), high, xhigh, max. none and minimal are unsupported. Use the Responses API for tool calling.": "GPT-6.1 Sol reasoning effort: low, medium (default), high, xhigh, max. none and minimal are unsupported. Use the Responses API for tool calling.",
+  "Official model documentation": "Official model documentation"
 }

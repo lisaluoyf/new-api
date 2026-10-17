@@ -495,6 +495,14 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, content))
 	username := resolveLogUsername(c, userId)
 	requestId := c.GetString(common.RequestIdKey)
+
+	if other == nil {
+		other = make(map[string]interface{})
+	}
+	if _, exists := other["error_category"]; !exists {
+		status, _ := other["status_code"].(int)
+		other["error_category"] = types.RelayErrorCategory(fmt.Sprint(other["error_code"]), content, status)
+	}
 	otherStr := common.MapToJsonStr(other)
 	// 判断是否需要记录 IP
 	needRecordIp := false

@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { getUserModels, getUserGroups } from './api'
 import { PlaygroundChat } from './components/playground-chat'
 import { PlaygroundInput } from './components/playground-input'
@@ -26,6 +27,7 @@ import { createUserMessage, createLoadingAssistantMessage } from './lib'
 import type { Message as MessageType } from './types'
 
 export function Playground() {
+  const { t } = useTranslation()
   const {
     config,
     parameterEnabled,
@@ -160,6 +162,23 @@ export function Playground() {
 
   return (
     <div className='relative flex size-full flex-col overflow-hidden'>
+      {(config.model === 'gpt-6.1-sol' ||
+        config.model === 'openai/gpt-6.1-sol') && (
+        <p className='text-muted-foreground mx-auto w-full max-w-4xl px-4 py-2 text-xs'>
+          {t(
+            'GPT-6.1 Sol reasoning effort: low, medium (default), high, xhigh, max. none and minimal are unsupported. Use the Responses API for tool calling.'
+          )}{' '}
+          <a
+            className='underline'
+            href='https://developers.openai.com/api/docs/models/gpt-6.1-sol'
+            target='_blank'
+            rel='noreferrer'
+          >
+            {t('Official model documentation')}
+          </a>
+        </p>
+      )}
+
       {/* Full-width scroll container: scrolling works even over side whitespace */}
       <div className='flex flex-1 flex-col overflow-hidden'>
         <PlaygroundChat

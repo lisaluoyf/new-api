@@ -5238,5 +5238,15 @@
   "Only detect channels in the top user-price ranks": "仅检测用户价格排名前 N 名的渠道",
   "Top channel count": "前多少名",
   "Ranks all channels of this model by current user price, lowest first, including enabled and disabled channels. Applies to scheduled model detection only. Skipped channels still occupy rank positions.": "按该模型全部渠道的当前用户价格从低到高排名，包括启用和禁用渠道。仅对自动模型检测生效；跳过检测的渠道仍占排名名额。",
-  "Enter a positive whole number no greater than 2147483647.": "请输入不大于 2147483647 的正整数。"
+  "Enter a positive whole number no greater than 2147483647.": "请输入不大于 2147483647 的正整数。",
+  "Error category": "错误分类",
+  "Request parameter error": "请求参数错误",
+  "Account or plan quota limit": "账户或套餐额度限制",
+  "Content policy rejection": "内容审核拒绝",
+  "Client disconnected": "客户端断开",
+  "Upstream rate limit": "上游限流",
+  "Upstream failure": "上游服务故障",
+  "Other error": "其他错误",
+  "GPT-6.1 Sol reasoning effort: low, medium (default), high, xhigh, max. none and minimal are unsupported. Use the Responses API for tool calling.": "GPT-6.1 Sol 推理等级支持 low、medium（默认）、high、xhigh、max，不支持 none 和 minimal。工具调用请使用 Responses API。",
+  "Official model documentation": "官方模型文档"
 }

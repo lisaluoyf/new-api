@@ -181,6 +181,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		c.Writer = helper.NewStreamResponseWriter(c.Writer)
 	}
 
+	if validationErr := helper.ValidateModelReasoning(request); validationErr != nil {
+		newAPIError = validationErr
+		recordReasoningValidationError(c, relayInfo, validationErr)
+		return
+	}
+
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.
@@ -1105,6 +1111,11 @@ func evaluateRetry(c *gin.Context, openaiErr *types.NewAPIError, retryIndex int,
 	}
 	decision.StatusCode = openaiErr.StatusCode
 	decision.ErrorCode = string(openaiErr.GetErrorCode())
+	if helper.IsDeterministicParameterError(openaiErr) {
+		decision.Reason = "invalid_request_parameter"
+		return decision
+	}
+
 	if isContentSafetyRejection(string(openaiErr.GetErrorCode()), openaiErr.ToOpenAIError().Type, openaiErr.Error()) {
 		decision.Reason = "content_safety_rejection"
 		return decision
