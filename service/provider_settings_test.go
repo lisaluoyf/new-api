@@ -74,6 +74,7 @@ func TestProviderScopedCheapestRetriesAndCacheIsolation(t *testing.T) {
 	for channelID := 1; channelID <= 40; channelID++ {
 		channel := model.Channel{Id: channelID, Name: "route", Key: "test-key", Models: name, Status: 1, Group: AutoCheapestGroup, ApimasterPriceRatio: &priceRatio}
 		require.NoError(t, db.Create(&channel).Error)
+		require.NoError(t, channel.AddAbilities(nil))
 		require.NoError(t, db.Create(&model.ChannelModelPricing{ChannelId: channelID, ModelName: name, InputPrice: float64(channelID), PricingSource: "api", GroupRatio: 1}).Error)
 	}
 	require.Equal(t, 1, selectCheapestChannelID(name, nil))

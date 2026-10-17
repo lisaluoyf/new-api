@@ -197,13 +197,13 @@ func TestClassifyChannelErrorUnavailableGroupBoundaries(t *testing.T) {
 		category ChannelErrorCategory
 	}{
 		{"generic forbidden", 403, `{"message":"Forbidden"}`, CategorySkip},
-		{"user quota takes precedence", 403, `{"code":"GROUP_DELETED","message":"用户额度不足"}`, CategorySkip},
+		{"upstream group deletion is not local quota", 403, `{"code":"GROUP_DELETED","message":"用户额度不足"}`, CategoryCredentialInvalid},
 		{"model access remains model scoped", 403, `{"message":"该令牌无权访问模型 claude-opus-4-7"}`, CategoryDisableImmediate},
 		{"code mentioned in message is not a code", 403, `{"message":"unsupported parameter GROUP_DELETED"}`, CategorySkip},
 		{"bad parameter is not credential failure", 400, `{"code":"GROUP_DELETED","message":"invalid parameter"}`, CategorySkip},
 		{"transient failure stays in window", 503, `{"code":"GROUP_DELETED","message":"Service temporarily unavailable"}`, CategoryDisableWindow},
 		{"disabled group on unauthorized", 401, `{"error":{"message":"API Key 所属分组已停用","code":"bad_response_status_code"}}`, CategoryCredentialInvalid},
-		{"disabled group user quota takes precedence", 403, `{"code":"GROUP_DISABLED","message":"用户额度不足"}`, CategorySkip},
+		{"upstream disabled group is not local quota", 403, `{"code":"GROUP_DISABLED","message":"用户额度不足"}`, CategoryCredentialInvalid},
 		{"disabled group code mentioned as parameter", 403, `{"message":"unsupported parameter GROUP_DISABLED"}`, CategorySkip},
 		{"group policy is not a key diagnosis", 403, `{"message":"分组已停用该模型"}`, CategorySkip},
 		{"disabled group on bad request", 400, `{"message":"API Key 所属分组已停用"}`, CategorySkip},
@@ -390,8 +390,6 @@ func TestClassifyChannelErrorRechargeCodeBoundaries(t *testing.T) {
 		`{"message":"Forbidden","param":"INSUFFICIENT_BALANCE"}`,
 		`{"message":"Forbidden","metadata":{"code":"INSUFFICIENT_BALANCE"}}`,
 		`{"code":"NOT_INSUFFICIENT_BALANCE","message":"Forbidden"}`,
-		`{"code":"INSUFFICIENT_BALANCE","message":"用户额度不足"}`,
-		`{"error":{"code":"INSUFFICIENT_BALANCE","message":"insufficient user quota"}}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			err := RelayErrorHandler(context.Background(), &http.Response{
@@ -407,8 +405,8 @@ func TestClassifyChannelErrorRechargeCodeBoundaries(t *testing.T) {
 	require.True(t, IsHighConfidenceRecharge(err))
 	err = types.NewErrorWithStatusCode(types.NewError(nil, types.ErrorCodeInsufficientUserQuota), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden)
 	err.UpstreamResponseBody = `{"code":"INSUFFICIENT_BALANCE"}`
-	require.Equal(t, CategorySkip, ClassifyChannelError(err))
-	require.False(t, IsHighConfidenceRecharge(err))
+	require.Equal(t, CategoryUpstreamRecharge, ClassifyChannelError(err))
+	require.True(t, IsHighConfidenceRecharge(err))
 }
 
 func TestEvaluateChannelHealth_upstreamBudgetExceeded(t *testing.T) {

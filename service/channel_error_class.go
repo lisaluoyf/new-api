@@ -26,6 +26,10 @@ var (
 	upstreamRechargeHighConfidence = []string{
 		"余额不足",
 		"账户余额不足",
+		"用户额度不足",
+		"insufficient user quota",
+		"token quota is not enough",
+		"user quota is not enough",
 		"insufficient balance",
 		"insufficient account balance",
 		"insufficient credit balance",
@@ -80,8 +84,7 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 	}
 
 	code := err.GetErrorCode()
-	if code == types.ErrorCodeInsufficientUserQuota ||
-		code == types.ErrorCodePreConsumeTokenQuotaFailed {
+	if isPlatformUserQuotaError(err) {
 		return CategorySkip
 	}
 
@@ -235,7 +238,7 @@ func isHighConfidenceUpstreamRechargeMessage(lowerMessage string) bool {
 }
 
 func isPlatformUserQuotaError(err *types.NewAPIError) bool {
-	if err == nil {
+	if err == nil || err.GetErrorType() != types.ErrorTypeNewAPIError || err.UpstreamResponseBody != "" {
 		return false
 	}
 	code := err.GetErrorCode()

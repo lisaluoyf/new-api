@@ -22,8 +22,8 @@ func TestNativeAnthropicRoutingPolicy(t *testing.T) {
 		want             bool
 	}{
 		{"chat tools", "/v1/chat/completions", `{"messages":[{"role":"assistant","tool_calls":[{"id":"call_test"}]}]}`, false},
-		{"chat text", "/v1/chat/completions", `{"messages":[{"role":"user","content":"hi"}]}`, false},
-		{"responses", "/v1/responses", `{"input":"hi"}`, false},
+		{"chat text", "/v1/chat/completions", `{"messages":[{"role":"user","content":"hi"}]}`, true},
+		{"responses", "/v1/responses", `{"input":"hi"}`, true},
 		{"messages text", "/v1/messages", `{"messages":[{"role":"user","content":"hi"}]}`, true},
 		{"native tool round trip", "/v1/messages", `{"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu_test","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_test","content":"ok"}]}]}`, true},
 		{"converted tool use", "/v1/messages", `{"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_test"}]}]}`, false},
@@ -73,6 +73,8 @@ func TestNativeAnthropicCheapestSelectionAndRetry(t *testing.T) {
 	generic := model.Channel{Name: "compatible", Key: "test", Models: name, Status: 1, Group: AutoCheapestGroup}
 	require.NoError(t, db.Create(&native).Error)
 	require.NoError(t, db.Create(&generic).Error)
+	require.NoError(t, native.AddAbilities(nil))
+	require.NoError(t, generic.AddAbilities(nil))
 	require.NoError(t, db.Create(&[]model.ChannelModelPricing{
 		{ChannelId: native.Id, ModelName: name, InputPrice: 0.1, GroupRatio: 1, PricingSource: "api"},
 		{ChannelId: generic.Id, ModelName: name, InputPrice: 1, GroupRatio: 1, PricingSource: "api"},
@@ -83,16 +85,10 @@ func TestNativeAnthropicCheapestSelectionAndRetry(t *testing.T) {
 		c.Request.Header.Set("Content-Type", "application/json")
 		ch, err := SelectCheapestEnabledChannelExcludingWithFilter(name, nil, ChannelPickFilter(c, name))
 		require.NoError(t, err)
-		if path == "/v1/messages" {
-			require.Equal(t, native.Id, ch.Id)
-			next, err := SelectCheapestEnabledChannelExcludingWithFilter(name, []int{native.Id}, ChannelPickFilter(c, name))
-			require.NoError(t, err)
-			require.Equal(t, generic.Id, next.Id)
-		} else {
-			require.Equal(t, generic.Id, ch.Id)
-			_, err = SelectCheapestEnabledChannelExcludingWithFilter(name, []int{generic.Id}, ChannelPickFilter(c, name))
-			require.ErrorIs(t, err, ErrNoCheapestChannel)
-		}
+		require.Equal(t, native.Id, ch.Id)
+		next, err := SelectCheapestEnabledChannelExcludingWithFilter(name, []int{native.Id}, ChannelPickFilter(c, name))
+		require.NoError(t, err)
+		require.Equal(t, generic.Id, next.Id)
 	}
 }
 
@@ -120,10 +116,7 @@ func TestNativeAnthropicPrioritySelectionAndRetry(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			c.Request = httptest.NewRequest("POST", path, strings.NewReader(`{"messages":[{"role":"user","content":"hello"}]}`))
 			c.Request.Header.Set("Content-Type", "application/json")
-			want := 2
-			if path == "/v1/messages" {
-				want = 1
-			}
+			want := 1
 			for retry := 0; retry < 2; retry++ {
 				ch, _, err := CacheGetRandomSatisfiedChannel(&RetryParam{Ctx: c, TokenGroup: "protocol-test", ModelName: name, Retry: &retry})
 				require.NoError(t, err)

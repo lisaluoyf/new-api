@@ -38,6 +38,7 @@ func TestPlaygroundRoutingUsesAuthenticatedProviderSettings(t *testing.T) {
 	for _, channelID := range []int{1, 2} {
 		channel := model.Channel{Id: channelID, Name: "provider", Key: "test-key", Models: modelName, Group: "default", Status: common.ChannelStatusEnabled, ApimasterPriceRatio: &priceRatio}
 		require.NoError(t, db.Create(&channel).Error)
+		require.NoError(t, channel.AddAbilities(nil))
 		require.NoError(t, db.Create(&model.ChannelModelPricing{ChannelId: channelID, ModelName: modelName, InputPrice: float64(channelID), GroupRatio: 1, PricingSource: "api"}).Error)
 	}
 	router := gin.New()

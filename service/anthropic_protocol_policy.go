@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -11,64 +12,135 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var ErrNativeAnthropicChannel = errors.New("this channel requires native Anthropic Messages requests without OpenAI-converted tool history")
+var ErrNativeAnthropicChannel = errors.New("this channel/model does not accept OpenAI-style tool history")
 
-const nativeAnthropicRequestContextKey = "routing_native_anthropic_request"
+const anthropicHistoryContextKey = "routing_anthropic_history_compatible_v2"
 
-func channelMatchesAnthropicProtocol(c *gin.Context, ch *model.Channel) bool {
+func channelMatchesAnthropicProtocol(c *gin.Context, ch *model.Channel, modelName string) bool {
 	if ch == nil {
 		return false
 	}
-	if !ch.GetSetting().NativeAnthropicOnly {
-		return true
+	settings := ch.GetSetting()
+	restricted := settings.NativeAnthropicOnly // Legacy settings become a history restriction.
+	for _, configured := range settings.AnthropicToolHistoryModels {
+		if configured == "*" {
+			restricted = true
+			break
+		}
+		for _, name := range PricingNameCandidates(modelName, ch.ModelMapping) {
+			if configured == name {
+				restricted = true
+				break
+			}
+		}
 	}
-	return isNativeAnthropicRequest(c)
+	return !restricted || anthropicHistoryCompatible(c)
 }
 
-// Inspect the original endpoint and history, never User-Agent or other identity
-// headers. Cache the result before relay conversion and leave tool IDs intact.
-func isNativeAnthropicRequest(c *gin.Context) bool {
+type anthropicHistoryItem struct {
+	Type       string `json:"type"`
+	ID         string `json:"id"`
+	CallID     string `json:"call_id"`
+	ToolUseID  string `json:"tool_use_id"`
+	Role       string `json:"role"`
+	ToolCallID string `json:"tool_call_id"`
+	ToolCalls  []struct {
+		ID string `json:"id"`
+	} `json:"tool_calls"`
+	Content json.RawMessage `json:"content"`
+}
+
+// Inspect history before conversion without rewriting IDs, signatures, or body.
+// A Chat/Responses endpoint alone is not evidence of incompatible history.
+func anthropicHistoryCompatible(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return false
 	}
-	if cached, ok := c.Get(nativeAnthropicRequestContextKey); ok {
+	if cached, ok := c.Get(anthropicHistoryContextKey); ok {
 		return cached == true
 	}
 	allowed := false
-	defer func() { c.Set(nativeAnthropicRequestContextKey, allowed) }()
-	if c.Request.Method != http.MethodPost || c.Request.URL.Path != "/v1/messages" {
+	defer func() { c.Set(anthropicHistoryContextKey, allowed) }()
+	if c.Request.Method != http.MethodPost {
+		return false
+	}
+	switch c.Request.URL.Path {
+	case "/v1/messages", "/v1/chat/completions", "/v1/responses":
+	default:
 		return false
 	}
 	var request struct {
-		Messages []struct {
-			Content   json.RawMessage `json:"content"`
-			ToolCalls json.RawMessage `json:"tool_calls"`
-		} `json:"messages"`
+		Messages []anthropicHistoryItem `json:"messages"`
+		Input    json.RawMessage        `json:"input"`
 	}
-	if common.UnmarshalBodyReusable(c, &request) != nil {
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
 		return false
 	}
-	for _, message := range request.Messages {
-		if len(message.ToolCalls) > 0 && string(message.ToolCalls) != "null" {
+	body, err := storage.Bytes()
+	if err != nil {
+		return false
+	}
+	if _, err = storage.Seek(0, io.SeekStart); err != nil {
+		return false
+	}
+	c.Request.Body = io.NopCloser(storage)
+	if common.Unmarshal(body, &request) != nil {
+		return false
+	}
+	for _, item := range request.Messages {
+		if !anthropicHistoryItemCompatible(item) {
 			return false
 		}
-		if strings.HasPrefix(strings.TrimSpace(string(message.Content)), "[") {
-			var blocks []struct {
-				Type      string `json:"type"`
-				ID        string `json:"id"`
-				ToolUseID string `json:"tool_use_id"`
-			}
-			if common.Unmarshal(message.Content, &blocks) != nil {
+	}
+	if strings.HasPrefix(strings.TrimSpace(string(request.Input)), "[") {
+		var items []anthropicHistoryItem
+		if common.Unmarshal(request.Input, &items) != nil {
+			return false
+		}
+		for _, item := range items {
+			if !anthropicHistoryItemCompatible(item) {
 				return false
-			}
-			for _, block := range blocks {
-				if (block.Type == "tool_use" && strings.HasPrefix(block.ID, "call_")) ||
-					(block.Type == "tool_result" && strings.HasPrefix(block.ToolUseID, "call_")) {
-					return false
-				}
 			}
 		}
 	}
 	allowed = true
+	return true
+}
+
+func anthropicHistoryItemCompatible(item anthropicHistoryItem) bool {
+	switch item.Type {
+	case "tool_use":
+		if strings.HasPrefix(item.ID, "call_") {
+			return false
+		}
+	case "tool_result":
+		if strings.HasPrefix(item.ToolUseID, "call_") {
+			return false
+		}
+	case "function_call", "function_call_output":
+		if strings.HasPrefix(item.CallID, "call_") {
+			return false
+		}
+	}
+	if item.Role == "tool" && strings.HasPrefix(item.ToolCallID, "call_") {
+		return false
+	}
+	for _, call := range item.ToolCalls {
+		if strings.HasPrefix(call.ID, "call_") {
+			return false
+		}
+	}
+	if strings.HasPrefix(strings.TrimSpace(string(item.Content)), "[") {
+		var blocks []anthropicHistoryItem
+		if common.Unmarshal(item.Content, &blocks) != nil {
+			return false
+		}
+		for _, block := range blocks {
+			if !anthropicHistoryItemCompatible(block) {
+				return false
+			}
+		}
+	}
 	return true
 }

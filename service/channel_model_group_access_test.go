@@ -55,7 +55,7 @@ func TestModelShareGroupAccessBoundaries(t *testing.T) {
 		{"non model access", "Feature is not enabled for your selected share group", 400, CategorySkip},
 		{"unrelated model setting", "Model 'haiku' is not enabled for streaming", 400, CategorySkip},
 		{"unsupported status", "Model 'haiku' is not enabled for your selected share group", 422, CategorySkip},
-		{"user quota priority", "用户额度不足: Model 'haiku' is not enabled for your selected share group", 400, CategorySkip},
+		{"upstream model restriction is not local quota", "用户额度不足: Model 'haiku' is not enabled for your selected share group", 400, CategoryProbeBeforeDisable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := types.WithOpenAIError(types.OpenAIError{Message: tc.message, Type: "upstream_error"}, tc.status)

@@ -175,7 +175,7 @@ func ChannelPickFilter(c *gin.Context, modelName string) model.ChannelPickFilter
 			if ch == nil {
 				return false
 			}
-			return ChannelMatchesClientPolicy(ch.Setting, clientType, modelName) && channelMatchesAnthropicProtocol(c, ch)
+			return ChannelMatchesClientPolicy(ch.Setting, clientType, modelName) && channelMatchesAnthropicProtocol(c, ch, modelName)
 		})
 	}
 
@@ -211,7 +211,7 @@ func ValidateChannelClientPolicy(c *gin.Context, channel *model.Channel, modelNa
 	if channel == nil || !RequiresClientExclusivePolicy(modelName) {
 		return nil
 	}
-	if !channelMatchesAnthropicProtocol(c, channel) {
+	if !channelMatchesAnthropicProtocol(c, channel, modelName) {
 		return ErrNativeAnthropicChannel
 	}
 	InitClientPolicyContext(c, modelName)
