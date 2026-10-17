@@ -939,6 +939,7 @@ type TaskRelayInfo struct {
 }
 
 type TaskSubmitReq struct {
+	Resolution     *string                `json:"resolution,omitempty"`
 	Prompt         string                 `json:"prompt"`
 	Model          string                 `json:"model,omitempty"`
 	Mode           string                 `json:"mode,omitempty"`

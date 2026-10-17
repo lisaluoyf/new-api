@@ -38,6 +38,8 @@ export type PricingModel = {
   quota_type: number
   model_ratio: number
   completion_ratio: number
+  billing_unit?: string
+  resolution_prices?: Record<string, number>
   model_price?: number
   cache_ratio?: number | null
   create_cache_ratio?: number | null

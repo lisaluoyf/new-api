@@ -67,6 +67,10 @@ func GlobalVideoMediaPricingUSD(canonical string) (VideoMediaPricingUSD, bool) {
 // snapshots. DeepSeek V4 has an official peak/off-peak schedule; all other
 // models continue to resolve from the operator's static global settings.
 func GlobalModelPricingUSDAt(canonical string, at time.Time) (input, output, cache, cacheCreation float64, ok bool) {
+	if strings.EqualFold(canonical, "wan3.0-video-prime") {
+		base, found := ratio_setting.GetVideoModelBasePrice(canonical)
+		return base, 0, 0, 0, found
+	}
 	if prices, found := DeepSeekV4OfficialPricingAt(canonical, at); found {
 		return prices.InputPrice, prices.OutputPrice, prices.CachePrice, prices.CacheCreationPrice, true
 	}

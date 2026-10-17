@@ -85,3 +85,13 @@ test('existing model families and price units remain unchanged', () => {
   assert.equal(getPriceUnit('seedance-2.5'), '$/s')
   assert.equal(getPriceUnit('midjourney-v8.2'), '$/generation')
 })
+
+test('Wan Prime is a domestic video model with per-second prices', () => {
+  assert.equal(
+    MODEL_TABS.filter((tab) => tab.modelId === 'wan3.0-video-prime').length,
+    1
+  )
+  assert.equal(isLLMModel('wan3.0-video-prime'), false)
+  assert.equal(getPriceUnit('wan3.0-video-prime'), '$/s')
+  assert.equal(modelMatchesCategory('wan3.0-video-prime', 'domestic'), true)
+})

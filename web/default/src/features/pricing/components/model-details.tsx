@@ -266,6 +266,8 @@ function OverviewSummaryGrid(props: { model: PricingModel }) {
 
 function ModelHeader(props: { model: PricingModel }) {
   const { t } = useTranslation()
+  const fixedBillingLabel =
+    props.model.billing_unit === 'second' ? t('Per second') : t('Per Request')
   const model = props.model
   const vendorIcon = model.vendor_icon
     ? getLobeIcon(model.vendor_icon, 20)
@@ -301,7 +303,7 @@ function ModelHeader(props: { model: PricingModel }) {
         <span className='text-muted-foreground/70'>
           {model.quota_type === QUOTA_TYPE_VALUES.TOKEN
             ? t('Token-based')
-            : t('Per Request')}
+            : fixedBillingLabel}
         </span>
         {model.billing_mode === 'tiered_expr' && model.billing_expr && (
           <>
@@ -396,6 +398,37 @@ function PriceSection(props: {
         props.model.audio_completion_ratio != null,
     },
   ]
+
+  if (
+    props.model.resolution_prices &&
+    Object.keys(props.model.resolution_prices).length > 0
+  ) {
+    return (
+      <section className='py-4'>
+        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('Resolution')}</TableHead>
+              <TableHead>{t('Price (USD / second)')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {Object.entries(props.model.resolution_prices).map(
+              ([resolution, price]) => (
+                <TableRow key={resolution}>
+                  <TableCell>{resolution}</TableCell>
+                  <TableCell className='font-mono'>
+                    ${price.toFixed(3)} / s
+                  </TableCell>
+                </TableRow>
+              )
+            )}
+          </TableBody>
+        </Table>
+      </section>
+    )
+  }
 
   if (dynamicSummary) {
     if (dynamicSummary.isSpecialExpression) {

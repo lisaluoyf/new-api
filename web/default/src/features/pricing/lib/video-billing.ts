@@ -7,13 +7,17 @@ Runtime billing lives in Go relay/task helpers; this module is for UI labels.
 
 /** Default USD/s @ 720p (matches setting/ratio_setting/model_ratio.go). */
 export const VIDEO_PER_SECOND_DEFAULT_PRICES: Record<string, number> = {
+  'wan3.0-video-prime': 0.14,
   'sora-2': 0.08,
   'sora-2-pro': 0.24,
   'minimax-h3': 0.08,
 }
 
 /** Official MiniMax-H3 API price multiplier relative to the 768P base. */
-export const VIDEO_PER_SECOND_RESOLUTION_RATIOS: Record<string, Record<string, number>> = {
+export const VIDEO_PER_SECOND_RESOLUTION_RATIOS: Record<
+  string,
+  Record<string, number>
+> = {
   'minimax-h3': { '768P': 1, '2K': 0.13 / 0.08 },
 }
 
@@ -33,6 +37,8 @@ export function getVideoPerSecondDefaultPrice(
 
 export function getVideoPerSecondDetailKey(modelName: string): string {
   const model = modelName.toLowerCase()
+  if (model === 'wan3.0-video-prime')
+    return 'Wan Prime prices use Alibaba Cloud Singapore list prices in USD per second, verified on 2026-10-17.'
   if (model === 'minimax-h3') return 'Video per-second detail minimax-h3'
   return model === 'sora-2-pro'
     ? 'Video per-second detail sora-2-pro'

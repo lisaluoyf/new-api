@@ -5205,7 +5205,12 @@
     "Seedance resolution selection": "Seedance 分辨率选择",
     "All resolutions": "全部分辨率",
     "No resolutions": "未选分辨率",
-    "Unchecked resolutions fall back to another channel. Input means reference video.": "未选分辨率会 fallback 至其他渠道。input 表示带参考视频。"
+    "Unchecked resolutions fall back to another channel. Input means reference video.": "未选分辨率会 fallback 至其他渠道。input 表示带参考视频。",
+    "Wan Prime prices use Alibaba Cloud Singapore list prices in USD per second, verified on 2026-10-17.": "Wan Prime 采用阿里云新加坡国际站美元原价，按秒计费，核验日期：2026-10-17。",
+    "Official price reference": "官方价格来源",
+    "Wan video": "Wan 视频",
+    "Wan video base prices in USD per second. Final prices follow the configured group ratios.": "Wan 视频基础价按美元／秒设置，最终价格按已配置的用户组倍率计算。",
+    "Price must be greater than zero": "价格必须大于零"
   },
   "Coding Plan Users": "Coding Plan 用户",
   "Coding Plan Balance": "Coding Plan 余额",

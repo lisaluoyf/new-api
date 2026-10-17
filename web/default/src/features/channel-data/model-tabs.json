@@ -258,5 +258,10 @@
     "label": "Text Embedding 3 Small",
     "accent": "#10b981"
   },
-  { "model_id": "bge-m3", "label": "BGE-M3", "accent": "#10b981" }
+  { "model_id": "bge-m3", "label": "BGE-M3", "accent": "#10b981" },
+  {
+    "model_id": "wan3.0-video-prime",
+    "label": "Wan 3.0 Prime",
+    "accent": "#6366f1"
+  }
 ]

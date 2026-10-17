@@ -4818,7 +4818,12 @@
     "Seedance resolution selection": "Sélection de la résolution Seedance",
     "All resolutions": "Toutes les résolutions",
     "No resolutions": "Aucune résolution",
-    "Unchecked resolutions fall back to another channel. Input means reference video.": "Les résolutions non cochées passent à un autre canal. Input signifie une vidéo de référence."
+    "Unchecked resolutions fall back to another channel. Input means reference video.": "Les résolutions non cochées passent à un autre canal. Input signifie une vidéo de référence.",
+    "Wan Prime prices use Alibaba Cloud Singapore list prices in USD per second, verified on 2026-10-17.": "Wan Prime prices use Alibaba Cloud Singapore list prices in USD per second, verified on 2026-10-17.",
+    "Official price reference": "Official price reference",
+    "Wan video": "Wan video",
+    "Wan video base prices in USD per second. Final prices follow the configured group ratios.": "Wan video base prices in USD per second. Final prices follow the configured group ratios.",
+    "Price must be greater than zero": "Price must be greater than zero"
   },
   "在线使用": "Playground",
   "推广有礼": "Parrainage",

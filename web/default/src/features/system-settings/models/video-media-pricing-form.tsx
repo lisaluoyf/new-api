@@ -19,6 +19,13 @@ type PricingRow = {
 }
 
 const DEFAULT_PRICING = {
+  'wan3.0-video-prime': {
+    unit: 'second',
+    base_variant: '720P',
+    base_price: 0.14,
+    prices: { '480P': 0.068, '720P': 0.14, '1080P': 0.28 },
+    official_prices: { '480P': 0.068, '720P': 0.14, '1080P': 0.28 },
+  },
   'minimax-h3': { unit: 'second', prices: { '768P': 0.08, '2K': 0.13 } },
   'kling-v3-omni': {
     unit: 'second',
@@ -105,6 +112,8 @@ function parsePricing(raw: string | undefined): Record<
           official_prices?: Record<string, number>
         }
       >
+      if (!pricing['wan3.0-video-prime'])
+        pricing['wan3.0-video-prime'] = DEFAULT_PRICING['wan3.0-video-prime']
       if (!pricing['seedance-2.0'] && pricing['doubao-seedance-2.0']) {
         pricing['seedance-2.0'] = pricing['doubao-seedance-2.0']
         delete pricing['doubao-seedance-2.0']
@@ -342,6 +351,19 @@ export function VideoMediaPricingForm({
         </AlertDescription>
       </Alert>
 
+      <p className='text-muted-foreground text-sm'>
+        {t(
+          'Wan Prime prices use Alibaba Cloud Singapore list prices in USD per second, verified on 2026-10-17.'
+        )}{' '}
+        <a
+          className='underline'
+          href='https://docs.modelstudio.console.alibabacloud.com/en/model-studio/wan3-0-video-prime'
+          target='_blank'
+          rel='noreferrer'
+        >
+          {t('Official price reference')}
+        </a>
+      </p>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <div className='flex gap-2'>
           {editMode === 'visual' ? (

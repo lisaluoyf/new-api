@@ -25,6 +25,8 @@ type Pricing struct {
 	ModelRatio             float64                 `json:"model_ratio"`
 	ModelPrice             float64                 `json:"model_price"`
 	OwnerBy                string                  `json:"owner_by"`
+	BillingUnit            string                  `json:"billing_unit,omitempty"`
+	ResolutionPrices       map[string]float64      `json:"resolution_prices,omitempty"`
 	CompletionRatio        float64                 `json:"completion_ratio"`
 	CacheRatio             *float64                `json:"cache_ratio,omitempty"`
 	CreateCacheRatio       *float64                `json:"create_cache_ratio,omitempty"`
@@ -305,7 +307,13 @@ func updatePricing() {
 			pricing.VendorID = meta.VendorID
 		}
 		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)
-		if findPrice {
+		if model == "wan3.0-video-prime" {
+			pricing.ModelPrice, _ = ratio_setting.GetVideoModelBasePrice(model)
+			details, _ := ratio_setting.GetVideoModelPricingDetails(model)
+			pricing.ResolutionPrices = details.Prices
+			pricing.QuotaType = 1
+			pricing.BillingUnit = "second"
+		} else if findPrice {
 			pricing.ModelPrice = modelPrice
 			pricing.QuotaType = 1
 		} else {

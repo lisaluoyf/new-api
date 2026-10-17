@@ -4818,7 +4818,12 @@
     "Seedance resolution selection": "Seedance の解像度選択",
     "All resolutions": "すべての解像度",
     "No resolutions": "解像度未選択",
-    "Unchecked resolutions fall back to another channel. Input means reference video.": "未選択の解像度は別のチャネルに切り替わります。input は参照動画ありを意味します。"
+    "Unchecked resolutions fall back to another channel. Input means reference video.": "未選択の解像度は別のチャネルに切り替わります。input は参照動画ありを意味します。",
+    "Wan Prime prices use Alibaba Cloud Singapore list prices in USD per second, verified on 2026-10-17.": "Wan Prime prices use Alibaba Cloud Singapore list prices in USD per second, verified on 2026-10-17.",
+    "Official price reference": "Official price reference",
+    "Wan video": "Wan video",
+    "Wan video base prices in USD per second. Final prices follow the configured group ratios.": "Wan video base prices in USD per second. Final prices follow the configured group ratios.",
+    "Price must be greater than zero": "Price must be greater than zero"
   },
   "在线使用": "プレイグラウンド",
   "推广有礼": "アフィリエイト",

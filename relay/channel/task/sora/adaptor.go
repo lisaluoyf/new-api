@@ -18,6 +18,7 @@ import (
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -135,6 +136,33 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil
+	}
+
+	if strings.EqualFold(info.OriginModelName, "wan3.0-video-prime") || strings.EqualFold(req.Model, "wan3.0-video-prime") {
+		seconds, _ := strconv.Atoi(req.Seconds)
+		if seconds <= 0 {
+			seconds = req.Duration
+		}
+		if seconds <= 0 {
+			seconds = 5
+		}
+		resolution := ""
+		if req.Resolution != nil {
+			resolution = strings.ToUpper(strings.TrimSpace(*req.Resolution))
+		}
+		if resolution == "" {
+			resolution = strings.ToUpper(strings.TrimSpace(req.Size))
+		}
+		switch {
+		case strings.Contains(resolution, "1080"):
+			resolution = "1080P"
+		case strings.Contains(resolution, "480"):
+			resolution = "480P"
+		default:
+			resolution = "720P"
+		}
+		ratio := ratio_setting.GetVideoModelPriceRatio("wan3.0-video-prime", resolution)
+		return map[string]float64{"seconds": float64(seconds), "size": ratio}
 	}
 
 	seconds, _ := strconv.Atoi(req.Seconds)
