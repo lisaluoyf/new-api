@@ -64,6 +64,15 @@ func CaptureSeedanceFallbackRequest(c *gin.Context, task *model.Task) {
 // parameter, moderation, copyright, transport ambiguity and timeout are not.
 func seedanceAsyncFailureRetryable(reason string) bool {
 	r := strings.ToLower(strings.TrimSpace(reason))
+	r = strings.TrimSuffix(r, ".")
+	// Exact terminal diagnoses only. In particular, never treat a policy or
+	// moderation explanation containing "banned" as an account failure.
+	switch r {
+	case "user has been banned", "account has been banned", "account has been disabled",
+		"invalid api key", "api key has expired", "api key has been revoked",
+		"service temporarily unavailable":
+		return true
+	}
 	for _, blocked := range []string{"copyright", "sensitive", "moderation", "safety", "policy", "invalid", "pixel", "aspect", "width", "height", "timeout", "timed out", "1 hour", "审核", "版权"} {
 		if strings.Contains(r, blocked) {
 			return false
@@ -143,6 +152,9 @@ func chooseSeedanceFallbackChannel(c *gin.Context, task *model.Task) (*model.Cha
 
 // Called only for an upstream terminal FAILURE, before refund or terminal event.
 func beginSeedanceTaskFallback(ctx context.Context, task *model.Task, from model.TaskStatus, reason string) (bool, error) {
+	if task == nil || from == model.TaskStatusSuccess || from == model.TaskStatusFailure || from == model.TaskStatusRetrying {
+		return false, nil
+	}
 	snapshot := task.PrivateData.SeedanceFallback
 	if PrepareSeedanceFallbackSubmit == nil || snapshot == nil || snapshot.Started || !seedanceAsyncFailureRetryable(reason) {
 		return false, nil
@@ -178,7 +190,7 @@ func beginSeedanceTaskFallback(ctx context.Context, task *model.Task, from model
 		if err := tx.Create(&job).Error; err != nil {
 			return err
 		}
-		res := tx.Model(&model.Task{}).Where("id = ? AND status = ?", task.ID, from).Updates(map[string]any{"status": task.Status, "progress": task.Progress, "fail_reason": "", "finish_time": 0, "private_data": task.PrivateData, "data": task.Data})
+		res := tx.Model(&model.Task{}).Where("id = ? AND status = ? AND channel_id = ?", task.ID, from, job.OriginalChannelID).Updates(map[string]any{"status": task.Status, "progress": task.Progress, "fail_reason": "", "finish_time": 0, "private_data": task.PrivateData, "data": task.Data})
 		if res.Error != nil {
 			return res.Error
 		}
@@ -188,6 +200,9 @@ func beginSeedanceTaskFallback(ctx context.Context, task *model.Task, from model
 		won = true
 		return nil
 	})
+	if err == nil && won {
+		logger.LogInfo(ctx, fmt.Sprintf("Seedance async fallback scheduled: task=%s primary_channel=%d backup_channel=%d reason=%s", task.TaskID, job.OriginalChannelID, job.TargetChannelID, reason))
+	}
 	return won, err
 }
 

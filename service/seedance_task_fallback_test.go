@@ -39,8 +39,10 @@ func fallbackFixture(t *testing.T) (*gorm.DB, *model.Task) {
 }
 
 func TestSeedanceAsyncFallbackAllowlist(t *testing.T) {
-	require.True(t, seedanceAsyncFailureRetryable("Task submission failed; please check the request and try again later"))
-	for _, s := range []string{"The output may contain sensitive information", "copyright restrictions", "Pixel count must be between 407696 and 8295044.", "Aspect ratio must be between 0.4 and 2.5.", "Task did not complete within 1 hour; held balance has been returned.", "upstream returned error", "HTTP timeout"} {
+	for _, s := range []string{"Task submission failed; please check the request and try again later", "User has been banned", " USER HAS BEEN BANNED.\n", "Account has been banned", "Account has been disabled", "Invalid API key", "API key has expired", "API key has been revoked", "Service temporarily unavailable"} {
+		require.True(t, seedanceAsyncFailureRetryable(s), s)
+	}
+	for _, s := range []string{"The output may contain sensitive information", "copyright restrictions", "Pixel count must be between 407696 and 8295044.", "Aspect ratio must be between 0.4 and 2.5.", "Task did not complete within 1 hour; held balance has been returned.", "upstream returned error", "HTTP timeout", "User has been banned for content policy violations", "Prompt contains: User has been banned", "Invalid request", "User has been banned; request timed out", "account unavailable"} {
 		require.False(t, seedanceAsyncFailureRetryable(s), s)
 	}
 }

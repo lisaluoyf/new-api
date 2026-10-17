@@ -16,6 +16,11 @@ import (
 
 func unifiedRoutingFixture(t *testing.T) (*gorm.DB, *gin.Context) {
 	db := seedanceTestDB(t)
+	// SQLite :memory: databases belong to one connection; keep migrations and
+	// callback/poller assertions on that same database throughout the fixture.
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(&model.ChannelModelPricing{}, &model.SeedanceChannelResolution{}))
 	base := "https://apimart.ai"
 	a, b := `{"model_group_ratios":{"seedance-2.0-fast":0.5}}`, `{"model_group_ratios":{"seedance-2.0-fast":0.6}}`

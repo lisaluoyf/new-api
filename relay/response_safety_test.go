@@ -66,6 +66,19 @@ func TestRealtimeFetchDoesNotRequeryTerminalTasks(t *testing.T) {
 	}
 }
 
+func TestSeedanceRealtimeQueryLeavesRecoveryToDurableWorker(t *testing.T) {
+	for _, name := range []string{"seedance-2.5", "seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini"} {
+		for _, status := range []model.TaskStatus{model.TaskStatusSubmitted, model.TaskStatusInProgress, model.TaskStatusRetrying} {
+			task := &model.Task{TaskID: "task_stable", Status: status, Platform: "apimart-video", Properties: model.Properties{OriginModelName: name}}
+			// No DB or upstream is configured: queries must not bypass the worker's
+			// fallback decision and prematurely finalize/refund an upstream failure.
+			require.Nil(t, tryRealtimeFetch(task, true))
+			require.Equal(t, status, task.Status)
+			require.Equal(t, "task_stable", task.TaskID)
+		}
+	}
+}
+
 func TestVideoResponsesExposeNestedReviewWithoutProviderPayload(t *testing.T) {
 	reason := "The request failed because the input image may be related to copyright restrictions. Request ID: 20261011163219F021CD55F251F078E959_asset-20261011163219-tp2zd"
 	data, err := common.Marshal(map[string]any{"data": map[string]any{
