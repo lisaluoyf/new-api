@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "Default discount",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.",
     "Video availability depends on its storage provider. Download it promptly.": "Video availability depends on its storage provider. Download it promptly.",
     "Image expired": "Image expired",
     "Image unavailable": "Image unavailable",

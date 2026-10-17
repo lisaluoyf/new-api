@@ -51,6 +51,36 @@ export const UserModelDiscountEditor = memo(function UserModelDiscountEditor({
         </p>
       </div>
 
+      <FormField
+        control={control}
+        name='default_model_discount'
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>{t('Default discount')}</FormLabel>
+            <FormControl>
+              <Input
+                type='number'
+                min={0.000001}
+                max={1}
+                step='any'
+                placeholder='1'
+                value={field.value ?? ''}
+                onChange={(event) => {
+                  const value = event.target.value
+                  field.onChange(value === '' ? undefined : Number(value))
+                }}
+              />
+            </FormControl>
+            <FormDescription>
+              {t(
+                'Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.'
+              )}
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
       <div className='space-y-2'>
         <div className='flex items-center justify-between gap-2'>
           <FormLabel htmlFor={tableId}>{t('Model rules')}</FormLabel>

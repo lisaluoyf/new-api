@@ -10,11 +10,18 @@ import (
 	"github.com/QuantumNous/new-api/types"
 )
 
+func ValidateUserModelDiscount(value float64) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < minUserModelDiscount || value > maxUserModelDiscount {
+		return fmt.Errorf("invalid user discount")
+	}
+	return nil
+}
+
 func ValidateUserModelDiscountRatios(source map[string]float64) error {
 	seen := make(map[string]bool, len(source))
 	for modelName, value := range source {
 		modelName = strings.TrimSpace(modelName)
-		if modelName == "" || seen[modelName] || math.IsNaN(value) || math.IsInf(value, 0) || value < minUserModelDiscount || value > maxUserModelDiscount {
+		if modelName == "" || seen[modelName] || ValidateUserModelDiscount(value) != nil {
 			return fmt.Errorf("invalid model discount")
 		}
 		seen[modelName] = true
@@ -62,7 +69,7 @@ func ResolveUserModelDiscount(setting dto.UserSetting, modelName string) float64
 	if ratio, ok := setting.ModelDiscountRatios[strings.TrimSpace(modelName)]; ok {
 		return NormalizeUserModelDiscount(ratio)
 	}
-	return 1
+	return NormalizeUserModelDiscount(setting.DefaultModelDiscount)
 }
 
 func ApplyUserModelDiscountToGroupRatio(info types.GroupRatioInfo, setting dto.UserSetting, modelName string) types.GroupRatioInfo {

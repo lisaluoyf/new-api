@@ -78,6 +78,7 @@ export const userSchema = z.object({
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
   model_discount_ratios: z.record(z.string(), z.number()).optional(),
+  default_model_discount: z.number().optional(),
 })
 export type User = z.infer<typeof userSchema>
 
@@ -137,6 +138,7 @@ export interface UserFormData {
   remark?: string // Only used when updating user
   aff_ratio_override?: number | null // Only used when updating user
   model_discount_ratios?: Record<string, number> // Only used when updating user
+  default_model_discount?: number | null
 }
 
 export interface ResellerProfilePayload {

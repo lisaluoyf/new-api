@@ -33,6 +33,7 @@ export const userFormSchema = z.object({
   quota_dollars: z.number().min(0).optional(),
   group: z.string().optional(),
   remark: z.string().optional(),
+  default_model_discount: z.number().min(0.000001).max(1).optional(),
   model_discount_rules: z
     .array(
       z.object({
@@ -121,6 +122,7 @@ export function transformFormDataToPayload(
       if (model) ratios[model] = row.discount
     }
     payload.model_discount_ratios = ratios
+    payload.default_model_discount = data.default_model_discount ?? null
   }
 
   return payload
@@ -138,6 +140,7 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     quota_dollars: quotaUnitsToDollars(user.quota),
     group: user.group || DEFAULT_GROUP,
     remark: user.remark || '',
+    default_model_discount: user.default_model_discount || undefined,
     model_discount_rules: Object.entries(user.model_discount_ratios || {}).map(
       ([model, discount]) => ({ model, discount })
     ),

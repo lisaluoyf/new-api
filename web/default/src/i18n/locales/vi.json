@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "Hệ số mặc định",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Áp dụng khi không có quy tắc mô hình phù hợp. Để trống hoặc nhập 1 để không giảm giá thêm. Hệ số mô hình và hệ số mặc định không nhân với nhau.",
     "Video availability depends on its storage provider. Download it promptly.": "Thời hạn truy cập video phụ thuộc vào nhà cung cấp lưu trữ. Hãy tải video xuống sớm.",
     "Image expired": "Ảnh đã hết hạn",
     "Image unavailable": "Ảnh không khả dụng",

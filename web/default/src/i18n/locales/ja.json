@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "デフォルト係数",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "モデルのルールに一致しない場合に適用します。空欄または 1 は追加割引なしです。モデル係数とデフォルト係数は掛け合わせません。",
     "Video availability depends on its storage provider. Download it promptly.": "動画の有効期間はストレージ提供元によって異なります。早めにダウンロードしてください。",
     "Image expired": "画像の有効期限切れ",
     "Image unavailable": "画像を表示できません",

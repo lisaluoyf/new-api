@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "Коэффициент по умолчанию",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Применяется, если нет правила для модели. Пустое поле или 1 — без дополнительной скидки. Коэффициенты модели и по умолчанию не перемножаются.",
     "Video availability depends on its storage provider. Download it promptly.": "Срок доступности видео зависит от поставщика хранилища. Скачайте видео заранее.",
     "Image expired": "Срок хранения изображения истёк",
     "Image unavailable": "Изображение недоступно",

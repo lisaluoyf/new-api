@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "默认系数",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "没有匹配的模型规则时使用。留空或填 1 表示不额外打折；模型系数与默认系数不叠乘。",
     "Video availability depends on its storage provider. Download it promptly.": "视频可用期限由存储服务方决定，请及时下载。",
     "Image expired": "图片已过期",
     "Image unavailable": "图片暂不可用",

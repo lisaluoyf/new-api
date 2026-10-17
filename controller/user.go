@@ -376,12 +376,14 @@ func GetUser(c *gin.Context) {
 		"message": "",
 		"data": struct {
 			*model.User
-			ReferralCode        string             `json:"referral_code,omitempty"`
-			ModelDiscountRatios map[string]float64 `json:"model_discount_ratios,omitempty"`
+			ReferralCode         string             `json:"referral_code,omitempty"`
+			ModelDiscountRatios  map[string]float64 `json:"model_discount_ratios,omitempty"`
+			DefaultModelDiscount float64            `json:"default_model_discount,omitempty"`
 		}{
-			User:                user,
-			ReferralCode:        referralCode,
-			ModelDiscountRatios: userSetting.ModelDiscountRatios,
+			User:                 user,
+			ReferralCode:         referralCode,
+			ModelDiscountRatios:  userSetting.ModelDiscountRatios,
+			DefaultModelDiscount: userSetting.DefaultModelDiscount,
 		},
 	})
 	return
@@ -822,6 +824,18 @@ func UpdateUser(c *gin.Context) {
 	}
 	rawAffRatioOverride, hasAffRatioOverride := rawFields["aff_ratio_override"]
 	rawModelDiscountRatios, hasModelDiscountRatios := rawFields["model_discount_ratios"]
+	rawDefaultModelDiscount, hasDefaultModelDiscount := rawFields["default_model_discount"]
+	var requestedDefaultModelDiscount *float64
+	if hasDefaultModelDiscount {
+		if err := common.Unmarshal(rawDefaultModelDiscount, &requestedDefaultModelDiscount); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		if requestedDefaultModelDiscount != nil && service.ValidateUserModelDiscount(*requestedDefaultModelDiscount) != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+	}
 	var requestedModelDiscountRatios map[string]float64
 	if hasModelDiscountRatios {
 		if err := common.Unmarshal(rawModelDiscountRatios, &requestedModelDiscountRatios); err != nil {
@@ -877,9 +891,17 @@ func UpdateUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if hasModelDiscountRatios {
+	if hasModelDiscountRatios || hasDefaultModelDiscount {
 		setting := originUser.GetSetting()
-		setting.ModelDiscountRatios = requestedModelDiscountRatios
+		if hasModelDiscountRatios {
+			setting.ModelDiscountRatios = requestedModelDiscountRatios
+		}
+		if hasDefaultModelDiscount {
+			setting.DefaultModelDiscount = 0
+			if requestedDefaultModelDiscount != nil {
+				setting.DefaultModelDiscount = *requestedDefaultModelDiscount
+			}
+		}
 		if err := originUser.UpdateSetting(setting); err != nil {
 			common.ApiError(c, err)
 			return
@@ -1809,6 +1831,7 @@ func UpdateUserSetting(c *gin.Context) {
 		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
 		RecordIpLog:                      req.RecordIpLog,
 		ModelDiscountRatios:              existingSettings.ModelDiscountRatios,
+		DefaultModelDiscount:             existingSettings.DefaultModelDiscount,
 		ProviderSettings:                 existingSettings.ProviderSettings,
 	}
 

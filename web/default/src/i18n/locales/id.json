@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "Koefisien default",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Digunakan jika tidak ada aturan model yang cocok. Kosongkan atau isi 1 untuk tanpa diskon tambahan. Koefisien model dan default tidak dikalikan satu sama lain.",
     "Video availability depends on its storage provider. Download it promptly.": "Ketersediaan video bergantung pada penyedia penyimpanan. Segera unduh video.",
     "Image expired": "Gambar kedaluwarsa",
     "Image unavailable": "Gambar tidak tersedia",

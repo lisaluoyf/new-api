@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "Domyślny współczynnik",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Stosowany, gdy nie pasuje żadna reguła modelu. Puste pole lub 1 oznacza brak dodatkowego rabatu. Współczynniki modelu i domyślny nie są przez siebie mnożone.",
     "Video availability depends on its storage provider. Download it promptly.": "Dostępność filmu zależy od dostawcy przechowywania. Pobierz go jak najszybciej.",
     "Image expired": "Obraz wygasł",
     "Image unavailable": "Obraz niedostępny",

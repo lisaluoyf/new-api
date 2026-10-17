@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "기본 계수",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "일치하는 모델 규칙이 없을 때 적용됩니다. 비워 두거나 1을 입력하면 추가 할인이 없습니다. 모델 계수와 기본 계수는 서로 곱하지 않습니다.",
     "Video availability depends on its storage provider. Download it promptly.": "동영상 보관 기간은 저장소 제공업체에 따라 다릅니다. 미리 다운로드하세요.",
     "Image expired": "이미지 보관 기간 만료",
     "Image unavailable": "이미지를 사용할 수 없음",

@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "Varsayılan katsayı",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Eşleşen model kuralı yoksa uygulanır. Boş veya 1, ek indirim olmadığı anlamına gelir. Model ve varsayılan katsayılar birbiriyle çarpılmaz.",
     "Video availability depends on its storage provider. Download it promptly.": "Videonun kullanılabilirliği depolama sağlayıcısına bağlıdır. Videoyu zamanında indirin.",
     "Image expired": "Görselin süresi doldu",
     "Image unavailable": "Görsel kullanılamıyor",

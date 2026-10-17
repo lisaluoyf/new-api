@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "Standardfaktor",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Gilt, wenn keine Modellregel zutrifft. Leer oder 1 bedeutet keinen zusätzlichen Rabatt. Modell- und Standardfaktor werden nicht miteinander multipliziert.",
     "Video availability depends on its storage provider. Download it promptly.": "Die Verfügbarkeit des Videos hängt vom Speicheranbieter ab. Laden Sie es zeitnah herunter.",
     "Image expired": "Bild abgelaufen",
     "Image unavailable": "Bild nicht verfügbar",

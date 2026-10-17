@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Default discount": "Coefficiente predefinito",
+    "Used only when no model rule matches. Leave empty or enter 1 for no extra discount. Model and default discounts do not multiply.": "Usato quando nessuna regola del modello corrisponde. Vuoto o 1 indica nessuno sconto aggiuntivo. I coefficienti del modello e predefinito non si moltiplicano tra loro.",
     "Video availability depends on its storage provider. Download it promptly.": "La disponibilità del video dipende dal fornitore di archiviazione. Scaricalo subito.",
     "Image expired": "Immagine scaduta",
     "Image unavailable": "Immagine non disponibile",

@@ -19,6 +19,7 @@ type UserSetting struct {
 	Timezone                         string             `json:"timezone,omitempty"`                             // Timezone 用户 IANA 时区（如 Asia/Shanghai）
 	DisableTopup                     bool               `json:"disable_topup,omitempty"`                        // DisableTopup 是否禁止该用户发起充值
 	ModelDiscountRatios              map[string]float64 `json:"model_discount_ratios,omitempty"`
+	DefaultModelDiscount             float64            `json:"default_model_discount,omitempty"`
 	ProviderSettings                 []ProviderSetting  `json:"provider_settings,omitempty"`
 }
 
