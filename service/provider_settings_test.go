@@ -19,6 +19,11 @@ func TestNormalizeProviderSettings(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "test-model", rules[0].Model)
 	require.Equal(t, []int{2, 9}, rules[0].ChannelIDs)
+	categories, err := NormalizeProviderSettings([]dto.ProviderSetting{{Model: "test-model", Mode: "include", ChannelCategories: []string{"official", "cloud", "cloud"}}})
+	require.NoError(t, err)
+	require.Equal(t, []string{"cloud", "official"}, categories[0].ChannelCategories)
+	_, err = NormalizeProviderSettings([]dto.ProviderSetting{{Model: "test-model", Mode: "include", ChannelCategories: []string{"unknown"}}})
+	require.Error(t, err)
 	for _, rules := range [][]dto.ProviderSetting{
 		{{Model: "", Mode: "include", ChannelIDs: []int{1}}},
 		{{Model: FreeModelID, Mode: "include", ChannelIDs: []int{1}}},
@@ -73,6 +78,9 @@ func TestProviderScopedCheapestRetriesAndCacheIsolation(t *testing.T) {
 	priceRatio := 1.0
 	for channelID := 1; channelID <= 40; channelID++ {
 		channel := model.Channel{Id: channelID, Name: "route", Key: "test-key", Models: name, Status: 1, Group: AutoCheapestGroup, ApimasterPriceRatio: &priceRatio}
+		if channelID >= 39 {
+			channel.ChannelCategory = common.GetPointer("official")
+		}
 		require.NoError(t, db.Create(&channel).Error)
 		require.NoError(t, channel.AddAbilities(nil))
 		require.NoError(t, db.Create(&model.ChannelModelPricing{ChannelId: channelID, ModelName: name, InputPrice: float64(channelID), PricingSource: "api", GroupRatio: 1}).Error)
@@ -106,4 +114,22 @@ func TestProviderScopedCheapestRetriesAndCacheIsolation(t *testing.T) {
 	background, err := SelectCheapestEnabledChannelInScope(name, nil, nil, &dto.ProviderSetting{Mode: "include", ChannelIDs: []int{39, 40}})
 	require.NoError(t, err)
 	require.Equal(t, 39, background.Id)
+	categoryPolicy := &dto.ProviderSetting{Mode: "include", ChannelCategories: []string{"official"}}
+	background, err = SelectCheapestEnabledChannelInScope(name, nil, nil, categoryPolicy)
+	require.NoError(t, err)
+	require.Equal(t, 39, background.Id)
+	background, err = SelectCheapestEnabledChannelInScope(name, []int{39}, nil, categoryPolicy)
+	require.NoError(t, err)
+	require.Equal(t, 40, background.Id)
+	_, err = SelectCheapestEnabledChannelInScope(name, []int{39, 40}, nil, categoryPolicy)
+	require.ErrorIs(t, err, ErrNoCheapestChannel)
+	categoryPolicy.ChannelIDs = []int{5}
+	background, err = SelectCheapestEnabledChannelInScope(name, nil, nil, categoryPolicy)
+	require.NoError(t, err)
+	require.Equal(t, 5, background.Id)
+	categoryPolicy.Mode = "exclude"
+	require.False(t, ProviderChannelAllowed(categoryPolicy, 39))
+	require.True(t, ProviderChannelAllowed(categoryPolicy, 1))
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 1).Update("channel_category", "official").Error)
+	require.False(t, ProviderChannelAllowed(categoryPolicy, 1))
 }

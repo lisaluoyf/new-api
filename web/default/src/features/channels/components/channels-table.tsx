@@ -107,6 +107,11 @@ export function ChannelsTable() {
     globalFilter: { enabled: true, key: 'filter' },
     columnFilters: [
       { columnId: 'status', searchKey: 'status', type: 'array' },
+      {
+        columnId: 'channel_category',
+        searchKey: 'channel_category',
+        type: 'array',
+      },
       { columnId: 'type', searchKey: 'type', type: 'array' },
       { columnId: 'group', searchKey: 'group', type: 'array' },
       { columnId: 'model', searchKey: 'model', type: 'string' },
@@ -114,6 +119,13 @@ export function ChannelsTable() {
   })
 
   // Extract filters from column filters
+  const categoryFilter =
+    (columnFilters.find((f) => f.id === 'channel_category')
+      ?.value as string[]) || []
+  const categoryParam =
+    categoryFilter[0] && categoryFilter[0] !== 'all'
+      ? categoryFilter[0]
+      : undefined
   const statusFilter =
     (columnFilters.find((f) => f.id === 'status')?.value as string[]) || []
   const typeFilter =
@@ -193,6 +205,7 @@ export function ChannelsTable() {
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const { data, isLoading, isFetching } = useQuery({
     queryKey: channelsQueryKeys.list({
+      channel_category: categoryParam,
       keyword: globalFilter,
       model: modelFilter,
       group:
@@ -216,6 +229,7 @@ export function ChannelsTable() {
     queryFn: async () => {
       if (shouldSearch) {
         return searchChannels({
+          channel_category: categoryParam,
           keyword: globalFilter,
           model: modelFilter,
           group:
@@ -238,6 +252,7 @@ export function ChannelsTable() {
         })
       } else {
         return getChannels({
+          channel_category: categoryParam,
           group:
             groupFilter.length > 0 && !groupFilter.includes('all')
               ? groupFilter[0]
@@ -394,6 +409,17 @@ export function ChannelsTable() {
           />
         ),
         filters: [
+          {
+            columnId: 'channel_category',
+            title: t('Channel category'),
+            options: [
+              { label: t('All'), value: 'all' },
+              { label: t('Default'), value: 'default' },
+              { label: t('Cloud provider'), value: 'cloud' },
+              { label: t('Official'), value: 'official' },
+            ],
+            singleSelect: true,
+          },
           {
             columnId: 'status',
             title: t('Status'),

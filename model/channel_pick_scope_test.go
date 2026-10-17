@@ -29,6 +29,9 @@ func TestProviderScopeFiltersBeforePrioritySelection(t *testing.T) {
 	for channelID := 1; channelID <= 3; channelID++ {
 		priority := int64(100 - channelID)
 		channel := Channel{Id: channelID, Name: "test-route", Key: "test-key", Models: "scope-test", Group: "scope-group", Status: 1, Priority: &priority}
+		if channelID > 1 {
+			channel.ChannelCategory = common.GetPointer("cloud")
+		}
 		require.NoError(t, db.Create(&channel).Error)
 		require.NoError(t, channel.AddAbilities(nil))
 	}
@@ -38,6 +41,7 @@ func TestProviderScopeFiltersBeforePrioritySelection(t *testing.T) {
 			InitChannelCache()
 		}
 		for _, scope := range []*ChannelPickScope{
+			ProviderChannelPickScope(nil, []string{"cloud"}, true),
 			{Include: true, IDs: []int{2, 3}},
 			{Include: false, IDs: []int{1}},
 		} {

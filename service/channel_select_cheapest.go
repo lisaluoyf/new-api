@@ -332,14 +332,7 @@ func selectPricedChannelIDFromDBScoped(modelName string, bannedIDs []int, ascend
 		q = q.Where("c.id NOT IN ?", bannedIDs)
 	}
 	if providerPolicy != nil {
-		if providerPolicy.Mode == "include" {
-			if len(providerPolicy.ChannelIDs) == 0 {
-				return 0
-			}
-			q = q.Where("c.id IN ?", providerPolicy.ChannelIDs)
-		} else if len(providerPolicy.ChannelIDs) > 0 {
-			q = q.Where("c.id NOT IN ?", providerPolicy.ChannelIDs)
-		}
+		q = model.ApplyChannelCategorySelection(q, "c.id", "c.channel_category", providerPolicy.ChannelIDs, providerPolicy.ChannelCategories, providerPolicy.Mode == "include")
 	}
 
 	if err := q.Scan(&rows).Error; err != nil || len(rows) == 0 {

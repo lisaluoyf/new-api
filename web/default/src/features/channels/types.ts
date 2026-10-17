@@ -59,6 +59,7 @@ export const channelSchema = z.object({
   auto_ban: z.number().nullish(),
   other_info: z.string().default(''),
   tag: z.string().nullish(),
+  channel_category: z.enum(['', 'cloud', 'official']).nullish(),
   setting: z.string().nullish(),
   param_override: z.string().nullish(),
   header_override: z.string().nullish(),
@@ -259,6 +260,7 @@ export type ChannelSortBy =
 export type ChannelSortOrder = 'asc' | 'desc'
 
 export interface GetChannelsParams {
+  channel_category?: string
   p?: number
   page_size?: number
   status?: string // 'enabled', 'disabled', or empty for all
@@ -271,6 +273,7 @@ export interface GetChannelsParams {
 }
 
 export interface SearchChannelsParams {
+  channel_category?: string
   keyword?: string
   group?: string
   model?: string
@@ -348,6 +351,7 @@ export interface ChannelFormData {
   status: number
   status_code_mapping?: string
   tag?: string
+  channel_category?: string
   remark?: string
   setting?: string
   param_override?: string

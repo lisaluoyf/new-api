@@ -935,6 +935,31 @@ export function useChannelsColumns(): ColumnDef<Channel>[] {
 
     // Tag column
     {
+      accessorKey: 'channel_category',
+      header: t('Channel category'),
+      meta: { label: t('Channel category') },
+      cell: ({ row }) => {
+        const category = row.original.channel_category
+        if (category === 'cloud')
+          return (
+            <StatusBadge
+              label={t('Cloud provider')}
+              autoColor='cloud'
+              size='sm'
+            />
+          )
+        if (category === 'official')
+          return (
+            <StatusBadge label={t('Official')} autoColor='official' size='sm' />
+          )
+        return (
+          <span className='text-muted-foreground text-xs'>{t('Default')}</span>
+        )
+      },
+      size: 120,
+      enableSorting: false,
+    },
+    {
       accessorKey: 'tag',
       meta: { label: t('Tag'), mobileHidden: true },
       header: t('Tag'),

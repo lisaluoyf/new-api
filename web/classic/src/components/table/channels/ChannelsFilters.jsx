@@ -108,6 +108,24 @@ const ChannelsFilters = ({
           <div className='w-full md:w-32'>
             <Form.Select
               size='small'
+              field='searchCategory'
+              placeholder={t('Channel category')}
+              optionList={[
+                { label: t('默认'), value: 'default' },
+                { label: t('Cloud provider'), value: 'cloud' },
+                { label: t('Official'), value: 'official' },
+              ]}
+              showClear
+              pure
+              className='w-full'
+              onChange={() =>
+                setTimeout(() => searchChannels(enableTagMode), 0)
+              }
+            />
+          </div>
+          <div className='w-full md:w-32'>
+            <Form.Select
+              size='small'
               field='searchGroup'
               placeholder={t('选择分组')}
               optionList={[

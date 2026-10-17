@@ -127,6 +127,7 @@ export const useChannelsData = () => {
     searchKeyword: '',
     searchGroup: '',
     searchModel: '',
+    searchCategory: '',
   };
 
   // Column keys
@@ -135,6 +136,7 @@ export const useChannelsData = () => {
     NAME: 'name',
     GROUP: 'group',
     TYPE: 'type',
+    CATEGORY: 'channel_category',
     STATUS: 'status',
     RESPONSE_TIME: 'response_time',
     BALANCE: 'balance',
@@ -175,6 +177,7 @@ export const useChannelsData = () => {
       [COLUMN_KEYS.NAME]: true,
       [COLUMN_KEYS.GROUP]: true,
       [COLUMN_KEYS.TYPE]: true,
+      [COLUMN_KEYS.CATEGORY]: true,
       [COLUMN_KEYS.STATUS]: true,
       [COLUMN_KEYS.RESPONSE_TIME]: true,
       [COLUMN_KEYS.BALANCE]: true,
@@ -313,6 +316,7 @@ export const useChannelsData = () => {
       searchKeyword: formValues.searchKeyword || '',
       searchGroup: formValues.searchGroup || '',
       searchModel: formValues.searchModel || '',
+      searchCategory: formValues.searchCategory || '',
     };
   };
 
@@ -347,7 +351,7 @@ export const useChannelsData = () => {
     const typeParam = typeKey !== 'all' ? `&type=${typeKey}` : '';
     const statusParam = statusF !== 'all' ? `&status=${statusF}` : '';
     const res = await API.get(
-      `/api/channel/?p=${page}&page_size=${pageSize}&id_sort=${idSort}&tag_mode=${enableTagMode}${typeParam}${statusParam}`,
+      `/api/channel/?p=${page}&page_size=${pageSize}&id_sort=${idSort}&tag_mode=${enableTagMode}${typeParam}${statusParam}&channel_category=${encodeURIComponent(getFormValues().searchCategory)}`,
     );
 
     if (res === undefined || reqId !== requestCounter.current) {
@@ -399,7 +403,7 @@ export const useChannelsData = () => {
       const typeParam = typeKey !== 'all' ? `&type=${typeKey}` : '';
       const statusParam = statusF !== 'all' ? `&status=${statusF}` : '';
       const res = await API.get(
-        `/api/channel/search?keyword=${searchKeyword}&group=${searchGroup}&model=${searchModel}&id_sort=${sortFlag}&tag_mode=${enableTagMode}&p=${page}&page_size=${pageSz}${typeParam}${statusParam}`,
+        `/api/channel/search?keyword=${searchKeyword}&group=${searchGroup}&model=${searchModel}&id_sort=${sortFlag}&tag_mode=${enableTagMode}&p=${page}&page_size=${pageSz}${typeParam}${statusParam}&channel_category=${encodeURIComponent(getFormValues().searchCategory)}`,
       );
       const { success, message, data } = res.data;
       if (success) {

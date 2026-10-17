@@ -71,6 +71,10 @@ func clearChannelInfo(channel *model.Channel) {
 }
 
 func GetAllChannels(c *gin.Context) {
+	if c.Query("channel_category") != "" && c.Query("tag_mode") == "true" {
+		SearchChannels(c)
+		return
+	}
 	pageInfo := common.GetPageQuery(c)
 	channelData := make([]*model.Channel, 0)
 	idSort, _ := strconv.ParseBool(c.Query("id_sort"))
@@ -123,6 +127,9 @@ func GetAllChannels(c *gin.Context) {
 		total, _ = model.CountAllTags()
 	} else {
 		baseQuery := model.DB.Model(&model.Channel{})
+		if category := c.Query("channel_category"); category != "" {
+			baseQuery = model.ApplyChannelCategorySelection(baseQuery, "id", "channel_category", nil, []string{category}, true)
+		}
 		if typeFilter >= 0 {
 			baseQuery = baseQuery.Where("type = ?", typeFilter)
 		}
@@ -147,6 +154,9 @@ func GetAllChannels(c *gin.Context) {
 	}
 
 	countQuery := model.DB.Model(&model.Channel{})
+	if category := c.Query("channel_category"); category != "" {
+		countQuery = model.ApplyChannelCategorySelection(countQuery, "id", "channel_category", nil, []string{category}, true)
+	}
 	if statusFilter == common.ChannelStatusEnabled {
 		countQuery = countQuery.Where("status = ?", common.ChannelStatusEnabled)
 	} else if statusFilter == 0 {
@@ -317,6 +327,15 @@ func SearchChannels(c *gin.Context) {
 		channelData = filtered
 	}
 
+	if category := c.Query("channel_category"); category != "" {
+		filtered := make([]*model.Channel, 0, len(channelData))
+		for _, channel := range channelData {
+			if channel.GetChannelCategory() == category {
+				filtered = append(filtered, channel)
+			}
+		}
+		channelData = filtered
+	}
 	page, _ := strconv.Atoi(c.DefaultQuery("p", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
@@ -430,6 +449,9 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 
 // validateChannel 通用的渠道校验函数
 func validateChannel(channel *model.Channel, isAdd bool) error {
+	if channel.ChannelCategory != nil && !model.ValidChannelCategory(*channel.ChannelCategory) {
+		return fmt.Errorf("Invalid channel category")
+	}
 	// Normalize base_url: trim spaces and trailing slashes so we never store
 	// "https://api.ikuncode.cc/" which causes double-slash URLs in relay calls.
 	// GetBaseURL() also trims at read time, but keeping the DB clean is better.

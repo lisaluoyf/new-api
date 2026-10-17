@@ -176,6 +176,11 @@ export function ProviderSettings() {
                                     [],
                                     { shouldDirty: true }
                                   )
+                                  form.setValue(
+                                    `rules.${index}.channel_categories`,
+                                    [],
+                                    { shouldDirty: true }
+                                  )
                                 }
                               }}
                               placeholder={t('Select a model')}
@@ -226,6 +231,17 @@ export function ProviderSettings() {
                               model={watchedRules[index]?.model ?? ''}
                               value={field.value}
                               onChange={field.onChange}
+                              categories={
+                                watchedRules[index]?.channel_categories ?? []
+                              }
+                              onCategoriesChange={(value) =>
+                                form.setValue(
+                                  `rules.${index}.channel_categories`,
+                                  value,
+                                  { shouldDirty: true, shouldValidate: true }
+                                )
+                              }
+                              mode={watchedRules[index]?.mode ?? 'include'}
                               disabled={disabled}
                             />
                           </FormControl>

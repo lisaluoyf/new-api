@@ -85,6 +85,15 @@ func TestProviderSettingsSavePreservesOtherUserSettings(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"success":true`)
 	require.NoError(t, model.DB.First(&user, 1).Error)
 	require.Len(t, user.GetSetting().ProviderSettings, 1)
+	recorder = httptest.NewRecorder()
+	ctx, _ = gin.CreateTestContext(recorder)
+	ctx.Set("id", 1)
+	ctx.Request = httptest.NewRequest(http.MethodPut, "/api/user/provider-settings", strings.NewReader(`{"rules":[{"enabled":true,"model":"provider-catalog-model","mode":"include","channel_ids":[],"channel_categories":["official","cloud"]}]}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	SaveProviderSettings(ctx)
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	require.Equal(t, []string{"cloud", "official"}, user.GetSetting().ProviderSettings[0].ChannelCategories)
 }
 
 func TestProviderSettingsSupportUsableMarketplaceHiddenModels(t *testing.T) {

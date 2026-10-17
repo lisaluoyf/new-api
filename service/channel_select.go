@@ -117,7 +117,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	pickFilter := ChannelPickFilter(param.Ctx, param.ModelName)
 	var providerScope *model.ChannelPickScope
 	if policy := ProviderPolicyForModel(param.Ctx, param.ModelName); policy != nil {
-		providerScope = &model.ChannelPickScope{Include: policy.Mode == "include", IDs: policy.ChannelIDs}
+		providerScope = model.ProviderChannelPickScope(policy.ChannelIDs, policy.ChannelCategories, policy.Mode == "include")
 	}
 	if param.Ctx.GetBool("seedance_unified_routing") {
 		fields, _ := param.Ctx.Get("seedance_unified_fields")

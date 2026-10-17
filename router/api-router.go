@@ -49,7 +49,7 @@ func SetApiRouter(router *gin.Engine) {
 			perfMetricsRoute.GET("", controller.GetPerfMetrics)
 		}
 		apiRouter.GET("/rankings", controller.GetRankings)
-		apiRouter.GET("/public/marketplace", controller.GetPublicMarketplace)
+		apiRouter.GET("/public/marketplace", middleware.TryUserAuth(), controller.GetPublicMarketplace)
 		apiRouter.GET("/subscription/gpt/catalog", controller.GetPublicGPTSubscriptionCatalog)
 		apiRouter.GET("/trial-limit/redirect/:token", controller.RedirectTrialLimitNotification)
 		apiRouter.GET("/subscription/coding/catalog", controller.GetPublicCodingPlanCatalog)

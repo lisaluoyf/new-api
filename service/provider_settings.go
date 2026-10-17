@@ -30,9 +30,17 @@ func NormalizeProviderSettings(policies []dto.ProviderSetting) ([]dto.ProviderSe
 		if policy.Mode != "include" && policy.Mode != "exclude" {
 			return nil, fmt.Errorf("Invalid provider rule mode")
 		}
-		if len(policy.ChannelIDs) == 0 || len(policy.ChannelIDs) > 512 {
+		if (len(policy.ChannelIDs) == 0 && len(policy.ChannelCategories) == 0) || len(policy.ChannelIDs) > 512 || len(policy.ChannelCategories) > 3 {
 			return nil, fmt.Errorf("Select at least one channel")
 		}
+		policy.ChannelCategories = slices.Clone(policy.ChannelCategories)
+		for _, category := range policy.ChannelCategories {
+			if category != "default" && category != "cloud" && category != "official" {
+				return nil, fmt.Errorf("Invalid channel category")
+			}
+		}
+		slices.Sort(policy.ChannelCategories)
+		policy.ChannelCategories = slices.Compact(policy.ChannelCategories)
 		policy.ChannelIDs = slices.Clone(policy.ChannelIDs)
 		for _, channelID := range policy.ChannelIDs {
 			if channelID <= 0 {
@@ -70,6 +78,13 @@ func ProviderChannelAllowed(policy *dto.ProviderSetting, channelID int) bool {
 		return true
 	}
 	found := slices.Contains(policy.ChannelIDs, channelID)
+	if !found && len(policy.ChannelCategories) > 0 {
+		var channel model.Channel
+		if err := model.DB.Select("id", "channel_category").First(&channel, channelID).Error; err != nil {
+			return false
+		}
+		found = slices.Contains(policy.ChannelCategories, channel.GetChannelCategory())
+	}
 	if policy.Mode == "include" {
 		return found
 	}
@@ -82,6 +97,10 @@ func ProviderChannelPickFilter(c *gin.Context, modelName string) model.ChannelPi
 		return nil
 	}
 	return func(channel *model.Channel) bool {
-		return channel != nil && ProviderChannelAllowed(policy, channel.Id)
+		if channel == nil {
+			return false
+		}
+		found := slices.Contains(policy.ChannelIDs, channel.Id) || slices.Contains(policy.ChannelCategories, channel.GetChannelCategory())
+		return found == (policy.Mode == "include")
 	}
 }

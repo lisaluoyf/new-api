@@ -56,6 +56,7 @@ func InitOptionMap() {
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
 	common.OptionMap["TaskEnabled"] = strconv.FormatBool(common.TaskEnabled)
+	common.OptionMap[ChannelCategoriesPublicEnabledOption] = "false"
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
@@ -334,6 +335,9 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == ChannelCategoriesPublicEnabledOption && value != "true" && value != "false" {
+		return fmt.Errorf("Invalid channel category visibility")
+	}
 	if key == "model_fallback_setting" {
 		normalizedValue, err := model_setting.NormalizeModelFallbackSettingsJSONString(value)
 		if err != nil {

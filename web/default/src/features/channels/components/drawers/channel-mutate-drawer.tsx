@@ -3224,6 +3224,42 @@ export function ChannelMutateDrawer({
 
                         <FormField
                           control={form.control}
+                          name='channel_category'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t('Channel category')}</FormLabel>
+                              <Select
+                                value={field.value || 'default'}
+                                onValueChange={(value) =>
+                                  field.onChange(
+                                    value === 'default' ? '' : value
+                                  )
+                                }
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value='default'>
+                                    {t('Default')}
+                                  </SelectItem>
+                                  <SelectItem value='cloud'>
+                                    {t('Cloud provider')}
+                                  </SelectItem>
+                                  <SelectItem value='official'>
+                                    {t('Official')}
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
                           name='remark'
                           render={({ field }) => (
                             <FormItem>

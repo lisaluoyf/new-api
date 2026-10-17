@@ -1061,6 +1061,7 @@ type PublicDetectPoint struct {
 // channel configuration must never cross the public API boundary.
 type PublicMarketplaceItem struct {
 	ChannelID             int                          `json:"channel_id"`
+	ChannelCategory       string                       `json:"channel_category,omitempty"`
 	ClientExclusive       string                       `json:"client_exclusive"` // "" | "codex" | "claude_code" | "gemini"
 	UserPrice             *float64                     `json:"user_price"`
 	ActualOutputUserPrice *float64                     `json:"actual_output_user_price"`
@@ -1097,6 +1098,7 @@ type publicMarketplaceCacheEntry struct {
 // model has one canonical displayed current price and official comparison.
 type publicMarketplacePricingRow struct {
 	ChannelID           int
+	ChannelCategory     *string
 	Setting             *string
 	ModelMapping        *string
 	InputPrice          *float64
@@ -1124,7 +1126,7 @@ func publicMarketplacePricingRows(modelName string) []publicMarketplacePricingRo
 
 	var rows []publicMarketplacePricingRow
 	model.DB.Table("channels c").
-		Select("c.id as channel_id, c.setting, c.model_mapping, p.input_price, p.output_price, p.group_ratio, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.settings as other_settings, c.status").
+		Select("c.id as channel_id, c.channel_category, c.setting, c.model_mapping, p.input_price, p.output_price, p.group_ratio, c.recharge_rate, COALESCE(c.apimaster_price_ratio, 1.0) AS apimaster_price_ratio, c.model_price_ratios, c.settings as other_settings, c.status").
 		Joins("LEFT JOIN channel_model_pricings p ON c.id = p.channel_id AND p.model_name IN ?", candidates).
 		Joins("LEFT JOIN abilities a ON a.channel_id = c.id AND a.model = ? AND "+abilityGroupColumn+" = 'default'", modelName).
 		Where("c.status = 1").
@@ -1235,6 +1237,7 @@ func publicMarketplacePriceItem(modelName string, row publicMarketplacePricingRo
 	}
 	return PublicMarketplaceItem{
 		ChannelID:             row.ChannelID,
+		ChannelCategory:       (&model.Channel{ChannelCategory: row.ChannelCategory}).GetChannelCategory(),
 		ClientExclusive:       modelDataExtractClientExclusive(row.Setting),
 		UserPrice:             userPrice,
 		ActualOutputUserPrice: outputUserPrice,
@@ -1262,6 +1265,8 @@ func sortPublicMarketplaceItems(items []PublicMarketplaceItem) {
 // No authentication required — public-facing data only (status=1 channels, no internal fields).
 // GET /api/public/marketplace?model=<model_name>
 func GetPublicMarketplace(c *gin.Context) {
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Vary", "Cookie")
 	modelName := c.DefaultQuery("model", "claude-sonnet-4-6")
 	if isHiddenMarketplaceModel(modelName) {
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": []any{}})
@@ -1277,7 +1282,7 @@ func GetPublicMarketplace(c *gin.Context) {
 		if e, ok := publicMarketplaceCache.data[modelName]; ok && time.Now().Unix() < e.expiresAt {
 			items := e.items
 			publicMarketplaceCache.Unlock()
-			c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": marketplaceItemsForViewer(c, items)})
 			return
 		}
 		publicMarketplaceCache.Unlock()
@@ -1405,7 +1410,7 @@ func GetPublicMarketplace(c *gin.Context) {
 		publicMarketplaceCache.Unlock()
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": marketplaceItemsForViewer(c, items)})
 }
 
 // ToggleChannelStatus toggles the enabled state of a specific (channel, model) pair

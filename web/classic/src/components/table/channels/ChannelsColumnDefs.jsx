@@ -458,6 +458,18 @@ export const getChannelsColumns = ({
       },
     },
     {
+      key: COLUMN_KEYS.CATEGORY,
+      title: t('Channel category'),
+      dataIndex: 'channel_category',
+      render: (value) => {
+        if (value === 'cloud')
+          return <Tag color='blue'>{t('Cloud provider')}</Tag>;
+        if (value === 'official')
+          return <Tag color='green'>{t('Official')}</Tag>;
+        return <span className='text-gray-400'>{t('默认')}</span>;
+      },
+    },
+    {
       key: COLUMN_KEYS.GROUP,
       title: t('分组'),
       dataIndex: 'group',

@@ -40,6 +40,7 @@ export const channelFormSchema = z.object({
   status: z.number(),
   status_code_mapping: z.string().optional(),
   tag: z.string().optional(),
+  channel_category: z.enum(['', 'cloud', 'official']).optional(),
   remark: z
     .string()
     .max(255, 'Remark must be less than 255 characters')
@@ -164,6 +165,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   status: CHANNEL_STATUS.ENABLED,
   status_code_mapping: '',
   tag: '',
+  channel_category: '',
   remark: '',
   setting: '',
   param_override: '',
@@ -364,6 +366,7 @@ export function transformChannelToFormDefaults(
     status: channel.status,
     status_code_mapping: channel.status_code_mapping || '',
     tag: channel.tag || '',
+    channel_category: channel.channel_category || '',
     remark: channel.remark || '',
     setting: channel.setting || '',
     param_override: channel.param_override || '',
@@ -591,6 +594,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     status: formData.status,
     status_code_mapping: formData.status_code_mapping || null,
     tag: formData.tag || null,
+    channel_category: formData.channel_category ?? '',
     remark: formData.remark || '',
     setting: buildSettingJSON(formData),
     param_override: formData.param_override || null,
@@ -642,6 +646,7 @@ export function transformFormDataToUpdatePayload(
     status: formData.status,
     status_code_mapping: formData.status_code_mapping || null,
     tag: formData.tag || null,
+    channel_category: formData.channel_category ?? '',
     remark: formData.remark || '',
     setting: buildSettingJSON(formData),
     param_override: formData.param_override || null,

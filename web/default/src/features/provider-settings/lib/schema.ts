@@ -1,26 +1,39 @@
 import { z } from 'zod'
 
 function createProviderRuleSchema(translate: (key: string) => string) {
-  return z.object({
-    enabled: z.boolean(),
-    model: z
-      .string()
-      .trim()
-      .min(1, translate('Select a model'))
-      .max(200, translate('Invalid provider rule model')),
-    mode: z.enum(['include', 'exclude'], {
-      error: translate('Invalid provider rule mode'),
-    }),
-    channel_ids: z
-      .array(
-        z
-          .number()
-          .int(translate('Invalid channel ID'))
-          .positive(translate('Invalid channel ID'))
-      )
-      .min(1, translate('Select at least one channel'))
-      .max(512, translate('Too many selected channels')),
-  })
+  return z
+    .object({
+      enabled: z.boolean(),
+      model: z
+        .string()
+        .trim()
+        .min(1, translate('Select a model'))
+        .max(200, translate('Invalid provider rule model')),
+      mode: z.enum(['include', 'exclude'], {
+        error: translate('Invalid provider rule mode'),
+      }),
+      channel_ids: z
+        .array(
+          z
+            .number()
+            .int(translate('Invalid channel ID'))
+            .positive(translate('Invalid channel ID'))
+        )
+        .max(512, translate('Too many selected channels')),
+      channel_categories: z
+        .array(z.enum(['default', 'cloud', 'official']))
+        .max(3)
+        .optional(),
+    })
+    .superRefine((rule, context) => {
+      if (!rule.channel_ids.length && !rule.channel_categories?.length) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['channel_ids'],
+          message: translate('Select at least one channel'),
+        })
+      }
+    })
 }
 
 export function createProviderSettingsSchema(

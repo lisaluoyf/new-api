@@ -5,6 +5,7 @@ type Response<Data> = { success: boolean; message?: string; data: Data }
 export type ProviderSettingsData = ProviderSettingsValues & { models: string[] }
 export type ProviderChannel = {
   channel_id: number
+  channel_category?: 'default' | 'cloud' | 'official'
   user_price: number | null
   actual_output_user_price: number | null
   official_input_price: number | null

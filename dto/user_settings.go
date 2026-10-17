@@ -24,10 +24,11 @@ type UserSetting struct {
 }
 
 type ProviderSetting struct {
-	Enabled    bool   `json:"enabled"`
-	Model      string `json:"model"`
-	Mode       string `json:"mode"`
-	ChannelIDs []int  `json:"channel_ids"`
+	Enabled           bool     `json:"enabled"`
+	Model             string   `json:"model"`
+	Mode              string   `json:"mode"`
+	ChannelIDs        []int    `json:"channel_ids"`
+	ChannelCategories []string `json:"channel_categories,omitempty"`
 }
 
 var (
