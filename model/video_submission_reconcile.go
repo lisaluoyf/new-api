@@ -7,10 +7,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// ReconcileVideoSubmission uses only an already persisted original task and
-// its billing receipt. Absence, a timeout or a refund is never rejection proof.
-// It cannot create a task, call an upstream, reserve funds or change a bill.
+// ReconcileVideoSubmission restores acknowledged originals from frozen evidence
+// or repairs their ready markers. A timeout or refund is never rejection proof.
+// It never calls a generation endpoint, reserves funds or replays billing.
 func ReconcileVideoSubmission(userID int, id string) error {
+	if err := RestoreVideoSubmission(userID, id); err != nil {
+		return err
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var row VideoSubmission
 		if err := tx.Where("id = ? AND user_id = ?", id, userID).First(&row).Error; err != nil {
@@ -46,18 +49,32 @@ func ReconcileVideoSubmission(userID int, id string) error {
 	})
 }
 
-// Limit scans to receipts with existing tasks; unknowable upstream submissions
-// cannot starve recoverable receipts and are never converted to not_accepted.
+// Scan recoverable frozen submissions and existing task evidence. Unknown
+// acceptance never causes a resend or an inferred upstream rejection.
 func ReconcileVideoSubmissions(limit int) error {
-	var rows []VideoSubmission
-	err := DB.Model(&VideoSubmission{}).Select("video_submissions.*").Where("task_ready = ? AND status IN ?", false, []string{VideoSubmissionUnknown, VideoSubmissionSubmitting, VideoSubmissionAccepted}).Where("EXISTS (SELECT 1 FROM tasks WHERE tasks.task_id = video_submissions.task_id AND tasks.user_id = video_submissions.user_id)").Order("updated_at ASC, id ASC").Limit(limit).Find(&rows).Error
-	if err != nil {
-		return err
+	if limit <= 0 {
+		limit = 200
 	}
-	for _, row := range rows {
-		if err := ReconcileVideoSubmission(row.UserID, row.ID); err != nil {
+	now := time.Now().Unix()
+	for _, pair := range [][2]string{{VideoSubmissionPending, VideoSubmissionNotAccepted}, {VideoSubmissionSubmitting, VideoSubmissionUnknown}} {
+		if err := DB.Model(&VideoSubmission{}).Where("status = ? AND deadline <= ?", pair[0], now).Updates(map[string]any{"status": pair[1], "updated_at": now}).Error; err != nil {
 			return err
 		}
 	}
-	return nil
+	var rows []VideoSubmission
+	err := DB.Model(&VideoSubmission{}).Select("video_submissions.*").Where("task_ready = ? AND status IN ?", false, []string{VideoSubmissionUnknown, VideoSubmissionSubmitting, VideoSubmissionAccepted}).Where("(recovery_settled = ? AND recovery_json <> ?) OR EXISTS (SELECT 1 FROM tasks WHERE tasks.task_id = video_submissions.task_id AND tasks.user_id = video_submissions.user_id)", true, "").Order("updated_at ASC, id ASC").Limit(limit).Find(&rows).Error
+	if err != nil {
+		return err
+	}
+	var firstErr error
+	for _, row := range rows {
+		if err := ReconcileVideoSubmission(row.UserID, row.ID); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		// Rotate deferred/conflicting evidence behind other candidates.
+		if err := DB.Model(&VideoSubmission{}).Where("id = ? AND task_ready = ?", row.ID, false).Update("updated_at", now).Error; err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }

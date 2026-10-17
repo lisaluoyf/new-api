@@ -276,6 +276,16 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
 	}
 
+	if submission := service.VideoSubmissionFromContext(c); submission != nil {
+		task := service.NewSubmittedVideoTask(c, info, platform, "", nil, info.PriceData.Quota)
+		receipt, receiptErr := service.NewSeedanceTaskReceipt(c, info, task)
+		if receiptErr != nil {
+			return nil, service.TaskErrorWrapperLocal(receiptErr, "build_request_failed", http.StatusServiceUnavailable)
+		}
+		if err := model.PrepareVideoSubmissionRecovery(submission, task, receipt); err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "build_request_failed", http.StatusServiceUnavailable)
+		}
+	}
 	c.Set("seedance_confirmed_not_accepted", false)
 	// Persist the one-way send boundary before any provider submission.
 	if err := service.MarkVideoSubmissionSending(c, info.ChannelId); err != nil {
@@ -316,7 +326,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		if upstreamTaskID == "" {
 			return nil, service.TaskErrorWrapper(fmt.Errorf("upstream did not return a task ID"), "invalid_response", http.StatusBadGateway)
 		}
-		if err := model.FinishVideoSubmission(submission.ID, model.VideoSubmissionAccepted, upstreamTaskID, false); err != nil {
+		if err := model.AcceptVideoSubmission(submission.ID, upstreamTaskID, taskData); err != nil {
 			return nil, service.TaskErrorWrapper(fmt.Errorf("unable to persist upstream acceptance"), "read_response_body_failed", http.StatusServiceUnavailable)
 		}
 	}

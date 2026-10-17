@@ -10,8 +10,8 @@ import (
 
 var videoSubmissionReconcileOnce sync.Once
 
-// Reconcile persisted evidence only. Unknown upstream acceptance never causes
-// a generation POST, inferred rejection, a second reservation or a debit.
+// Restore original tasks from persisted acceptance/settlement evidence only.
+// Unknown acceptance never causes a generation POST, a new reservation or debit.
 func StartVideoSubmissionReconcileTask() {
 	if !common.IsMasterNode {
 		return

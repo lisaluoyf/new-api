@@ -532,7 +532,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		client = service.GetHttpClient()
 	}
 
-	if service.VideoSubmissionFromContext(c) != nil && req.Method == http.MethodPost {
+	if (service.VideoSubmissionFromContext(c) != nil || service.IsSeedanceLibraryModel(info.OriginModelName)) && req.Method == http.MethodPost {
 		// Never replay a paid submission through HTTP redirects or the
 		// transport's rewind path, even when an adapter sets an upstream key.
 		req.GetBody = nil
@@ -588,7 +588,7 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	}
 	requestContext := c.Request.Context()
 	var cancel context.CancelFunc
-	if service.VideoSubmissionFromContext(c) != nil && c.Request.Method == http.MethodPost {
+	if (service.VideoSubmissionFromContext(c) != nil || service.IsSeedanceLibraryModel(info.OriginModelName)) && c.Request.Method == http.MethodPost {
 		// The paid send boundary has already been persisted. A client disconnect
 		// must not discard its acceptance response. Observe this ONE request for
 		// a bounded period; never replay a POST to discover whether it succeeded.

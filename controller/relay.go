@@ -27,7 +27,6 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	model_setting "github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -1845,60 +1844,20 @@ func RelayTask(c *gin.Context) {
 	if taskErr == nil {
 		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
 			common.SysError("settle task billing error: " + settleErr.Error())
+			if service.VideoSubmissionFromContext(c) != nil {
+				webhookResponse.failPersistence()
+				return
+			}
+		} else if submission := service.VideoSubmissionFromContext(c); submission != nil {
+			if err := model.MarkVideoSubmissionBillingCommitted(submission.ID); err != nil {
+				common.SysError("persist video billing checkpoint failed: " + err.Error())
+				webhookResponse.failPersistence()
+				return
+			}
 		}
 		service.LogTaskConsumption(c, relayInfo)
 
-		task := model.InitTask(result.Platform, relayInfo)
-		task.PrivateData.Webhook = GetTaskWebhookConfig(c)
-		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
-		task.PrivateData.BillingSource = relayInfo.BillingSource
-		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
-		task.PrivateData.TokenId = relayInfo.TokenId
-		task.PrivateData.BillingContext = &model.TaskBillingContext{
-			SeedanceTariff:    service.IsSeedanceLibraryModel(relayInfo.OriginModelName),
-			ModelPrice:        relayInfo.PriceData.ModelPrice,
-			GroupRatio:        relayInfo.PriceData.GroupRatioInfo.GroupRatio,
-			UserModelDiscount: relayInfo.PriceData.GroupRatioInfo.UserModelDiscount,
-			ModelRatio:        relayInfo.PriceData.ModelRatio,
-			OtherRatios:       relayInfo.PriceData.OtherRatios,
-			OriginModelName:   relayInfo.OriginModelName,
-			PerCallBilling:    service.IsTaskPerCallBilling(relayInfo.OriginModelName, relayInfo.PriceData),
-		}
-		if task.Platform == constant.TaskPlatformApimartVideo {
-			name := strings.ToLower(relayInfo.OriginModelName)
-			if service.IsSeedance20Variant(name) || name == "seedance-2.0" || name == "doubao-seedance-2.0" || name == "seedance-2.5" {
-				if base, ok := ratio_setting.GetVideoModelBasePrice(name); ok && base > 0 && relayInfo.PriceData.ModelPrice > 0 {
-					task.PrivateData.BillingContext.ProviderCostMultiplier = relayInfo.PriceData.ModelPrice / base
-				}
-			}
-		}
-		if snapshot, ok := c.Get("seedance25_normalized_request"); ok {
-			task.PrivateData.SeedanceRequest = snapshot.(map[string]any)
-			task.PrivateData.Key = common.GetContextKeyString(c, constant.ContextKeyChannelKey)
-		}
-		if snapshot, ok := c.Get("seedance20_normalized_request"); ok {
-			task.PrivateData.SeedanceRequest = snapshot.(map[string]any)
-			task.PrivateData.SeedanceRequest["video_input_seconds"] = c.GetInt("seedance_video_input_seconds")
-		}
-		if snapshot, ok := c.Get("seedance_billing_snapshot"); ok {
-			if task.PrivateData.SeedanceRequest == nil {
-				task.PrivateData.SeedanceRequest = map[string]any{}
-			}
-			for key, value := range snapshot.(map[string]any) {
-				task.PrivateData.SeedanceRequest[key] = value
-			}
-		}
-		service.CaptureSeedanceFallbackRequest(c, task)
-		task.Quota = result.Quota
-		task.Data = result.TaskData
-		task.Action = relayInfo.Action
-		if taskReq, reqErr := relaycommon.GetTaskRequest(c); reqErr == nil {
-			if rd := service.BuildVideoRequestDataForLog(&taskReq); len(rd) > 0 {
-				if encoded, merr := common.Marshal(rd); merr == nil {
-					task.PrivateData.RequestData = string(encoded)
-				}
-			}
-		}
+		task := service.NewSubmittedVideoTask(c, relayInfo, result.Platform, result.UpstreamTaskID, result.TaskData, result.Quota)
 		var insertErr error
 		if service.UsesSeedanceTariff(task) {
 			receipt, receiptErr := service.NewSeedanceTaskReceipt(c, relayInfo, task)

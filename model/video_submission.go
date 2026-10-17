@@ -20,8 +20,14 @@ const (
 )
 
 // A durable claim is never deleted or reused. Only its creator may execute it.
-// No API key, prompt, media URL or raw idempotency key is stored here.
+// No API key or raw idempotency key is stored here. Private recovery snapshots
+// follow task-storage access controls and never appear in public receipts.
 type VideoSubmission struct {
+	// Private recovery snapshots never appear in public submission receipts.
+	RecoveryJSON    string `json:"-" gorm:"type:text"`
+	ResponseJSON    string `json:"-" gorm:"type:text"`
+	RecoverySettled bool   `json:"-"`
+
 	AttemptsJSON   string `json:"-" gorm:"type:text"`
 	ID             string `json:"submission_id" gorm:"primaryKey;size:64"`
 	UserID         int    `json:"-" gorm:"index"`
@@ -134,24 +140,39 @@ func FinishVideoSubmission(id, status, upstreamID string, ready bool) error {
 
 // Create the task, its billing receipt and the ready marker in one transaction.
 func InsertVideoSubmissionTask(task *Task, receipt *SeedanceBillingReceipt, submissionID string) error {
-	return DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(task).Error; err != nil {
+	return DB.Transaction(func(tx *gorm.DB) error { return insertVideoSubmissionTask(tx, task, receipt, submissionID) })
+}
+
+func insertVideoSubmissionTask(tx *gorm.DB, task *Task, receipt *SeedanceBillingReceipt, submissionID string) error {
+	var row VideoSubmission
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", submissionID).First(&row).Error; err != nil {
+		return err
+	}
+	if task.UserId != row.UserID || task.TaskID != row.TaskID || task.ChannelId != row.ChannelID || task.Properties.OriginModelName != row.Model || task.PrivateData.UpstreamTaskID == "" || (row.UpstreamTaskID != "" && task.PrivateData.UpstreamTaskID != row.UpstreamTaskID) {
+		return ErrVideoSubmissionClaimLost
+	}
+	if row.TaskReady {
+		var existing []Task
+		if err := tx.Where("task_id = ? AND user_id = ?", row.TaskID, row.UserID).Limit(2).Find(&existing).Error; err != nil {
 			return err
 		}
-		if receipt != nil {
-			if err := tx.Create(receipt).Error; err != nil {
-				return err
-			}
-		}
-		result := tx.Model(&VideoSubmission{}).Where("id = ? AND status IN ?", submissionID, []string{VideoSubmissionSubmitting, VideoSubmissionUnknown, VideoSubmissionAccepted}).Updates(map[string]any{"status": VideoSubmissionAccepted, "task_ready": true, "upstream_task_id": task.PrivateData.UpstreamTaskID, "updated_at": time.Now().Unix()})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 1 {
+		if len(existing) != 1 || existing[0].ChannelId != row.ChannelID || existing[0].PrivateData.UpstreamTaskID != task.PrivateData.UpstreamTaskID {
 			return ErrVideoSubmissionClaimLost
 		}
 		return nil
-	})
+	}
+	if row.Status != VideoSubmissionSubmitting && row.Status != VideoSubmissionUnknown && row.Status != VideoSubmissionAccepted {
+		return ErrVideoSubmissionClaimLost
+	}
+	if err := tx.Create(task).Error; err != nil {
+		return err
+	}
+	if receipt != nil {
+		if err := tx.Create(receipt).Error; err != nil {
+			return err
+		}
+	}
+	return tx.Model(&VideoSubmission{}).Where("id = ?", row.ID).Updates(map[string]any{"status": VideoSubmissionAccepted, "task_ready": true, "upstream_task_id": task.PrivateData.UpstreamTaskID, "updated_at": time.Now().Unix(), "recovery_json": "", "response_json": ""}).Error
 }
 
 // Only an explicit rejection lets the same live owner cross the send boundary

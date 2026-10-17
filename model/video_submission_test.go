@@ -145,7 +145,7 @@ func TestVideoSubmissionTaskAndBillingReceiptAreAtomic(t *testing.T) {
 	r, _, err := ClaimVideoSubmission(claimFixture("atomic"))
 	require.NoError(t, err)
 	require.NoError(t, MarkVideoSubmissionSending(r.ID, 1))
-	task := &Task{TaskID: r.TaskID, UserId: 7, PrivateData: TaskPrivateData{UpstreamTaskID: "private-id"}}
+	task := &Task{TaskID: r.TaskID, UserId: 7, ChannelId: 1, Properties: Properties{OriginModelName: r.Model}, PrivateData: TaskPrivateData{UpstreamTaskID: "private-id"}}
 	receipt := &SeedanceBillingReceipt{ID: "receipt_atomic", TaskID: r.TaskID, UserID: 7}
 	require.NoError(t, DB.Create(receipt).Error)
 	require.Error(t, InsertVideoSubmissionTask(task, receipt, r.ID))

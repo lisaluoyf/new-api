@@ -17,22 +17,33 @@ import (
 func DurableSeedanceSubmission() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := c.GetHeader("Idempotency-Key")
-		if c.Request.Method != http.MethodPost || !service.IsSeedanceSubmissionPath(c.Request.URL.Path) || key == "" {
+		if c.Request.Method != http.MethodPost || !service.IsSeedanceSubmissionPath(c.Request.URL.Path) {
 			c.Next()
 			return
 		}
-		if !service.ValidVideoSubmissionKey(key) {
+		if key != "" && !service.ValidVideoSubmissionKey(key) {
 			submissionError(c, 400, "invalid_idempotency_key", "Idempotency-Key must be 8–128 visible ASCII characters")
 			return
 		}
 		name, fingerprint, err := service.VideoSubmissionFingerprint(c)
 		if err != nil {
+			if key == "" {
+				c.Next()
+				return
+			}
 			submissionError(c, 400, "invalid_request", err.Error())
 			return
 		}
 		if !service.IsSeedanceLibraryModel(name) {
+			if key == "" {
+				c.Next()
+				return
+			}
 			submissionError(c, 400, "idempotency_not_supported", "Idempotency-Key is supported only for Seedance video generation on this endpoint")
 			return
+		}
+		if key == "" {
+			key = "internal-" + common.GetUUID()
 		}
 		// Older portrait receipts already protect keys accepted before this feature.
 		// Keep their original validation/replay path, rather than creating a second claim.

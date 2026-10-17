@@ -124,3 +124,36 @@ func TestDurableVideoSubmissionDoesNotStartAfterClientAlreadyGone(t *testing.T) 
 	require.ErrorIs(t, err, context.Canceled)
 	require.Zero(t, posts.Load())
 }
+
+// Model-level protection also covers legacy paths without a durable claim.
+func TestSeedanceModelsObserveOriginalResponseWithoutClientIdempotencyKey(t *testing.T) {
+	for _, name := range []string{"seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini", "seedance-2.5"} {
+		t.Run(name, func(t *testing.T) {
+			service.InitHttpClient()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var posts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				posts.Add(1)
+				_, _ = io.Copy(io.Discard, r.Body)
+				cancel()
+				time.Sleep(10 * time.Millisecond)
+				_, _ = w.Write([]byte(`{"id":"original"}`))
+			}))
+			defer server.Close()
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/v1/videos", strings.NewReader("{}")).WithContext(ctx)
+			info := &relaycommon.RelayInfo{OriginModelName: name, ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: server.URL, ApiKey: "fixture"}, TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_original"}}
+			adaptor := &doubao.TaskAdaptor{}
+			adaptor.Init(info)
+			resp, err := channel.DoTaskApiRequest(adaptor, c, info, strings.NewReader(`{}`))
+			require.NoError(t, err)
+			raw, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Contains(t, string(raw), "original")
+			require.EqualValues(t, 1, posts.Load())
+			require.ErrorIs(t, ctx.Err(), context.Canceled)
+		})
+	}
+}

@@ -174,3 +174,33 @@ func TestDurableSubmissionAutomaticReviewRejectionIsNotAmbiguous(t *testing.T) {
 	require.Contains(t, replay.Body.String(), "not_accepted")
 	require.NotContains(t, replay.Body.String(), "acceptance_unknown")
 }
+
+func TestDurableSubmissionProtectsEverySeedanceRequestWithoutClientKey(t *testing.T) {
+	for _, name := range []string{"seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini", "seedance-2.5"} {
+		t.Run(name, func(t *testing.T) {
+			calls := 0
+			r := durableSubmissionRouter(t, func(c *gin.Context) {
+				calls++
+				require.NotNil(t, service.VideoSubmissionFromContext(c))
+				require.NoError(t, service.MarkVideoSubmissionSending(c, 153))
+				c.Status(503)
+			})
+			first := postSubmission(r, "/v1/videos/generations", "", fmt.Sprintf(`{"model":%q}`, name))
+			second := postSubmission(r, "/v1/videos/generations", "", fmt.Sprintf(`{"model":%q}`, name))
+			require.NotEmpty(t, first.Header().Get("X-Video-Submission-Id"))
+			require.NotEqual(t, first.Header().Get("X-Video-Submission-Id"), second.Header().Get("X-Video-Submission-Id"))
+			require.Equal(t, 2, calls) // Missing client keys cannot deduplicate separate requests.
+			var rows []model.VideoSubmission
+			require.NoError(t, model.DB.Find(&rows).Error)
+			require.Len(t, rows, 2)
+			for _, row := range rows {
+				require.Equal(t, model.VideoSubmissionUnknown, row.Status)
+			}
+		})
+	}
+}
+
+func TestDurableSubmissionLeavesNonSeedanceRequestsWithoutKeyOnNormalPath(t *testing.T) {
+	r := durableSubmissionRouter(t, func(c *gin.Context) { require.Nil(t, service.VideoSubmissionFromContext(c)); c.Status(200) })
+	require.Equal(t, 200, postSubmission(r, "/v1/videos", "", `{"model":"sora-2"}`).Code)
+}
