@@ -78,7 +78,8 @@ export function modelMatchesCategory(
   }
   if (category === 'gpt') return modelId.startsWith('gpt-')
   if (category === 'claude') return modelId.startsWith('claude-')
-  if (category === 'gemini') return modelId.startsWith('gemini-')
+  if (category === 'gemini')
+    return modelId.startsWith('gemini-') || modelId.startsWith('veo-')
   if (category === 'grok') return modelId.startsWith('grok-')
   if (category === 'deepseek') return modelId.startsWith('deepseek-')
   if (category === 'glm') return modelId.startsWith('glm-')

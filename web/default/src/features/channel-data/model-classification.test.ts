@@ -18,17 +18,21 @@ test('Gemini has a dedicated category between Claude and Grok', () => {
   assert.equal(new Set(categoryKeys).size, categoryKeys.length)
 })
 
-test('Gemini category includes its text and Nano Banana image models only', () => {
+test('Gemini category includes its text, Nano Banana image and Veo video models', () => {
   const models = MODEL_TABS.filter((tab) =>
     modelMatchesCategory(tab.modelId, 'gemini')
   ).map((tab) => tab.modelId)
   assert.deepEqual(
     models,
-    MODEL_TABS.filter((tab) => tab.modelId.startsWith('gemini-')).map(
-      (tab) => tab.modelId
-    )
+    MODEL_TABS.filter(
+      (tab) =>
+        tab.modelId.startsWith('gemini-') || tab.modelId.startsWith('veo-')
+    ).map((tab) => tab.modelId)
   )
   for (const modelId of [
+    'veo-3.1-generate-preview',
+    'veo-3.1-fast-generate-preview',
+    'veo-3.1-lite-generate-preview',
     'gemini-3.1-pro-preview',
     'gemini-3.7-flash',
     'gemini-2.5-flash-image',
