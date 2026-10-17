@@ -27,7 +27,7 @@ func durableSubmissionRouter(t *testing.T, handler gin.HandlerFunc) *gin.Engine 
 	require.NoError(t, err)
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.VideoSubmission{}, &model.SeedanceResource{}))
+	require.NoError(t, db.AutoMigrate(&model.VideoSubmission{}, &model.SeedanceResource{}, &model.Task{}, &model.SeedanceBillingReceipt{}))
 	model.DB = db
 	t.Cleanup(func() { model.DB = old; sqlDB.Close() })
 	r := gin.New()
