@@ -138,3 +138,20 @@ func TestVeoSubmitAndTerminalContract(t *testing.T) {
 	require.True(t, IsChannel("https://api.apib.ai"))
 	require.False(t, IsChannel("https://api.apib.ai.attacker.test"))
 }
+
+func TestVeoThreeReferencesCanFallbackFromOfficialToExt(t *testing.T) {
+	extra := `,"image_urls":["https://example.com/1.png","https://example.com/2.png","https://example.com/3.png"]`
+	a, c, info := fixture(t, Fast, "veo3.1-fast-official", extra)
+	err := a.ValidateRequestAndSetAction(c, info)
+	require.NotNil(t, err)
+	require.Equal(t, 503, err.StatusCode)
+	require.True(t, err.LocalError)
+	a, c, info = fixture(t, Fast, "veo3.1-fast-ext", extra)
+	require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+	body, _ := c.Get("veo_request")
+	require.Equal(t, "reference", body.(map[string]any)["generation_type"])
+	a, c, info = fixture(t, Standard, "veo3.1-quality-official", extra)
+	err = a.ValidateRequestAndSetAction(c, info)
+	require.NotNil(t, err)
+	require.Equal(t, 400, err.StatusCode)
+}

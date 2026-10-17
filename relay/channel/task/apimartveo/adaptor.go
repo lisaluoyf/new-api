@@ -300,11 +300,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		}
 		images = append(images, last)
 	}
-	limit := 3
-	if official {
-		limit = 2
-	}
-	if len(images) > limit {
+	if len(images) > 3 {
 		return fail(fmt.Errorf("too many Veo reference images"))
 	}
 	for _, image := range images {
@@ -317,23 +313,20 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if generation != "" && generation != "frame" && generation != "reference" {
 		return fail(fmt.Errorf("unsupported generation_type"))
 	}
-	if generation == "reference" && official {
-		return capability("reference generation requires the Ext Fast channel")
+	if generation == "frame" && len(images) > 2 {
+		return fail(fmt.Errorf("frame mode supports at most two images"))
 	}
-	if generation == "reference" && (name != Fast || len(images) == 0 || aspect != "16:9") {
-		return fail(fmt.Errorf("reference generation requires Ext Fast, images, and 16:9"))
-	}
-	if name == Standard && len(images) == 3 {
+	if name == Standard && (generation == "reference" || len(images) == 3) {
 		return fail(fmt.Errorf("Standard does not support reference generation"))
 	}
 	if len(images) == 3 && generation == "" {
 		generation = "reference"
 	}
-	if generation == "reference" && aspect != "16:9" {
-		return fail(fmt.Errorf("reference generation requires 16:9"))
+	if generation == "reference" && (len(images) == 0 || aspect != "16:9") {
+		return fail(fmt.Errorf("reference generation requires images and 16:9"))
 	}
-	if generation == "frame" && len(images) > 2 {
-		return fail(fmt.Errorf("frame mode supports at most two images"))
+	if generation == "reference" && official {
+		return capability("reference generation requires the Ext Fast channel")
 	}
 	remix := info.Action == constant.TaskActionRemix
 	parentID := ""
