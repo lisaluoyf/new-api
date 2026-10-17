@@ -54,7 +54,10 @@ func ResolveTokenBillingExpression(channelID int, modelName string, procurement 
 			return snap, nil
 		}
 	}
-	if row != nil && row.BillingMode == "tiered_expr" && strings.TrimSpace(row.BillingExpr) != "" {
+	_, isGrok := billing_setting.GrokOfficialBillingExpr(modelName)
+	_, hasGlobalSchedule := GlobalTokenBillingExpression(modelName)
+	useGlobalGrokRetail := !procurement && isGrok && hasGlobalSchedule
+	if !useGlobalGrokRetail && row != nil && row.BillingMode == "tiered_expr" && strings.TrimSpace(row.BillingExpr) != "" {
 		// Check token identifiers before compiling: expressions for images/video
 		// may use a different upstream dialect (e.g. fixed()).
 		if IsTokenBillingExpression(row.BillingExpr) {

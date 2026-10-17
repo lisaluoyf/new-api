@@ -1,0 +1,38 @@
+name: Grok official billing checks
+on:
+  push:
+    branches: ['feature/grok-official-tiers-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  billing:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+          cache-dependency-path: ./go.sum
+      - name: Prepare embedded frontend fixtures
+        run: |
+          mkdir -p web/default/dist web/classic/dist
+          printf '%s\n' '<!doctype html><html><body>billing test fixture</body></html>' > web/default/dist/index.html
+          cp web/default/dist/index.html web/classic/dist/index.html
+      - name: Grok boundary, cache, wallet, token and accounting tests
+        run: go test -p 2 -count=1 -v ./setting/billing_setting ./service ./relay/helper -run 'TestGrok' > grok-targeted.log 2>&1
+      - name: Full Go regression
+        run: go test -p 2 -count=1 ./... > grok-regression.log 2>&1
+      - name: Race checks for changed billing paths
+        run: go test -race -p 2 -count=1 ./setting/billing_setting ./service ./relay/helper -run 'TestGrok' > grok-race.log 2>&1
+      - name: Vet billing packages
+        run: go vet ./setting/billing_setting ./service ./relay/helper
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grok-billing-results
+          path: './*.log'
