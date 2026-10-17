@@ -29,7 +29,8 @@ export function filenameFromMediaUrl(url: string, fallback: string): string {
 
 export async function downloadMediaFile(
   url: string,
-  fallbackName: string
+  fallbackName: string,
+  options: { allowLinkFallback?: boolean } = {}
 ): Promise<void> {
   const filename = filenameFromMediaUrl(url, fallbackName)
 
@@ -46,7 +47,8 @@ export async function downloadMediaFile(
     anchor.remove()
     URL.revokeObjectURL(objectUrl)
     return
-  } catch {
+  } catch (error) {
+    if (options.allowLinkFallback === false) throw error
     const anchor = document.createElement('a')
     anchor.href = url
     anchor.download = filename

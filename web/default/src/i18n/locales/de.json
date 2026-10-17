@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Video availability depends on its storage provider. Download it promptly.": "Die Verfügbarkeit des Videos hängt vom Speicheranbieter ab. Laden Sie es zeitnah herunter.",
+    "Image expired": "Bild abgelaufen",
+    "Image unavailable": "Bild nicht verfügbar",
+    "The image has been removed after the retention period. The generation record is still available.": "Das Bild wurde nach Ablauf der Aufbewahrungsfrist entfernt. Der Generierungsverlauf bleibt erhalten.",
+    "Unable to load this image. Please try again.": "Das Bild kann nicht geladen werden. Bitte versuchen Sie es erneut.",
+    "Cached images are kept for {{hours}} hours.": "Zwischengespeicherte Bilder werden {{hours}} Stunden aufbewahrt.",
+    "Download before {{time}}.": "Vor {{time}} herunterladen.",
+    "Image availability depends on its storage provider. Download it promptly.": "Die Verfügbarkeit hängt vom Speicheranbieter ab. Laden Sie das Bild zeitnah herunter.",
     "Payment verification timed out. Please contact support with your transaction hash.": "Die Zahlungsprüfung hat zu lange gedauert. Bitte kontaktieren Sie den Support mit Ihrem Transaktionshash.",
     "No matching models": "Keine passenden Modelle",
     "Codex-only channel": "Nur für Codex-Clients",

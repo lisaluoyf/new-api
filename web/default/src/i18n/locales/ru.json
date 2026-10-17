@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Video availability depends on its storage provider. Download it promptly.": "Срок доступности видео зависит от поставщика хранилища. Скачайте видео заранее.",
+    "Image expired": "Срок хранения изображения истёк",
+    "Image unavailable": "Изображение недоступно",
+    "The image has been removed after the retention period. The generation record is still available.": "Изображение удалено по истечении срока хранения. Запись о генерации сохранена.",
+    "Unable to load this image. Please try again.": "Не удалось загрузить изображение. Попробуйте ещё раз.",
+    "Cached images are kept for {{hours}} hours.": "Кэшированные изображения хранятся {{hours}} ч.",
+    "Download before {{time}}.": "Скачайте до {{time}}.",
+    "Image availability depends on its storage provider. Download it promptly.": "Срок доступности зависит от поставщика хранилища. Скачайте изображение заранее.",
     "Payment verification timed out. Please contact support with your transaction hash.": "Время проверки платежа истекло. Обратитесь в поддержку и укажите хеш транзакции.",
     "No matching models": "Нет подходящих моделей",
     "Codex-only channel": "Только для клиентов Codex",

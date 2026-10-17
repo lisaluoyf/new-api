@@ -66,6 +66,7 @@ import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { ImageDialog } from '../dialogs/image-dialog'
 import { VideoDialog } from '../dialogs/video-dialog'
+import { ImageThumbnail } from '../image-thumbnail'
 import { ModelBadge } from '../model-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
@@ -403,11 +404,20 @@ function MediaPreviewCell({
 }) {
   const { t } = useTranslation()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [failedImageUrl, setFailedImageUrl] = useState('')
   const preview = getLogMediaPreview(log, other)
 
   if (!preview) return null
 
-  const label =
+  const availability =
+    preview.kind === 'image'
+      ? other?.image_availability?.[preview.url]
+      : undefined
+  const expired = availability?.status === 'expired'
+  const unavailable =
+    availability?.status === 'unavailable' ||
+    (preview.kind === 'image' && failedImageUrl === preview.url)
+  let label =
     preview.kind === 'image'
       ? preview.url || preview.errorMessage
         ? preview.errorMessage
@@ -415,6 +425,8 @@ function MediaPreviewCell({
           : t('Click to preview image')
         : t('View task details')
       : t('Click to preview video')
+  if (expired) label = t('Image expired')
+  else if (unavailable) label = t('Image unavailable')
   const Icon = preview.kind === 'image' ? ImageIcon : Video
 
   return (
@@ -428,11 +440,11 @@ function MediaPreviewCell({
         }}
       >
         {preview.kind === 'image' && preview.url ? (
-          <img
-            src={preview.url}
-            alt={t('Generated image')}
-            className='border-border bg-muted size-10 shrink-0 rounded-md border object-cover'
-            loading='lazy'
+          <ImageThumbnail
+            url={preview.url}
+            availability={availability}
+            className='size-10'
+            onError={() => setFailedImageUrl(preview.url)}
           />
         ) : (
           <Icon className='text-muted-foreground size-3 shrink-0' />
@@ -449,6 +461,8 @@ function MediaPreviewCell({
           errorMessage={preview.errorMessage}
           errorCode={preview.kind === 'image' ? preview.errorCode : undefined}
           requestData={other?.request_data}
+          requestId={log.request_id}
+          availabilityByUrl={other?.image_availability}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
         />

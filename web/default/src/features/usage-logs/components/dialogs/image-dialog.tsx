@@ -17,8 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { ImageOff, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { CopyButton } from '@/components/copy-button'
 import { downloadMediaFile } from '../../lib/download-media'
 import { isValidMediaPreviewURL } from '../../lib/media-preview'
+import type { ImageAvailability } from '../../types'
+import { ImageThumbnail } from '../image-thumbnail'
 import { MediaDialogFooter } from './media-dialog-footer'
 import { RequestDataPanel } from './request-data-panel'
 
@@ -40,6 +43,8 @@ interface ImageDialogProps {
   errorMessage?: string
   errorCode?: string
   requestData?: Record<string, unknown> | null
+  requestId?: string
+  availabilityByUrl?: Record<string, ImageAvailability>
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -51,6 +56,8 @@ export function ImageDialog({
   errorMessage,
   errorCode,
   requestData,
+  requestId,
+  availabilityByUrl,
   open,
   onOpenChange,
 }: ImageDialogProps) {
@@ -59,22 +66,30 @@ export function ImageDialog({
   const urls = imageUrls?.length ? imageUrls : [initialImageUrl]
   const imageUrl = urls.includes(selectedUrl) ? selectedUrl : initialImageUrl
   const hasValidUrl = isValidMediaPreviewURL(imageUrl)
-  const [isLoading, setIsLoading] = useState(hasValidUrl)
-  const [hasError, setHasError] = useState(!hasValidUrl)
+  const availability = availabilityByUrl?.[imageUrl]
+  const expired = availability?.status === 'expired'
+  const [isLoading, setIsLoading] = useState(
+    hasValidUrl && !expired && availability?.status !== 'unavailable'
+  )
+  const [hasError, setHasError] = useState(
+    !hasValidUrl || availability?.status === 'unavailable'
+  )
   const [isDownloading, setIsDownloading] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
+  const [retryUrl, setRetryUrl] = useState('')
 
   useEffect(() => {
     if (!open) return
-    setIsLoading(hasValidUrl)
-    setHasError(!hasValidUrl)
-  }, [open, imageUrl, hasValidUrl])
+    setIsLoading(
+      hasValidUrl && !expired && availability?.status !== 'unavailable'
+    )
+    setHasError(!hasValidUrl || availability?.status === 'unavailable')
+    setRetryCount(0)
+    setRetryUrl('')
+  }, [open, imageUrl, hasValidUrl, expired, availability?.status])
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) setSelectedUrl('')
-    if (newOpen) {
-      setIsLoading(hasValidUrl)
-      setHasError(!hasValidUrl)
-    }
     onOpenChange(newOpen)
   }
 
@@ -89,10 +104,15 @@ export function ImageDialog({
   }
 
   const handleDownload = async () => {
-    if (!hasValidUrl || hasError || isDownloading) return
+    if (!hasValidUrl || expired || hasError || isDownloading) return
     setIsDownloading(true)
     try {
-      await downloadMediaFile(imageUrl, 'generated-image.png')
+      await downloadMediaFile(imageUrl, 'generated-image.png', {
+        allowLinkFallback: !availability,
+      })
+    } catch {
+      setHasError(true)
+      setIsLoading(false)
     } finally {
       setIsDownloading(false)
     }
@@ -126,11 +146,34 @@ export function ImageDialog({
               {t('View the generated image')}
             </DialogDescription>
           )}
+          {requestId ? (
+            <div className='flex items-center gap-1.5'>
+              <p className='text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs'>
+                {t('Request ID')}: {requestId}
+              </p>
+              <CopyButton
+                value={requestId}
+                variant='ghost'
+                size='icon'
+                tooltip={t('Copy to clipboard')}
+              />
+            </div>
+          ) : null}
         </DialogHeader>
 
         <div className='min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5'>
           <div className='bg-muted/30 relative flex max-h-[min(32vh,260px)] min-h-[140px] items-center justify-center rounded-lg border p-2'>
-            {hasValidUrl ? (
+            {expired ? (
+              <div className='space-y-2 px-4 py-6 text-center'>
+                <ImageOff className='text-muted-foreground mx-auto size-8' />
+                <p className='text-sm font-medium'>{t('Image expired')}</p>
+                <p className='text-muted-foreground text-sm'>
+                  {t(
+                    'The image has been removed after the retention period. The generation record is still available.'
+                  )}
+                </p>
+              </div>
+            ) : hasValidUrl ? (
               <>
                 {isLoading && !hasError && (
                   <Skeleton className='absolute inset-2 rounded-md' />
@@ -145,22 +188,42 @@ export function ImageDialog({
                   </div>
                 )}
 
-                <img
-                  key={imageUrl}
-                  src={imageUrl}
-                  alt={t('Generated image')}
-                  className={`max-h-[min(32vh,240px)] max-w-full rounded-md object-contain ${
-                    isLoading || hasError ? 'opacity-0' : 'opacity-100'
-                  }`}
-                  onLoad={handleImageLoad}
-                  onError={handleImageError}
-                />
+                {!hasError &&
+                  (availability?.status !== 'unavailable' ||
+                    retryUrl === imageUrl) && (
+                    <img
+                      key={`${imageUrl}-${retryCount}`}
+                      src={imageUrl}
+                      alt={t('Generated image')}
+                      className={`max-h-[min(32vh,240px)] max-w-full rounded-md object-contain ${
+                        isLoading || hasError ? 'opacity-0' : 'opacity-100'
+                      }`}
+                      onLoad={handleImageLoad}
+                      onError={handleImageError}
+                    />
+                  )}
 
                 {hasError && (
-                  <div className='absolute inset-0 z-10 flex items-center justify-center px-4 text-center'>
-                    <p className='text-muted-foreground text-sm'>
-                      {failureText}
+                  <div className='absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center'>
+                    <ImageOff className='text-muted-foreground size-6' />
+                    <p className='text-sm font-medium'>
+                      {t('Image unavailable')}
                     </p>
+                    <p className='text-muted-foreground text-sm'>
+                      {t('Unable to load this image. Please try again.')}
+                    </p>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      onClick={() => {
+                        setHasError(false)
+                        setIsLoading(true)
+                        setRetryCount((value) => value + 1)
+                        setRetryUrl(imageUrl)
+                      }}
+                    >
+                      {t('Retry')}
+                    </Button>
                   </div>
                 )}
               </>
@@ -192,25 +255,47 @@ export function ImageDialog({
                       className={`size-14 shrink-0 overflow-hidden rounded-md border-2 focus-visible:outline-2 focus-visible:outline-offset-2 ${url === imageUrl ? 'border-primary' : 'border-transparent'}`}
                       onClick={() => setSelectedUrl(url)}
                     >
-                      <img
-                        src={url}
-                        alt=''
-                        className='size-full object-cover'
+                      <ImageThumbnail
+                        url={url}
+                        availability={availabilityByUrl?.[url]}
+                        className='size-full'
                       />
                     </button>
                   ))}
                 </div>
               )}
-              <p className='text-muted-foreground text-center text-xs'>
-                {t('Generated images and videos are only kept for 3 days.')}
-              </p>
+              {availability ? (
+                <p className='text-muted-foreground text-center text-xs'>
+                  {t('Cached images are kept for {{hours}} hours.', {
+                    hours: availability.retention_hours,
+                  })}
+                  {!expired && availability.expires_at ? (
+                    <>
+                      {' '}
+                      {t('Download before {{time}}.', {
+                        time: new Date(
+                          availability.expires_at * 1000
+                        ).toLocaleString(),
+                      })}
+                    </>
+                  ) : null}
+                </p>
+              ) : (
+                <p className='text-muted-foreground text-center text-xs'>
+                  {t(
+                    'Image availability depends on its storage provider. Download it promptly.'
+                  )}
+                </p>
+              )}
 
-              <MediaDialogFooter
-                mediaUrl={imageUrl}
-                disabled={isLoading || hasError}
-                isDownloading={isDownloading}
-                onDownload={() => void handleDownload()}
-              />
+              {!expired && !hasError && (
+                <MediaDialogFooter
+                  mediaUrl={imageUrl}
+                  disabled={isLoading || hasError}
+                  isDownloading={isDownloading}
+                  onDownload={() => void handleDownload()}
+                />
+              )}
             </>
           ) : null}
 

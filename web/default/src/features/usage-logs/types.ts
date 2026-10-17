@@ -92,6 +92,12 @@ export interface ChannelAffinityInfo {
   using_group?: string
 }
 
+export interface ImageAvailability {
+  status: 'available' | 'expired' | 'unavailable'
+  expires_at?: number
+  retention_hours: number
+}
+
 export interface LogOtherData {
   admin_info?: {
     is_multi_key?: boolean
@@ -212,6 +218,7 @@ export interface LogOtherData {
   task_id?: string
   result_url?: string
   result_urls?: string[]
+  image_availability?: Record<string, ImageAvailability>
   task_fail_reason?: string
   task_fail_code?: string
   request_data?: Record<string, unknown>

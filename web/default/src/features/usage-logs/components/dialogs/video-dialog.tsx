@@ -346,7 +346,9 @@ export function VideoDialog({
           ) : null}
 
           <p className='text-muted-foreground text-center text-xs'>
-            {t('Generated images and videos are only kept for 3 days.')}
+            {t(
+              'Video availability depends on its storage provider. Download it promptly.'
+            )}
           </p>
 
           <MediaDialogFooter

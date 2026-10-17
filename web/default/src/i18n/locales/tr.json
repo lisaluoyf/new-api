@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Video availability depends on its storage provider. Download it promptly.": "Videonun kullanılabilirliği depolama sağlayıcısına bağlıdır. Videoyu zamanında indirin.",
+    "Image expired": "Görselin süresi doldu",
+    "Image unavailable": "Görsel kullanılamıyor",
+    "The image has been removed after the retention period. The generation record is still available.": "Görsel saklama süresi dolduktan sonra silindi. Oluşturma kaydı hâlâ kullanılabilir.",
+    "Unable to load this image. Please try again.": "Görsel yüklenemiyor. Lütfen tekrar deneyin.",
+    "Cached images are kept for {{hours}} hours.": "Önbellekteki görseller {{hours}} saat saklanır.",
+    "Download before {{time}}.": "{{time}} öncesinde indirin.",
+    "Image availability depends on its storage provider. Download it promptly.": "Görselin kullanılabilirliği depolama sağlayıcısına bağlıdır. Görseli zamanında indirin.",
     "Payment verification timed out. Please contact support with your transaction hash.": "Ödeme doğrulaması zaman aşımına uğradı. İşlem karmanızla birlikte destek ekibiyle iletişime geçin.",
     "No matching models": "Eşleşen model yok",
     "Codex-only channel": "Yalnızca Codex istemcileri için",

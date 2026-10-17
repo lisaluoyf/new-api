@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Video availability depends on its storage provider. Download it promptly.": "Thời hạn truy cập video phụ thuộc vào nhà cung cấp lưu trữ. Hãy tải video xuống sớm.",
+    "Image expired": "Ảnh đã hết hạn",
+    "Image unavailable": "Ảnh không khả dụng",
+    "The image has been removed after the retention period. The generation record is still available.": "Ảnh đã bị xóa sau thời hạn lưu trữ. Lịch sử tạo ảnh vẫn được giữ lại.",
+    "Unable to load this image. Please try again.": "Không thể tải ảnh. Vui lòng thử lại.",
+    "Cached images are kept for {{hours}} hours.": "Ảnh trong bộ nhớ đệm được lưu trong {{hours}} giờ.",
+    "Download before {{time}}.": "Tải xuống trước {{time}}.",
+    "Image availability depends on its storage provider. Download it promptly.": "Thời hạn truy cập ảnh phụ thuộc vào nhà cung cấp lưu trữ. Hãy tải ảnh xuống sớm.",
     "Payment verification timed out. Please contact support with your transaction hash.": "Xác minh thanh toán đã hết thời gian chờ. Vui lòng liên hệ hỗ trợ và cung cấp mã băm giao dịch.",
     "No matching models": "Không có mô hình phù hợp",
     "Codex-only channel": "Chỉ dành cho ứng dụng Codex",

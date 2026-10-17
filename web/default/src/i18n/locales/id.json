@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Video availability depends on its storage provider. Download it promptly.": "Ketersediaan video bergantung pada penyedia penyimpanan. Segera unduh video.",
+    "Image expired": "Gambar kedaluwarsa",
+    "Image unavailable": "Gambar tidak tersedia",
+    "The image has been removed after the retention period. The generation record is still available.": "Gambar telah dihapus setelah masa penyimpanan berakhir. Catatan pembuatan tetap tersedia.",
+    "Unable to load this image. Please try again.": "Gambar tidak dapat dimuat. Silakan coba lagi.",
+    "Cached images are kept for {{hours}} hours.": "Gambar cache disimpan selama {{hours}} jam.",
+    "Download before {{time}}.": "Unduh sebelum {{time}}.",
+    "Image availability depends on its storage provider. Download it promptly.": "Ketersediaan gambar bergantung pada penyedia penyimpanan. Segera unduh gambar.",
     "Payment verification timed out. Please contact support with your transaction hash.": "Verifikasi pembayaran kehabisan waktu. Hubungi dukungan dengan menyertakan hash transaksi Anda.",
     "No matching models": "Tidak ada model yang cocok",
     "Codex-only channel": "Khusus klien Codex",

@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Video availability depends on its storage provider. Download it promptly.": "動画の有効期間はストレージ提供元によって異なります。早めにダウンロードしてください。",
+    "Image expired": "画像の有効期限切れ",
+    "Image unavailable": "画像を表示できません",
+    "The image has been removed after the retention period. The generation record is still available.": "保存期間を過ぎたため画像は削除されました。生成履歴は引き続き確認できます。",
+    "Unable to load this image. Please try again.": "画像を読み込めません。再試行してください。",
+    "Cached images are kept for {{hours}} hours.": "キャッシュ画像は {{hours}} 時間保存されます。",
+    "Download before {{time}}.": "{{time}} までにダウンロードしてください。",
+    "Image availability depends on its storage provider. Download it promptly.": "画像の有効期間はストレージ提供元によって異なります。早めにダウンロードしてください。",
     "Payment verification timed out. Please contact support with your transaction hash.": "支払い確認がタイムアウトしました。取引ハッシュを添えてサポートにお問い合わせください。",
     "No matching models": "一致するモデルはありません",
     "Codex-only channel": "Codex クライアント専用",

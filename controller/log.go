@@ -39,6 +39,7 @@ func GetAllLogs(c *gin.Context) {
 	}
 	service.EnrichLogsMediaURLs(logs)
 	service.EnrichUserTaskLogFailures(logs)
+	service.EnrichLogsImageAvailability(logs)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
@@ -91,6 +92,7 @@ func GetUserLogs(c *gin.Context) {
 	}
 	service.EnrichLogsMediaURLs(logs)
 	service.EnrichUserTaskLogFailures(logs)
+	service.EnrichLogsImageAvailability(logs)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
@@ -122,6 +124,7 @@ func GetLogByKey(c *gin.Context) {
 		return
 	}
 	service.EnrichUserTaskLogFailures(logs)
+	service.EnrichLogsImageAvailability(logs)
 	c.JSON(200, gin.H{
 		"success": true,
 		"message": "",

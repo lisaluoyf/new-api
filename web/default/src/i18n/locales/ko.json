@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Video availability depends on its storage provider. Download it promptly.": "동영상 보관 기간은 저장소 제공업체에 따라 다릅니다. 미리 다운로드하세요.",
+    "Image expired": "이미지 보관 기간 만료",
+    "Image unavailable": "이미지를 사용할 수 없음",
+    "The image has been removed after the retention period. The generation record is still available.": "보관 기간이 지나 이미지가 삭제되었습니다. 생성 기록은 계속 확인할 수 있습니다.",
+    "Unable to load this image. Please try again.": "이미지를 불러올 수 없습니다. 다시 시도하세요.",
+    "Cached images are kept for {{hours}} hours.": "캐시된 이미지는 {{hours}}시간 동안 보관됩니다.",
+    "Download before {{time}}.": "{{time}} 전에 다운로드하세요.",
+    "Image availability depends on its storage provider. Download it promptly.": "이미지 보관 기간은 저장소 제공업체에 따라 다릅니다. 미리 다운로드하세요.",
     "Payment verification timed out. Please contact support with your transaction hash.": "결제 확인 시간이 초과되었습니다. 거래 해시와 함께 고객 지원에 문의하세요.",
     "No matching models": "일치하는 모델이 없습니다",
     "Codex-only channel": "Codex 클라이언트 전용",
