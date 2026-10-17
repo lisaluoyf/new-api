@@ -7,8 +7,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 )
 
-// Explicit opt-in for TokenHub's native material/generation request. Omission
-// preserves provider defaults; Active never proves that a strategy took effect.
+// TokenHub material ingestion defaults to Skip. Generation requests still
+// validate explicit policies; Active never proves a strategy took effect.
 type SeedanceModeration struct {
 	Strategy string `json:"Strategy"`
 }
@@ -17,7 +17,7 @@ func ParseSeedanceModeration(value any) (*SeedanceModeration, error) {
 	raw, err := common.Marshal(value)
 	var policy SeedanceModeration
 	if err != nil || common.Unmarshal(raw, &policy) != nil || policy.Strategy != "Skip" {
-		return nil, fmt.Errorf("Moderation must be an object with Strategy=Skip; omit it for provider defaults")
+		return nil, fmt.Errorf("Moderation must be an object with Strategy=Skip")
 	}
 	return &policy, nil
 }

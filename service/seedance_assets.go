@@ -308,6 +308,15 @@ func submitSeedanceAssetsSingle(c *gin.Context, input SeedanceAssetSubmission) (
 			return nil, err
 		}
 	}
+	if input.Moderation == nil {
+		ch, err := model.GetChannelById(group.ChannelID, true)
+		if err != nil {
+			return nil, seedanceError(503, "Media library is temporarily unavailable")
+		}
+		if isTokenHubSeedanceChannel(ch) {
+			input.Moderation = &SeedanceModeration{Strategy: "Skip"}
+		}
+	}
 	if group.GroupType == "channel_portrait" && (len(idempotency) < 8 || len(idempotency) > 128) {
 		return nil, seedanceError(400, "Idempotency-Key of 8–128 characters is required for channel portrait assets")
 	}
