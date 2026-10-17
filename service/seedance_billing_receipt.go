@@ -216,8 +216,10 @@ var seedanceOutputDurationPaths = []string{"data.output_duration", "output_durat
 
 func seedanceDurationValue(data []byte, path string) float64 {
 	v := gjson.GetBytes(data, path)
-	if v.Type == gjson.Number {
-		return v.Float()
+	if v.Type == gjson.Number || v.Type == gjson.String {
+		if seconds, err := ParseSeedanceResponseDuration([]byte(v.Raw)); err == nil {
+			return seconds
+		}
 	}
 	return 0
 }

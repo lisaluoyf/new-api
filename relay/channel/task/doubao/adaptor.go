@@ -2,8 +2,10 @@ package doubao
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -82,12 +84,12 @@ type responseTask struct {
 	Content  struct {
 		VideoURL string `json:"video_url"`
 	} `json:"content"`
-	Seed            int    `json:"seed"`
-	Resolution      string `json:"resolution"`
-	Duration        int    `json:"duration"`
-	Ratio           string `json:"ratio"`
-	FramesPerSecond int    `json:"framespersecond"`
-	ServiceTier     string `json:"service_tier"`
+	Seed            int             `json:"seed"`
+	Resolution      string          `json:"resolution"`
+	Duration        json.RawMessage `json:"duration"`
+	Ratio           string          `json:"ratio"`
+	FramesPerSecond int             `json:"framespersecond"`
+	ServiceTier     string          `json:"service_tier"`
 	Tools           []struct {
 		Type string `json:"type"`
 	} `json:"tools"`
@@ -463,6 +465,14 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	if err := common.Unmarshal(respBody, &resTask); err != nil {
 		return nil, errors.Wrap(err, "unmarshal task result failed")
 	}
+	var duration float64
+	if len(resTask.Duration) > 0 && resTask.Status == "succeeded" {
+		var err error
+		duration, err = service.ParseSeedanceResponseDuration(resTask.Duration)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	taskResult := relaycommon.TaskInfo{
 		Code: 0,
@@ -493,7 +503,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		// 解析 usage 信息用于按倍率计费
 		taskResult.CompletionTokens = resTask.Usage.CompletionTokens
 		taskResult.TotalTokens = resTask.Usage.TotalTokens
-		taskResult.BillableSeconds = resTask.Duration
+		taskResult.BillableSeconds = int(math.Round(duration))
 	case "failed":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = "100%"

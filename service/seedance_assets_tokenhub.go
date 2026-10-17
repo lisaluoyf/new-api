@@ -195,6 +195,18 @@ func NormalizeTokenHubVideoResponse(resp *http.Response) (*http.Response, error)
 		}
 		var status string
 		_ = common.Unmarshal(fields["status"], &status)
+		if duration, present := fields["duration"]; present && status == "succeeded" {
+			seconds, err := ParseSeedanceResponseDuration(duration)
+			if err != nil {
+				return nil, err
+			}
+			// Canonicalize after expanding resultSummary so storage, the task
+			// adaptor and billing all consume the same validated actual value.
+			fields["duration"], err = common.Marshal(seconds)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if status == "expired" || status == "cancelled" || status == "canceled" {
 			fields["status"], _ = common.Marshal("failed")
 			if wrapperErrorCode == "" && wrapperErrorMessage == "" {
