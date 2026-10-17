@@ -437,6 +437,12 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	id := gjson.GetBytes(raw, "data.0.task_id").String()
+	// APIMart can return HTTP 200 with success:false before creating a task.
+	// Keep explicit rejection distinct from a malformed/ambiguous acceptance,
+	// so the billing session refunds rather than holding the reservation.
+	if err == nil && gjson.ValidBytes(raw) && id == "" && gjson.GetBytes(raw, "success").Type == gjson.False {
+		return "", nil, service.TaskErrorWrapper(fmt.Errorf("upstream rejected the Veo request before task creation"), "upstream_rejected", http.StatusBadRequest)
+	}
 	if err != nil || !gjson.ValidBytes(raw) || gjson.GetBytes(raw, "code").Int() != 200 || id == "" {
 		return "", nil, service.TaskErrorWrapper(fmt.Errorf("invalid Veo submission response"), "invalid_response", http.StatusBadGateway)
 	}

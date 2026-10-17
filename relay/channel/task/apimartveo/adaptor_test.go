@@ -155,3 +155,15 @@ func TestVeoThreeReferencesCanFallbackFromOfficialToExt(t *testing.T) {
 	require.NotNil(t, err)
 	require.Equal(t, 400, err.StatusCode)
 }
+
+func TestVeoExplicitRejectionDoesNotCreateAmbiguousBillingHold(t *testing.T) {
+	a, c, info := fixture(t, Fast, "veo3.1-fast", "")
+	id, _, taskErr := a.DoResponse(c, &http.Response{Body: io.NopCloser(strings.NewReader(`{"success":false,"message":"unsupported model"}`))}, info)
+	require.Empty(t, id)
+	require.NotNil(t, taskErr)
+	require.Equal(t, 400, taskErr.StatusCode)
+	require.Equal(t, "upstream_rejected", taskErr.Code)
+	_, _, taskErr = a.DoResponse(c, &http.Response{Body: io.NopCloser(strings.NewReader(`{"code":200,"data":[]}`))}, info)
+	require.NotNil(t, taskErr)
+	require.Equal(t, 502, taskErr.StatusCode, "unknown acceptance must stay ambiguous")
+}
