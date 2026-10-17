@@ -62,6 +62,17 @@ func TestGrokOfficialUsageAndSettlementMatrix(t *testing.T) {
 }
 
 func TestGrokOfficialWalletTokenDebitAndLogs(t *testing.T) {
+	// The package fixture opens GORM directly. Exercise the normal database
+	// bootstrap once so token-key column quoting is initialized as in the app.
+	oldDB, oldPath, oldMaster := model.DB, common.SQLitePath, common.IsMasterNode
+	t.Setenv("SQL_DSN", "local")
+	common.SQLitePath, common.IsMasterNode = ":memory:", false
+	require.NoError(t, model.InitDB())
+	bootstrapDB, err := model.DB.DB()
+	require.NoError(t, err)
+	require.NoError(t, bootstrapDB.Close())
+	model.DB, common.SQLitePath, common.IsMasterNode = oldDB, oldPath, oldMaster
+
 	for _, name := range []string{"grok-4.5", "grok-4.6", "grok-4.7"} {
 		for _, prompt := range []int{199999, 200000, 200001} {
 			for _, stream := range []bool{false, true} {
