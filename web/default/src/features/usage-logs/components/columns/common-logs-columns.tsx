@@ -417,14 +417,12 @@ function MediaPreviewCell({
   const unavailable =
     availability?.status === 'unavailable' ||
     (preview.kind === 'image' && failedImageUrl === preview.url)
-  let label =
-    preview.kind === 'image'
-      ? preview.url || preview.errorMessage
-        ? preview.errorMessage
-          ? t('View task details')
-          : t('Click to preview image')
-        : t('View task details')
-      : t('Click to preview video')
+  let label = t('Click to preview video')
+  if (preview.kind === 'image') {
+    label = t('View task details')
+    if (preview.url && !preview.errorMessage)
+      label = t('Click to preview image')
+  }
   if (expired) label = t('Image expired')
   else if (unavailable) label = t('Image unavailable')
   const Icon = preview.kind === 'image' ? ImageIcon : Video

@@ -109,6 +109,9 @@ export function ImageDialog({
     try {
       await downloadMediaFile(imageUrl, 'generated-image.png', {
         allowLinkFallback: !availability,
+        // Cached images are public; cross-origin wildcard CORS requires an
+        // uncredentialed request. Same-origin session behavior is preserved.
+        credentials: availability ? 'same-origin' : 'include',
       })
     } catch {
       setHasError(true)
@@ -163,7 +166,7 @@ export function ImageDialog({
 
         <div className='min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5'>
           <div className='bg-muted/30 relative flex max-h-[min(32vh,260px)] min-h-[140px] items-center justify-center rounded-lg border p-2'>
-            {expired ? (
+            {expired && (
               <div className='space-y-2 px-4 py-6 text-center'>
                 <ImageOff className='text-muted-foreground mx-auto size-8' />
                 <p className='text-sm font-medium'>{t('Image expired')}</p>
@@ -173,7 +176,8 @@ export function ImageDialog({
                   )}
                 </p>
               </div>
-            ) : hasValidUrl ? (
+            )}
+            {!expired && hasValidUrl && (
               <>
                 {isLoading && !hasError && (
                   <Skeleton className='absolute inset-2 rounded-md' />
@@ -227,7 +231,8 @@ export function ImageDialog({
                   </div>
                 )}
               </>
-            ) : (
+            )}
+            {!expired && !hasValidUrl && (
               <div className='space-y-2 px-4 text-center'>
                 <p className='text-destructive text-sm leading-relaxed break-words'>
                   {failureText}

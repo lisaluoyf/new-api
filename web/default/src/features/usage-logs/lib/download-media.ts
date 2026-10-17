@@ -30,12 +30,17 @@ export function filenameFromMediaUrl(url: string, fallback: string): string {
 export async function downloadMediaFile(
   url: string,
   fallbackName: string,
-  options: { allowLinkFallback?: boolean } = {}
+  options: {
+    allowLinkFallback?: boolean
+    credentials?: RequestCredentials
+  } = {}
 ): Promise<void> {
   const filename = filenameFromMediaUrl(url, fallbackName)
 
   try {
-    const res = await fetch(url, { credentials: 'include' })
+    const res = await fetch(url, {
+      credentials: options.credentials ?? 'include',
+    })
     if (!res.ok) throw new Error(`download failed: ${res.status}`)
     const blob = await res.blob()
     const objectUrl = URL.createObjectURL(blob)
