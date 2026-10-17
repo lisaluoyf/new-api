@@ -32,8 +32,13 @@ func TestTokenHubAutomaticReviewSubmission(t *testing.T) {
 		secondNetwork                      bool
 		wantSends, wantActions, wantStatus int
 		wantMessage                        string
+		moderation                         bool
+		createRejected                     bool
 	}{
 		{name: "active", status: 400, firstBody: automaticTokenHubRejection, review: "Active", secondStatus: 200, wantSends: 2, wantActions: 3, wantStatus: 200},
+		{name: "active_skip", moderation: true, status: 400, firstBody: automaticTokenHubRejection, review: "Active", secondStatus: 200, wantSends: 2, wantActions: 3, wantStatus: 200},
+		{name: "skip_review_rejected", moderation: true, status: 400, firstBody: automaticTokenHubRejection, review: "Failed", wantSends: 1, wantActions: 3, wantStatus: 400, wantMessage: "Image did not pass review"},
+		{name: "skip_create_rejected", moderation: true, createRejected: true, status: 400, firstBody: automaticTokenHubRejection, wantSends: 1, wantActions: 2, wantStatus: 400, wantMessage: "Library permission denied"},
 		{name: "rejected_review", status: 400, firstBody: automaticTokenHubRejection, review: "Failed", wantSends: 1, wantActions: 3, wantStatus: 400, wantMessage: "Image did not pass review"},
 		{name: "second_rejected", status: 400, firstBody: automaticTokenHubRejection, review: "Active", secondStatus: 400, wantSends: 2, wantActions: 3, wantStatus: 400},
 		{name: "second_network_unknown", status: 400, firstBody: automaticTokenHubRejection, review: "Active", secondNetwork: true, wantSends: 2, wantActions: 3},
@@ -57,8 +62,12 @@ func TestTokenHubAutomaticReviewSubmission(t *testing.T) {
 				var fields map[string]any
 				require.NoError(t, common.DecodeJson(r.Body, &fields))
 				require.Equal(t, "default", fields["ProjectName"])
-				require.NotContains(t, fields, "Moderation")
 				action := r.URL.Query().Get("Action")
+				if action == "CreateAsset" && tc.moderation {
+					require.Equal(t, map[string]any{"Strategy": "Skip"}, fields["Moderation"])
+				} else {
+					require.NotContains(t, fields, "Moderation")
+				}
 				actions = append(actions, action)
 				var body string
 				switch action {
@@ -74,12 +83,21 @@ func TestTokenHubAutomaticReviewSubmission(t *testing.T) {
 				default:
 					t.Fatalf("unexpected action (including deletion) %s", action)
 				}
-				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+				status := http.StatusOK
+				if action == "CreateAsset" && tc.createRejected {
+					status = http.StatusForbidden
+					body = `{"ResponseMetadata":{"Error":{"Code":"AccessDenied","Message":"Library permission denied; private-key pak_test psk_test https://private.example/signed"}}}`
+				}
+				return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
 			})
 			t.Cleanup(func() { http.DefaultTransport = old })
 			c := seedanceContext(1)
 			sends := 0
-			resp, err := DoXingchiAutomaticReview(c, 297, "seedance-2.5", "private-key", "task_auto", strings.NewReader(automaticTokenHubBody), func(r io.Reader) (*http.Response, error) {
+			requestBody := automaticTokenHubBody
+			if tc.moderation {
+				requestBody = strings.TrimSuffix(requestBody, "}") + `,"Moderation":{"Strategy":"Skip"}}`
+			}
+			resp, err := DoXingchiAutomaticReview(c, 297, "seedance-2.5", "private-key", "task_auto", strings.NewReader(requestBody), func(r io.Reader) (*http.Response, error) {
 				sends++
 				raw, e := io.ReadAll(r)
 				require.NoError(t, e)
@@ -91,7 +109,7 @@ func TestTokenHubAutomaticReviewSubmission(t *testing.T) {
 					require.Contains(t, string(raw), `"detail":"high"`)
 					var out, original map[string]any
 					require.NoError(t, common.Unmarshal(raw, &out))
-					require.NoError(t, common.Unmarshal([]byte(automaticTokenHubBody), &original))
+					require.NoError(t, common.Unmarshal([]byte(requestBody), &original))
 					image := out["content"].([]any)[1].(map[string]any)["image_url"].(map[string]any)
 					require.Equal(t, "asset://native-asset", image["url"])
 					image["url"] = "https://example.com/cartoon.png"
@@ -116,6 +134,8 @@ func TestTokenHubAutomaticReviewSubmission(t *testing.T) {
 					require.Contains(t, string(response), tc.wantMessage)
 					require.NotContains(t, string(response), "private-key")
 					require.NotContains(t, string(response), "private.example")
+					require.NotContains(t, string(response), "pak_test")
+					require.NotContains(t, string(response), "psk_test")
 					require.True(t, c.GetBool("xingchi_automatic_review_rejected"))
 				}
 			}
@@ -125,6 +145,23 @@ func TestTokenHubAutomaticReviewSubmission(t *testing.T) {
 			require.NoError(t, db.Where("channel_id = ?", 297).Find(&resources).Error)
 			if tc.wantActions > 0 {
 				require.Len(t, resources, 2)
+				for _, resource := range resources {
+					var saved map[string]any
+					require.NoError(t, common.UnmarshalJsonStr(resource.RequestData, &saved))
+					require.Equal(t, true, saved["automatic_review"])
+					require.Equal(t, "task_auto", saved["video_task_id"])
+					if resource.Kind == "asset" && tc.moderation {
+						require.Equal(t, map[string]any{"Strategy": "Skip"}, saved["moderation"])
+						require.Equal(t, !tc.createRejected, saved["moderation_forwarded"])
+						dto := seedanceModerationDTO(&resource)
+						require.Equal(t, "Skip", dto["requested"].(*SeedanceModeration).Strategy)
+						require.Equal(t, !tc.createRejected, dto["forwarded"])
+						require.Equal(t, false, dto["provider_effect_confirmed"])
+					} else {
+						require.Equal(t, map[string]any{"automatic_review": true, "video_task_id": "task_auto"}, saved)
+						require.Nil(t, seedanceModerationDTO(&resource))
+					}
+				}
 				if tc.name == "active" {
 					var asset model.SeedanceResource
 					require.NoError(t, db.Where("channel_id = ? AND kind = ?", 297, "asset").First(&asset).Error)

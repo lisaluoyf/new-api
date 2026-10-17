@@ -47,6 +47,7 @@ func TestCtaiRetainedAutomaticReview(t *testing.T) {
 					require.NoError(t, common.DecodeJson(r.Body, &fields))
 					require.Equal(t, "https://example.com/reference.png", fields["url"])
 					require.NotContains(t, fields, "GroupId")
+					require.NotContains(t, fields, "Moderation")
 					expected := "Image"
 					if tc.kind == "video_url" {
 						expected = "Video"
@@ -101,6 +102,9 @@ func TestCtaiRetainedAutomaticReview(t *testing.T) {
 			require.NoError(t, db.Where("channel_id = ?", 298).Find(&resources).Error)
 			if tc.actions > 0 {
 				require.Len(t, resources, 2)
+				for _, resource := range resources {
+					require.Nil(t, seedanceModerationDTO(&resource))
+				}
 			} else {
 				require.Empty(t, resources)
 			}

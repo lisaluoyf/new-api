@@ -97,6 +97,15 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 	if err := common.Unmarshal(raw, &fields); err != nil {
 		return nil, err
 	}
+	var moderation *SeedanceModeration
+	if isTokenHubSeedanceChannel(ch) {
+		if value, exists := fields["Moderation"]; exists {
+			moderation, err = ParseSeedanceModeration(value)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	var content []map[string]json.RawMessage
 	if err := common.Unmarshal(fields["content"], &content); err != nil {
 		return nil, err
@@ -166,7 +175,16 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 			asset.AssetType = "Video"
 		}
 		asset.Name = asset.ID
-		if err := createXingchiAutomaticReviewResource(ctx, asset, "CreateAsset", map[string]any{"GroupId": group.UpstreamID, "URL": image.source, "AssetType": asset.AssetType, "Name": asset.ID}); err != nil {
+		payload := map[string]any{"GroupId": group.UpstreamID, "URL": image.source, "AssetType": asset.AssetType, "Name": asset.ID}
+		if moderation != nil {
+			payload["Moderation"] = moderation
+			requested, err := common.Marshal(map[string]any{"video_task_id": taskID, "automatic_review": true, "moderation": moderation, "moderation_forwarded": false})
+			if err != nil {
+				return nil, err
+			}
+			asset.RequestData = string(requested)
+		}
+		if err := createXingchiAutomaticReviewResource(ctx, asset, "CreateAsset", payload); err != nil {
 			return nil, err
 		}
 		for {
@@ -275,6 +293,20 @@ func createXingchiAutomaticReviewResource(ctx context.Context, r *model.Seedance
 		r.Status = "submission_unknown"
 		_ = seedanceDB().Save(r).Error
 		return seedanceError(400, "Material submission returned no identifier; no video was submitted", "material_submission_unknown")
+	}
+	// As with manual ingestion, record forwarding only after a confirmed
+	// CreateAsset response. Reused resources retain their original evidence.
+	if action == "CreateAsset" && fields["Moderation"] != nil {
+		var metadata map[string]any
+		if err := common.UnmarshalJsonStr(r.RequestData, &metadata); err != nil {
+			return err
+		}
+		metadata["moderation_forwarded"] = true
+		encoded, err := common.Marshal(metadata)
+		if err != nil {
+			return err
+		}
+		r.RequestData = string(encoded)
 	}
 	r.Status = "Processing"
 	if r.Kind == "group" {

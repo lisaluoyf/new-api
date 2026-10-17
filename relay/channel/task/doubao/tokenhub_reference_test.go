@@ -46,3 +46,28 @@ func TestTokenHubExplicitFirstFrameRoleIsPreserved(t *testing.T) {
 	require.Equal(t, "first_frame", payload.Content[0].Role)
 	require.Nil(t, payload.Moderation)
 }
+
+func TestTokenHubInvalidModerationRejectedBeforeSubmission(t *testing.T) {
+	for _, value := range []string{`{"Strategy":"Default"}`, `"Skip"`, `null`} {
+		for _, body := range []string{
+			`{"model":"seedance-2.5","prompt":"Synthetic character","duration":4,"Moderation":` + value + `}`,
+			`{"model":"seedance-2.5","prompt":"Synthetic character","content":[{"type":"text","text":"Synthetic character"}],"duration":4,"Moderation":` + value + `}`,
+		} {
+			c, _ := seedanceContext(body)
+			a := &TaskAdaptor{baseURL: "https://ai-tokenhub.ai"}
+			info := &relaycommon.RelayInfo{OriginModelName: "seedance-2.5", TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{}}
+			err := a.ValidateRequestAndSetAction(c, info)
+			require.NotNil(t, err)
+			require.Equal(t, 400, err.StatusCode)
+			require.Contains(t, err.Message, "Moderation must be an object with Strategy=Skip")
+		}
+	}
+	for _, base := range []string{"https://ai.ctaigw.cn", "https://xingchi.example"} {
+		c, _ := seedanceContext(`{"model":"seedance-2.5","prompt":"Synthetic character","duration":4,"Moderation":{"Strategy":"Skip"}}`)
+		a := &TaskAdaptor{baseURL: base}
+		info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{}}
+		err := a.ValidateRequestAndSetAction(c, info)
+		require.NotNil(t, err)
+		require.Contains(t, err.Message, "Moderation is unsupported")
+	}
+}
