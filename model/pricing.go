@@ -307,7 +307,15 @@ func updatePricing() {
 			pricing.VendorID = meta.VendorID
 		}
 		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)
-		if model == "wan3.0-video-prime" {
+		veoBase := modelPrice
+		if model == "veo-3.1-generate-preview" || model == "veo-3.1-fast-generate-preview" {
+			if price, ok := ratio_setting.GetVideoModelBasePrice(model); ok {
+				veoBase = price
+			}
+		}
+		if applyVeo31Pricing(&pricing, model, veoBase) {
+			// Video metadata includes audio/resolution tiers and the video endpoint.
+		} else if model == "wan3.0-video-prime" {
 			pricing.ModelPrice, _ = ratio_setting.GetVideoModelBasePrice(model)
 			details, _ := ratio_setting.GetVideoModelPricingDetails(model)
 			pricing.ResolutionPrices = details.Prices
