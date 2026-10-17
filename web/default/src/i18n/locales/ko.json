@@ -12,7 +12,7 @@
     "Image availability depends on its storage provider. Download it promptly.": "이미지 보관 기간은 저장소 제공업체에 따라 다릅니다. 미리 다운로드하세요.",
     "Payment verification timed out. Please contact support with your transaction hash.": "결제 확인 시간이 초과되었습니다. 거래 해시와 함께 고객 지원에 문의하세요.",
     "Channel category": "채널 분류",
-    "Cloud provider": "클라우드 제공업체",
+    "Cloud Providers": "클라우드 제공업체",
     "Others": "기타",
     "Selected by category — deselect the category to choose channels individually": "분류로 선택됨 — 개별 선택하려면 분류를 해제하세요",
     "Only 1 channel is currently available. Cross-channel fallback and racing are unavailable.": "현재 사용 가능한 채널이 1개입니다. 채널 간 폴백과 병렬 경쟁은 사용할 수 없습니다.",

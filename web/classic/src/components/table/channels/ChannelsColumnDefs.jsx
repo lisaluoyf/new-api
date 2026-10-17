@@ -463,7 +463,7 @@ export const getChannelsColumns = ({
       dataIndex: 'channel_category',
       render: (value) => {
         if (value === 'cloud')
-          return <Tag color='blue'>{t('Cloud provider')}</Tag>;
+          return <Tag color='blue'>{t('Cloud Providers')}</Tag>;
         if (value === 'official')
           return <Tag color='green'>{t('Official')}</Tag>;
         return <span className='text-gray-400'>{t('默认')}</span>;

@@ -12,7 +12,7 @@
     "Image availability depends on its storage provider. Download it promptly.": "La disponibilité dépend du fournisseur de stockage. Téléchargez l’image rapidement.",
     "Payment verification timed out. Please contact support with your transaction hash.": "La vérification du paiement a expiré. Contactez le support en indiquant le hash de votre transaction.",
     "Channel category": "Catégorie de canal",
-    "Cloud provider": "Fournisseur cloud",
+    "Cloud Providers": "Fournisseur cloud",
     "Others": "Autres",
     "Selected by category — deselect the category to choose channels individually": "Sélectionné par catégorie — désélectionnez la catégorie pour choisir les canaux individuellement",
     "Only 1 channel is currently available. Cross-channel fallback and racing are unavailable.": "Un seul canal est disponible. Le repli et les requêtes simultanées entre canaux sont indisponibles.",

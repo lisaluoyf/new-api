@@ -38,7 +38,7 @@ export function ChannelPicker(props: ChannelPickerProps) {
   })
   const channels = query.data ?? []
   const categoryLabel = (category: ChannelCategory) => {
-    if (category === 'cloud') return t('Cloud provider')
+    if (category === 'cloud') return t('Cloud Providers')
     if (category === 'official') return t('Official')
     return t('Others')
   }

@@ -12,7 +12,7 @@
     "Image availability depends on its storage provider. Download it promptly.": "Görselin kullanılabilirliği depolama sağlayıcısına bağlıdır. Görseli zamanında indirin.",
     "Payment verification timed out. Please contact support with your transaction hash.": "Ödeme doğrulaması zaman aşımına uğradı. İşlem karmanızla birlikte destek ekibiyle iletişime geçin.",
     "Channel category": "Kanal kategorisi",
-    "Cloud provider": "Bulut sağlayıcısı",
+    "Cloud Providers": "Bulut sağlayıcısı",
     "Others": "Diğer",
     "Selected by category — deselect the category to choose channels individually": "Kategoriye göre seçildi — kanalları tek tek seçmek için kategoriyi kaldırın",
     "Only 1 channel is currently available. Cross-channel fallback and racing are unavailable.": "Şu anda yalnızca 1 kanal kullanılabilir. Kanallar arası yedek geçiş ve paralel istekler kullanılamaz.",

@@ -1729,7 +1729,7 @@ export function ChannelMutateDrawer({
                   title={t('Basic Information')}
                   icon={<Server className='h-4 w-4' />}
                 />
-                <div className='grid gap-4 sm:grid-cols-2'>
+                <div className='grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(140px,0.65fr)_minmax(0,1fr)]'>
                   <FormField
                     control={form.control}
                     name='name'
@@ -1742,6 +1742,48 @@ export function ChannelMutateDrawer({
                             {...field}
                           />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='channel_category'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Channel category')}</FormLabel>
+                        <Select
+                          items={[
+                            { value: 'default', label: t('Default') },
+                            {
+                              value: 'cloud',
+                              label: t('Cloud Providers'),
+                            },
+                            { value: 'official', label: t('Official') },
+                          ]}
+                          value={field.value || 'default'}
+                          onValueChange={(value) =>
+                            field.onChange(value === 'default' ? '' : value)
+                          }
+                        >
+                          <FormControl>
+                            <SelectTrigger className='w-full'>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value='default'>
+                              {t('Default')}
+                            </SelectItem>
+                            <SelectItem value='cloud'>
+                              {t('Cloud Providers')}
+                            </SelectItem>
+                            <SelectItem value='official'>
+                              {t('Official')}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -3217,50 +3259,6 @@ export function ChannelMutateDrawer({
                               <FormDescription>
                                 {t(FIELD_DESCRIPTIONS.TAG)}
                               </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name='channel_category'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>{t('Channel category')}</FormLabel>
-                              <Select
-                                items={[
-                                  { value: 'default', label: t('Default') },
-                                  {
-                                    value: 'cloud',
-                                    label: t('Cloud provider'),
-                                  },
-                                  { value: 'official', label: t('Official') },
-                                ]}
-                                value={field.value || 'default'}
-                                onValueChange={(value) =>
-                                  field.onChange(
-                                    value === 'default' ? '' : value
-                                  )
-                                }
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value='default'>
-                                    {t('Default')}
-                                  </SelectItem>
-                                  <SelectItem value='cloud'>
-                                    {t('Cloud provider')}
-                                  </SelectItem>
-                                  <SelectItem value='official'>
-                                    {t('Official')}
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
                               <FormMessage />
                             </FormItem>
                           )}

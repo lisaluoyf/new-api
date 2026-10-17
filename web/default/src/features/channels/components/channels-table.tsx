@@ -415,7 +415,7 @@ export function ChannelsTable() {
             options: [
               { label: t('All'), value: 'all' },
               { label: t('Default'), value: 'default' },
-              { label: t('Cloud provider'), value: 'cloud' },
+              { label: t('Cloud Providers'), value: 'cloud' },
               { label: t('Official'), value: 'official' },
             ],
             singleSelect: true,

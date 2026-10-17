@@ -1,6 +1,6 @@
 import type { ProviderChannel } from '../api'
 
-export const CHANNEL_CATEGORIES = ['default', 'cloud', 'official'] as const
+export const CHANNEL_CATEGORIES = ['cloud', 'official', 'default'] as const
 export type ChannelCategory = (typeof CHANNEL_CATEGORIES)[number]
 
 export function channelSelected(

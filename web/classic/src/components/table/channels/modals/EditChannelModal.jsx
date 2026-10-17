@@ -2503,19 +2503,6 @@ const EditChannelModal = (props) => {
                     showClear
                     onChange={(value) => handleInputChange('tag', value)}
                   />
-                  <Form.Select
-                    field='channel_category'
-                    label={t('Channel category')}
-                    optionList={[
-                      { label: t('默认'), value: '' },
-                      { label: t('Cloud provider'), value: 'cloud' },
-                      { label: t('Official'), value: 'official' },
-                    ]}
-                    onChange={(value) =>
-                      handleInputChange('channel_category', value)
-                    }
-                    className='w-full'
-                  />
                   <Form.TextArea
                     field='remark'
                     label={t('备注')}
@@ -2862,6 +2849,20 @@ const EditChannelModal = (props) => {
                           </Space>
                         </Banner>
                       )}
+
+                      <Form.Select
+                        field='channel_category'
+                        label={t('Channel category')}
+                        optionList={[
+                          { label: t('默认'), value: '' },
+                          { label: t('Cloud Providers'), value: 'cloud' },
+                          { label: t('Official'), value: 'official' },
+                        ]}
+                        onChange={(value) =>
+                          handleInputChange('channel_category', value)
+                        }
+                        className='w-full'
+                      />
 
                       <Form.Select
                         field='type'

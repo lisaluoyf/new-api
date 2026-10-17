@@ -1,7 +1,7 @@
 {
   "translation": {
     "Channel category": "Catégorie de canal",
-    "Cloud provider": "Fournisseur cloud",
+    "Cloud Providers": "Fournisseur cloud",
     "Official": "Officiel",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + Recherche Web {{count}} fois / 1K fois * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_many": " + Recherche Web {{count}} fois / 1K fois * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",

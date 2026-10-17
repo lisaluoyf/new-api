@@ -1,7 +1,7 @@
 {
   "translation": {
     "Channel category": "Danh mục kênh",
-    "Cloud provider": "Nhà cung cấp đám mây",
+    "Cloud Providers": "Nhà cung cấp đám mây",
     "Official": "Chính thức",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + Tìm kiếm Web {{count}} lần / 1K lần * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Tìm kiếm Web {{count}} lần / 1K lần * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",

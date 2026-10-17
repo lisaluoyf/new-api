@@ -12,7 +12,7 @@
     "Image availability depends on its storage provider. Download it promptly.": "图片可用期限由存储服务方决定，请及时下载。",
     "Payment verification timed out. Please contact support with your transaction hash.": "付款核验超时，请提供交易哈希并联系客服。",
     "Channel category": "渠道分类",
-    "Cloud provider": "云厂商",
+    "Cloud Providers": "云厂商",
     "Others": "Others",
     "Selected by category — deselect the category to choose channels individually": "按类别选择；请先取消类别，再逐个选择渠道",
     "Only 1 channel is currently available. Cross-channel fallback and racing are unavailable.": "当前仅有 1 个可用渠道，跨渠道备用与竞速不可用。",

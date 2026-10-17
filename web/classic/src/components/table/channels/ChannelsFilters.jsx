@@ -112,7 +112,7 @@ const ChannelsFilters = ({
               placeholder={t('Channel category')}
               optionList={[
                 { label: t('默认'), value: 'default' },
-                { label: t('Cloud provider'), value: 'cloud' },
+                { label: t('Cloud Providers'), value: 'cloud' },
                 { label: t('Official'), value: 'official' },
               ]}
               showClear

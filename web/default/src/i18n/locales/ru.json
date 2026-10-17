@@ -12,7 +12,7 @@
     "Image availability depends on its storage provider. Download it promptly.": "Срок доступности зависит от поставщика хранилища. Скачайте изображение заранее.",
     "Payment verification timed out. Please contact support with your transaction hash.": "Время проверки платежа истекло. Обратитесь в поддержку и укажите хеш транзакции.",
     "Channel category": "Категория канала",
-    "Cloud provider": "Облачный провайдер",
+    "Cloud Providers": "Облачный провайдер",
     "Others": "Другие",
     "Selected by category — deselect the category to choose channels individually": "Выбрано по категории — снимите категорию, чтобы выбирать каналы отдельно",
     "Only 1 channel is currently available. Cross-channel fallback and racing are unavailable.": "Доступен только 1 канал. Резервное переключение и параллельные запросы между каналами недоступны.",

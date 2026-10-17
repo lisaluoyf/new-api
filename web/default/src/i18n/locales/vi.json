@@ -12,7 +12,7 @@
     "Image availability depends on its storage provider. Download it promptly.": "Thời hạn truy cập ảnh phụ thuộc vào nhà cung cấp lưu trữ. Hãy tải ảnh xuống sớm.",
     "Payment verification timed out. Please contact support with your transaction hash.": "Xác minh thanh toán đã hết thời gian chờ. Vui lòng liên hệ hỗ trợ và cung cấp mã băm giao dịch.",
     "Channel category": "Danh mục kênh",
-    "Cloud provider": "Nhà cung cấp đám mây",
+    "Cloud Providers": "Nhà cung cấp đám mây",
     "Others": "Khác",
     "Selected by category — deselect the category to choose channels individually": "Đã chọn theo danh mục — bỏ chọn danh mục để chọn từng kênh",
     "Only 1 channel is currently available. Cross-channel fallback and racing are unavailable.": "Hiện chỉ có 1 kênh khả dụng. Không thể chuyển dự phòng hoặc chạy đua giữa các kênh.",

@@ -943,7 +943,7 @@ export function useChannelsColumns(): ColumnDef<Channel>[] {
         if (category === 'cloud')
           return (
             <StatusBadge
-              label={t('Cloud provider')}
+              label={t('Cloud Providers')}
               autoColor='cloud'
               size='sm'
             />
