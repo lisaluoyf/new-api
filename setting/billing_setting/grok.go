@@ -25,3 +25,16 @@ func GrokOfficialBillingExpr(model string) (string, bool) {
 	}
 	return "", false
 }
+
+// GrokOfficialBasePrices anchors channel discounts to the short-context tier.
+func GrokOfficialBasePrices(model string) (input, output, cache, cacheWrite float64, ok bool) {
+	expression, ok := GrokOfficialBillingExpr(model)
+	if !ok {
+		return 0, 0, 0, 0, false
+	}
+	cache = .5
+	if expression == Grok45BillingExpr {
+		cache = .3
+	}
+	return 2, 6, cache, 0, true
+}

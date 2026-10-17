@@ -65,55 +65,57 @@ func TestGrokOfficialWalletTokenDebitAndLogs(t *testing.T) {
 	for _, name := range []string{"grok-4.5", "grok-4.6", "grok-4.7"} {
 		for _, prompt := range []int{199999, 200000, 200001} {
 			for _, stream := range []bool{false, true} {
-				t.Run(fmt.Sprintf("%s/%d/stream=%t", name, prompt, stream), func(t *testing.T) {
-					truncate(t)
-					const initial = 10000000
-					seedUser(t, 1, initial)
-					seedToken(t, 2, 1, "grok-tier-test-key", initial)
-					require.NoError(t, model.DB.Create(&model.Channel{Id: 94, Name: "grok-tier-test"}).Error)
-					ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-					ctx.Set("token_quota", initial)
-					ctx.Set("token_name", "grok-tier-test")
-					ctx.Set(common.RequestIdKey, "grok-tier-wallet-test")
-					expr, _ := billing_setting.GetBillingExpr(name)
-					snap := &billingexpr.BillingSnapshot{BillingMode: "tiered_expr", ModelName: name, ExprString: expr, ExprHash: billingexpr.ExprHashString(expr), QuotaPerUnit: common.QuotaPerUnit, GroupRatio: .37, EstimatedTier: "short_context"}
-					info := &relaycommon.RelayInfo{RequestId: "grok-tier-wallet-test", UserId: 1, UserQuota: initial, TokenId: 2, TokenKey: "grok-tier-test-key", TokenGroup: "default", UsingGroup: "default", OriginModelName: name, StartTime: time.Now(), ForcePreConsume: true, IsStream: stream, UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 94}, PriceData: types.PriceData{GroupRatioInfo: types.GroupRatioInfo{GroupRatio: .37}}}
-					require.Nil(t, PreConsumeBilling(ctx, 1000, info))
-					info.TieredBillingSnapshot = snap
-					info.WalletTieredBillingSnapshot = snap
-					info.PriceDataSource = "wallet"
-					usage := &dto.Usage{PromptTokens: prompt, CompletionTokens: 1000, TotalTokens: prompt + 1000, UsageSource: "upstream_reported"}
-					usage.PromptTokensDetails.CachedTokens = 150000
-					in, out, cache := 2.0, 6.0, .5
-					if name == "grok-4.5" {
-						cache = .3
-					}
-					if prompt >= 200000 {
-						in *= 2
-						out *= 2
-						cache *= 2
-					}
-					usd := (float64(prompt-150000)*in + 150000*cache + 1000*out) / 1e6
-					want := billingexpr.QuotaRound(usd * common.QuotaPerUnit * .37)
-					require.NoError(t, PostTextConsumeQuota(ctx, info, usage, nil))
-					require.NoError(t, SettleBilling(ctx, info, want)) // repeated settlement must not debit twice
-					var user model.User
-					var token model.Token
-					var log model.Log
-					require.NoError(t, model.DB.First(&user, 1).Error)
-					require.NoError(t, model.DB.First(&token, 2).Error)
-					require.Equal(t, initial-want, user.Quota)
-					require.Equal(t, initial-want, token.RemainQuota)
-					require.NoError(t, model.LOG_DB.Where("request_id = ?", info.RequestId).Order("id desc").First(&log).Error)
-					require.Equal(t, want, log.Quota)
-					require.InDelta(t, float64(want)/common.QuotaPerUnit, log.AccountingUserFinalAmountUSD, 1e-9)
-					require.Contains(t, log.Other, `"billing_mode":"tiered_expr"`)
-					tier := "short_context"
-					if prompt >= 200000 {
-						tier = "long_context"
-					}
-					require.Contains(t, log.Other, `"matched_tier":"`+tier+`"`)
-				})
+				for _, precharge := range []int{1000, 500000} {
+					t.Run(fmt.Sprintf("%s/%d/stream=%t/precharge=%d", name, prompt, stream, precharge), func(t *testing.T) {
+						truncate(t)
+						const initial = 10000000
+						seedUser(t, 1, initial)
+						seedToken(t, 2, 1, "grok-tier-test-key", initial)
+						require.NoError(t, model.DB.Create(&model.Channel{Id: 94, Name: "grok-tier-test"}).Error)
+						ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+						ctx.Set("token_quota", initial)
+						ctx.Set("token_name", "grok-tier-test")
+						ctx.Set(common.RequestIdKey, "grok-tier-wallet-test")
+						expr, _ := billing_setting.GetBillingExpr(name)
+						snap := &billingexpr.BillingSnapshot{BillingMode: "tiered_expr", ModelName: name, ExprString: expr, ExprHash: billingexpr.ExprHashString(expr), QuotaPerUnit: common.QuotaPerUnit, GroupRatio: .37, EstimatedTier: "short_context"}
+						info := &relaycommon.RelayInfo{RequestId: "grok-tier-wallet-test", UserId: 1, UserQuota: initial, TokenId: 2, TokenKey: "grok-tier-test-key", TokenGroup: "default", UsingGroup: "default", OriginModelName: name, StartTime: time.Now(), ForcePreConsume: true, IsStream: stream, UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 94}, PriceData: types.PriceData{GroupRatioInfo: types.GroupRatioInfo{GroupRatio: .37}}}
+						require.Nil(t, PreConsumeBilling(ctx, precharge, info))
+						info.TieredBillingSnapshot = snap
+						info.WalletTieredBillingSnapshot = snap
+						info.PriceDataSource = "wallet"
+						usage := &dto.Usage{PromptTokens: prompt, CompletionTokens: 1000, TotalTokens: prompt + 1000, UsageSource: "upstream_reported"}
+						usage.PromptTokensDetails.CachedTokens = 150000
+						in, out, cache := 2.0, 6.0, .5
+						if name == "grok-4.5" {
+							cache = .3
+						}
+						if prompt >= 200000 {
+							in *= 2
+							out *= 2
+							cache *= 2
+						}
+						usd := (float64(prompt-150000)*in + 150000*cache + 1000*out) / 1e6
+						want := billingexpr.QuotaRound(usd * common.QuotaPerUnit * .37)
+						require.NoError(t, PostTextConsumeQuota(ctx, info, usage, nil))
+						require.NoError(t, SettleBilling(ctx, info, want)) // repeated settlement must not debit twice
+						var user model.User
+						var token model.Token
+						var log model.Log
+						require.NoError(t, model.DB.First(&user, 1).Error)
+						require.NoError(t, model.DB.First(&token, 2).Error)
+						require.Equal(t, initial-want, user.Quota)
+						require.Equal(t, initial-want, token.RemainQuota)
+						require.NoError(t, model.LOG_DB.Where("request_id = ?", info.RequestId).Order("id desc").First(&log).Error)
+						require.Equal(t, want, log.Quota)
+						require.InDelta(t, float64(want)/common.QuotaPerUnit, log.AccountingUserFinalAmountUSD, 1e-9)
+						require.Contains(t, log.Other, `"billing_mode":"tiered_expr"`)
+						tier := "short_context"
+						if prompt >= 200000 {
+							tier = "long_context"
+						}
+						require.Contains(t, log.Other, `"matched_tier":"`+tier+`"`)
+					})
+				}
 			}
 		}
 	}
