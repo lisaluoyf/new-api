@@ -3,6 +3,7 @@ package constant
 type TaskPlatform string
 
 const (
+	TaskPlatformGMIWan       TaskPlatform = "gmi-wan"
 	TaskPlatformSuno         TaskPlatform = "suno"
 	TaskPlatformMidjourney                = "mj"
 	TaskPlatformApimartVideo              = "apimart-video"

@@ -55,6 +55,7 @@ export function isLogMediaImageModel(modelName: string): boolean {
 export function isLogMediaVideoModel(modelName: string): boolean {
   const model = modelName.trim().toLowerCase()
   return (
+    model === 'wan3.0-video-prime' ||
     model === 'sora-2' ||
     model === 'sora-2-pro' ||
     model.startsWith('sora-2-') ||

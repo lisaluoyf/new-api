@@ -117,6 +117,7 @@ describe('isLogMediaVideoModel', () => {
 
     for (const model of [
       'seedance-2.0',
+      'wan3.0-video-prime',
       'seedance-2.0-fast',
       'seedance-2.0-mini',
       'doubao-seedance-2.0',
@@ -138,7 +139,12 @@ describe('isLogMediaVideoModel', () => {
   })
 
   test('failed videos never offer a preview even with a stale result URL', () => {
-    for (const model of ['seedance-2.0-mini', 'sora-2', 'kling-v3-omni']) {
+    for (const model of [
+      'wan3.0-video-prime',
+      'seedance-2.0-mini',
+      'sora-2',
+      'kling-v3-omni',
+    ]) {
       for (const failure of [
         { task_fail_reason: 'content safety review failed' },
         { task_fail_code: 'task_failed' },

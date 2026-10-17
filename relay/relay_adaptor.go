@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"github.com/QuantumNous/new-api/relay/channel/task/gmiwan"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/constant"
@@ -140,6 +141,8 @@ func GetTaskPlatform(c *gin.Context) constant.TaskPlatform {
 
 func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 	switch platform {
+	case constant.TaskPlatformGMIWan:
+		return &gmiwan.TaskAdaptor{}
 	//case constant.APITypeAIProxyLibrary:
 	//	return &aiproxy.Adaptor{}
 	case constant.TaskPlatformSuno:

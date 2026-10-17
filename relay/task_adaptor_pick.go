@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"github.com/QuantumNous/new-api/relay/channel/task/gmiwan"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -41,6 +42,9 @@ func ResolveTaskPlatform(c *gin.Context, platform constant.TaskPlatform, info *r
 	modelName := strings.TrimSpace(info.OriginModelName)
 	if modelName == "" {
 		modelName = peekTaskModel(c)
+	}
+	if gmiwan.IsChannel(info.ChannelBaseUrl) && gmiwan.IsModel(modelName) {
+		return constant.TaskPlatformGMIWan
 	}
 	if info.ChannelId == constant.VideoFeeSeedanceChannelID && videofee.IsModel(modelName) {
 		return constant.TaskPlatformVideoFee
