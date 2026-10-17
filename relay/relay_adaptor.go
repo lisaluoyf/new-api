@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"github.com/QuantumNous/new-api/relay/channel/task/apimartveo"
 	"github.com/QuantumNous/new-api/relay/channel/task/gmiwan"
 	"strconv"
 
@@ -141,6 +142,8 @@ func GetTaskPlatform(c *gin.Context) constant.TaskPlatform {
 
 func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 	switch platform {
+	case apimartveo.Platform:
+		return &apimartveo.TaskAdaptor{}
 	case constant.TaskPlatformGMIWan:
 		return &gmiwan.TaskAdaptor{}
 	//case constant.APITypeAIProxyLibrary:

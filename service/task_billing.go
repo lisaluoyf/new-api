@@ -131,6 +131,18 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 			}
 		}
 	}
+	if IsVeo31VideoModel(info.OriginModelName) {
+		if request, err := relaycommon.GetTaskRequest(c); err == nil {
+			variant, _ := request.Metadata["resolution"].(string)
+			if audio, ok := request.Metadata["generate_audio"].(bool); ok && !audio {
+				variant += "-silent"
+			}
+			accountingInput.DurationPriceVariant = variant
+			other["resolution"] = request.Size
+			other["media_type"] = "video"
+			other["duration_seconds"] = accountingInput.DurationSeconds
+		}
+	}
 	accounting := BuildConsumeAccountingFields(accountingInput)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId:  info.ChannelId,

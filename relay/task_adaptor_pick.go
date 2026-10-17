@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"github.com/QuantumNous/new-api/relay/channel/task/apimartveo"
 	"github.com/QuantumNous/new-api/relay/channel/task/gmiwan"
 	"strings"
 
@@ -22,6 +23,9 @@ func ResolveTaskAdaptor(c *gin.Context, platform constant.TaskPlatform, info *re
 	if modelName == "" {
 		modelName = peekTaskModel(c)
 	}
+	if apimartveo.IsChannel(info.ChannelBaseUrl) && apimartveo.IsModel(modelName) {
+		return &apimartveo.TaskAdaptor{}
+	}
 	if info.ChannelId == constant.BeeNexSeedanceChannelID && beenex.IsModel(modelName) {
 		return &beenex.TaskAdaptor{}
 	}
@@ -42,6 +46,9 @@ func ResolveTaskPlatform(c *gin.Context, platform constant.TaskPlatform, info *r
 	modelName := strings.TrimSpace(info.OriginModelName)
 	if modelName == "" {
 		modelName = peekTaskModel(c)
+	}
+	if apimartveo.IsChannel(info.ChannelBaseUrl) && apimartveo.IsModel(modelName) {
+		return apimartveo.Platform
 	}
 	if gmiwan.IsChannel(info.ChannelBaseUrl) && gmiwan.IsModel(modelName) {
 		return constant.TaskPlatformGMIWan

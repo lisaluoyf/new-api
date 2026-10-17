@@ -184,7 +184,7 @@ func BuildConsumeAccountingFields(input ConsumeAccountingInput) (fields model.Ac
 	} else {
 		tuple := tupleFromChannelPrices(channelCost)
 		tuple.CacheCreationPrice1h = ratio_setting.ResolveCacheCreation1hPrice(input.ModelName, tuple.CacheCreationPrice, tuple.CacheCreationPrice1h)
-		if input.DurationPriceVariant != "" && IsSeedanceLibraryModel(input.ModelName) && normalizedAccountingBillingMode(input) == accountingBillingModeDurationSeconds {
+		if input.DurationPriceVariant != "" && (IsSeedanceLibraryModel(input.ModelName) || IsVeo31VideoModel(input.ModelName)) && normalizedAccountingBillingMode(input) == accountingBillingModeDurationSeconds {
 			ratio := ratio_setting.GetVideoModelOfficialPriceRatio(input.ModelName, input.DurationPriceVariant)
 			if ratio <= 0 {
 				status = "partial"

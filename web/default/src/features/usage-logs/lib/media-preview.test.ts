@@ -161,3 +161,25 @@ describe('isLogMediaVideoModel', () => {
     }
   })
 })
+
+test('Veo logs use authenticated video previews and hide failed outputs', () => {
+  for (const model of [
+    'veo-3.1-generate-preview',
+    'veo-3.1-fast-generate-preview',
+  ]) {
+    const log = { type: 2, model_name: model } as never
+    assert.equal(isLogMediaVideoModel(model), true)
+    assert.deepEqual(getLogMediaPreview(log, { task_id: 'task_veo' }), {
+      kind: 'video',
+      url: '/v1/videos/task_veo/content',
+      taskId: 'task_veo',
+    })
+    assert.equal(
+      getLogMediaPreview(log, {
+        task_id: 'task_veo',
+        task_fail_reason: 'failed',
+      }),
+      null
+    )
+  }
+})

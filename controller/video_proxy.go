@@ -276,6 +276,9 @@ func lookupVideoProxyTask(c *gin.Context, taskID string) (*model.Task, bool, err
 }
 
 func resolveOpenAIVideoFetchURL(task *model.Task, baseURL string, req *http.Request, channelKey string) string {
+	if task.Platform == "apimart-veo" {
+		return task.GetResultURL()
+	}
 	if upstream := strings.TrimSpace(task.GetUpstreamVideoURL()); upstream != "" {
 		return upstream
 	}

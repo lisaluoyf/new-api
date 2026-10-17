@@ -55,6 +55,8 @@ export function isLogMediaImageModel(modelName: string): boolean {
 export function isLogMediaVideoModel(modelName: string): boolean {
   const model = modelName.trim().toLowerCase()
   return (
+    model === 'veo-3.1-generate-preview' ||
+    model === 'veo-3.1-fast-generate-preview' ||
     model === 'wan3.0-video-prime' ||
     model === 'sora-2' ||
     model === 'sora-2-pro' ||
