@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"math/big"
 	"net/http"
 	"sort"
 	"strconv"
@@ -950,7 +951,7 @@ func queryReconciliationOrder(ctx context.Context, r reconciliationCandidate) re
 		case "solana":
 			usd, e = verifySolanaIntent(&intent, cfg, getRPCs(cfg))
 		default:
-			usd, e = verifyIntentOnChain(&intent, cfg, getRPCs(cfg))
+			usd, e = verifyIntentOnChainWithAmountCheck(&intent, cfg, getRPCs(cfg), reconciliationCryptoAmountCheck(r, cfg))
 		}
 		if e != nil {
 			return reconciliationProof{id: *intent.TxHash, problem: "chain_verification_failed"}
@@ -960,6 +961,44 @@ func queryReconciliationOrder(ctx context.Context, r reconciliationCandidate) re
 		return reconciliationProof{problem: "unknown_payment_provider"}
 	}
 }
+
+// Reconciliation already compares crypto USD amounts at six decimal places.
+// Historical confirmed stablecoin orders may retain finer expected-unit tails.
+// Apply that same precision only while auditing successful payments; settlement
+// continues to require exact base units via verifyIntentOnChain.
+func reconciliationCryptoAmountCheck(r reconciliationCandidate, cfg cryptoChainConfig) func(*model.CryptoDepositIntent, *big.Int) error {
+	return func(intent *model.CryptoDepositIntent, actual *big.Int) error {
+		strictErr := verifyExpectedBaseUnits(intent, actual)
+		if strictErr == nil || intent == nil || actual == nil || actual.Sign() <= 0 ||
+			r.status != "success" || intent.Status != model.CryptoDepositIntentStatusConfirmed ||
+			r.currency != "USD" || math.IsNaN(r.money) || math.IsInf(r.money, 0) {
+			return strictErr
+		}
+		var precision int
+		switch {
+		case intent.TokenSymbol == "USDT" && cfg.usdtAddress != "" && strings.EqualFold(intent.TokenAddress, cfg.usdtAddress):
+			precision = cfg.usdtDecimals
+		case intent.TokenSymbol == "USDC" && cfg.usdcAddress != "" && strings.EqualFold(intent.TokenAddress, cfg.usdcAddress):
+			precision = cfg.usdcDecimals
+		default:
+			return strictErr
+		}
+		if precision <= 6 {
+			return strictErr
+		}
+		expected, ok := new(big.Int).SetString(intent.ExpectedBaseUnits, 10)
+		if !ok || expected.Sign() <= 0 {
+			return strictErr
+		}
+		expectedUSD := decimal.NewFromBigInt(expected, int32(-precision)).Round(6)
+		actualUSD := decimal.NewFromBigInt(actual, int32(-precision)).Round(6)
+		if expectedUSD.Sign() > 0 && expectedUSD.Equal(actualUSD) && expectedUSD.Equal(decimal.NewFromFloat(r.money).Round(6)) {
+			return nil
+		}
+		return strictErr
+	}
+}
+
 func reconciliationIdentityProblem(actual, expected, second, expectedSecond string) string {
 	if actual != expected || second != expectedSecond {
 		return "official_identity_mismatch"

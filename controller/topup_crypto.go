@@ -555,6 +555,10 @@ func verifyWalletSignature(intent *model.CryptoDepositIntent, signature string) 
 }
 
 func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, rpcURLs []string) (float64, error) {
+	return verifyIntentOnChainWithAmountCheck(intent, cfg, rpcURLs, verifyExpectedBaseUnits)
+}
+
+func verifyIntentOnChainWithAmountCheck(intent *model.CryptoDepositIntent, cfg cryptoChainConfig, rpcURLs []string, checkAmount func(*model.CryptoDepositIntent, *big.Int) error) (float64, error) {
 	if len(rpcURLs) == 0 {
 		return 0, retryableCryptoError("no RPC configured")
 	}
@@ -655,7 +659,7 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 		if !ok || weiAmount.Sign() <= 0 {
 			return 0, fmt.Errorf("invalid transfer value")
 		}
-		if err := verifyExpectedBaseUnits(intent, weiAmount); err != nil {
+		if err := checkAmount(intent, weiAmount); err != nil {
 			return 0, err
 		}
 		nativeAmt := decimal.NewFromBigInt(weiAmount, int32(-cfg.nativeDecimals))
@@ -694,7 +698,7 @@ func verifyIntentOnChain(intent *model.CryptoDepositIntent, cfg cryptoChainConfi
 		if !ok {
 			continue
 		}
-		if err := verifyExpectedBaseUnits(intent, amountBig); err != nil {
+		if err := checkAmount(intent, amountBig); err != nil {
 			return 0, err
 		}
 		decimals := getTokenDecimals(cfg, intent.TokenSymbol)
