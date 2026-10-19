@@ -56,11 +56,10 @@ func RefundVideoSubmissionPreConsume(row *VideoSubmission, walletQuota, tokenID,
 		if lock.Error != nil {
 			return lock.Error
 		}
-		if lock.RowsAffected != 1 {
-			return gorm.ErrRecordNotFound
-		}
+		// MySQL can report zero changed rows for this deliberate no-op write.
+		// The scoped, locked lookup below verifies that the owner still exists.
 		var current VideoSubmission
-		if err := tx.Where("id = ? AND user_id = ?", row.ID, row.UserID).First(&current).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", row.ID, row.UserID).First(&current).Error; err != nil {
 			return err
 		}
 		err := tx.First(&item, "id = ?", row.ID).Error
