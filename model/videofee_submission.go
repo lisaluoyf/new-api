@@ -12,6 +12,7 @@ import (
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 )
 
@@ -186,7 +187,9 @@ func ApplyVideoFeeObservation(row *VideoSubmission, o *VideoFeeSubmissionObserva
 	if err := o.Validate(key, time.Now()); err != nil {
 		return err
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
+	// Task private_data contains the original provider credential. Never log
+	// SQL parameter values if an insertion/update fails.
+	return DB.Session(&gorm.Session{Logger: logger.Discard}).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&VideoSubmission{}).Where("id = ?", row.ID).Update("updated_at", gorm.Expr("updated_at")).Error; err != nil {
 			return err
 		}
