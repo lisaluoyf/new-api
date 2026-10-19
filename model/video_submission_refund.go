@@ -83,10 +83,19 @@ func RefundVideoSubmissionPreConsume(row *VideoSubmission, walletQuota, tokenID,
 		if count != 0 {
 			return errors.New("video refund already owned by billing hold")
 		}
-		// Validate against the original frozen reservation, never current pricing.
-		var snapshot VideoSubmissionRecovery
-		if common.UnmarshalJsonStr(current.RecoveryJSON, &snapshot) != nil || snapshot.Task.TaskID != current.TaskID || snapshot.Task.UserId != current.UserID || snapshot.Task.Quota != walletQuota || snapshot.PrivateData.BillingSource != "wallet" || (!playground && snapshot.PrivateData.TokenId != tokenID) {
-			return errors.New("video refund frozen reservation mismatch")
+		// A request-body/receipt construction failure can occur after pre-consume
+		// but before the send snapshot. Only the still-unsent claim may then use
+		// its live BillingSession reservation; post-send unknowns require frozen
+		// evidence. Neither branch uses current pricing.
+		if current.RecoveryJSON == "" {
+			if (current.Status != VideoSubmissionPending && current.Status != VideoSubmissionNotAccepted) || current.UpstreamTaskID != "" {
+				return errors.New("video refund missing send snapshot")
+			}
+		} else {
+			var snapshot VideoSubmissionRecovery
+			if common.UnmarshalJsonStr(current.RecoveryJSON, &snapshot) != nil || snapshot.Task.TaskID != current.TaskID || snapshot.Task.UserId != current.UserID || snapshot.Task.Quota != walletQuota || snapshot.PrivateData.BillingSource != "wallet" || (!playground && snapshot.PrivateData.TokenId != tokenID) {
+				return errors.New("video refund frozen reservation mismatch")
+			}
 		}
 		if !playground && tokenQuota > 0 {
 			var token Token

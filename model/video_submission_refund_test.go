@@ -147,3 +147,20 @@ func TestVideoSubmissionRefundBlocksLateAcceptanceRestoration(t *testing.T) {
 	require.NoError(t, DB.First(&u, 7).Error)
 	require.Equal(t, 12445, u.Quota)
 }
+
+func TestVideoSubmissionRefundBeforeSendSnapshot(t *testing.T) {
+	for _, status := range []string{VideoSubmissionPending, VideoSubmissionNotAccepted, VideoSubmissionUnknown} {
+		t.Run(status, func(t *testing.T) {
+			row := videoRefundFixture(t)
+			require.NoError(t, DB.Model(row).Updates(map[string]any{"status": status, "recovery_json": ""}).Error)
+			_, err := RefundVideoSubmissionPreConsume(row, 40, 23, 40, false)
+			if status == VideoSubmissionUnknown {
+				require.Error(t, err)
+				checkVideoRefundBalances(t, 100, 60, 40)
+			} else {
+				require.NoError(t, err)
+				checkVideoRefundBalances(t, 140, 100, 0)
+			}
+		})
+	}
+}
