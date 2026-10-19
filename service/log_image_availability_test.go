@@ -25,6 +25,7 @@ func TestCachedLogImageAvailabilityUsesActualFileAndRetention(t *testing.T) {
 	}{
 		{"expired complaint", "https://apimaster.ai/imgs/" + oldName, "expired", true},
 		{"missing within retention", "/imgs/" + recentName, "unavailable", true},
+		{"expired after twelve hours", fmt.Sprintf("/imgs/%d.png", now.Add(-13*time.Hour).UnixNano()), "expired", true},
 		{"unknown old filename", "/imgs/legacy.png", "unavailable", true},
 		{"external URL", "https://upstream.example/imgs/" + oldName, "", false},
 		{"unrelated local path", "/uploads/" + oldName, "", false},
@@ -38,20 +39,20 @@ func TestCachedLogImageAvailabilityUsesActualFileAndRetention(t *testing.T) {
 			require.Equal(t, tc.accepted, accepted)
 			if accepted {
 				require.Equal(t, tc.want, state.Status)
-				require.Equal(t, 24, state.RetentionHours)
+				require.Equal(t, 12, state.RetentionHours)
 			}
 		})
 	}
-	// Hourly pruning may leave an image available beyond its nominal 24h TTL.
+	// Hourly pruning may leave an image available beyond its nominal 12h TTL.
 	// Actual file existence wins over elapsed time.
 	file := filepath.Join(imageCacheDir, oldName)
 	require.NoError(t, os.WriteFile(file, []byte("image"), 0600))
-	modified := now.Add(-24*time.Hour - 20*time.Minute)
+	modified := now.Add(-12*time.Hour - 20*time.Minute)
 	require.NoError(t, os.Chtimes(file, modified, modified))
 	state, accepted := cachedLogImageAvailability("/imgs/"+oldName, now)
 	require.True(t, accepted)
 	require.Equal(t, "available", state.Status)
-	require.Equal(t, modified.Add(24*time.Hour).Unix(), state.ExpiresAt)
+	require.Equal(t, modified.Add(12*time.Hour).Unix(), state.ExpiresAt)
 }
 
 func TestEnrichImageAvailabilityKeepsGenerationAndStoredLogUnchanged(t *testing.T) {

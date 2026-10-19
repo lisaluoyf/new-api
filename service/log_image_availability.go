@@ -15,7 +15,7 @@ import (
 
 // Matches the production /opt/imgs cleanup policy. This describes cached
 // images only; upstream media and videos have independent retention policies.
-const cachedImageRetention = 24 * time.Hour
+const cachedImageRetention = 12 * time.Hour
 
 type logImageAvailability struct {
 	Status         string `json:"status"`
