@@ -42,6 +42,12 @@ func TestCertificationRejectionRequiresNoTaskIdentity(t *testing.T) {
 	}
 	require.False(t, SeedanceExplicitSubmissionRejection(502, []byte(`{"error":{"code":"PROVIDER_REQUEST_REJECTED","message":"copyright restrictions"}}`)))
 	require.False(t, SeedanceExplicitSubmissionRejection(409, []byte(`{"error":{"code":"OTHER"}}`)))
+	require.False(t, SeedanceExplicitSubmissionRejection(429, []byte(`{"error":{"message":"rate limit","details":{"taskId":"original"}}}`)))
+}
+
+func TestWrappedMaterialRejectionKeepsAmbiguousChargePolicy(t *testing.T) {
+	err := PublicVideoSubmitError(502, []byte(`{"error":{"code":"PROVIDER_REQUEST_REJECTED","message":"input image may be related to copyright restrictions"}}`), "", 273)
+	require.Equal(t, UpstreamChargeAmbiguous, ClassifyUpstreamChargeConfidence(TaskErrorToNewAPIError(err)))
 }
 
 func TestSubmissionReceiptExposesOnlySafeError(t *testing.T) {

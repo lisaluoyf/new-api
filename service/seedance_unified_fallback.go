@@ -27,17 +27,17 @@ func SeedanceExplicitRateRejection(status int, body []byte) bool {
 // submission was rejected. HTTP 400 alone, malformed bodies and transport
 // failures remain uncertain.
 func SeedanceExplicitSubmissionRejection(status int, body []byte) bool {
+	for _, path := range []string{"task_id", "id", "data.task_id", "data.id", "Result.Id", "task.id", "upstream_task_id", "error.details.taskId", "error.details.task_id"} {
+		if gjson.GetBytes(body, path).Exists() {
+			return false
+		}
+	}
 	if SeedanceExplicitRateRejection(status, body) {
 		return true
 	}
 	code := gjson.GetBytes(body, "error.code").String()
 	if !gjson.ValidBytes(body) || !((status == 400 && code == "InvalidParameter") || (status == 409 && code == "ASSET_CERTIFICATION_REQUIRED")) {
 		return false
-	}
-	for _, path := range []string{"task_id", "id", "data.task_id", "data.id", "Result.Id", "task.id", "upstream_task_id", "error.details.taskId", "error.details.task_id"} {
-		if gjson.GetBytes(body, path).Exists() {
-			return false
-		}
 	}
 	return strings.TrimSpace(gjson.GetBytes(body, "error.message").String()) != ""
 }
