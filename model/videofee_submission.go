@@ -261,6 +261,12 @@ func ApplyVideoFeeObservation(row *VideoSubmission, o *VideoFeeSubmissionObserva
 			}
 			if len(tasks) == 0 || tasks[0].PrivateData.ProviderObservationOnly {
 				task := snapshot.Task
+				if task.CreatedAt == 0 {
+					task.CreatedAt = current.CreatedAt
+				}
+				if task.SubmitTime == 0 {
+					task.SubmitTime = current.CreatedAt
+				}
 				if refunded {
 					task.Quota = 0
 				} // Preserve original reservation in the snapshot, not as a new customer charge.

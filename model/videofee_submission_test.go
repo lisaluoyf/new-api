@@ -43,6 +43,7 @@ func TestVideoFeeAcceptedOriginalPreservesIdentityAndMoney(t *testing.T) {
 	var task Task
 	require.NoError(t, DB.Where("task_id = ?", row.TaskID).First(&task).Error)
 	require.True(t, task.PrivateData.ProviderObservationOnly)
+	require.Equal(t, row.CreatedAt, task.CreatedAt)
 	require.Equal(t, lookupTestUUID, task.PrivateData.UpstreamTaskID)
 	require.Empty(t, GetAllUnFinishSyncTasks(1))
 	require.Empty(t, GetTimedOutUnfinishedTasks(time.Now().Unix(), 1))
