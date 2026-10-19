@@ -487,6 +487,13 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 				body.Resolution = "720p"
 			}
 			passthrough["resolution"] = body.Resolution
+			// Channel 153 disables the provider's optional preflight check by
+			// default. Keep explicit values from existing clients compatible.
+			if info.ChannelId == 153 {
+				if _, supplied := passthrough["nsfw_check"]; !supplied {
+					passthrough["nsfw_check"] = false
+				}
+			}
 			passthrough = service.ResolveSeedanceDraftRequest(c, passthrough)
 			if webhook := resolveWebhook(body.Webhook); webhook != "" {
 				passthrough["webhook"] = webhook
