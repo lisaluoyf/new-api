@@ -11,6 +11,10 @@ import (
 // Only actionable client errors pass through the same public task redaction.
 // Server failures remain generic and no provider envelope is forwarded.
 func PublicVideoSubmitError(status int, body []byte, key string, channelID int) *dto.TaskError {
+	if code, message, ok := publicVideoMaterialRejection(status, body); ok {
+		return TaskErrorWrapperLocal(fmt.Errorf("%s", message), code, status)
+	}
+
 	if status != http.StatusBadRequest && status != http.StatusUnprocessableEntity && status != http.StatusTooManyRequests {
 		return TaskErrorWrapper(fmt.Errorf("Video service request failed"), "video_service_error", status)
 	}

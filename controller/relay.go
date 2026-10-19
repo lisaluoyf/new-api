@@ -1752,6 +1752,7 @@ func RelayTask(c *gin.Context) {
 	var result *relay.TaskSubmitResult
 	var taskErr *dto.TaskError
 	defer func() {
+		service.RecordVideoSubmissionFailure(c, taskErr)
 		if taskErr != nil && relayInfo.Billing != nil {
 			apiErr := service.TaskErrorToNewAPIError(taskErr)
 			service.RefundPreConsumeIfSafe(c, relayInfo, apiErr)

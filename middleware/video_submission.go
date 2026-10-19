@@ -74,6 +74,7 @@ func DurableSeedanceSubmission() gin.HandlerFunc {
 			return
 		}
 		c.Set(service.VideoSubmissionContextKey, record)
+		defer service.ObserveVideoSubmissionFailure(c)()
 		// Even a panic or a downstream middleware rejection leaves a recoverable
 		// receipt. After send began, failures are conservative and never requeued.
 		defer func() {

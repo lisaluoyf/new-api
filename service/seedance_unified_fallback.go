@@ -30,10 +30,11 @@ func SeedanceExplicitSubmissionRejection(status int, body []byte) bool {
 	if SeedanceExplicitRateRejection(status, body) {
 		return true
 	}
-	if status != 400 || !gjson.ValidBytes(body) || gjson.GetBytes(body, "error.code").String() != "InvalidParameter" {
+	code := gjson.GetBytes(body, "error.code").String()
+	if !gjson.ValidBytes(body) || !((status == 400 && code == "InvalidParameter") || (status == 409 && code == "ASSET_CERTIFICATION_REQUIRED")) {
 		return false
 	}
-	for _, path := range []string{"task_id", "id", "data.task_id", "data.id", "Result.Id", "task.id", "upstream_task_id"} {
+	for _, path := range []string{"task_id", "id", "data.task_id", "data.id", "Result.Id", "task.id", "upstream_task_id", "error.details.taskId", "error.details.task_id"} {
 		if gjson.GetBytes(body, path).Exists() {
 			return false
 		}

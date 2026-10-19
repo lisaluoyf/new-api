@@ -174,6 +174,16 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, taskErr
 	}
 
+	if info.ChannelId == constant.VideoFeeSeedanceChannelID && service.IsSeedanceLibraryModel(info.OriginModelName) {
+		fields, fieldErr := service.SeedanceRequestFields(c)
+		if fieldErr != nil {
+			return nil, service.TaskErrorWrapperLocal(fmt.Errorf("Invalid generation JSON"), "invalid_request", 400)
+		}
+		if imageErr := service.ValidateSeedanceImageInputs(c, fields); imageErr != nil {
+			return nil, service.TaskErrorWrapperLocal(imageErr, "invalid_reference_image", 400)
+		}
+	}
+
 	// 2. 确定模型名称
 	modelName := info.OriginModelName
 	if modelName == "" {
@@ -298,6 +308,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	if resp != nil && resp.StatusCode != http.StatusOK {
 		responseBody, _ := io.ReadAll(resp.Body)
+		service.RememberVideoSubmitErrorReference(c, responseBody)
 		if info.ChannelId == constant.BeeNexSeedanceChannelID && service.IsBeeNexSeedanceModel(info.OriginModelName) {
 			logger.LogWarn(c.Request.Context(), fmt.Sprintf("BeeNex task submit failed with HTTP %d", resp.StatusCode))
 		} else {

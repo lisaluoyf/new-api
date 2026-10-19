@@ -23,6 +23,12 @@ const (
 // No API key or raw idempotency key is stored here. Private recovery snapshots
 // follow task-storage access controls and never appear in public receipts.
 type VideoSubmission struct {
+	ErrorStatus     int    `json:"-"`
+	ErrorCode       string `json:"-" gorm:"size:128"`
+	ErrorMessage    string `json:"-" gorm:"size:1024"`
+	ErrorReference  string `json:"-" gorm:"size:128"`
+	ErrorRecordedAt int64  `json:"-"`
+
 	// Private recovery snapshots never appear in public submission receipts.
 	RecoveryJSON    string `json:"-" gorm:"type:text"`
 	ResponseJSON    string `json:"-" gorm:"type:text"`

@@ -136,6 +136,30 @@ func (a *TaskAdaptor) normalizeSeedanceRequest(c *gin.Context, info *relaycommon
 	if err != nil {
 		return invalid(err)
 	}
+	if a.tencentSeedanceModel(c, info, req.Model) == "" {
+		changed := false
+		for i := range body.Content {
+			if body.Content[i].Type == "image_url" && body.Content[i].Role == "" {
+				body.Content[i].Role = "reference_image"
+				changed = true
+			}
+		}
+		if changed {
+			// Metadata's existing consumers expect generic JSON values, including
+			// the reference-video detector used by price selection.
+			raw, err := common.Marshal(body.Content)
+			if err != nil {
+				return invalid(err)
+			}
+			var content []any
+			if err := common.Unmarshal(raw, &content); err != nil {
+				return invalid(err)
+			}
+			req.Metadata["content"] = content
+			req.Images = nil
+		}
+	}
+
 	if body.Moderation != nil {
 		if !service.IsTokenHubSeedanceBaseURL(a.baseURL) {
 			return invalid(fmt.Errorf("Moderation is unsupported by this generation route"))
