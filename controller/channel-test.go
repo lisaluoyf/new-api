@@ -50,6 +50,12 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		return string(constant.EndpointTypeTypeSafe)
 	}
 	normalized := strings.TrimSpace(endpointType)
+	// Channel probes bypass the normal relay handler, so select the upstream
+	// protocol here when chat requests are configured to use Responses.
+	if channel != nil && (normalized == "" || normalized == string(constant.EndpointTypeOpenAI)) &&
+		service.ShouldChatCompletionsUseResponsesGlobal(channel.Id, channel.Type, modelName) {
+		return string(constant.EndpointTypeOpenAIResponse)
+	}
 	if normalized != "" {
 		return normalized
 	}
