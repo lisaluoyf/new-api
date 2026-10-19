@@ -124,6 +124,7 @@ func TestClientExclusiveAllModelsRouting(t *testing.T) {
 					c.Request.Header.Set("Originator", "codex_cli_rs")
 				}
 				if client == ClientTypeClaudeCode {
+					c.Request = httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"`+name+`"}`))
 					c.Request.Header.Set("User-Agent", "claude-cli/2.0.0")
 				}
 				require.Equal(t, client, DetectClientType(c, name))

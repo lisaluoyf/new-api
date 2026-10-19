@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -65,9 +66,12 @@ func RequiresClientExclusivePolicy(_ string) bool {
 	return true
 }
 
-// DetectClaudeCodeClient heuristically identifies Claude Code CLI callers.
+// DetectClaudeCodeClient requires the native Messages generation endpoint before
+// considering client identity headers. OpenAI calls can carry CLI headers but
+// cannot use channels that require the official Claude Code request protocol.
 func DetectClaudeCodeClient(c *gin.Context) bool {
-	if c == nil || c.Request == nil {
+	if c == nil || c.Request == nil || c.Request.URL == nil ||
+		c.Request.Method != http.MethodPost || c.Request.URL.Path != "/v1/messages" {
 		return false
 	}
 	h := c.Request.Header
@@ -75,7 +79,7 @@ func DetectClaudeCodeClient(c *gin.Context) bool {
 		return true
 	}
 	beta := strings.ToLower(h.Get("anthropic-beta"))
-	if strings.Contains(beta, "claude-code") && strings.Contains(c.Request.URL.Path, "/v1/messages") {
+	if strings.Contains(beta, "claude-code") {
 		return true
 	}
 	return false
