@@ -112,12 +112,18 @@ func TestVideoFeeWorkerFindsOriginalWithoutCreationOrMoneyMutation(t *testing.T)
 	require.NoError(t, db.Model(&row).UpdateColumns(map[string]any{"recovery_json": string(raw), "updated_at": time.Now().Add(-time.Minute).Unix()}).Error)
 	id := "11111111-1111-4111-8111-111111111111"
 	calls := 0
+	providerStatus := "submission_unknown"
+	polls := 0
 	httpClient = &http.Client{Transport: videoFeeLookupTransport(func(r *http.Request) (*http.Response, error) {
 		calls++
 		require.Equal(t, http.MethodGet, r.Method)
+		if r.URL.Path == "/v1/videos/"+id {
+			polls++
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"succeeded"}`)), Header: make(http.Header)}, nil
+		}
 		require.Equal(t, "/v1/submissions/by-key", r.URL.Path)
 		require.Equal(t, videoFeeSubmissionKeyPrefix+row.TaskID, r.Header.Get("Idempotency-Key"))
-		o := model.VideoFeeSubmissionObservation{Object: "submission", Key: r.Header.Get("Idempotency-Key"), Acceptance: "accepted", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), TaskID: &id, Task: &model.VideoFeeTaskObservation{ID: id, Status: "submission_unknown"}}
+		o := model.VideoFeeSubmissionObservation{Object: "submission", Key: r.Header.Get("Idempotency-Key"), Acceptance: "accepted", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), TaskID: &id, Task: &model.VideoFeeTaskObservation{ID: id, Status: providerStatus}}
 		body, e := common.Marshal(o)
 		require.NoError(t, e)
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(body))), Header: make(http.Header)}, nil
@@ -137,6 +143,25 @@ func TestVideoFeeWorkerFindsOriginalWithoutCreationOrMoneyMutation(t *testing.T)
 	require.NoError(t, db.First(&saved, "id = ?", row.ID).Error)
 	require.True(t, saved.TaskReady)
 	require.Equal(t, model.VideoSubmissionAccepted, saved.Status)
+	// A unique active original is refreshed with GET only. Its response is not
+	// substituted for the next atomic by-key state/billing snapshot.
+	providerStatus = "processing"
+	require.NoError(t, db.Model(&row).UpdateColumns(map[string]any{"provider_lookup_next": 0, "updated_at": time.Now().Add(-time.Minute).Unix()}).Error)
+	require.NoError(t, ReconcileVideoFeeSubmissions())
+	require.Equal(t, 3, calls)
+	require.Equal(t, 1, polls)
+	require.NoError(t, db.First(&task, task.ID).Error)
+	require.EqualValues(t, model.TaskStatusInProgress, task.Status)
+	// A stored success is readable through the original authenticated content
+	// route even if the provider has not warmed its local delivery cache.
+	providerStatus = "succeeded"
+	require.NoError(t, db.Model(&row).UpdateColumns(map[string]any{"provider_lookup_next": 0, "updated_at": time.Now().Add(-time.Minute).Unix()}).Error)
+	require.NoError(t, ReconcileVideoFeeSubmissions())
+	require.Equal(t, 4, calls)
+	require.Equal(t, 1, polls)
+	require.NoError(t, db.First(&task, task.ID).Error)
+	require.EqualValues(t, model.TaskStatusSuccess, task.Status)
+	require.Equal(t, "https://seedance2026.vip/v1/videos/"+id+"/content", task.PrivateData.ResultURL)
 	// Neither ordinary polling nor financial entry points may touch the original.
 	require.NoError(t, updateVideoSingleTask(context.Background(), nil, nil, row.TaskID, map[string]*model.Task{row.TaskID: &task}))
 	// Financial entry points also fail closed if accidentally called elsewhere.

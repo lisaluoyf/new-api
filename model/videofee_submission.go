@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -151,7 +150,7 @@ func ClaimVideoFeeLookups(now int64, limit int) ([]VideoSubmission, error) {
 	}
 	for _, row := range rows {
 		token := common.GetUUID()
-		r := DB.Model(&VideoSubmission{}).Where("id = ? AND provider_lookup_next = ? AND provider_lookup_lease = ? AND provider_lookup_done = ?", row.ID, row.ProviderLookupNext, row.ProviderLookupLease, false).Updates(map[string]any{"provider_lookup_next": now + 60, "provider_lookup_lease": token, "provider_lookup_attempts": gorm.Expr("provider_lookup_attempts + 1")})
+		r := DB.Model(&VideoSubmission{}).Where("id = ? AND provider_lookup_next = ? AND provider_lookup_lease = ? AND provider_lookup_done = ?", row.ID, row.ProviderLookupNext, row.ProviderLookupLease, false).Updates(map[string]any{"provider_lookup_next": now + 120, "provider_lookup_lease": token, "provider_lookup_attempts": gorm.Expr("provider_lookup_attempts + 1")})
 		if r.Error != nil {
 			return nil, r.Error
 		}
@@ -196,7 +195,10 @@ func ApplyVideoFeeObservation(row *VideoSubmission, o *VideoFeeSubmissionObserva
 			return err
 		}
 		if current.Status != VideoSubmissionUnknown && current.Status != VideoSubmissionAccepted {
-			return nil
+			if current.Status == VideoSubmissionNotAccepted && o.Acceptance == "not_accepted" {
+				return nil
+			}
+			return ErrVideoSubmissionClaimLost
 		}
 		if current.ProviderObservation != "" {
 			var previous VideoFeeSubmissionObservation
@@ -272,14 +274,13 @@ func ApplyVideoFeeObservation(row *VideoSubmission, o *VideoFeeSubmissionObserva
 				}
 				task.Status = TaskStatusInProgress
 				task.Progress = "30%"
-				if o.Task.Status == "succeeded" && o.Task.ResultURL != nil {
-					u, e := url.Parse(*o.Task.ResultURL)
-					if e == nil && u.IsAbs() && u.Scheme == "https" && u.Hostname() != "" && u.User == nil {
-						task.Status = TaskStatusSuccess
-						task.Progress = "100%"
-						task.PrivateData.ResultURL = u.String()
-						updates["provider_lookup_done"] = true
-					}
+				if o.Task.Status == "succeeded" {
+					task.Status = TaskStatusSuccess
+					task.Progress = "100%"
+					// Use the authenticated original content endpoint. Cache delivery URLs may
+					// be absent, relative, expired or private; the worker never downloads them.
+					task.PrivateData.ResultURL = "https://seedance2026.vip/v1/videos/" + *o.TaskID + "/content"
+					updates["provider_lookup_done"] = true
 				}
 				if o.Task.Status == "failed" || o.Task.Status == "cancelled" || o.Task.Status == "refunded" {
 					task.Status = TaskStatusFailure

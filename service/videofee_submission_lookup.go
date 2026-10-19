@@ -18,17 +18,25 @@ const videoFeeSubmissionKeyPrefix = "apimaster-"
 // Only the exact provider origin and the original credential are used. Redirects
 // are refused so a lookup cannot leak the supplier key or invoke another route.
 func lookupVideoFeeSubmission(ctx context.Context, row *model.VideoSubmission) (*model.VideoFeeSubmissionObservation, error) {
+	client, key, err := videoFeeOriginalClient(row)
+	if err != nil {
+		return nil, err
+	}
+	return fetchVideoFeeSubmission(ctx, client, videoFeeSubmissionKeyPrefix+row.TaskID, key)
+}
+
+func videoFeeOriginalClient(row *model.VideoSubmission) (*http.Client, string, error) {
 	var snapshot model.VideoSubmissionRecovery
 	if row.ChannelID != 273 || !row.ProviderLookupEnabled || common.UnmarshalJsonStr(string(row.RecoveryJSON), &snapshot) != nil || snapshot.CredentialFingerprint == "" {
-		return nil, errors.New("missing original lookup identity")
+		return nil, "", errors.New("missing original lookup identity")
 	}
 	channel, err := model.GetChannelById(row.ChannelID, true)
 	if err != nil {
-		return nil, errors.New("lookup channel unavailable")
+		return nil, "", errors.New("lookup channel unavailable")
 	}
 	base, err := url.Parse(channel.GetBaseURL())
 	if err != nil || base.Scheme != "https" || base.Host != "seedance2026.vip" || base.User != nil || (base.Path != "" && base.Path != "/") || base.RawQuery != "" || base.Fragment != "" {
-		return nil, errors.New("lookup provider origin mismatch")
+		return nil, "", errors.New("lookup provider origin mismatch")
 	}
 	key := ""
 	for _, candidate := range channel.GetKeys() {
@@ -38,13 +46,13 @@ func lookupVideoFeeSubmission(ctx context.Context, row *model.VideoSubmission) (
 		}
 	}
 	if key == "" {
-		return nil, errors.New("original lookup credential unavailable")
+		return nil, "", errors.New("original lookup credential unavailable")
 	}
 	client, err := GetHttpClientWithProxy(channel.GetSetting().Proxy)
 	if err != nil || client == nil {
-		return nil, errors.New("lookup transport unavailable")
+		return nil, "", errors.New("lookup transport unavailable")
 	}
-	return fetchVideoFeeSubmission(ctx, client, videoFeeSubmissionKeyPrefix+row.TaskID, key)
+	return client, key, nil
 }
 
 func fetchVideoFeeSubmission(ctx context.Context, client *http.Client, lookupKey, key string) (*model.VideoFeeSubmissionObservation, error) {
@@ -94,6 +102,15 @@ func ReconcileVideoFeeSubmissions() error {
 		if lookupErr == nil {
 			retryAfter = observation.RetryAfter
 			lookupErr = model.ApplyVideoFeeObservation(row, observation, videoFeeSubmissionKeyPrefix+row.TaskID)
+			if lookupErr == nil && observation.Acceptance == "accepted" && observation.Task != nil && (observation.Task.Status == "queued" || observation.Task.Status == "processing") {
+				// This is the original task's existing polling/settlement endpoint,
+				// not the read-only discovery API. Never call it for an ambiguous
+				// submission, and never POST or create a replacement/reservation.
+				lookupErr = pollOriginalVideoFeeTask(context.Background(), row, *observation.TaskID)
+				if lookupErr == nil {
+					row.ProviderLookupAttempts = 1
+				}
+			}
 		}
 		if lookupErr != nil && firstErr == nil {
 			firstErr = lookupErr
@@ -103,6 +120,35 @@ func ReconcileVideoFeeSubmissions() error {
 		}
 	}
 	return firstErr
+}
+
+func pollOriginalVideoFeeTask(ctx context.Context, row *model.VideoSubmission, taskID string) error {
+	client, key, err := videoFeeOriginalClient(row)
+	if err != nil {
+		return err
+	}
+	copyClient := *client
+	copyClient.Timeout = 8 * time.Second
+	copyClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://seedance2026.vip/v1/videos/"+taskID, nil)
+	if err != nil {
+		return errors.New("invalid original task query")
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	resp, err := copyClient.Do(req)
+	if err != nil {
+		return errors.New("original task query unavailable")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("original task query unavailable")
+	}
+	// The next by-key SQL snapshot supplies authoritative state and ledger facts.
+	_, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 128*1024))
+	if err != nil {
+		return errors.New("original task query interrupted")
+	}
+	return nil
 }
 
 // The public receipt distinguishes platform acceptance from generation state.
@@ -119,11 +165,14 @@ func videoFeeReconciliationDTO(row *model.VideoSubmission) map[string]any {
 	if o.Task != nil {
 		d["task_status"] = o.Task.Status
 	}
+	if row.RecoverySettled {
+		d["customer_settlement_status"] = "original_reservation_committed"
+	}
 	if row.ProviderRefundCompleted {
 		d["customer_settlement_status"] = "refunded"
 	}
-	if row.RecoverySettled {
-		d["customer_settlement_status"] = "original_reservation_committed"
+	if row.ProviderLookupDone {
+		d["next_check_at"] = nil
 	}
 	return d
 }
