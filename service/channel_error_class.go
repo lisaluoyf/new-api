@@ -304,6 +304,12 @@ func isUpstreamModelUnavailableError(err *types.NewAPIError) bool {
 	if err.StatusCode != 400 && err.StatusCode != 404 {
 		return false
 	}
+	// Some providers omit a model_not_found code and return only this
+	// diagnosis. Match the complete message so unrelated missing fields or
+	// resources do not trigger a channel-model availability probe.
+	if strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(msg), ".")) == "model not found" {
+		return true
+	}
 	markers := []string{
 		"unknown provider for model",
 		"unknown model provider",

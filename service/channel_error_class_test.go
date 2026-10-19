@@ -480,3 +480,43 @@ func TestEvaluateChannelHealth_wrappedPlatformUserQuotaNeverDisables(t *testing.
 		require.Empty(t, reason)
 	}
 }
+
+func TestPlainModelNotFoundResponseHealth(t *testing.T) {
+	previous := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = previous
+		ClearChannelHealth(67)
+	})
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		want   HealthAction
+	}{
+		{"production string error", 404, `{"error":"model not found"}`, HealthProbeBeforeDisable},
+		{"nested message", 404, `{"error":{"message":"model not found","type":"invalid_request_error"}}`, HealthProbeBeforeDisable},
+		{"bad request", 400, `{"error":"model not found"}`, HealthProbeBeforeDisable},
+		{"case and punctuation", 404, `{"error":" Model Not Found. "}`, HealthProbeBeforeDisable},
+		{"ordinary missing path", 404, `{"error":"Not Found"}`, HealthSkip},
+		{"missing request field", 400, `{"error":"parameter model not found in request"}`, HealthSkip},
+		{"missing file", 404, `{"error":"file not found"}`, HealthSkip},
+		{"diagnosis only in unrelated field", 404, `{"error":{"message":"Not Found","param":"model not found"}}`, HealthSkip},
+		{"forbidden is not model unavailable", 403, `{"error":"model not found"}`, HealthSkip},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := RelayErrorHandler(context.Background(), &http.Response{
+				StatusCode: tc.status,
+				Body:       io.NopCloser(strings.NewReader(tc.body)),
+			}, false)
+			action, _ := EvaluateChannelHealth(types.ChannelError{ChannelId: 67, AutoBan: true}, err)
+			require.Equal(t, tc.want, action)
+			action, _ = EvaluateChannelHealth(types.ChannelError{ChannelId: 67, AutoBan: false}, err)
+			require.Equal(t, HealthSkip, action)
+			common.AutomaticDisableChannelEnabled = false
+			action, _ = EvaluateChannelHealth(types.ChannelError{ChannelId: 67, AutoBan: true}, err)
+			require.Equal(t, HealthSkip, action)
+			common.AutomaticDisableChannelEnabled = true
+		})
+	}
+}

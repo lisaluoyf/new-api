@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,13 +21,16 @@ func TestModelNotFoundDisableProbeProtectsChannelModels(t *testing.T) {
 		wantProbes    int
 		wantDisable   bool
 		requestFailed bool
+		plainNotFound bool
 	}{
-		{"probe passes", "gpt-6-astra", true, 1, false, false},
-		{"probe confirms failure", "gpt-6-astra", false, 1, true, false},
-		{"user misspells model", "gpt-6-atsra", false, 0, false, false},
-		{"empty model", "", false, 0, false, false},
-		{"model request failure probe passes", "gpt-6-astra", true, 1, false, true},
-		{"model request failure probe confirms failure", "gpt-6-astra", false, 1, true, true},
+		{"probe passes", "gpt-6-astra", true, 1, false, false, false},
+		{"probe confirms failure", "gpt-6-astra", false, 1, true, false, false},
+		{"user misspells model", "gpt-6-atsra", false, 0, false, false, false},
+		{"empty model", "", false, 0, false, false, false},
+		{"model request failure probe passes", "gpt-6-astra", true, 1, false, true, false},
+		{"model request failure probe confirms failure", "gpt-6-astra", false, 1, true, true, false},
+		{"plain model not found probe passes", "gpt-6-astra", true, 1, false, false, true},
+		{"plain model not found probe confirms failure", "gpt-6-astra", false, 1, true, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := setupModelDataToggleTestDB(t)
@@ -66,6 +70,9 @@ func TestModelNotFoundDisableProbeProtectsChannelModels(t *testing.T) {
 				err = types.WithOpenAIError(types.OpenAIError{
 					Message: "模型请求失败，请稍后重试或更换模型。", Type: "invalid_request_error",
 				}, http.StatusBadRequest)
+			}
+			if tc.plainNotFound {
+				err = types.NewOpenAIError(errors.New("model not found"), types.ErrorCodeBadResponseStatusCode, http.StatusNotFound)
 			}
 			probeBeforeDisablingChannel(types.ChannelError{ChannelId: channel.Id, ChannelName: channel.Name, AutoBan: true}, err, err.ErrorWithStatusCode(), tc.model)
 			require.Equal(t, tc.wantProbes, probeCount)
