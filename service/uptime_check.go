@@ -269,6 +269,24 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 		return
 	}
 
+	if ShouldChatCompletionsUseResponsesGlobal(ch.Id, ch.Type, targetModel) {
+		client := &http.Client{Timeout: uptimeRequestTimeout}
+		var result probeResult
+		var probeErr *probeError
+		for _, candidateModel := range ProbeModelCandidates(targetModel, ch.ModelMapping) {
+			result, probeErr = sendResponsesUptimeProbe(ctx, client, baseURL, apiKey, candidateModel, ch)
+			if probeErr == nil {
+				recordUptimeResult(ch, targetModel, baseURL, "pass", result.LatencyMs, "")
+				return
+			}
+			if probeErr.kind != probeErrModel {
+				break
+			}
+		}
+		recordUptimeResult(ch, targetModel, baseURL, "notcomplete", result.LatencyMs, probeErr.msg)
+		return
+	}
+
 	urlCandidates := baseURLCandidates(baseURL)
 	modelCandidates := ProbeModelCandidates(targetModel, ch.ModelMapping)
 
