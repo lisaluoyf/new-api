@@ -18,11 +18,14 @@ func StartVideoSubmissionReconcileTask() {
 	}
 	videoSubmissionReconcileOnce.Do(func() {
 		go func() {
-			ticker := time.NewTicker(time.Minute)
+			ticker := time.NewTicker(10 * time.Second)
 			defer ticker.Stop()
 			for {
 				if err := model.RetryVideoSubmissionRefundLogs(); err != nil {
 					common.SysLog("video refund log reconciliation failed: " + err.Error())
+				}
+				if err := ReconcileVideoFeeSubmissions(); err != nil {
+					common.SysLog("provider submission reconciliation deferred: " + err.Error())
 				}
 				if err := model.ReconcileVideoSubmissions(200); err != nil {
 					common.SysLog("video submission reconciliation failed: " + err.Error())

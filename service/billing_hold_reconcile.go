@@ -222,6 +222,9 @@ func VerifyBillingHoldUpstreamCharge(hold *model.BillingHold) (decision BillingH
 	if hold == nil {
 		return BillingHoldDecisionUnknown, "missing hold"
 	}
+	if model.VideoFeeFencedHoldRejection(hold) {
+		return BillingHoldDecisionRefund, "provider fenced original generation as not accepted; independent asset fees unverified"
+	}
 
 	if hold.UpstreamTaskId != "" && hold.ChannelId > 0 {
 		uncharged, poll := upstreamImageTaskConfirmedUnchargedByChannel(hold.ChannelId, hold.UpstreamTaskId)

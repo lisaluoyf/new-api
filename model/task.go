@@ -100,6 +100,7 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
+	ProviderObservationOnly       bool                     `json:"provider_observation_only,omitempty"`
 	SeedanceFallback              *SeedanceFallbackRequest `json:"seedance_fallback,omitempty"`
 	Webhook                       *TaskWebhookConfig       `json:"task_webhook,omitempty"`
 	SeedanceBillingReceiptEnabled bool                     `json:"seedance_billing_receipt_enabled,omitempty"`
@@ -321,7 +322,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 
 func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
-	err := DB.Where("progress != ?", "100%").
+	err := ordinaryTaskQuery(DB).Where("progress != ?", "100%").
 		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess, TaskStatusRetrying}).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
@@ -337,7 +338,7 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess, TaskStatusRetrying}).Limit(limit).Order("id").Find(&tasks).Error
+	err = ordinaryTaskQuery(DB).Where("progress != ?", "100%").Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess, TaskStatusRetrying}).Limit(limit).Order("id").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}

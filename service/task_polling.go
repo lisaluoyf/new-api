@@ -60,7 +60,7 @@ func sweepTimedOutTasks(ctx context.Context) {
 	timedOutCount := 0
 
 	for _, task := range tasks {
-		if task.Status == model.TaskStatusRetrying {
+		if task.PrivateData.ProviderObservationOnly || task.Status == model.TaskStatusRetrying {
 			continue
 		}
 		isLegacy := task.SubmitTime > 0 && task.SubmitTime < legacyTaskCutoff
@@ -368,6 +368,9 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 }
 
 func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) error {
+	if task := taskM[taskId]; task != nil && task.PrivateData.ProviderObservationOnly {
+		return nil
+	}
 	baseURL := constant.ChannelBaseURLs[ch.Type]
 	if ch.GetBaseURL() != "" {
 		baseURL = ch.GetBaseURL()
@@ -675,6 +678,9 @@ func truncateBase64(s string) string {
 //  2. taskResult.TotalTokens > 0 → 按 token 重算
 //  3. 都不满足 → 保持预扣额度不变
 func SettleTaskBillingOnComplete(ctx context.Context, adaptor TaskBillingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	if task != nil && task.PrivateData.ProviderObservationOnly {
+		return
+	}
 	if UsesSeedanceTariff(task) {
 		if quota := SeedanceTariffQuota(task, taskResult); quota >= 0 {
 			if quota == 0 && task.Quota == 0 || RecalculateTaskQuota(ctx, task, quota, "Seedance按秒计费调整") {

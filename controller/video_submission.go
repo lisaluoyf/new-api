@@ -12,6 +12,7 @@ import (
 )
 
 func GetVideoSubmissionByKey(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	key := c.GetHeader("Idempotency-Key")
 	if !service.ValidVideoSubmissionKey(key) {
 		c.JSON(400, gin.H{"error": gin.H{"code": "invalid_idempotency_key", "message": "Idempotency-Key must be 8–128 visible ASCII characters"}})

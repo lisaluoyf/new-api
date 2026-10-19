@@ -70,6 +70,10 @@ func updateVideoTaskAll(ctx context.Context, platform constant.TaskPlatform, cha
 }
 
 func updateVideoSingleTask(ctx context.Context, adaptor channel.TaskAdaptor, channel *model.Channel, taskId string, taskM map[string]*model.Task) error {
+	// Recovered observations are advanced exclusively by the read-only by-key worker.
+	if task := taskM[taskId]; task != nil && task.PrivateData.ProviderObservationOnly {
+		return nil
+	}
 	baseURL := constant.ChannelBaseURLs[channel.Type]
 	if channel.GetBaseURL() != "" {
 		baseURL = channel.GetBaseURL()

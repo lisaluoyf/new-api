@@ -183,7 +183,14 @@ func VideoSubmissionDTO(record *model.VideoSubmission) map[string]any {
 	if record.Status == model.VideoSubmissionNotAccepted {
 		action = "new_key_after_correcting_error"
 	}
-	return map[string]any{"error": VideoSubmissionPublicError(record), "submission_id": record.ID, "task_id": record.TaskID, "request_id": record.RequestID, "model": record.Model, "status": record.Status, "task_ready": record.TaskReady, "created_at": record.CreatedAt, "updated_at": record.UpdatedAt, "next_action": action, "same_key_replay_safe": true, "new_submission_safe": record.Status == model.VideoSubmissionNotAccepted, "retention": "at_least_30_days_no_automatic_key_reuse"}
+	data := map[string]any{"error": VideoSubmissionPublicError(record), "submission_id": record.ID, "task_id": record.TaskID, "request_id": record.RequestID, "model": record.Model, "status": record.Status, "task_ready": record.TaskReady, "created_at": record.CreatedAt, "updated_at": record.UpdatedAt, "next_action": action, "same_key_replay_safe": true, "new_submission_safe": record.Status == model.VideoSubmissionNotAccepted, "retention": "at_least_30_days_no_automatic_key_reuse"}
+	if reconciliation := videoFeeReconciliationDTO(record); reconciliation != nil {
+		data["reconciliation"] = reconciliation
+		if record.Status == model.VideoSubmissionUnknown && record.ProviderLookupEnabled {
+			data["next_action"] = "query_submission"
+		}
+	}
+	return data
 }
 
 func MarkVideoSubmissionSending(c *gin.Context, channelID int) error {

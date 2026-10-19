@@ -152,6 +152,9 @@ func chooseSeedanceFallbackChannel(c *gin.Context, task *model.Task) (*model.Cha
 
 // Called only for an upstream terminal FAILURE, before refund or terminal event.
 func beginSeedanceTaskFallback(ctx context.Context, task *model.Task, from model.TaskStatus, reason string) (bool, error) {
+	if task != nil && task.PrivateData.ProviderObservationOnly {
+		return false, nil
+	}
 	if task == nil || from == model.TaskStatusSuccess || from == model.TaskStatusFailure || from == model.TaskStatusRetrying {
 		return false, nil
 	}

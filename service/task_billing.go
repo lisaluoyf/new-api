@@ -372,6 +372,9 @@ func taskModelName(task *model.Task) string {
 // RefundTaskQuota 统一的任务失败退款逻辑。
 // 当异步任务失败时，将预扣的 quota 退还给用户（支持钱包和订阅），并退还令牌额度。
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
+	if task != nil && task.PrivateData.ProviderObservationOnly {
+		return
+	}
 	if f := task.PrivateData.SeedanceFallback; f != nil && f.Started {
 		if err := refundSeedanceFallbackTask(task, reason); err != nil {
 			logger.LogError(ctx, fmt.Sprintf("Video recovery refund pending for %s: %v", task.TaskID, err))
@@ -426,6 +429,9 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 // actualQuota 是任务完成后的实际应扣额度，与预扣额度 (task.Quota) 做差额结算。
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
 func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) bool {
+	if task != nil && task.PrivateData.ProviderObservationOnly {
+		return false
+	}
 	if actualQuota <= 0 {
 		return false
 	}
@@ -511,6 +517,9 @@ func syncTaskDiscountAccounting(ctx context.Context, task *model.Task) {
 // 当任务成功且返回了 totalTokens 时，根据模型倍率和分组倍率重新计算实际扣费额度，
 // 与预扣费的差额进行补扣或退还。支持钱包和订阅计费来源。
 func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) {
+	if task != nil && task.PrivateData.ProviderObservationOnly {
+		return
+	}
 	if totalTokens <= 0 {
 		return
 	}

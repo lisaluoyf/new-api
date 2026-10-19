@@ -222,9 +222,17 @@ func GetVideoSubmissionRefundDetails(userID int, taskID string) (map[string]any,
 	} else {
 		var hold BillingHold
 		if err := DB.Where("request_id = ? AND user_id = ? AND status = ?", row.RequestID, userID, BillingHoldStatusRefunded).First(&hold).Error; err != nil {
-			return nil, err
+			if !errors.Is(err, gorm.ErrRecordNotFound) || !row.ProviderRefundCompleted || row.ProviderRefundRecordedAt <= 0 {
+				return nil, err
+			}
+			var frozen VideoSubmissionRecovery
+			if common.UnmarshalJsonStr(row.RecoveryJSON, &frozen) != nil || frozen.Task.TaskID != row.TaskID || frozen.Task.UserId != userID || frozen.PrivateData.BillingSource != "subscription" {
+				return nil, gorm.ErrRecordNotFound
+			}
+			quota, refundedAt, source = frozen.Task.Quota, row.ProviderRefundRecordedAt, "funding_refund_checkpoint"
+		} else {
+			quota, refundedAt, source = hold.PreConsumedQuota, hold.ResolvedAt, "billing_hold_refund"
 		}
-		quota, refundedAt, source = hold.PreConsumedQuota, hold.ResolvedAt, "billing_hold_refund"
 	}
 	if quota <= 0 || refundedAt <= 0 {
 		return nil, errors.New("invalid video refund evidence")
@@ -234,7 +242,7 @@ func GetVideoSubmissionRefundDetails(userID int, taskID string) (map[string]any,
 	if common.UnmarshalJsonStr(row.RecoveryJSON, &snapshot) == nil && snapshot.PrivateData.BillingSource != "" {
 		funding = snapshot.PrivateData.BillingSource
 	}
-	if source != "billing_hold_refund" {
+	if source != "billing_hold_refund" && source != "funding_refund_checkpoint" {
 		funding = "wallet"
 	}
 	amount := decimal.NewFromInt(int64(quota)).Div(decimal.NewFromFloat(common.QuotaPerUnit)).StringFixed(6)

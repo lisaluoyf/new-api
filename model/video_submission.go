@@ -23,11 +23,12 @@ const (
 // No API key or raw idempotency key is stored here. Private recovery snapshots
 // follow task-storage access controls and never appear in public receipts.
 type VideoSubmission struct {
-	ErrorStatus     int    `json:"-"`
-	ErrorCode       string `json:"-" gorm:"size:128"`
-	ErrorMessage    string `json:"-" gorm:"size:1024"`
-	ErrorReference  string `json:"-" gorm:"size:128"`
-	ErrorRecordedAt int64  `json:"-"`
+	VideoFeeReconciliation `json:"-" gorm:"embedded"`
+	ErrorStatus            int    `json:"-"`
+	ErrorCode              string `json:"-" gorm:"size:128"`
+	ErrorMessage           string `json:"-" gorm:"size:1024"`
+	ErrorReference         string `json:"-" gorm:"size:128"`
+	ErrorRecordedAt        int64  `json:"-"`
 
 	// Private recovery snapshots never appear in public submission receipts.
 	RecoveryJSON    string `json:"-" gorm:"type:text"`
@@ -55,6 +56,7 @@ var ErrVideoSubmissionConflict = errors.New("Idempotency-Key was used for a diff
 var ErrVideoSubmissionClaimLost = errors.New("submission cannot be sent; query its original receipt")
 
 func ClaimVideoSubmission(candidate *VideoSubmission) (*VideoSubmission, bool, error) {
+	candidate.ProviderLookupEnabled = true
 	candidate.OwnerToken = common.GetUUID()
 	candidate.CreatedAt = time.Now().Unix()
 	candidate.UpdatedAt = candidate.CreatedAt

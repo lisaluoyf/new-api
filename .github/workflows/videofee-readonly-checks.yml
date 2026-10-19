@@ -1,0 +1,42 @@
+name: VideoFee read-only reconciliation checks
+on:
+  push:
+    branches: [main, 'fix/channel273-*']
+    paths: ['model/**', 'service/**', 'controller/**', 'middleware/**', '.github/workflows/videofee-readonly-checks.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: integration-only
+        ports: ['55439:5432']
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare embed fixtures
+        run: |
+          mkdir -p web/default/dist web/classic/dist
+          echo '<html>test fixture</html>' > web/default/dist/index.html
+          cp web/default/dist/index.html web/classic/dist/index.html
+      - name: Read-only protocol, billing and original-task regression
+        run: go test -p 2 -count=1 ./model ./service ./controller ./middleware ./relay ./relay/channel/task/videofee -run 'Test(VideoFee|VideoSubmission|OriginalVideoRefund|VerifyBillingHold|Durable|SweepTimedOut)'
+      - name: PostgreSQL evidence and polling isolation
+        env:
+          VIDEO_SUBMISSION_TEST_PG_DSN: 'host=127.0.0.1 port=55439 user=postgres dbname=postgres password=integration-only sslmode=disable'
+        run: go test -p 2 -count=1 ./model -run 'TestVideoFee'
+      - name: Race checks
+        run: go test -p 2 -race -count=1 ./model ./service -run 'TestVideoFee'
+      - name: Vet affected packages
+        run: go vet ./model ./service ./controller ./middleware ./relay

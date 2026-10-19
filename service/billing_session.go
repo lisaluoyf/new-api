@@ -241,6 +241,11 @@ func (s *BillingSession) executeRefund(
 			return fmt.Errorf("refunding token quota: %w", err)
 		}
 	}
+	if s.relayInfo != nil && s.relayInfo.TaskRelayInfo != nil && s.relayInfo.ChannelMeta != nil && s.relayInfo.ChannelId == 273 && s.relayInfo.PublicTaskID != "" {
+		if err := model.CompleteVideoSubmissionRefund(s.relayInfo.UserId, s.relayInfo.PublicTaskID); err != nil {
+			common.SysLog("video refund completion checkpoint deferred: " + err.Error())
+		}
+	}
 	return nil
 }
 
