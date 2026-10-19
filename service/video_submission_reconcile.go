@@ -21,6 +21,9 @@ func StartVideoSubmissionReconcileTask() {
 			ticker := time.NewTicker(time.Minute)
 			defer ticker.Stop()
 			for {
+				if err := model.RetryVideoSubmissionRefundLogs(); err != nil {
+					common.SysLog("video refund log reconciliation failed: " + err.Error())
+				}
 				if err := model.ReconcileVideoSubmissions(200); err != nil {
 					common.SysLog("video submission reconciliation failed: " + err.Error())
 				}

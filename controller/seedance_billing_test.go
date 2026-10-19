@@ -18,7 +18,7 @@ func TestSeedanceReceiptEndpointOwnerIsolationAndStableRefundResponse(t *testing
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
-	require.NoError(t, db.AutoMigrate(&model.SeedanceBillingReceipt{}))
+	require.NoError(t, db.AutoMigrate(&model.SeedanceBillingReceipt{}, &model.VideoSubmission{}, &model.VideoSubmissionRefund{}, &model.BillingHold{}))
 	net := "0.000000"
 	details := model.SeedanceBillingDetails{ReceiptID: "bill_task_owned", TaskID: "task_owned", SettlementStatus: "refunded", NetAmount: &net, RefundedAmount: "0.200000", InputVideos: []model.SeedanceInputVideoMeasurement{}}
 	raw, _ := common.Marshal(details)

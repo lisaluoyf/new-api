@@ -18,6 +18,7 @@ import (
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // ---------------------------------------------------------------------------
@@ -212,6 +213,18 @@ func (s *BillingSession) executeRefund(
 		walletQuota := wallet.consumed
 		if walletQuota <= 0 && tokenConsumed <= 0 {
 			return nil
+		}
+		// Original video submissions need a durable, idempotent refund receipt.
+		// Other billing paths keep their existing funding lifecycle.
+		if s.relayInfo != nil && s.relayInfo.TaskRelayInfo != nil && s.relayInfo.PublicTaskID != "" {
+			row, err := model.FindVideoSubmissionByTaskID(wallet.userId, s.relayInfo.PublicTaskID)
+			if err == nil {
+				_, err = model.RefundVideoSubmissionPreConsume(row, walletQuota, tokenId, tokenConsumed, isPlayground)
+				return err
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 		}
 		if err := model.RefundWalletAndTokenQuota(
 			wallet.userId, walletQuota, tokenId, tokenKey, tokenConsumed, isPlayground,

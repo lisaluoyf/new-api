@@ -36,5 +36,13 @@ func GetVideoSubmissionByKey(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "submission_storage_unavailable", "message": "Submission lookup is temporarily unavailable"}})
 		return
 	}
-	c.JSON(200, gin.H{"code": 200, "data": service.VideoSubmissionDTO(record)})
+	data := service.VideoSubmissionDTO(record)
+	billing, billingErr := model.GetVideoSubmissionRefundDetails(record.UserID, record.TaskID)
+	if billingErr == nil {
+		data["billing"] = billing
+	} else if !errors.Is(billingErr, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "refund_receipt_unavailable", "message": "Unable to retrieve refund evidence"}})
+		return
+	}
+	c.JSON(200, gin.H{"code": 200, "data": data})
 }

@@ -355,7 +355,7 @@ func migrateDB() error {
 		&ImagineBatch{},
 		&ImagineTask{},
 		&SeedanceResource{},
-		&VideoSubmission{},
+		&VideoSubmission{}, &VideoSubmissionRefund{}, &VideoRefundLogDelivery{},
 		&ImagineBillingEvent{},
 		&ImagineLogDelivery{},
 		&ImageTaskRefund{}, &ImageRefundLogDelivery{},
@@ -446,7 +446,7 @@ func migrateDBFast() error {
 		{&ImagineBatch{}, "ImagineBatch"},
 		{&ImagineTask{}, "ImagineTask"},
 		{&SeedanceResource{}, "SeedanceResource"},
-		{&VideoSubmission{}, "VideoSubmission"},
+		{&VideoSubmission{}, "VideoSubmission"}, {&VideoSubmissionRefund{}, "VideoSubmissionRefund"}, {&VideoRefundLogDelivery{}, "VideoRefundLogDelivery"},
 		{&ImagineBillingEvent{}, "ImagineBillingEvent"},
 		{&ImagineLogDelivery{}, "ImagineLogDelivery"},
 		{&ImageTaskRefund{}, "ImageTaskRefund"}, {&ImageRefundLogDelivery{}, "ImageRefundLogDelivery"},
@@ -522,6 +522,9 @@ func migrateDBFast() error {
 
 func migrateLOGDB() error {
 	var err error
+	if err = autoMigrateWithLimits(LOG_DB, &VideoRefundLogDelivery{}); err != nil {
+		return err
+	}
 	if err = autoMigrateWithLimits(LOG_DB, &ImageRefundLogDelivery{}); err != nil {
 		return err
 	}

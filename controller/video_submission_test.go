@@ -13,7 +13,7 @@ import (
 
 func TestVideoSubmissionLookupOwnerMissingAndLegacy(t *testing.T) {
 	db := videoFailureDB(t)
-	require.NoError(t, db.AutoMigrate(&model.VideoSubmission{}, &model.SeedanceResource{}))
+	require.NoError(t, db.AutoMigrate(&model.VideoSubmission{}, &model.VideoSubmissionRefund{}, &model.BillingHold{}, &model.SeedanceResource{}))
 	key := "lookup-key-001"
 	record, _, err := model.ClaimVideoSubmission(&model.VideoSubmission{ID: service.VideoSubmissionID(42, key), UserID: 42, Fingerprint: "private-hash", TaskID: "task_public", Model: "seedance-2.0", RequestID: "trace_original"})
 	require.NoError(t, err)

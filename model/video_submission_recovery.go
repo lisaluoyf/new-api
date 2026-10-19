@@ -88,6 +88,13 @@ func restoreVideoSubmission(tx *gorm.DB, row *VideoSubmission) error {
 	if receipt.TaskID != row.TaskID || receipt.UserID != row.UserID || receipt.InitialQuota != task.Quota || receipt.Status != "pending" || common.Unmarshal(receipt.Details, &details) != nil || details.TaskID != row.TaskID || details.Model != row.Model {
 		return ErrVideoSubmissionClaimLost
 	}
+	var refunded int64
+	if err := tx.Model(&VideoSubmissionRefund{}).Where("id = ?", row.ID).Count(&refunded).Error; err != nil {
+		return err
+	}
+	if refunded != 0 {
+		return nil
+	}
 	// A historical/customer-safe refund or unresolved hold must never become a
 	// billable polling task. Keep its evidence for explicit financial review.
 	if row.RequestID != "" {

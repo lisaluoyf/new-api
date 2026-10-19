@@ -46,6 +46,15 @@ func GetSeedanceBillingReceipt(c *gin.Context) {
 	receipt, err := model.GetSeedanceBillingReceipt(c.GetInt("id"), c.Param("task_id"))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			refund, refundErr := model.GetVideoSubmissionRefundDetails(c.GetInt("id"), c.Param("task_id"))
+			if refundErr == nil {
+				c.JSON(200, gin.H{"object": "video.billing_receipt", "billing": refund})
+				return
+			}
+			if !errors.Is(refundErr, gorm.ErrRecordNotFound) {
+				c.JSON(503, gin.H{"error": gin.H{"code": "receipt_unavailable", "message": "Unable to retrieve refund evidence"}})
+				return
+			}
 			c.JSON(404, gin.H{"error": gin.H{"code": "receipt_not_found", "message": "Receipt not found; receipts are available for tasks submitted after this feature was enabled"}})
 		} else {
 			c.JSON(500, gin.H{"error": gin.H{"code": "receipt_unavailable", "message": "Unable to retrieve receipt"}})

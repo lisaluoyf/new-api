@@ -44,7 +44,7 @@ func submissionTestDB(t *testing.T) string {
 	if db.Dialector.Name() == "sqlite" {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	require.NoError(t, db.AutoMigrate(&VideoSubmission{}, &Task{}, &SeedanceBillingReceipt{}, &Token{}))
+	require.NoError(t, db.AutoMigrate(&VideoSubmission{}, &VideoSubmissionRefund{}, &Task{}, &SeedanceBillingReceipt{}, &Token{}))
 	DB = db
 	t.Cleanup(func() { DB = old; sqlDB.Close() })
 	return path
