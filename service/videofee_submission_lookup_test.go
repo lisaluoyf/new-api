@@ -105,6 +105,7 @@ func TestVideoFeeWorkerFindsOriginalWithoutCreationOrMoneyMutation(t *testing.T)
 	require.NoError(t, db.Create(&model.User{Id: 7, Username: "original", Quota: 7000}).Error)
 	row := model.VideoSubmission{ID: "lookup-worker", UserID: 7, TaskID: "task_worker_original", ChannelID: 273, Model: "seedance-2.5", Status: model.VideoSubmissionUnknown, CreatedAt: time.Now().Add(-time.Minute).Unix(), UpdatedAt: time.Now().Add(-time.Minute).Unix()}
 	row.ProviderLookupEnabled = true
+	require.Equal(t, "query_submission", VideoSubmissionDTO(&row)["next_action"])
 	snapshot := model.VideoSubmissionRecovery{Task: model.Task{TaskID: row.TaskID, UserId: 7, ChannelId: 273, Quota: 0, Properties: model.Properties{OriginModelName: row.Model}}, CredentialFingerprint: model.VideoFeeCredentialFingerprint("original-key")}
 	raw, err := common.Marshal(snapshot)
 	require.NoError(t, err)
