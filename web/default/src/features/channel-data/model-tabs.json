@@ -68,6 +68,11 @@
     "label": "DeepSeek V3.2",
     "accent": "#a78bfa"
   },
+  {
+    "model_id": "minimax-m3.1-flash",
+    "label": "MiniMax M3.1 Flash",
+    "accent": "#f97316"
+  },
   { "model_id": "minimax-m3", "label": "MiniMax M3", "accent": "#f97316" },
   {
     "model_id": "kimi-k2.7-code",
