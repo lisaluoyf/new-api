@@ -595,7 +595,10 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 		if err := requestContext.Err(); err != nil {
 			return nil, err
 		}
-		requestContext, cancel = context.WithTimeout(context.WithoutCancel(requestContext), 90*time.Second)
+		if !service.VideoSubmissionExecutionActive(c) {
+			requestContext = context.WithoutCancel(requestContext)
+		}
+		requestContext, cancel = context.WithTimeout(requestContext, 90*time.Second)
 	}
 	req, err := http.NewRequestWithContext(requestContext, c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {

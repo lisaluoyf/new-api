@@ -42,6 +42,10 @@ func DurableSeedanceSubmission() gin.HandlerFunc {
 			submissionError(c, 400, "idempotency_not_supported", "Idempotency-Key is supported only for Seedance video generation on this endpoint")
 			return
 		}
+		if c.Request.Context().Err() != nil {
+			submissionError(c, 499, "client_disconnected", "Request disconnected before submission ownership was acquired")
+			return
+		}
 		if key == "" {
 			key = "internal-" + common.GetUUID()
 		}
@@ -74,6 +78,7 @@ func DurableSeedanceSubmission() gin.HandlerFunc {
 			return
 		}
 		c.Set(service.VideoSubmissionContextKey, record)
+		defer service.BeginVideoSubmissionExecution(c)()
 		defer service.ObserveVideoSubmissionFailure(c)()
 		// Even a panic or a downstream middleware rejection leaves a recoverable
 		// receipt. After send began, failures are conservative and never requeued.
