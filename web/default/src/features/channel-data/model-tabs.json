@@ -73,7 +73,7 @@
     "label": "MiniMax M3.1 Flash",
     "accent": "#f97316"
   },
-  { "model_id": "minimax-m3", "label": "MiniMax M3", "accent": "#f97316" },
+  { "model_id": "MiniMax-M3", "label": "MiniMax M3", "accent": "#f97316" },
   {
     "model_id": "kimi-k2.7-code",
     "label": "Kimi K2.7 Code",

@@ -90,6 +90,17 @@ test('existing model families and price units remain unchanged', () => {
   assert.equal(getPriceUnit('midjourney-v8.2'), '$/generation')
 })
 
+test('MiniMax M3 uses the provider ID and stays in MiniMax and domestic filters', () => {
+  const tab = MODEL_TABS.find((entry) => entry.label === 'MiniMax M3')
+  assert.ok(tab)
+  assert.equal(tab.modelId, 'MiniMax-M3')
+  assert.equal(modelMatchesCategory(tab.modelId, 'minimax'), true)
+  assert.equal(modelMatchesCategory(tab.modelId, 'domestic'), true)
+  assert.equal(modelMatchesCategory(tab.modelId, 'foreign'), false)
+  assert.equal(isLLMModel(tab.modelId), true)
+  assert.equal(getPriceUnit(tab.modelId), '$/1M')
+})
+
 test('Wan Prime is a domestic video model with per-second prices', () => {
   assert.equal(
     MODEL_TABS.filter((tab) => tab.modelId === 'wan3.0-video-prime').length,

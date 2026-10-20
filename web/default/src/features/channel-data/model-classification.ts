@@ -61,7 +61,7 @@ const DOMESTIC_MODEL_PREFIXES = [
 ]
 
 function hasAnyPrefix(modelId: string, prefixes: string[]): boolean {
-  return prefixes.some((prefix) => modelId.startsWith(prefix))
+  return prefixes.some((prefix) => modelId.toLowerCase().startsWith(prefix))
 }
 
 export function modelMatchesCategory(
@@ -87,7 +87,8 @@ export function modelMatchesCategory(
   if (category === 'qwen') return modelId.startsWith('qwen')
   if (category === 'doubao')
     return modelId.startsWith('doubao-') || modelId.startsWith('seedance-')
-  if (category === 'minimax') return modelId.startsWith('minimax-')
+  if (category === 'minimax')
+    return modelId.toLowerCase().startsWith('minimax-')
   if (category === 'mimo') return modelId.startsWith('mimo-')
   if (category === 'kling') return modelId.startsWith('kling-')
   return true
