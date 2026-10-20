@@ -1,6 +1,8 @@
 package service
 
 import (
+	"strings"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -8,6 +10,8 @@ import (
 
 // ModelMappingTarget resolves the upstream model name for a client-facing model
 // using the channel's model_mapping JSON (supports chained mappings, same as relay).
+// Exact keys take priority; a unique case-insensitive key also accepts normalized
+// model IDs from channel-data. Ambiguous case variants are never guessed.
 // Returns "" when there is no mapping for canonical.
 func ModelMappingTarget(modelMapping *string, canonical string) string {
 	if modelMapping == nil {
@@ -25,6 +29,17 @@ func ModelMappingTarget(modelMapping *string, canonical string) string {
 	visited := map[string]bool{canonical: true}
 	for {
 		mapped, ok := modelMap[current]
+		if !ok {
+			matched := false
+			for key, value := range modelMap {
+				if strings.EqualFold(key, current) {
+					if matched {
+						return "" // Multiple case variants: require an exact key.
+					}
+					mapped, ok, matched = value, true, true
+				}
+			}
+		}
 		if !ok || mapped == "" {
 			break
 		}

@@ -179,7 +179,7 @@ func lastUptimeTime(channelId int, modelName string) int64 {
 // the result. Pass = HTTP 200 with non-empty content; everything else = notcomplete.
 //
 // Mirrors Flask's resolve_base_url + resolve_target_model: tries multiple URL
-// candidates (raw, site root + suffixes, api.<domain> variant) and falls back to
+// candidates (raw and same-host path suffixes) and falls back to
 // alternate model IDs on model_not_found. First combo that returns content wins.
 func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string) {
 	baseURL := strings.TrimRight(*ch.BaseURL, "/")
@@ -342,6 +342,9 @@ func probeOneChannel(ctx context.Context, ch *model.Channel, targetModel string)
 				return
 			}
 		}
+		if !urlStillBad {
+			break // Working endpoint; all model candidates failed, not the URL.
+		}
 	}
 
 	if lastErr == "" {
@@ -403,11 +406,6 @@ func sendUptimeProbe(ctx context.Context, client *http.Client, endpoint, apiKey,
 	}
 	defer resp.Body.Close()
 
-	// 404 + HTML body → wrong host/path. Caller will try next URL candidate.
-	if resp.StatusCode == 404 {
-		return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrURL, msg: fmt.Sprintf("HTTP 404 at %s", endpoint)}
-	}
-
 	if resp.StatusCode >= 400 {
 		// Read body once so we can both attempt JSON-decode AND fall back to raw text
 		// when the upstream returns HTML / plain text (Cloudflare 5xx, nginx pages, …).
@@ -415,22 +413,26 @@ func sendUptimeProbe(ctx context.Context, client *http.Client, endpoint, apiKey,
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
 		var errBody struct {
 			Error struct {
-				Code    string `json:"code"`
+				Code    any    `json:"code"`
 				Type    string `json:"type"`
 				Message string `json:"message"`
 			} `json:"error"`
 		}
 		_ = common.Unmarshal(bodyBytes, &errBody)
-		code := strings.ToLower(errBody.Error.Code)
+		code := ""
+		if errBody.Error.Code != nil {
+			code = strings.ToLower(fmt.Sprint(errBody.Error.Code))
+		}
 		if code == "" {
 			code = strings.ToLower(errBody.Error.Type)
 		}
 		msg := strings.ToLower(errBody.Error.Message)
 		if strings.Contains(code, "model_not_found") ||
 			strings.Contains(msg, "model not found") ||
+			strings.Contains(msg, "no endpoints found for") ||
 			strings.Contains(msg, "无可用渠道") ||
 			strings.Contains(msg, "invalid model") {
-			return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrModel, msg: fmt.Sprintf("model not found: %s", modelName)}
+			return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrModel, msg: fmt.Sprintf("HTTP %d: model %s: %s", resp.StatusCode, modelName, compactForNote(errBody.Error.Message))}
 		}
 		// CC-only relays reject plain HTTP — mirror Flask's openai_compat detection.
 		// packy:     403 "only accessible via the official claude cli"
@@ -462,6 +464,12 @@ func sendUptimeProbe(ctx context.Context, client *http.Client, endpoint, apiKey,
 		}
 		if len(detail) > 500 {
 			detail = detail[:500] + "…"
+		}
+		// Only a non-JSON 404 indicates a missing HTTP route. A structured
+		// upstream error is authoritative and must not trigger URL guessing.
+		var jsonBody any
+		if resp.StatusCode == http.StatusNotFound && common.Unmarshal(bodyBytes, &jsonBody) != nil {
+			return probeResult{LatencyMs: latencyMs}, &probeError{kind: probeErrURL, msg: fmt.Sprintf("HTTP 404 at %s: %s", endpoint, detail)}
 		}
 		ct := resp.Header.Get("Content-Type")
 		ctTag := ""
@@ -762,18 +770,13 @@ func stripKnownAPIPath(baseURL string) string {
 }
 
 // baseURLCandidates generates compatible base URL candidates from user input.
-// Mirrors Flask's _base_url_candidates exactly.
+// Keep the configured host: inventing an api. subdomain hides upstream errors
+// behind unrelated DNS failures and may send credentials to an unintended host.
 func baseURLCandidates(baseURL string) []string {
 	raw := strings.TrimRight(baseURL, "/")
 	root := stripKnownAPIPath(raw)
 
 	roots := []string{root}
-	if u, err := url.Parse(root); err == nil && u.Scheme != "" && u.Host != "" &&
-		!strings.HasPrefix(u.Host, "api.") && !strings.HasSuffix(strings.ToLower(u.Hostname()), ".googleapis.com") {
-		altU := *u
-		altU.Host = "api." + u.Host
-		roots = append(roots, strings.TrimRight(altU.String(), "/"))
-	}
 
 	out := []string{}
 	seen := map[string]bool{}
