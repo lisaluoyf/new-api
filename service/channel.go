@@ -253,6 +253,14 @@ func DisableChannel(channelError types.ChannelError, reason string) {
 }
 
 func DisableChannelModel(channelError types.ChannelError, modelName string, reason string, targets ...types.ChannelProbeTarget) {
+	disableChannelModel(channelError, modelName, reason, "health_probe", targets...)
+}
+
+func CooldownChannelModel(channelError types.ChannelError, modelName string, reason string, targets ...types.ChannelProbeTarget) {
+	disableChannelModel(channelError, modelName, reason, "health_cooldown", targets...)
+}
+
+func disableChannelModel(channelError types.ChannelError, modelName string, reason, source string, targets ...types.ChannelProbeTarget) {
 	modelName = strings.TrimSpace(modelName)
 	if modelName == "" {
 		common.SysLog(fmt.Sprintf("通道「%s」（#%d）模型级自动禁用缺少模型名，跳过禁用，原因：%s", channelError.ChannelName, channelError.ChannelId, reason))
@@ -265,7 +273,7 @@ func DisableChannelModel(channelError types.ChannelError, modelName string, reas
 		return
 	}
 
-	changed, err := setAutomaticModelStatusWithTargets(channelError.ChannelId, modelName, reason, false, "health_probe", targets)
+	changed, err := setAutomaticModelStatusWithTargets(channelError.ChannelId, modelName, reason, false, source, targets)
 	if err != nil {
 		common.SysError(fmt.Sprintf("failed to disable model atomically: channel_id=%d model=%s error=%v", channelError.ChannelId, modelName, err))
 		return

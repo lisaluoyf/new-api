@@ -1,6 +1,9 @@
 package service
 
 import (
+	"fmt"
+	"strconv"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/types"
@@ -24,6 +27,9 @@ func setAutomaticModelStatusWithTargets(channelID int, modelName, reason string,
 		info := channel.GetOtherInfo()
 		entries := autoDisabledModelInfo(info)
 		if enabled && entries[modelName] == nil {
+			return nil
+		}
+		if enabled && modelHealthCooldownActive(entries[modelName], common.GetTimestamp()) {
 			return nil
 		}
 		if enabled && len(expectedVersions) > 0 && channel.AutoDisabledModelVersion(modelName) != expectedVersions[0] {
@@ -69,6 +75,12 @@ func setAutomaticModelStatusWithTargets(channelID int, modelName, reason string,
 			delete(entries, modelName)
 		} else {
 			entry := newAutoDisabledModelEntry(common.GetTimestamp(), reason)
+			if modelHealthCooldownActive(entries[modelName], common.GetTimestamp()) {
+				entry["cooldown_until"] = entries[modelName].(map[string]interface{})["cooldown_until"]
+			}
+			if source == "health_cooldown" {
+				entry["cooldown_until"] = common.GetTimestamp() + int64(ChannelHealthCooldown.Seconds())
+			}
 			entry["event_id"] = event.ID
 			if len(mergedTargets) > 0 {
 				entry["probe_targets"] = mergedTargets
@@ -85,4 +97,10 @@ func setAutomaticModelStatusWithTargets(channelID int, modelName, reason string,
 		return nil
 	})
 	return changed && err == nil, err
+}
+
+func modelHealthCooldownActive(raw interface{}, now int64) bool {
+	entry, _ := raw.(map[string]interface{})
+	until, _ := strconv.ParseFloat(fmt.Sprint(entry["cooldown_until"]), 64)
+	return until > float64(now)
 }

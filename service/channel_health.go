@@ -88,6 +88,45 @@ type channelHealthKey struct {
 
 var channelHealth sync.Map // channelHealthKey -> *channelHealthState
 
+const ChannelHealthCooldown = 5 * time.Minute
+
+type passedDisableProbes struct {
+	mu    sync.Mutex
+	times []time.Time
+}
+
+var channelPassedDisableProbes sync.Map
+
+// Each call follows a fresh fault-window trigger and a successful independent
+// probe. Three such episodes in 30 minutes demonstrate recurring real failures.
+func RecordPassedDisableProbe(channel types.ChannelError, err *types.NewAPIError, target types.ChannelProbeTarget) bool {
+	if !common.AutomaticDisableChannelEnabled || !channel.AutoBan || !target.Valid() {
+		return false
+	}
+	category := ClassifyChannelError(err)
+	if category != CategoryDisableWindow && category != CategoryRateLimitWindow {
+		return false
+	}
+	key := healthKey(channel.ChannelId, []types.ChannelProbeTarget{target})
+	value, _ := channelPassedDisableProbes.LoadOrStore(key, &passedDisableProbes{})
+	s := value.(*passedDisableProbes)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	kept := s.times[:0]
+	for _, at := range s.times {
+		if now.Sub(at) < 30*time.Minute {
+			kept = append(kept, at)
+		}
+	}
+	s.times = append(kept, now)
+	if len(s.times) < 3 {
+		return false
+	}
+	s.times = nil
+	return true
+}
+
 func healthKey(channelID int, targets []types.ChannelProbeTarget) channelHealthKey {
 	key := channelHealthKey{ChannelID: channelID}
 	if len(targets) > 0 {
@@ -340,4 +379,5 @@ func ClearChannelHealth(channelID int, targets ...types.ChannelProbeTarget) {
 // resetChannelHealthForTest clears in-memory health state (tests only).
 func resetChannelHealthForTest() {
 	channelHealth = sync.Map{}
+	channelPassedDisableProbes = sync.Map{}
 }

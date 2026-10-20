@@ -1567,6 +1567,12 @@ func probeBeforeDisablingChannel(channelError types.ChannelError, originalErr *t
 	channel.UpdateResponseTime(latencyMs)
 
 	if result.newAPIError == nil && result.localErr == nil {
+		if service.RecordPassedDisableProbe(channelError, originalErr, target) {
+			reason := "近30分钟内3次达到故障探测门槛，虽探测通过但真实请求持续失败；模型冷却5分钟；" + originalReason
+			service.CooldownChannelModel(channelError, modelName, reason, probeTargets...)
+			service.ClearChannelHealth(channelError.ChannelId, target)
+			return
+		}
 		service.ClearChannelHealth(channelError.ChannelId, target)
 		service.RecordChannelSuccess(channelError.ChannelId, target)
 		service.NotifyChannelDisableProbePassed(channelError, modelName, originalReason, latencyMs)

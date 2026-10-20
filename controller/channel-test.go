@@ -1250,10 +1250,11 @@ func recordCommonAutoReenableProbe(channel *model.Channel, result testResult, la
 }
 
 type commonAutoDisabledModel struct {
-	Model       string
-	DisabledAt  int64
-	LastProbeAt int64
-	LastReason  string
+	Model         string
+	DisabledAt    int64
+	LastProbeAt   int64
+	LastReason    string
+	CooldownUntil int64
 }
 
 func commonAutoDisabledModels(channel *model.Channel) []commonAutoDisabledModel {
@@ -1270,10 +1271,11 @@ func commonAutoDisabledModels(channel *model.Channel) []commonAutoDisabledModel 
 		}
 		entry, _ := rawEntry.(map[string]interface{})
 		out = append(out, commonAutoDisabledModel{
-			Model:       modelName,
-			DisabledAt:  commonAutoReenableInt64(entry, "disabled_at"),
-			LastProbeAt: commonAutoReenableInt64(entry, "last_reenable_probe_at"),
-			LastReason:  commonAutoReenableString(entry, "last_reenable_probe_reason"),
+			Model:         modelName,
+			CooldownUntil: commonAutoReenableInt64(entry, "cooldown_until"),
+			DisabledAt:    commonAutoReenableInt64(entry, "disabled_at"),
+			LastProbeAt:   commonAutoReenableInt64(entry, "last_reenable_probe_at"),
+			LastReason:    commonAutoReenableString(entry, "last_reenable_probe_reason"),
 		})
 	}
 	return out
@@ -1290,6 +1292,9 @@ func commonAutoReenableString(info map[string]interface{}, key string) string {
 }
 
 func commonAutoReenableShouldProbeModel(entry commonAutoDisabledModel) bool {
+	if entry.CooldownUntil > common.GetTimestamp() {
+		return false
+	}
 	if entry.LastProbeAt <= 0 {
 		return true
 	}

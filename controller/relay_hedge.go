@@ -80,17 +80,39 @@ func isHedgeSupportedTextRequest(info *relaycommon.RelayInfo, relayFormat types.
 }
 
 type hedgeAttempt struct {
-	role       string
-	c          *gin.Context
-	cancel     context.CancelFunc
-	info       *relaycommon.RelayInfo
-	gate       *helper.StreamGate
-	buffer     *helper.BufferedResponseWriter
-	channel    *model.Channel
-	err        *types.NewAPIError
-	done       chan struct{}
-	startedAt  time.Time
-	finishedAt time.Time
+	role           string
+	c              *gin.Context
+	cancel         context.CancelFunc
+	info           *relaycommon.RelayInfo
+	gate           *helper.StreamGate
+	buffer         *helper.BufferedResponseWriter
+	channel        *model.Channel
+	err            *types.NewAPIError
+	done           chan struct{}
+	startedAt      time.Time
+	finishedAt     time.Time
+	healthOnce     sync.Once
+	errorAccounted bool
+}
+
+// Account a backup failure when it finishes, before a later client/primary
+// cancellation can hide it. Internally canceled race losers are excluded.
+func (a *hedgeAttempt) recordBackupError(record func()) {
+	if a.role != relaycommon.HedgeRoleHedge || a.err == nil || a.c.Request.Context().Err() != nil {
+		return
+	}
+	a.healthOnce.Do(func() {
+		record()
+		a.errorAccounted = true
+	})
+}
+
+func accountBackupError(a *hedgeAttempt) {
+	a.recordBackupError(func() {
+		processChannelError(a.c, a.info, *types.NewChannelError(a.channel.Id, a.channel.Type, a.channel.Name,
+			a.channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(a.c, constant.ContextKeyChannelKey),
+			a.channel.GetAutoBan()), a.err)
+	})
 }
 
 func (a *hedgeAttempt) channelLabel() string {
@@ -212,6 +234,7 @@ func runClientGoneHedgedRelay(c *gin.Context, relayInfo *relaycommon.RelayInfo, 
 					a.err = types.NewError(fmt.Errorf("hedge attempt panic: %v", r), types.ErrorCodeDoRequestFailed)
 				}
 				a.finishedAt = time.Now()
+				accountBackupError(a)
 				close(a.done)
 			}()
 			a.err = dispatchHedgeRelay(a.c, a.info, relayFormat)
@@ -277,11 +300,8 @@ func runClientGoneHedgedRelay(c *gin.Context, relayInfo *relaycommon.RelayInfo, 
 
 	if finalWinner == nil {
 		// 双败（或主渠道单路失败）：正常回到外层串行重试。
-		// primary 的 processChannelError 由外层循环完成；hedge 的真实失败在这里计入渠道健康
-		if hedge != nil && hedge.err != nil && hedge.c.Request.Context().Err() == nil {
-			processChannelError(hedge.c, hedge.info, *types.NewChannelError(hedge.channel.Id, hedge.channel.Type, hedge.channel.Name,
-				hedge.channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(hedge.c, constant.ContextKeyChannelKey),
-				hedge.channel.GetAutoBan()), hedge.err)
+		// primary 由外层循环记错；hedge 已在自己的 dispatch 结束时记录。
+		if hedge != nil && hedge.err != nil {
 			c.Set("clientgone_hedge_error", hedge.err.MaskSensitiveErrorWithStatusCode())
 		}
 		backfillRelayInfoFromAttempt(relayInfo, primary.info)
@@ -334,9 +354,11 @@ func runClientGoneHedgedRelay(c *gin.Context, relayInfo *relaycommon.RelayInfo, 
 
 	// 赢家 mid-stream 失败：错误归因到赢家渠道（外层循环只认 primary channel，会记错账）
 	if finalWinner.err != nil {
-		processChannelError(finalWinner.c, finalWinner.info, *types.NewChannelError(finalWinner.channel.Id, finalWinner.channel.Type,
-			finalWinner.channel.Name, finalWinner.channel.ChannelInfo.IsMultiKey,
-			common.GetContextKeyString(finalWinner.c, constant.ContextKeyChannelKey), finalWinner.channel.GetAutoBan()), finalWinner.err)
+		if !finalWinner.errorAccounted {
+			processChannelError(finalWinner.c, finalWinner.info, *types.NewChannelError(finalWinner.channel.Id, finalWinner.channel.Type,
+				finalWinner.channel.Name, finalWinner.channel.ChannelInfo.IsMultiKey,
+				common.GetContextKeyString(finalWinner.c, constant.ContextKeyChannelKey), finalWinner.channel.GetAutoBan()), finalWinner.err)
+		}
 		c.Set("clientgone_hedge_error_accounted", true)
 	}
 
@@ -438,6 +460,7 @@ func runNonStreamHedgedRelay(c *gin.Context, relayInfo *relaycommon.RelayInfo, r
 					a.err = types.NewError(fmt.Errorf("non-stream hedge response exceeds buffer limit"), types.ErrorCodeBadResponse)
 				}
 				a.finishedAt = time.Now()
+				accountBackupError(a)
 				if a.err == nil {
 					declareWinner(a)
 				}
@@ -491,10 +514,7 @@ func runNonStreamHedgedRelay(c *gin.Context, relayInfo *relaycommon.RelayInfo, r
 	hedgeArmed := hedge != nil || c.GetBool("clientgone_hedge_triggered")
 
 	if finalWinner == nil {
-		if hedge != nil && hedge.err != nil && hedge.c.Request.Context().Err() == nil {
-			processChannelError(hedge.c, hedge.info, *types.NewChannelError(hedge.channel.Id, hedge.channel.Type, hedge.channel.Name,
-				hedge.channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(hedge.c, constant.ContextKeyChannelKey),
-				hedge.channel.GetAutoBan()), hedge.err)
+		if hedge != nil && hedge.err != nil {
 			c.Set("clientgone_hedge_error", hedge.err.MaskSensitiveErrorWithStatusCode())
 		}
 		backfillRelayInfoFromAttempt(relayInfo, primary.info)
