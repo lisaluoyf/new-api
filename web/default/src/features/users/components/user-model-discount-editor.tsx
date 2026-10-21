@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { UserFormValues } from '../lib'
+import { UserDiscountModelInput } from './user-discount-model-input'
 
 type UserModelDiscountEditorProps = {
   control: Control<UserFormValues>
@@ -113,12 +114,10 @@ export const UserModelDiscountEditor = memo(function UserModelDiscountEditor({
                         name={`model_discount_rules.${index}.model`}
                         render={({ field: modelField }) => (
                           <FormItem className='space-y-0'>
-                            <FormControl>
-                              <Input
-                                {...modelField}
-                                placeholder='seedance-2.5'
-                              />
-                            </FormControl>
+                            <FormLabel className='sr-only'>
+                              {t('Model')}
+                            </FormLabel>
+                            <UserDiscountModelInput field={modelField} />
                             <FormMessage />
                           </FormItem>
                         )}
