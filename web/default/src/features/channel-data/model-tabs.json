@@ -86,12 +86,6 @@
   },
   { "model_id": "kimi-k3", "label": "Kimi K3", "accent": "#818cf8" },
   {
-    "model_id": "mimo-v2.5-pro",
-    "label": "MiMo v2.5 Pro",
-    "accent": "#f97316"
-  },
-  { "model_id": "mimo-v2.5", "label": "MiMo v2.5", "accent": "#fb923c" },
-  {
     "model_id": "mimo-v2.6-pro",
     "label": "MiMo v2.6 Pro",
     "accent": "#f97316"

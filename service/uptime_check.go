@@ -58,8 +58,6 @@ var ModelIDCandidates = map[string][]string{
 	"minimax-m3":                     {"MiniMax-M3", "MiniMax-M3-20260301", "minimax/minimax-m3"},
 	"minimax-h3":                     {"MiniMax-H3"},
 	"kimi-k2.7-code":                 {"moonshotai/kimi-k2.7-code", "kimi-k2-7-code"},
-	"mimo-v2.5-pro":                  {"xiaomi/mimo-v2.5-pro", "mimo-v2-5-pro"},
-	"mimo-v2.5":                      {"xiaomi/mimo-v2.5", "mimo-v2-5"},
 	"qwen3.7-max":                    {"qwen3-7-max", "Qwen3.7-Max"},
 	"qwen3.8-max":                    {"qwen3.8-max-preview", "qwen3-8-max", "Qwen3.8-Max"},
 	"qwen3.8-flash":                  {"qwen3.8-flash-next", "Qwen3.8-Flash", "Qwen3.8-Flash-Next"},
