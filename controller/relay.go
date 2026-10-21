@@ -138,6 +138,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					message = "FreeModel is temporarily unavailable"
 				}
 				responseError = types.NewOpenAIError(errors.New(message), types.ErrorCode("free_model_upstream_error"), newAPIError.StatusCode)
+				responseError.UpstreamError = newAPIError.UpstreamError
 			}
 			responseError.SetMessage(common.MessageWithRequestId(localizeRelayClientMessage(c, responseError), requestId))
 			switch relayFormat {
@@ -367,6 +368,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			service.BeginFreeModelAttempt(c, retryParam.GetRetry()+1, attemptStartedAt)
 		}
 
+		service.ResetUpstreamErrorCapture(c)
 		addUsedChannel(c, channel.Id)
 		setFingerprintRouteTrace(c, channel.Id)
 		if service.IsFreeModel(relayInfo.OriginModelName) && relayInfo.IsStream {
@@ -406,6 +408,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			}
 		}
 
+		service.AttachCapturedUpstreamError(c, newAPIError)
 		if newAPIError == nil {
 			if service.HasUpstreamNoUsage(c) {
 				// Reuse the existing sliding-window health rules and disable probe.
@@ -1477,6 +1480,9 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 		other["channel_name"] = c.GetString("channel_name")
 		other["channel_type"] = c.GetInt("channel_type")
 		appendUpstreamFalseSuccessLogInfo(other, err)
+		if err.UpstreamError != nil {
+			other["upstream_error"] = err.UpstreamError
+		}
 		service.AppendBillingSourceInfo(relayInfo, other)
 		if value, exists := c.Get("stream_status"); exists {
 			if status, ok := value.(*relaycommon.StreamStatus); ok && status != nil {
@@ -1511,11 +1517,16 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		errorContent := err.MaskSensitiveErrorWithStatusCode()
-		if body := strings.TrimSpace(err.UpstreamResponseBody); body != "" {
+		errorContent := common.SanitizeUpstreamErrorText(err.MaskSensitiveErrorWithStatusCode(), common.GetContextKeyString(c, constant.ContextKeyChannelKey))
+		if err.UpstreamError != nil {
+			raw, _ := common.Marshal(err.UpstreamError)
+			errorContent += " | upstream_error: " + string(raw)
+		} else if body := strings.TrimSpace(err.UpstreamResponseBody); body != "" {
 			errorContent += " | upstream_response_body: " + body
 		}
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, errorContent, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		if model.RecordErrorLog(c, userId, channelId, modelName, tokenName, errorContent, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other) == nil {
+			c.Set("public_error_log_written", err)
+		}
 	}
 }
 
@@ -1800,6 +1811,7 @@ func RelayTask(c *gin.Context) {
 			}
 		}
 
+		service.ResetUpstreamErrorCapture(c)
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
@@ -1813,6 +1825,9 @@ func RelayTask(c *gin.Context) {
 		c.Request.Body = io.NopCloser(bodyStorage)
 
 		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
+		if taskErr != nil && taskErr.UpstreamError == nil {
+			taskErr.UpstreamError = service.CapturedUpstreamError(c)
+		}
 		if taskErr == nil {
 			break
 		}
@@ -1830,10 +1845,13 @@ func RelayTask(c *gin.Context) {
 		}
 		if !taskErr.LocalError {
 			setTaskRetryDecision(c, retryDecision)
+			apiErr := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
+			apiErr.UpstreamError = taskErr.UpstreamError
 			processChannelError(c, relayInfo,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
-					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
-				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
+					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), apiErr)
+			written, _ := c.Get("public_error_log_written")
+			taskErr.ErrorLogRecorded = written == apiErr
 		}
 
 		if !retryDecision.ShouldRetry {
@@ -1903,6 +1921,7 @@ func RelayTask(c *gin.Context) {
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
+	service.RecordPublicTaskErrorLog(c, taskErr)
 	isSeedance := model.NormalizeVerifiedVideoModel(common.GetContextKeyString(c, constant.ContextKeyOriginalModel)) != ""
 	if apiErr, ok := taskErr.Error.(*types.NewAPIError); ok {
 		taskErr.Message = localizeRelayClientMessage(c, apiErr)
@@ -1924,8 +1943,8 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 		// Internal transport errors retain their code; upstream codes have already
 		// passed the public-code allowlist in PublicVideoSubmitError.
 		c.JSON(taskErr.StatusCode, gin.H{
-			"error": &dto.OpenAIVideoError{Code: taskErr.Code, Message: taskErr.Message},
-			"code":  taskErr.Code, "message": taskErr.Message, "data": taskErr.Data,
+			"error": &dto.OpenAIVideoError{Code: taskErr.Code, Message: taskErr.Message, UpstreamError: taskErr.UpstreamError},
+			"code":  taskErr.Code, "message": taskErr.Message, "data": taskErr.Data, "upstream_error": taskErr.UpstreamError,
 		})
 		return
 	}

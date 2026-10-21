@@ -307,7 +307,11 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 		if detail, ok := reviewErr.(*service.SeedanceAPIError); ok && detail.Code != "" {
 			code = detail.Code
 		}
-		body, _ := common.Marshal(map[string]any{"error": map[string]any{"code": code, "message": reviewErr.Error(), "type": "BadRequest"}})
+		publicError := map[string]any{"code": code, "message": reviewErr.Error(), "type": "BadRequest"}
+		if detail, ok := reviewErr.(*service.SeedanceAPIError); ok && detail.UpstreamError != nil {
+			publicError["upstream_error"] = detail.UpstreamError
+		}
+		body, _ := common.Marshal(map[string]any{"error": publicError})
 		resp.StatusCode = http.StatusBadRequest
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		resp.ContentLength = int64(len(body))

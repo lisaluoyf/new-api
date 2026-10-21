@@ -40,6 +40,11 @@ func EnrichUserTaskLogFailures(logs []*model.Log) {
 			if task, exists, err := model.GetByOnlyTaskId(id); err == nil && exists && task.UserId == log.UserId && task.Status == model.TaskStatusFailure {
 				reason := PublicTaskFailure(task)
 				other["task_fail_reason"] = reason
+				if detail := PublicTaskError(task); detail != nil && detail.UpstreamError != nil {
+					other["upstream_error"] = detail.UpstreamError
+					raw, _ := common.Marshal(detail.UpstreamError)
+					reason += " | upstream_error: " + string(raw)
+				}
 				if model.NormalizeVerifiedVideoModel(task.Properties.OriginModelName) != "" {
 					other["task_fail_code"] = PublicTaskError(task).Code
 				}

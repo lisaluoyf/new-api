@@ -11,16 +11,18 @@ import (
 )
 
 type OpenAIError struct {
-	Message  string          `json:"message"`
-	Type     string          `json:"type"`
-	Param    string          `json:"param"`
-	Code     any             `json:"code"`
-	Metadata json.RawMessage `json:"metadata,omitempty"`
+	UpstreamError *common.PublicUpstreamError `json:"upstream_error,omitempty"`
+	Message       string                      `json:"message"`
+	Type          string                      `json:"type"`
+	Param         string                      `json:"param"`
+	Code          any                         `json:"code"`
+	Metadata      json.RawMessage             `json:"metadata,omitempty"`
 }
 
 type ClaudeError struct {
-	Type    string `json:"type,omitempty"`
-	Message string `json:"message,omitempty"`
+	UpstreamError *common.PublicUpstreamError `json:"upstream_error,omitempty"`
+	Type          string                      `json:"type,omitempty"`
+	Message       string                      `json:"message,omitempty"`
 }
 
 type ErrorType string
@@ -105,6 +107,7 @@ type NewAPIError struct {
 	// UpstreamResponseBody is retained for administrator diagnostics only.
 	// It must never be used as the client-facing error message.
 	UpstreamResponseBody string
+	UpstreamError        *common.PublicUpstreamError
 	// UpstreamFalseSuccess records an HTTP 2xx response that looked successful at
 	// the transport layer but was rejected before any usable output reached the
 	// client. It is persisted in the error log for fallback analysis.
@@ -271,6 +274,7 @@ func (e *NewAPIError) ToOpenAIError() OpenAIError {
 	if len(e.Metadata) > 0 {
 		result.Metadata = e.Metadata
 	}
+	result.UpstreamError = e.UpstreamError
 	return result
 }
 
@@ -300,6 +304,7 @@ func (e *NewAPIError) ToClaudeError() ClaudeError {
 	if result.Message == "" {
 		result.Message = string(e.errorType)
 	}
+	result.UpstreamError = e.UpstreamError
 	return result
 }
 

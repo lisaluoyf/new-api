@@ -94,6 +94,7 @@ func tasksToUserDto(tasks []*model.Task) []*dto.UserTaskDto {
 			Action:     task.Action,
 			Status:     string(task.Status),
 			FailReason: failReason,
+			Error:      service.PublicTaskError(task),
 			ResultURL:  resultURL,
 			SubmitTime: task.SubmitTime,
 			StartTime:  task.StartTime,

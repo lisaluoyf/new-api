@@ -24,12 +24,14 @@ import (
 const seedanceLibraryPath = "/v1/seedance2/private-avatar"
 
 type SeedanceAPIError struct {
-	Status  int
-	Message string
-	Code    string
+	UpstreamError *common.PublicUpstreamError
+	Status        int
+	Message       string
+	Code          string
 }
 
-func (e *SeedanceAPIError) Error() string { return e.Message }
+func (e *SeedanceAPIError) Error() string                                     { return e.Message }
+func (e *SeedanceAPIError) UpstreamErrorDetails() *common.PublicUpstreamError { return e.UpstreamError }
 
 func seedanceError(status int, message string, code ...string) error {
 	value := "media_library_error"

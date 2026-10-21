@@ -75,8 +75,12 @@ func formatUserLogs(logs []*Log, startIdx int) {
 		if otherMap != nil {
 			// Remove provider routing, cost and admin-only diagnostics.
 			for key := range otherMap {
+				if key == "upstream_error" {
+					otherMap[key] = common.RedactStoredUpstreamError(otherMap[key])
+					continue
+				}
 				normalizedKey := strings.ToLower(key)
-				if strings.HasPrefix(normalizedKey, "upstream_") || strings.Contains(normalizedKey, "channel") {
+				if (strings.HasPrefix(normalizedKey, "upstream_") && normalizedKey != "upstream_error") || strings.Contains(normalizedKey, "channel") {
 					delete(otherMap, key)
 				}
 			}

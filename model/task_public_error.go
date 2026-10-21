@@ -10,8 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// PublicTaskError never returns raw provider envelopes. Unknown codes retain
-// the stable generic fallback rather than exposing arbitrary provider strings.
+// PublicTaskError keeps stable code/message semantics and adds complete,
+// redacted upstream failure diagnostics for every task model and channel.
 func PublicTaskError(task *Task) *dto.OpenAIVideoError {
 	return publicTaskErrorWithDB(DB, task)
 }
@@ -40,7 +40,19 @@ func publicTaskErrorWithDB(db *gorm.DB, task *Task) *dto.OpenAIVideoError {
 	if parts := strings.SplitN(code, ".", 2); len(parts) == 2 && sanitizeTaskFailure(parts[1], sensitive...) != parts[1] {
 		code = "task_failed"
 	}
-	return &dto.OpenAIVideoError{Code: code, Message: sanitizeTaskFailure(taskFailureReason(task), sensitive...)}
+	result := &dto.OpenAIVideoError{Code: code, Message: sanitizeTaskFailure(taskFailureReason(task), sensitive...)}
+	// All asynchronous adapters already persist the provider response in Data.
+	// Never expose a successful response or stale first-route diagnostics.
+	fallbackFailed := task.PrivateData.SeedanceFallback != nil && task.PrivateData.SeedanceFallback.Started && task.PrivateData.SeedanceFallback.Stage == "failed"
+	diagnostic := map[string]any{"message": taskFailureReason(task)}
+	if !fallbackFailed {
+		if response := common.FailureDiagnostics(task.Data); response != nil {
+			diagnostic["response"] = response
+		}
+	}
+	raw, _ := common.Marshal(diagnostic)
+	result.UpstreamError = common.NewPublicUpstreamError(0, raw, nil, sensitive...)
+	return result
 }
 
 func SanitizeTaskFailure(reason string, sensitive ...string) string {

@@ -102,6 +102,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	defer func() {
 		if newApiErr != nil {
 			newApiErr.UpstreamResponseBody = diagnosticBody
+			newApiErr.UpstreamError = common.PublicUpstreamErrorFromResponse(resp, responseBody)
 		}
 	}()
 	var errResponse dto.GeneralErrorResponse
@@ -217,6 +218,15 @@ func TaskErrorWrapper(err error, code string, statusCode int) *dto.TaskError {
 		Error:      err,
 	}
 
+	if apiErr, ok := err.(*types.NewAPIError); ok {
+		taskError.UpstreamError = apiErr.UpstreamError
+	}
+	var source interface {
+		UpstreamErrorDetails() *common.PublicUpstreamError
+	}
+	if errors.As(err, &source) {
+		taskError.UpstreamError = source.UpstreamErrorDetails()
+	}
 	return taskError
 }
 
@@ -226,10 +236,11 @@ func TaskErrorFromAPIError(apiErr *types.NewAPIError) *dto.TaskError {
 		return nil
 	}
 	return &dto.TaskError{
-		Code:       string(apiErr.GetErrorCode()),
-		Message:    apiErr.Err.Error(),
-		StatusCode: apiErr.StatusCode,
-		Error:      apiErr,
+		Code:          string(apiErr.GetErrorCode()),
+		Message:       apiErr.Err.Error(),
+		StatusCode:    apiErr.StatusCode,
+		Error:         apiErr,
+		UpstreamError: apiErr.UpstreamError,
 	}
 }
 

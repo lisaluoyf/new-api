@@ -96,7 +96,13 @@ func bytePlusAssetRequest(ctx context.Context, resource *model.SeedanceResource,
 	return bytePlusAssetRequestWithErrorDetails(ctx, resource, action, payload, false)
 }
 
-func bytePlusAssetRequestWithErrorDetails(ctx context.Context, resource *model.SeedanceResource, action string, payload map[string]any, exposeReviewError bool) (map[string]any, error) {
+func bytePlusAssetRequestWithErrorDetails(ctx context.Context, resource *model.SeedanceResource, action string, payload map[string]any, exposeReviewError bool) (result map[string]any, requestErr error) {
+	var diagnostic *common.PublicUpstreamError
+	defer func() {
+		if failure, ok := requestErr.(*SeedanceAPIError); ok {
+			failure.UpstreamError = diagnostic
+		}
+	}()
 	credentials, err := loadBytePlusAssetCredentials(resource.ChannelID)
 	if err != nil {
 		return nil, err
@@ -129,10 +135,12 @@ func bytePlusAssetRequestWithErrorDetails(ctx context.Context, resource *model.S
 	client := &http.Client{Timeout: 45 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(req)
 	if err != nil {
+		diagnostic = common.NewPublicUpstreamError(0, []byte(err.Error()), nil, credentials.AccessKeyID, credentials.SecretAccessKey, credentials.SessionToken, resource.SourceURL, resource.UpstreamID)
 		return nil, seedanceError(502, "Media library request failed; retry queries before submitting again")
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, (4<<20)+1))
+	diagnostic = common.PublicUpstreamErrorFromResponse(response, body, credentials.AccessKeyID, credentials.SecretAccessKey, credentials.SessionToken, resource.SourceURL, resource.UpstreamID)
 	var envelope map[string]any
 	if err != nil || len(body) > 4<<20 || common.Unmarshal(body, &envelope) != nil || envelope == nil {
 		return nil, seedanceError(502, "Invalid media library response")

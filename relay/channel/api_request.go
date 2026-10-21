@@ -564,11 +564,14 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.LogError(c, "do request failed: "+err.Error())
-		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
+		failure := types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
+		failure.UpstreamError = common2.NewPublicUpstreamError(0, []byte(err.Error()), nil, info.ApiKey)
+		return nil, failure
 	}
 	if resp == nil {
 		return nil, errors.New("resp is nil")
 	}
+	service.ObserveUpstreamErrorResponse(c, resp, info.ApiKey)
 	for _, name := range []string{"X-Request-Id", "Request-Id", "X-Amzn-Requestid"} {
 		if id := strings.TrimSpace(resp.Header.Get(name)); id != "" && len(id) <= 255 {
 			info.ObservationUpstreamRequestID = id

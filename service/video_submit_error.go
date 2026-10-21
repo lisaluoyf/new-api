@@ -2,15 +2,21 @@ package service
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/common"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 )
 
-// Only actionable client errors pass through the same public task redaction.
-// Server failures remain generic and no provider envelope is forwarded.
-func PublicVideoSubmitError(status int, body []byte, key string, channelID int) *dto.TaskError {
+// Stable public summaries retain existing retry and health semantics. Complete,
+// redacted upstream details are attached independently for every error status.
+func PublicVideoSubmitError(status int, body []byte, key string, channelID int) (result *dto.TaskError) {
+	defer func() {
+		if result != nil {
+			result.UpstreamError = common.NewPublicUpstreamError(status, body, nil, key)
+		}
+	}()
 	if code, message, ok := publicVideoMaterialRejection(status, body); ok {
 		return TaskErrorWrapperLocal(fmt.Errorf("%s", message), code, status)
 	}
