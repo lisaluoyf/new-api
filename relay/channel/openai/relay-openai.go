@@ -958,7 +958,7 @@ func imageRaceTriggerFromContext(c *gin.Context) time.Duration {
 // (feature off, not gpt-image-2, no stashed body — e.g. multipart img2img — or no
 // other channel available) so callers fall back to single-channel polling unchanged.
 func startImageRaceHedge(c *gin.Context, info *relaycommon.RelayInfo) (target service.ImageTaskTarget, channel *model.Channel, ok bool) {
-	if !common.GptImage2RaceFallbackEnabled {
+	if service.HasImageSubmission(c) || !common.GptImage2RaceFallbackEnabled {
 		return service.ImageTaskTarget{}, nil, false
 	}
 	if info == nil || !common.UsesAsyncImageTaskUpstream(info.OriginModelName) {
@@ -1103,7 +1103,7 @@ func pollAsyncImageTask(c *gin.Context, info *relaycommon.RelayInfo, taskID stri
 	var winner service.ImageTaskTarget
 	var ok bool
 
-	if common.GptImage2RaceFallbackEnabled && raceDeadline.Before(fullDeadline) {
+	if !service.HasImageSubmission(c) && common.GptImage2RaceFallbackEnabled && raceDeadline.Before(fullDeadline) {
 		winner, imageURL, ok = service.RaceImageTask([]service.ImageTaskTarget{primary}, raceDeadline)
 		if !ok {
 			if hedgeTarget, hedgeChannel, hedgeOK := startImageRaceHedge(c, info); hedgeOK {
@@ -1336,7 +1336,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 				return nil, types.NewErrorWithStatusCode(fmt.Errorf("failed to persist image edit task"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 			}
 			c.Set(imagePollTaskIDContextKey, publicTaskID)
-			if publicTaskID != upstreamTaskID && info.RelayMode != relayconstant.RelayModeImagesEdits {
+			if !service.HasImageSubmission(c) && publicTaskID != upstreamTaskID && info.RelayMode != relayconstant.RelayModeImagesEdits {
 				if rawBody, exists := c.Get(imageRequestBodyContextKey); exists {
 					if bodyBytes, ok := rawBody.([]byte); ok && len(bodyBytes) > 0 {
 						scheduleAsyncImageRaceHedge(publicTaskID, info.OriginModelName, bodyBytes, imageRaceTriggerFromContext(c), service.ProviderPolicyForModel(c, info.OriginModelName))

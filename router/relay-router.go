@@ -76,10 +76,12 @@ func SetRelayRouter(router *gin.Engine) {
 	// webhook middleware or consume the body before its streaming upload handler.
 	verificationRouter := router.Group("/v1", middleware.RouteTag("relay"), middleware.SystemPerformanceCheck(), middleware.TokenAuth(), middleware.ModelRequestRateLimit())
 	verificationRouter.POST("/videos/seedance-verify", controller.VerifySeedanceVideo)
+	router.GET("/v1/image-submissions/by-key", middleware.RouteTag("relay"), middleware.ImageSubmissionRecoveryAuth(), controller.GetImageSubmissionByKey)
+	router.GET("/v1/image-submissions/by-key/response", middleware.RouteTag("relay"), middleware.ImageSubmissionRecoveryAuth(), controller.GetImageSubmissionByKey)
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
-	relayV1Router.Use(middleware.TokenAuth(), middleware.TaskWebhookNotifications())
+	relayV1Router.Use(middleware.ImageSubmissionRecoveryAuth(), middleware.DurableImageSubmission(), middleware.TokenAuth(), middleware.BeginImageSubmissionExecution(), middleware.TaskWebhookNotifications())
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
 
 	relayV1Router.GET("/tasks/:task_id", middleware.DistributeUnlessSeedanceAssetTask(), controller.RelayImageTask)
@@ -221,7 +223,7 @@ func SetRelayRouter(router *gin.Engine) {
 	relayGeminiRouter := router.Group("/v1beta")
 	relayGeminiRouter.Use(middleware.RouteTag("relay"))
 	relayGeminiRouter.Use(middleware.SystemPerformanceCheck())
-	relayGeminiRouter.Use(middleware.TokenAuth())
+	relayGeminiRouter.Use(middleware.ImageSubmissionRecoveryAuth(), middleware.DurableImageSubmission(), middleware.TokenAuth(), middleware.BeginImageSubmissionExecution())
 	relayGeminiRouter.Use(middleware.ModelRequestRateLimit())
 	relayGeminiRouter.Use(middleware.Distribute())
 	{
@@ -234,7 +236,7 @@ func SetRelayRouter(router *gin.Engine) {
 
 func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
 	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
-	relayMjRouter.Use(middleware.TokenAuth(), middleware.Distribute())
+	relayMjRouter.Use(middleware.ImageSubmissionRecoveryAuth(), middleware.DurableImageSubmission(), middleware.TokenAuth(), middleware.BeginImageSubmissionExecution(), middleware.Distribute())
 	{
 		relayMjRouter.POST("/submit/action", controller.RelayMidjourney)
 		relayMjRouter.POST("/submit/shorten", controller.RelayMidjourney)

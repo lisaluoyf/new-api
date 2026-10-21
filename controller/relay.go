@@ -1099,6 +1099,10 @@ func isUserQuotaError(openaiErr *types.NewAPIError) bool {
 }
 
 func evaluateRetry(c *gin.Context, openaiErr *types.NewAPIError, retryIndex int, retryTimes int) retryDecision {
+	if service.HasImageSubmission(c) {
+		return retryDecision{Reason: "image_idempotency_single_attempt"}
+	}
+
 	decision := retryDecision{
 		RetryIndex:   retryIndex,
 		AttemptIndex: retryIndex + 1,
@@ -1199,6 +1203,10 @@ func evaluateRetry(c *gin.Context, openaiErr *types.NewAPIError, retryIndex int,
 // evaluateFreeModelRetry is intentionally narrower than the legacy paid-model
 // retry policy. In particular there is no catch-all fallback for 4xx errors.
 func evaluateFreeModelRetry(c *gin.Context, openaiErr *types.NewAPIError, retryIndex int, retryTimes int) retryDecision {
+	if service.HasImageSubmission(c) {
+		return retryDecision{Reason: "image_idempotency_single_attempt"}
+	}
+
 	decision := retryDecision{RetryIndex: retryIndex, AttemptIndex: retryIndex + 1, RetryTimes: retryTimes}
 	if openaiErr == nil {
 		decision.Reason = "nil_error"
@@ -1258,6 +1266,10 @@ func evaluateFreeModelRetry(c *gin.Context, openaiErr *types.NewAPIError, retryI
 }
 
 func shouldRetryForOfficialFallback(c *gin.Context, retryIndex int) bool {
+	if service.HasImageSubmission(c) {
+		return false
+	}
+
 	if c == nil || c.GetBool("official_fallback_triggered") {
 		return false
 	}
@@ -1280,6 +1292,10 @@ func shouldRetryForOfficialFallback(c *gin.Context, retryIndex int) bool {
 }
 
 func shouldRetryForOfficialFallbackModel(c *gin.Context, retryIndex int) bool {
+	if service.HasImageSubmission(c) {
+		return false
+	}
+
 	if c == nil || c.GetBool("official_fallback_triggered") {
 		return false
 	}

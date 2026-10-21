@@ -40,6 +40,10 @@ const nonStreamHedgeWinnerChannelNameKey = "non_stream_hedge_winner_channel_name
 
 // shouldClientGoneHedge 判定当前请求是否进入首字竞速分支。
 func shouldClientGoneHedge(c *gin.Context, info *relaycommon.RelayInfo, relayFormat types.RelayFormat, retryIndex int) (model_setting.ClientGoneFallbackPolicy, bool) {
+	if c != nil && service.HasImageSubmission(c) {
+		return model_setting.ClientGoneFallbackPolicy{}, false
+	}
+
 	if c == nil || info == nil || retryIndex != 0 {
 		return model_setting.ClientGoneFallbackPolicy{}, false
 	}

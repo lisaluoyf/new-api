@@ -178,6 +178,9 @@ func ShadowBenchmarkEnabled() bool {
 }
 
 func MaybeEnqueueShadowBenchmark(c *gin.Context, relayInfo *relaycommon.RelayInfo, relayFormat types.RelayFormat, finalErr *types.NewAPIError) {
+	if HasImageSubmission(c) {
+		return
+	}
 	if !ShadowBenchmarkEnabled() || c == nil || relayInfo == nil {
 		return
 	}
