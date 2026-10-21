@@ -94,16 +94,17 @@ const (
 )
 
 type NewAPIError struct {
-	Err               error
-	RelayError        any
-	skipRetry         bool
-	recordErrorLog    *bool
-	errorType         ErrorType
-	errorCode         ErrorCode
-	StatusCode        int
-	Metadata          json.RawMessage
-	clientMessageKey  string
-	clientMessageArgs map[string]any
+	PublicRedactionValues []string `json:"-"`
+	Err                   error
+	RelayError            any
+	skipRetry             bool
+	recordErrorLog        *bool
+	errorType             ErrorType
+	errorCode             ErrorCode
+	StatusCode            int
+	Metadata              json.RawMessage
+	clientMessageKey      string
+	clientMessageArgs     map[string]any
 	// UpstreamResponseBody is retained for administrator diagnostics only.
 	// It must never be used as the client-facing error message.
 	UpstreamResponseBody string
@@ -241,7 +242,7 @@ func (e *NewAPIError) SetMessage(message string) {
 	e.Err = errors.New(message)
 }
 
-func (e *NewAPIError) ToOpenAIError() OpenAIError {
+func (e *NewAPIError) ToRawOpenAIError() OpenAIError {
 	var result OpenAIError
 	switch e.errorType {
 	case ErrorTypeOpenAIError:
@@ -278,6 +279,10 @@ func (e *NewAPIError) ToOpenAIError() OpenAIError {
 	return result
 }
 
+func (e *NewAPIError) ToOpenAIError() OpenAIError {
+	return e.sanitizePublicOpenAIError(e.ToRawOpenAIError())
+}
+
 func (e *NewAPIError) ToClaudeError() ClaudeError {
 	var result ClaudeError
 	switch e.errorType {
@@ -305,7 +310,7 @@ func (e *NewAPIError) ToClaudeError() ClaudeError {
 		result.Message = string(e.errorType)
 	}
 	result.UpstreamError = e.UpstreamError
-	return result
+	return e.sanitizePublicClaudeError(result)
 }
 
 type NewAPIErrorOptions func(*NewAPIError)
@@ -539,4 +544,35 @@ func IsRecordErrorLog(e *NewAPIError) bool {
 		return true
 	}
 	return *e.recordErrorLog
+}
+
+func (e *NewAPIError) sanitizePublicOpenAIError(result OpenAIError) OpenAIError {
+	originalCode := result.Code
+	values := append(append([]string(nil), e.PublicRedactionValues...), e.UpstreamError.RedactionValues()...)
+	raw, err := common.Marshal(result)
+	if err != nil {
+		return OpenAIError{Code: "upstream_error", Type: "upstream_error", Message: "Request failed"}
+	}
+	safe := common.NewPublicUpstreamError(0, raw, nil, values...)
+	raw, err = common.Marshal(safe.Body)
+	if err != nil || common.Unmarshal(raw, &result) != nil {
+		return OpenAIError{Code: "upstream_error", Type: "upstream_error", Message: "Request failed"}
+	}
+	if fmt.Sprint(result.Code) == fmt.Sprint(originalCode) {
+		result.Code = originalCode
+	}
+	return result
+}
+func (e *NewAPIError) sanitizePublicClaudeError(result ClaudeError) ClaudeError {
+	values := append(append([]string(nil), e.PublicRedactionValues...), e.UpstreamError.RedactionValues()...)
+	raw, err := common.Marshal(result)
+	if err != nil {
+		return ClaudeError{Type: "upstream_error", Message: "Request failed"}
+	}
+	safe := common.NewPublicUpstreamError(0, raw, nil, values...)
+	raw, err = common.Marshal(safe.Body)
+	if err != nil || common.Unmarshal(raw, &result) != nil {
+		return ClaudeError{Type: "upstream_error", Message: "Request failed"}
+	}
+	return result
 }

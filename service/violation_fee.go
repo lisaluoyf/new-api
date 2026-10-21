@@ -34,7 +34,7 @@ func HasCSAMViolationMarker(err *types.NewAPIError) bool {
 	if strings.Contains(err.Error(), CSAMViolationMarker) || strings.Contains(err.Error(), ContentViolatesUsageMarker) {
 		return true
 	}
-	msg := err.ToOpenAIError().Message
+	msg := err.ToRawOpenAIError().Message
 	return strings.Contains(msg, CSAMViolationMarker) || strings.Contains(err.Error(), ContentViolatesUsageMarker)
 }
 
@@ -42,7 +42,7 @@ func WrapAsViolationFeeGrokCSAM(err *types.NewAPIError) *types.NewAPIError {
 	if err == nil {
 		return nil
 	}
-	oai := err.ToOpenAIError()
+	oai := err.ToRawOpenAIError()
 	oai.Type = string(types.ErrorCodeViolationFeeGrokCSAM)
 	oai.Code = string(types.ErrorCodeViolationFeeGrokCSAM)
 	return types.WithOpenAIError(oai, err.StatusCode, types.ErrOptionWithSkipRetry())
@@ -63,7 +63,7 @@ func NormalizeViolationFeeError(err *types.NewAPIError) *types.NewAPIError {
 	}
 
 	if IsViolationFeeCode(err.GetErrorCode()) {
-		oai := err.ToOpenAIError()
+		oai := err.ToRawOpenAIError()
 		return types.WithOpenAIError(oai, err.StatusCode, types.ErrOptionWithSkipRetry())
 	}
 
@@ -133,7 +133,7 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 
 	useTimeSeconds := time.Now().Unix() - relayInfo.StartTime.Unix()
 	tokenName := ctx.GetString("token_name")
-	oai := apiErr.ToOpenAIError()
+	oai := apiErr.ToRawOpenAIError()
 
 	other := map[string]any{
 		"violation_fee":        true,

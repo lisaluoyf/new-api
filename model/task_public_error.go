@@ -52,6 +52,8 @@ func publicTaskErrorWithDB(db *gorm.DB, task *Task) *dto.OpenAIVideoError {
 	}
 	raw, _ := common.Marshal(diagnostic)
 	result.UpstreamError = common.NewPublicUpstreamError(0, raw, nil, sensitive...)
+	result.Message = common.SanitizeUpstreamErrorText(result.Message, result.UpstreamError.RedactionValues()...)
+	result.Code = common.PublicDiagnosticCode(result.Code, result.UpstreamError.RedactionValues()...)
 	return result
 }
 
@@ -209,8 +211,9 @@ func taskFailureSensitiveValues(db *gorm.DB, task *Task) []string {
 	}
 	if task.ChannelId > 0 && db != nil && db.Migrator().HasTable(&Channel{}) {
 		var channel Channel
-		if err := db.Select("name", "key").Where("id = ?", task.ChannelId).First(&channel).Error; err == nil {
+		if err := db.Select("name", "key", "base_url", "type").Where("id = ?", task.ChannelId).First(&channel).Error; err == nil {
 			sensitive = append(sensitive, channel.Name, channel.Key)
+			sensitive = append(sensitive, common.UpstreamIdentityValues(channel.Name, channel.GetBaseURL(), task.Properties.UpstreamModelName, task.Properties.OriginModelName)...)
 			for _, part := range strings.FieldsFunc(channel.Name, func(r rune) bool { return r == '_' || r == '-' || unicode.IsSpace(r) }) {
 				if len(part) > 3 {
 					sensitive = append(sensitive, part)
@@ -344,4 +347,8 @@ func taskErrorMessage(value map[string]interface{}, depth int) string {
 		}
 	}
 	return ""
+}
+
+func TaskErrorRedactionValues(channelID int, key, publicModel string) []string {
+	return taskFailureSensitiveValues(DB, &Task{ChannelId: channelID, Properties: Properties{OriginModelName: publicModel, UpstreamModelName: publicModel}, PrivateData: TaskPrivateData{Key: key}})
 }

@@ -14,11 +14,12 @@ func RecordPublicTaskErrorLog(c *gin.Context, failure *dto.TaskError) {
 	if failure == nil || failure.ErrorLogRecorded || !constant.ErrorLogEnabled || c.GetInt("id") <= 0 || model.LOG_DB == nil {
 		return
 	}
-	other := map[string]any{"error_code": failure.Code, "status_code": failure.StatusCode}
-	content := common.SanitizeUpstreamErrorText(failure.Message, common.GetContextKeyString(c, constant.ContextKeyChannelKey))
-	if failure.UpstreamError != nil {
-		other["upstream_error"] = failure.UpstreamError
-		raw, _ := common.Marshal(failure.UpstreamError)
+	public := PublicTaskErrorView(c, failure)
+	other := map[string]any{"error_code": public.Code, "status_code": public.StatusCode}
+	content := common.SanitizeUpstreamErrorText(public.Message, common.GetContextKeyString(c, constant.ContextKeyChannelKey))
+	if public.UpstreamError != nil {
+		other["upstream_error"] = public.UpstreamError
+		raw, _ := common.Marshal(public.UpstreamError)
 		content += " | upstream_error: " + string(raw)
 	}
 	if record := VideoSubmissionFromContext(c); record != nil {

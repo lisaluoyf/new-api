@@ -11,32 +11,35 @@ import (
 // PublicUpstreamError contains response diagnostics only, never request headers or
 // credentials. Keep the same value in API responses, receipts and customer logs.
 type PublicUpstreamError struct {
-	StatusCode int    `json:"status_code,omitempty"`
-	RequestID  string `json:"request_id,omitempty"`
-	Body       any    `json:"body"`
-	Truncated  bool   `json:"truncated,omitempty"`
+	redactionValues []string
+	StatusCode      int    `json:"status_code,omitempty"`
+	RequestID       string `json:"request_id,omitempty"`
+	Body            any    `json:"body"`
+	Truncated       bool   `json:"truncated,omitempty"`
 }
 
 const MaxPublicUpstreamErrorBytes = 48 * 1024
 
+var upstreamIdentityLabel = regexp.MustCompile(`(?i)(?:provider|vendor|supplier|channel|deployment|upstream[_ -]?model)(?:[_ -]?(?:name|id))?["']?\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[A-Za-z0-9_.@/-]+)`)
+var upstreamChannelNumber = regexp.MustCompile(`(?i)(?:\b(?:channel|route)[ _-]*(?:id)?[ _:=#-]*[0-9]+\b|(?:渠道|路由)\s*(?:编号|ID)?[ _:=#-]*[0-9]+)`)
 var upstreamCredential = regexp.MustCompile(`(?i)(?:authorization|proxy-authorization|x-api-key|api[_-]?key|key|access[_-]?key(?:[_-]?id)?|secret(?:[_-]?access[_-]?key)?|token|session|signature|password|cookie|credential)["']?\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)`)
 var upstreamBearer = regexp.MustCompile(`(?i)\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+`)
 var upstreamKey = regexp.MustCompile(`\b(?:sk-[A-Za-z0-9_-]+|AIza[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b`)
-var upstreamIP = regexp.MustCompile(`(?:\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b|\[[0-9a-fA-F:]+\])`)
+var upstreamIP = regexp.MustCompile(`(?:\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b|\[[0-9a-fA-F]*:[0-9a-fA-F:]+\])`)
 var upstreamEmail = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 var upstreamPrivatePath = regexp.MustCompile(`(?:/var/|/opt/|/home/|/root/|/app/)[^\s"']+`)
 var upstreamURL = regexp.MustCompile(`(?i)(?:https?|wss?|s3|gs|asset)://[^\s<>"']+`)
 
 func SanitizeUpstreamErrorText(text string, secrets ...string) string {
-	for _, secret := range secrets {
-		if secret = strings.TrimSpace(secret); secret != "" {
-			text = strings.ReplaceAll(text, secret, "[redacted]")
-		}
-	}
-	text = upstreamCredential.ReplaceAllString(text, "[redacted]")
+	text = redactUpstreamValues(text, secrets...)
+	// Remove the complete auth scheme/value before stripping its field label.
 	text = upstreamBearer.ReplaceAllString(text, "[redacted]")
+	text = upstreamCredential.ReplaceAllString(text, "[redacted]")
+	text = upstreamIdentityLabel.ReplaceAllString(text, "[redacted]")
+	text = upstreamChannelNumber.ReplaceAllString(text, "[redacted]")
 	text = upstreamKey.ReplaceAllString(text, "[redacted]")
 	text = upstreamURL.ReplaceAllString(text, "[redacted]")
+	text = upstreamBareDomain.ReplaceAllString(text, "[redacted]")
 	text = upstreamIP.ReplaceAllString(text, "[redacted]")
 	text = upstreamEmail.ReplaceAllString(text, "[redacted]")
 	text = upstreamPrivatePath.ReplaceAllString(text, "[redacted]")
@@ -49,6 +52,9 @@ func SanitizeUpstreamErrorText(text string, secrets ...string) string {
 }
 
 func privateErrorField(key string) bool {
+	if upstreamIdentityField(key) {
+		return true
+	}
 	key = strings.ToLower(strings.NewReplacer("_", "", "-", "", " ", "").Replace(key))
 	for _, word := range []string{"authorization", "apikey", "accesskey", "secret", "password", "cookie", "signature", "credential", "channel", "merchant", "account"} {
 		if strings.Contains(key, word) {
@@ -81,6 +87,8 @@ func NewPublicUpstreamError(status int, body []byte, headers http.Header, secret
 	} else if Unmarshal(body, &value) != nil {
 		value = string(body)
 	}
+	secrets = append(secrets, collectUpstreamIdentities(value, 0)...)
+	result.redactionValues = append([]string(nil), secrets...)
 	budget := MaxPublicUpstreamErrorBytes / 2 // JSON escaping and envelope overhead.
 	var clean func(any, int) any
 	clean = func(v any, depth int) any {
@@ -107,6 +115,13 @@ func NewPublicUpstreamError(status int, body []byte, headers http.Header, secret
 				}
 				encodedKey, _ := Marshal(safeKey)
 				budget -= len(encodedKey) + 8
+				switch strings.ToLower(strings.NewReplacer("_", "", "-", "").Replace(k)) {
+				case "code", "errorcode", "type", "errortype":
+					if code, ok := child.(string); ok {
+						out[safeKey] = PublicDiagnosticCode(code, secrets...)
+						continue
+					}
+				}
 				out[safeKey] = clean(child, depth+1)
 			}
 			return out
@@ -152,10 +167,18 @@ func NewPublicUpstreamError(status int, body []byte, headers http.Header, secret
 		}
 	}
 	result.Body = clean(value, 0)
+	result.redactionValues = append([]string(nil), secrets...)
+	id := SanitizeUpstreamErrorText(result.RequestID, secrets...)
+	if id != result.RequestID || strings.Contains(id, "[redacted]") {
+		result.RequestID = ""
+	}
 	return result
 }
 
 func PublicUpstreamErrorFromResponse(resp *http.Response, body []byte, secrets ...string) *PublicUpstreamError {
+	if resp.Request != nil && resp.Request.URL != nil {
+		secrets = append(secrets, UpstreamIdentityValues("", resp.Request.URL.String(), "", "")...)
+	}
 	if resp.Request != nil {
 		for _, key := range []string{"Authorization", "X-Api-Key", "Api-Key", "X-Goog-Api-Key"} {
 			if value := resp.Request.Header.Get(key); value != "" {
@@ -219,12 +242,12 @@ func FailureDiagnostics(body []byte) any {
 
 // Reapply the diagnostic redaction when reading storage, retaining its public
 // object shape and any explicit truncation flag from the original capture.
-func RedactStoredUpstreamError(value any) any {
+func RedactStoredUpstreamError(value any, values ...string) any {
 	raw, err := Marshal(value)
 	if err != nil {
 		return nil
 	}
-	safe := NewPublicUpstreamError(0, raw, nil)
+	safe := NewPublicUpstreamError(0, raw, nil, values...)
 	if safe.Truncated {
 		if object, ok := safe.Body.(map[string]any); ok {
 			object["truncated"] = true

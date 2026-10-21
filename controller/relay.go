@@ -131,7 +131,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				writeStartedStreamError(c, relayFormat, newAPIError)
 				return
 			}
-			responseError := newAPIError
+			responseError := service.PublicRelayErrorView(c, newAPIError)
 			if relayInfo != nil && service.IsFreeModel(relayInfo.OriginModelName) {
 				message := "FreeModel request failed"
 				if newAPIError.StatusCode == http.StatusTooManyRequests || newAPIError.StatusCode >= 500 {
@@ -506,6 +506,7 @@ func localizeRelayClientMessage(c *gin.Context, apiErr *types.NewAPIError) strin
 }
 
 func writeStartedStreamError(c *gin.Context, relayFormat types.RelayFormat, relayErr *types.NewAPIError) {
+	relayErr = service.PublicRelayErrorView(c, relayErr)
 	if c == nil || relayErr == nil || c.GetBool("stream_terminal_error_written") {
 		return
 	}
@@ -1118,7 +1119,7 @@ func evaluateRetry(c *gin.Context, openaiErr *types.NewAPIError, retryIndex int,
 		return decision
 	}
 
-	if isContentSafetyRejection(string(openaiErr.GetErrorCode()), openaiErr.ToOpenAIError().Type, openaiErr.Error()) {
+	if isContentSafetyRejection(string(openaiErr.GetErrorCode()), openaiErr.ToRawOpenAIError().Type, openaiErr.Error()) {
 		decision.Reason = "content_safety_rejection"
 		return decision
 	}
@@ -1216,7 +1217,7 @@ func evaluateFreeModelRetry(c *gin.Context, openaiErr *types.NewAPIError, retryI
 	}
 	decision.StatusCode = openaiErr.StatusCode
 	decision.ErrorCode = string(openaiErr.GetErrorCode())
-	if isContentSafetyRejection(string(openaiErr.GetErrorCode()), openaiErr.ToOpenAIError().Type, openaiErr.Error()) {
+	if isContentSafetyRejection(string(openaiErr.GetErrorCode()), openaiErr.ToRawOpenAIError().Type, openaiErr.Error()) {
 		decision.Reason = "content_safety_rejection"
 		return decision
 	}
@@ -1517,7 +1518,7 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		errorContent := common.SanitizeUpstreamErrorText(err.MaskSensitiveErrorWithStatusCode(), common.GetContextKeyString(c, constant.ContextKeyChannelKey))
+		errorContent := common.SanitizeUpstreamErrorText(err.MaskSensitiveErrorWithStatusCode(), append(service.PublicErrorRedactionValues(c), err.UpstreamError.RedactionValues()...)...)
 		if err.UpstreamError != nil {
 			raw, _ := common.Marshal(err.UpstreamError)
 			errorContent += " | upstream_error: " + string(raw)
@@ -1922,9 +1923,10 @@ func RelayTask(c *gin.Context) {
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	service.RecordPublicTaskErrorLog(c, taskErr)
+	taskErr = service.PublicTaskErrorView(c, taskErr)
 	isSeedance := model.NormalizeVerifiedVideoModel(common.GetContextKeyString(c, constant.ContextKeyOriginalModel)) != ""
 	if apiErr, ok := taskErr.Error.(*types.NewAPIError); ok {
-		taskErr.Message = localizeRelayClientMessage(c, apiErr)
+		taskErr.Message = common.SanitizeUpstreamErrorText(localizeRelayClientMessage(c, apiErr), append(service.PublicErrorRedactionValues(c), taskErr.UpstreamError.RedactionValues()...)...)
 	}
 	if taskErr.StatusCode == http.StatusTooManyRequests && !isSeedance {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"

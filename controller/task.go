@@ -76,7 +76,7 @@ func tasksToUserDto(tasks []*model.Task) []*dto.UserTaskDto {
 		}
 		resultURL := task.GetResultURL()
 		platform := string(task.Platform)
-		if task.Platform == constant.TaskPlatformApimartVideo {
+		if task.Platform == constant.TaskPlatformApimartVideo || isVideoTaskAction(task.Action) || model.NormalizeVerifiedVideoModel(task.Properties.OriginModelName) != "" {
 			platform = "video"
 		}
 		if isVideoTaskAction(task.Action) && task.Status == model.TaskStatusSuccess && resultURL != "" {

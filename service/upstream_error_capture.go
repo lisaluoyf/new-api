@@ -55,7 +55,7 @@ func ObserveTaskSubmissionResponse(c *gin.Context, resp *http.Response, secrets 
 	if _, already := resp.Body.(*upstreamErrorCapture); already {
 		return
 	}
-	capture := &upstreamErrorCapture{ReadCloser: resp.Body, response: resp, channelID: c.GetInt("channel_id"), secrets: secrets}
+	capture := &upstreamErrorCapture{ReadCloser: resp.Body, response: resp, channelID: c.GetInt("channel_id"), secrets: append(secrets, PublicErrorRedactionValues(c)...)}
 	resp.Body = capture
 	c.Set(upstreamErrorCaptureKey, capture)
 }
@@ -80,5 +80,8 @@ func AttachCapturedUpstreamError(c *gin.Context, failure *types.NewAPIError) {
 			raw, _ := common.Marshal(failure.RelayError)
 			failure.UpstreamError = common.NewPublicUpstreamError(failure.StatusCode, raw, nil, common.GetContextKeyString(c, constant.ContextKeyChannelKey))
 		}
+	}
+	if failure != nil {
+		failure.UpstreamError = common.RedactPublicUpstreamError(failure.UpstreamError, PublicErrorRedactionValues(c)...)
 	}
 }

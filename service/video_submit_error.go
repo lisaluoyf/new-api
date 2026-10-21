@@ -14,7 +14,7 @@ import (
 func PublicVideoSubmitError(status int, body []byte, key string, channelID int) (result *dto.TaskError) {
 	defer func() {
 		if result != nil {
-			result.UpstreamError = common.NewPublicUpstreamError(status, body, nil, key)
+			result.UpstreamError = common.NewPublicUpstreamError(status, body, nil, model.TaskErrorRedactionValues(channelID, key, "seedance-2.5")...)
 		}
 	}()
 	if code, message, ok := publicVideoMaterialRejection(status, body); ok {

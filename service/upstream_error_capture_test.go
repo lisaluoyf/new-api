@@ -19,7 +19,7 @@ func TestFutureChannelInheritsSharedErrorCapture(t *testing.T) {
 	req := httptest.NewRequest("POST", "http://provider.invalid", nil)
 	req.Header.Set("Authorization", "Bearer private-channel-key")
 	original := `{"error":{"code":"Future.Error","message":"Precise reason","details":{"actual":"video/mp4","expected":"image/jpeg","key":"private-channel-key"}}}`
-	response := &http.Response{StatusCode: 422, Header: http.Header{"X-Request-Id": []string{"provider-12345"}}, Body: io.NopCloser(strings.NewReader(original)), Request: req}
+	response := &http.Response{StatusCode: 422, Header: http.Header{"X-Request-Id": []string{"opaque-request-12345"}}, Body: io.NopCloser(strings.NewReader(original)), Request: req}
 	ObserveUpstreamErrorResponse(c, response, "private-channel-key")
 	received, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
@@ -27,7 +27,7 @@ func TestFutureChannelInheritsSharedErrorCapture(t *testing.T) {
 	failure := types.NewOpenAIError(io.EOF, types.ErrorCodeBadResponseStatusCode, 422)
 	AttachCapturedUpstreamError(c, failure)
 	require.NotNil(t, failure.UpstreamError)
-	require.Equal(t, "provider-12345", failure.UpstreamError.RequestID)
+	require.Equal(t, "opaque-request-12345", failure.UpstreamError.RequestID)
 	encoded, err := common.Marshal(failure.ToOpenAIError())
 	require.NoError(t, err)
 	require.Contains(t, string(encoded), "Precise reason")

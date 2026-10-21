@@ -520,6 +520,7 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	return doRequest(c, req, info)
 }
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
+	c.Set("public_error_private_model", info.UpstreamModelName)
 	info.ObservationUpstreamRequestID = ""
 	var client *http.Client
 	var err error

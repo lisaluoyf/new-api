@@ -18,7 +18,8 @@ func TestPublicUpstreamErrorPreservesFullUnknownProviderDiagnostics(t *testing.T
 	require.False(t, detail.Truncated)
 	body := detail.Body.(map[string]any)
 	require.Equal(t, message, body["error"].(map[string]any)["message"])
-	require.Equal(t, "FutureProvider.NewError", body["error"].(map[string]any)["code"])
+	require.Equal(t, "NewError", body["error"].(map[string]any)["code"])
+	require.NotContains(t, body["error"].(map[string]any)["code"], "FutureProvider")
 }
 
 func TestPublicUpstreamErrorRedactsNestedSecretsAndRequestPayload(t *testing.T) {
