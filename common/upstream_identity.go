@@ -227,3 +227,12 @@ func RedactLogErrorIdentityFields(value any, values ...string) {
 func UpstreamIdentityRedactions(value any, values ...string) []string {
 	return append(append([]string(nil), values...), collectUpstreamIdentities(value, 0)...)
 }
+
+func publicErrorSchemaKey(key string) bool {
+	key = strings.ToLower(strings.NewReplacer("_", "", "-", "").Replace(key))
+	switch key {
+	case "error", "errors", "errorcode", "errortype", "code", "type", "message", "detail", "details", "data", "response", "responsemetadata", "upstream", "upstreamerror", "status", "statuscode", "requestid", "traceid", "metadata", "param", "body", "truncated", "cause", "failure", "reason", "failreason", "provider", "vendor", "supplier", "model", "modelname", "modelid", "channelname", "channelid", "deployment":
+		return true
+	}
+	return false
+}

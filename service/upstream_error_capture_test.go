@@ -57,7 +57,9 @@ func TestRelayErrorHandlerReturnsFullErrorForAnyProvider(t *testing.T) {
 		require.Equal(t, status, failure.StatusCode)
 		require.NotNil(t, failure.UpstreamError)
 		api := failure.ToOpenAIError()
-		require.Same(t, failure.UpstreamError, api.UpstreamError)
+		expected, _ := common.Marshal(failure.UpstreamError)
+		actual, _ := common.Marshal(api.UpstreamError)
+		require.JSONEq(t, string(expected), string(actual))
 		require.Contains(t, api.UpstreamError.Body.(map[string]any)["error"].(map[string]any)["message"], "end-of-message")
 		require.False(t, api.UpstreamError.Truncated)
 	}

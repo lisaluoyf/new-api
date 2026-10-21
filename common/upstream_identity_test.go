@@ -69,3 +69,14 @@ func TestIdentityRedactionNeverLeavesAuthorizationCredentialTail(t *testing.T) {
 		require.NotContains(t, text, "HiddenRelay")
 	}
 }
+
+func TestRoutingAliasesDoNotRenameProtocolFields(t *testing.T) {
+	detail := NewPublicUpstreamError(400, []byte(`{"upstream_error":{"body":{"error":{"code":"InvalidParameter.Format","message":"upstream rejected image[0]"}}},"upstream_api_key":"private-key"}`), nil, "upstream")
+	body := detail.Body.(map[string]any)
+	require.Contains(t, body, "upstream_error")
+	raw, err := Marshal(body)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "upstream_api_key")
+	require.NotContains(t, string(raw), "private-key")
+	require.Contains(t, string(raw), "image[0]")
+}

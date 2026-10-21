@@ -104,14 +104,17 @@ func NewPublicUpstreamError(status int, body []byte, headers http.Header, secret
 					result.Truncated = true
 					break
 				}
-				if privateErrorField(k) {
-					out[k] = "[redacted]"
-					budget -= len(k) + 12
-					continue
+				safeKey := k
+				if !publicErrorSchemaKey(k) {
+					safeKey = SanitizeUpstreamErrorText(k, secrets...)
 				}
-				safeKey := SanitizeUpstreamErrorText(k, secrets...)
 				if len(safeKey) > 256 {
 					safeKey = "[redacted]"
+				}
+				if privateErrorField(k) {
+					out[safeKey] = "[redacted]"
+					budget -= len(safeKey) + 12
+					continue
 				}
 				encodedKey, _ := Marshal(safeKey)
 				budget -= len(encodedKey) + 8

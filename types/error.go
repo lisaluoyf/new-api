@@ -554,9 +554,22 @@ func (e *NewAPIError) sanitizePublicOpenAIError(result OpenAIError) OpenAIError 
 		return OpenAIError{Code: "upstream_error", Type: "upstream_error", Message: "Request failed"}
 	}
 	safe := common.NewPublicUpstreamError(0, raw, nil, values...)
+	result = OpenAIError{} // Never retain unredacted fields omitted by the byte budget.
 	raw, err = common.Marshal(safe.Body)
 	if err != nil || common.Unmarshal(raw, &result) != nil {
-		return OpenAIError{Code: "upstream_error", Type: "upstream_error", Message: "Request failed"}
+		return OpenAIError{Code: "upstream_error", Type: "upstream_error", Message: "Request failed", UpstreamError: safe}
+	}
+	if safe.Truncated {
+		if result.UpstreamError == nil {
+			result.UpstreamError = &common.PublicUpstreamError{Body: "Diagnostic response exceeded the public limit"}
+		}
+		result.UpstreamError.Truncated = true
+	}
+	if result.Message == "" {
+		result.Message = "Request failed"
+	}
+	if result.Type == "" {
+		result.Type = "upstream_error"
 	}
 	if fmt.Sprint(result.Code) == fmt.Sprint(originalCode) {
 		result.Code = originalCode
@@ -570,9 +583,22 @@ func (e *NewAPIError) sanitizePublicClaudeError(result ClaudeError) ClaudeError 
 		return ClaudeError{Type: "upstream_error", Message: "Request failed"}
 	}
 	safe := common.NewPublicUpstreamError(0, raw, nil, values...)
+	result = ClaudeError{} // Do not unmarshal into the original public-field values.
 	raw, err = common.Marshal(safe.Body)
 	if err != nil || common.Unmarshal(raw, &result) != nil {
-		return ClaudeError{Type: "upstream_error", Message: "Request failed"}
+		return ClaudeError{Type: "upstream_error", Message: "Request failed", UpstreamError: safe}
+	}
+	if safe.Truncated {
+		if result.UpstreamError == nil {
+			result.UpstreamError = &common.PublicUpstreamError{Body: "Diagnostic response exceeded the public limit"}
+		}
+		result.UpstreamError.Truncated = true
+	}
+	if result.Message == "" {
+		result.Message = "Request failed"
+	}
+	if result.Type == "" {
+		result.Type = "upstream_error"
 	}
 	return result
 }
