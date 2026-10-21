@@ -589,6 +589,8 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 	clientConn := info.ClientWs
 	targetConn := info.TargetWs
 
+	handlerDone := make(chan struct{})
+	defer close(handlerDone)
 	clientClosed := make(chan struct{})
 	targetClosed := make(chan struct{})
 	sendChan := make(chan []byte, 100)
@@ -607,6 +609,8 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 		}()
 		for {
 			select {
+			case <-handlerDone:
+				return
 			case <-c.Done():
 				return
 			default:
@@ -667,17 +671,32 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 		}()
 		for {
 			select {
+			case <-handlerDone:
+				return
 			case <-c.Done():
 				return
 			default:
 				_, message, err := targetConn.ReadMessage()
 				if err != nil {
-					if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					select {
+					case <-handlerDone:
+						return
+					default:
+					}
+					if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) && c.Request.Context().Err() == nil {
+						raw, _ := common.Marshal(gin.H{"type": "error", "error": gin.H{"type": "upstream_connection_error", "code": "upstream_connection_error", "message": err.Error()}})
+						safe, _ := service.SafeRealtimeUpstreamFrame(c, string(raw))
+						_ = helper.WssString(c, clientConn, safe)
 						errChan <- fmt.Errorf("error reading from target: %v", err)
 					}
 					close(targetClosed)
 					return
 				}
+				// This direction alone carries upstream responses. Never sanitize the
+				// client-to-upstream writer, which also uses WssString.
+				safeMessage, upstreamError := service.SafeRealtimeUpstreamFrame(c, string(message))
+				message = []byte(safeMessage)
+
 				info.SetFirstResponseTime()
 				realtimeEvent := &dto.RealtimeEvent{}
 				err = common.Unmarshal(message, realtimeEvent)
@@ -686,7 +705,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 					return
 				}
 
-				if realtimeEvent.Type == dto.RealtimeEventTypeResponseDone {
+				if realtimeEvent.Type == dto.RealtimeEventTypeResponseDone && realtimeEvent.Response != nil {
 					realtimeUsage := realtimeEvent.Response.Usage
 					if realtimeUsage != nil {
 						usage.TotalTokens += realtimeUsage.TotalTokens
@@ -706,7 +725,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 						usage = &dto.RealtimeUsage{}
 
 						localUsage = &dto.RealtimeUsage{}
-					} else {
+					} else if !upstreamError {
 						textToken, audioToken, err := service.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
 						if err != nil {
 							errChan <- fmt.Errorf("error counting text token: %v", err)
@@ -738,7 +757,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 						info.InputAudioFormat = common.GetStringIfEmpty(realtimeSession.InputAudioFormat, info.InputAudioFormat)
 						info.OutputAudioFormat = common.GetStringIfEmpty(realtimeSession.OutputAudioFormat, info.OutputAudioFormat)
 					}
-				} else {
+				} else if !upstreamError {
 					textToken, audioToken, err := service.CountTokenRealtime(info, *realtimeEvent, info.UpstreamModelName)
 					if err != nil {
 						errChan <- fmt.Errorf("error counting text token: %v", err)

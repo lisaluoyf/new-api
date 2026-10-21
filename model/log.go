@@ -878,9 +878,12 @@ func GetAllLogsWithContext(ctx context.Context, logType int, startTimestamp int6
 // log view. Retryable attempts are hidden immediately, even before a later attempt
 // succeeds or fails, so users never observe transient channel errors while fallback
 // is still running. Admin queries intentionally keep every attempt for diagnostics.
+// Realtime errors describe individual events and remain visible after another
+// event succeeds on the same WebSocket connection.
 func applyUserErrorLogVisibility(tx *gorm.DB) *gorm.DB {
 	return tx.Where(`(
 		logs.type <> ?
+		OR COALESCE(logs.other, '') LIKE ?
 		OR (
 			COALESCE(logs.other, '') NOT LIKE ?
 			AND COALESCE(logs.other, '') NOT LIKE ?
@@ -905,7 +908,7 @@ func applyUserErrorLogVisibility(tx *gorm.DB) *gorm.DB {
 			)
 		)
 	)
-	`, LogTypeError, `%"should_retry":true%`, `%"should_retry": true%`, LogTypeConsume, `%"violation_fee":true%`, LogTypeError)
+	`, LogTypeError, `%"realtime_event_error":true%`, `%"should_retry":true%`, `%"should_retry": true%`, LogTypeConsume, `%"violation_fee":true%`, LogTypeError)
 }
 
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string) (logs []*Log, total int64, err error) {

@@ -429,7 +429,17 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		targetHeader.Set(key, value)
 	}
 	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
-	targetConn, _, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
+	targetConn, handshake, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
+	privateHeaders := []string{info.ApiKey}
+	for name, values := range targetHeader {
+		name = strings.ToLower(name)
+		if strings.Contains(name, "authorization") || strings.Contains(name, "key") || strings.Contains(name, "token") || strings.Contains(name, "secret") || strings.Contains(name, "credential") {
+			for _, value := range values {
+				privateHeaders = append(privateHeaders, value, strings.TrimPrefix(value, "Bearer "))
+			}
+		}
+	}
+	service.ObserveRealtimeHandshake(c, handshake, fullRequestURL, privateHeaders...)
 	if err != nil {
 		return nil, fmt.Errorf("dial failed to %s: %w", fullRequestURL, err)
 	}
