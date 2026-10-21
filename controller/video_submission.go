@@ -18,7 +18,7 @@ func GetVideoSubmissionByKey(c *gin.Context) {
 		c.JSON(400, gin.H{"error": gin.H{"code": "invalid_idempotency_key", "message": "Idempotency-Key must be 8–128 visible ASCII characters"}})
 		return
 	}
-	record, err := model.GetVideoSubmission(c.GetInt("id"), service.VideoSubmissionID(c.GetInt("id"), key))
+	record, err := model.ReadVideoSubmission(c.GetInt("id"), service.VideoSubmissionID(c.GetInt("id"), key))
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		legacyID := "video_request_" + service.SeedanceKeyFingerprint(strconv.Itoa(c.GetInt("id")) + ":" + key)[:32]
 		if legacy, e := model.GetSeedanceResource(c.GetInt("id"), "video_request", legacyID); e == nil {

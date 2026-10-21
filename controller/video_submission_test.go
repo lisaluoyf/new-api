@@ -58,3 +58,21 @@ func TestVideoSubmissionLookupOwnerMissingAndLegacy(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, string(payload), "private-upstream")
 }
+
+func TestVideoSubmissionLookupDoesNotMutateExpiredReceipt(t *testing.T) {
+	db := videoFailureDB(t)
+	require.NoError(t, db.AutoMigrate(&model.VideoSubmission{}, &model.VideoSubmissionRefund{}, &model.BillingHold{}))
+	key := "expired-readonly-001"
+	row := model.VideoSubmission{ID: service.VideoSubmissionID(42, key), UserID: 42, TaskID: "task_expired", Status: model.VideoSubmissionPending, Deadline: 1, CreatedAt: 1, UpdatedAt: 1, OwnerToken: "private-original"}
+	require.NoError(t, db.Create(&row).Error)
+	r := gin.New()
+	r.GET("/receipt", func(c *gin.Context) { c.Set("id", 42); GetVideoSubmissionByKey(c) })
+	q := httptest.NewRequest("GET", "/receipt", nil)
+	q.Header.Set("Idempotency-Key", key)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, q)
+	require.Equal(t, 200, w.Code)
+	var after model.VideoSubmission
+	require.NoError(t, db.First(&after, "id = ?", row.ID).Error)
+	require.Equal(t, row, after)
+}

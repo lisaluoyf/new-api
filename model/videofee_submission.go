@@ -28,6 +28,8 @@ func (VideoFeeEvidenceJSON) GormDBDataType(db *gorm.DB, _ *schema.Field) string 
 
 // Existing submissions default to disabled: deployment never scans old requests.
 type VideoFeeReconciliation struct {
+	ProviderLookupLastAt     int64                `json:"-"`
+	ProviderLookupLastCode   string               `json:"-" gorm:"size:64"`
 	ProviderLookupEnabled    bool                 `json:"-"`
 	ProviderLookupNext       int64                `json:"-" gorm:"index"`
 	ProviderLookupAttempts   int                  `json:"-"`
@@ -357,4 +359,13 @@ func ordinaryTaskQuery(db *gorm.DB) *gorm.DB {
 		return db.Where("CASE WHEN json_valid(private_data) THEN COALESCE(json_extract(private_data, '$.provider_observation_only'), 0) ELSE 0 END <> 1")
 	}
 	return db
+}
+
+// This audit update uses the existing lookup lease and never touches billing,
+// acceptance, scheduling or historical rows that have lookup disabled.
+func RecordVideoFeeLookupOutcome(row *VideoSubmission, at int64, code string) error {
+	if code != "provider_observation_recorded" && code != "provider_reconciliation_unavailable" {
+		return errors.New("invalid lookup outcome")
+	}
+	return DB.Model(&VideoSubmission{}).Where("id = ? AND provider_lookup_lease = ? AND provider_lookup_enabled = ?", row.ID, row.ProviderLookupLease, true).UpdateColumns(map[string]any{"provider_lookup_last_at": at, "provider_lookup_last_code": code}).Error
 }

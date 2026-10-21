@@ -112,6 +112,14 @@ func ReconcileVideoFeeSubmissions() error {
 				}
 			}
 		}
+		code := "provider_observation_recorded"
+		if lookupErr != nil {
+			code = "provider_reconciliation_unavailable"
+		}
+		// Store only allowlisted diagnostics, never raw provider errors/credentials.
+		if e := model.RecordVideoFeeLookupOutcome(row, time.Now().Unix(), code); e != nil && firstErr == nil {
+			firstErr = e
+		}
 		if lookupErr != nil && firstErr == nil {
 			firstErr = lookupErr
 		}

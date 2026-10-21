@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -193,6 +194,7 @@ func VideoSubmissionDTO(record *model.VideoSubmission) map[string]any {
 			data["next_action"] = "query_submission"
 		}
 	}
+	data["recovery"] = VideoSubmissionRecoveryDTO(record, time.Now().Unix())
 	return data
 }
 

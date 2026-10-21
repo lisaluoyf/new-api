@@ -80,6 +80,16 @@ func ClaimVideoSubmission(candidate *VideoSubmission) (*VideoSubmission, bool, e
 	return record, false, nil
 }
 
+// ReadVideoSubmission is a receipt-only read: no reconciliation, expiration,
+// task restoration, provider contact or financial writes occur on customer GET.
+func ReadVideoSubmission(userID int, id string) (*VideoSubmission, error) {
+	var record VideoSubmission
+	if err := DB.Where("id = ? AND user_id = ?", id, userID).First(&record).Error; err != nil {
+		return nil, err
+	}
+	return &record, nil
+}
+
 func GetVideoSubmission(userID int, id string) (*VideoSubmission, error) {
 	var record VideoSubmission
 	if err := DB.Where("id = ? AND user_id = ?", id, userID).First(&record).Error; err != nil {

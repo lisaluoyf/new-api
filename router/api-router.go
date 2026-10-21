@@ -329,6 +329,7 @@ func SetApiRouter(router *gin.Engine) {
 		adminRoute := apiRouter.Group("/admin")
 		adminRoute.Use(middleware.AdminAuth())
 		{
+			adminRoute.GET("/video-submissions/reviews", controller.ListVideoSubmissionReviews)
 			adminRoute.GET("/exchange-rate", controller.GetExchangeRate)
 			adminRoute.GET("/channel-data", controller.GetModelData)
 			adminRoute.PUT("/channel-data/resolutions", controller.SaveSeedanceChannelResolutions)
