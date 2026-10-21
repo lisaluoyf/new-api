@@ -204,6 +204,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		for data := range dataChan {
 			sr.reset()
 			writeMutex.Lock()
+			service.CaptureUpstreamStreamError(c, data, resp)
 			dataHandler(data, sr)
 			writeMutex.Unlock()
 			if sr.IsStopped() {

@@ -514,17 +514,14 @@ func writeStartedStreamError(c *gin.Context, relayFormat types.RelayFormat, rela
 		return
 	}
 	c.Set("stream_terminal_error_written", true)
-	code := string(relayErr.GetErrorCode())
-	if service.IsFreeModel(c.GetString("original_model")) {
-		code = "free_model_stream_error"
-	}
-	message := common.MessageWithRequestId("The stream ended unexpectedly", c.GetString(common.RequestIdKey))
+	public := service.PublicStreamError(c, relayErr)
+	code, message := public.Code, public.Message
 	if relayFormat == types.RelayFormatClaude {
-		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: gin.H{"type": code, "message": message}})
+		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: gin.H{"type": code, "message": message, "upstream_error": public.UpstreamError}})
 		return
 	}
 	if relayFormat == types.RelayFormatOpenAIResponses {
-		event := gin.H{"type": "error", "code": code, "message": message, "param": nil}
+		event := gin.H{"type": "error", "code": code, "message": message, "param": nil, "upstream_error": public.UpstreamError}
 		if !helper.HasStreamBusinessOutput(c) {
 			event["sequence_number"] = 0
 		}
@@ -535,7 +532,7 @@ func writeStartedStreamError(c *gin.Context, relayFormat types.RelayFormat, rela
 		}
 		return
 	}
-	payload, err := common.Marshal(gin.H{"error": gin.H{"code": code, "message": message, "type": "stream_error"}})
+	payload, err := common.Marshal(gin.H{"error": gin.H{"code": code, "message": message, "type": "stream_error", "upstream_error": public.UpstreamError}})
 	if err == nil {
 		_ = helper.StringData(c, string(payload))
 	}

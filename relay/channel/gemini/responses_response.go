@@ -297,8 +297,9 @@ func GeminiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	if apiErr != nil {
 		if s.started && c.Request.Context().Err() == nil {
 			s.response["status"] = "failed"
-			s.response["error"] = map[string]any{"code": "upstream_error", "message": "Upstream stream ended unexpectedly"}
+			s.response["error"] = service.PublicStreamError(c, apiErr)
 			s.emit(c, "response.failed", map[string]any{"response": s.response})
+			c.Set("stream_terminal_error_written", true)
 		}
 		return nil, apiErr
 	}

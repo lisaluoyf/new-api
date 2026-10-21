@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
@@ -60,6 +59,14 @@ func ObserveTaskSubmissionResponse(c *gin.Context, resp *http.Response, secrets 
 	c.Set(upstreamErrorCaptureKey, capture)
 }
 func CapturedUpstreamError(c *gin.Context) *common.PublicUpstreamError {
+	if c == nil {
+		return nil
+	}
+	if value, ok := c.Get(streamErrorCaptureKey); ok {
+		if capture, valid := value.(*capturedStreamError); valid && capture != nil && capture.channelID == c.GetInt("channel_id") {
+			return capture.detail
+		}
+	}
 	value, ok := c.Get(upstreamErrorCaptureKey)
 	capture, valid := value.(*upstreamErrorCapture)
 	if !ok || !valid || capture == nil || capture.channelID != c.GetInt("channel_id") {
@@ -71,6 +78,11 @@ func CapturedUpstreamError(c *gin.Context) *common.PublicUpstreamError {
 	return common.PublicUpstreamErrorFromResponse(capture.response, capture.body.Bytes(), capture.secrets...)
 }
 func ResetUpstreamErrorCapture(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	c.Set(streamErrorCaptureKey, (*capturedStreamError)(nil))
+	c.Set(sdkResponseMetadataKey, (*sdkResponseMetadata)(nil))
 	c.Set(upstreamErrorCaptureKey, (*upstreamErrorCapture)(nil))
 }
 func AttachCapturedUpstreamError(c *gin.Context, failure *types.NewAPIError) {
@@ -78,7 +90,7 @@ func AttachCapturedUpstreamError(c *gin.Context, failure *types.NewAPIError) {
 		failure.UpstreamError = CapturedUpstreamError(c)
 		if failure.UpstreamError == nil && failure.RelayError != nil {
 			raw, _ := common.Marshal(failure.RelayError)
-			failure.UpstreamError = common.NewPublicUpstreamError(failure.StatusCode, raw, nil, common.GetContextKeyString(c, constant.ContextKeyChannelKey))
+			failure.UpstreamError = common.NewPublicUpstreamError(failure.StatusCode, raw, nil, PublicErrorRedactionValues(c)...)
 		}
 	}
 	if failure != nil {

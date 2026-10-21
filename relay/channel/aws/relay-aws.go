@@ -68,6 +68,8 @@ func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.
 	}
 
 	awsSecret := strings.Split(info.ApiKey, "|")
+	secrets := append([]string{info.ApiKey, "AWS", "BedrockRuntime"}, awsSecret[:len(awsSecret)-1]...)
+	httpClient = service.SDKErrorHTTPClient(c, httpClient, secrets...)
 	var client *bedrockruntime.Client
 	switch len(awsSecret) {
 	case 2:
@@ -108,6 +110,9 @@ func doAwsClientRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor,
 	canCrossRegion := awsModelCanCrossRegion(awsModelId, awsRegionPrefix)
 	if canCrossRegion {
 		awsModelId = awsModelCrossRegion(awsModelId, awsRegionPrefix)
+	}
+	if c != nil {
+		c.Set("public_error_private_model", awsModelId)
 	}
 
 	// init empty request.header
@@ -234,8 +239,7 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types
 
 	awsResp, err := a.AwsClient.InvokeModel(ctx, a.AwsReq.(*bedrockruntime.InvokeModelInput))
 	if err != nil {
-		statusCode := getAwsErrorStatusCode(err)
-		return types.NewOpenAIError(errors.Wrap(err, "InvokeModel"), types.ErrorCodeAwsInvokeError, statusCode), nil
+		return awsInvocationError(c, info, err, "InvokeModel"), nil
 	}
 
 	claudeInfo := &claude.ClaudeResponseInfo{
@@ -264,8 +268,7 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 
 	awsResp, err := a.AwsClient.InvokeModelWithResponseStream(ctx, a.AwsReq.(*bedrockruntime.InvokeModelWithResponseStreamInput))
 	if err != nil {
-		statusCode := getAwsErrorStatusCode(err)
-		return types.NewOpenAIError(errors.Wrap(err, "InvokeModelWithResponseStream"), types.ErrorCodeAwsInvokeError, statusCode), nil
+		return awsInvocationError(c, info, err, "InvokeModelWithResponseStream"), nil
 	}
 	stream := awsResp.GetStream()
 	defer stream.Close()
@@ -284,6 +287,7 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 		switch v := event.(type) {
 		case *bedrockruntimeTypes.ResponseStreamMemberChunk:
 			info.SetFirstResponseTime()
+			service.CaptureUpstreamStreamError(c, string(v.Value.Bytes), &http.Response{StatusCode: http.StatusOK}, append([]string{info.ApiKey, "AWS", "BedrockRuntime"}, strings.Split(info.ApiKey, "|")...)...)
 			respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(v.Value.Bytes))
 			if respErr != nil {
 				return respErr, nil
@@ -297,7 +301,9 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 		}
 	}
 
+	var sdkFailure *types.NewAPIError
 	if err := stream.Err(); err != nil {
+		sdkFailure = awsInvocationError(c, info, err, "InvokeModelWithResponseStream")
 		if c.Request != nil && errors.Is(c.Request.Context().Err(), context.Canceled) {
 			status.SetEndReason(relaycommon.StreamEndReasonClientGone, context.Canceled)
 		} else {
@@ -309,6 +315,10 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 		status.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
 	}
 	usage, apiErr := claude.FinalizeClaudeStream(c, info, claudeInfo, status)
+	if apiErr != nil && sdkFailure != nil {
+		apiErr.UpstreamError = sdkFailure.UpstreamError
+		apiErr.PublicRedactionValues = append(apiErr.PublicRedactionValues, sdkFailure.PublicRedactionValues...)
+	}
 	return apiErr, usage
 }
 
@@ -320,8 +330,7 @@ func handleNovaRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) 
 
 	awsResp, err := a.AwsClient.InvokeModel(ctx, a.AwsReq.(*bedrockruntime.InvokeModelInput))
 	if err != nil {
-		statusCode := getAwsErrorStatusCode(err)
-		return types.NewOpenAIError(errors.Wrap(err, "InvokeModel"), types.ErrorCodeAwsInvokeError, statusCode), nil
+		return awsInvocationError(c, info, err, "InvokeModel"), nil
 	}
 
 	// 解析Nova响应

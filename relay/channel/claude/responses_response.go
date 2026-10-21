@@ -536,7 +536,7 @@ func ClaudeResponsesHandler(c *gin.Context, resp *http.Response, info *relaycomm
 	if failure != nil {
 		if s.started && c.Request.Context().Err() == nil {
 			s.response["status"] = "failed"
-			s.response["error"] = map[string]any{"code": string(failure.GetErrorCode()), "message": "Upstream stream ended unexpectedly"}
+			s.response["error"] = service.PublicStreamError(c, failure)
 			_ = s.emit(c, "response.failed", map[string]any{"response": s.response})
 			c.Set("stream_terminal_error_written", true)
 		}

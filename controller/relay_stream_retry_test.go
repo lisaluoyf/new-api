@@ -98,13 +98,16 @@ func TestStartedStreamTerminalErrorProtocols(t *testing.T) {
 		t.Run(string(format), func(t *testing.T) {
 			c, recorder := streamRetryContext()
 			require.NoError(t, helper.PingData(c))
-			err := types.NewError(errors.New("secret upstream detail"), types.ErrorCodeBadResponse)
+			c.Set("channel_name", "secret upstream detail")
+			err := types.NewError(errors.New("secret upstream detail: capacity exhausted"), types.ErrorCodeBadResponse)
 			writeStartedStreamError(c, format, err)
 			writeStartedStreamError(c, format, err)
 			body := recorder.Body.String()
 			require.True(t, strings.HasSuffix(body, "\n\n"), body)
 			require.Equal(t, 1, strings.Count(body, "data: "))
 			require.NotContains(t, body, "secret upstream detail")
+			require.Contains(t, body, "capacity exhausted")
+			require.Contains(t, body, "upstream_error")
 			require.Contains(t, body, "heartbeat-regression")
 			require.Equal(t, http.StatusOK, recorder.Code)
 			data := strings.SplitN(body, "data: ", 2)[1]

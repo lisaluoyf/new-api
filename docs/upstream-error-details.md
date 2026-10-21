@@ -55,3 +55,10 @@ Public copies cover legacy code/message/metadata fields, structured diagnostics,
 Fixtures test mixed-case supplier names, two-letter channel aliases, unconfigured provider names declared by response metadata, bare domains, internal model names, vendor-prefixed error codes, embedded JSON and provider-bearing request IDs. The API/receipt/log integration fixture also verifies that names are absent while the actual input format failure and parameter index remain readable. Customer-owned request model fields and media links are preserved by the log read policy.
 
 Oversized public envelopes are decoded into fresh DTOs so fields omitted by the byte budget cannot retain unsanitized source values. Truncation is explicitly propagated to the public diagnostic, including the oversized-envelope fallback. Generic protocol keys such as upstream_error remain intact even when they coincide with a routing alias; proprietary identity-bearing keys are redacted.
+
+
+## Streaming and SDK failures (2026-10-21 follow-up)
+
+Started SSE responses report a terminal protocol error with the same sanitized `upstream_error` used for customer logs. Claude/Gemini Responses conversions preserve details on `response.failed`; duplicate terminal writes and writes after client cancellation are suppressed. Shared SSE writers also sanitize error frames forwarded by adapters, while ordinary business frames remain byte-for-byte unchanged. Stream capture inspects individual error frames only and never accumulates successful content.
+
+SDK HTTP clients use a cloned transport wrapper to observe error bodies before SDK deserialization. Bedrock invocation and event-stream errors retain typed error codes/messages, available request IDs and modeled original-message/status fields. The actual HTTP handshake status stays distinct from a modeled original status. Retries clear prior attempt evidence; SDK credentials and identities are redacted in API/event/log views. RomaAPI now checks SDK event-stream errors rather than emitting a successful completion after an unexpected SDK exception; already completed streams retain their prior completion behavior.
