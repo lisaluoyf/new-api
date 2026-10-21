@@ -29,7 +29,9 @@ func CaptureUpstreamStreamError(c *gin.Context, data string, resp *http.Response
 		return
 	}
 	frame := gjson.Parse(data)
-	hasError := func(v gjson.Result) bool { return v.Exists() && v.Type != gjson.Null }
+	hasError := func(v gjson.Result) bool {
+		return v.Exists() && v.Type != gjson.Null && v.Type != gjson.False && (v.Type != gjson.String || v.Str != "") && (v.Type != gjson.Number || v.Num != 0)
+	}
 	if !hasError(frame.Get("error")) && !hasError(frame.Get("response.error")) && frame.Get("type").String() != "error" && frame.Get("type").String() != "response.failed" {
 		return
 	}
@@ -166,7 +168,9 @@ func AttachSDKUpstreamError(c *gin.Context, failure *types.NewAPIError, cause er
 // failure. Apply the public diagnostic policy at the final SSE write as well.
 func SafeStreamErrorFrame(c *gin.Context, data string) string {
 	frame := gjson.Parse(data)
-	hasError := func(v gjson.Result) bool { return v.Exists() && v.Type != gjson.Null }
+	hasError := func(v gjson.Result) bool {
+		return v.Exists() && v.Type != gjson.Null && v.Type != gjson.False && (v.Type != gjson.String || v.Str != "") && (v.Type != gjson.Number || v.Num != 0)
+	}
 	if !hasError(frame.Get("error")) && !hasError(frame.Get("response.error")) && frame.Get("type").String() != "error" && frame.Get("type").String() != "response.failed" {
 		return data
 	}

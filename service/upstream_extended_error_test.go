@@ -92,6 +92,12 @@ func TestStreamFrameWritePolicyRedactsForwardedErrorsAndPreservesBusiness(t *tes
 	c := identityTestContext()
 	business := `{"type":"response.output_text.delta","delta":"HiddenRelay is user-provided content","error":null}`
 	require.Equal(t, business, SafeStreamErrorFrame(c, business))
+	for _, noError := range []string{"false", "0", `""`} {
+		frame := strings.Replace(business, "null", noError, 1)
+		require.Equal(t, frame, SafeStreamErrorFrame(c, frame))
+		CaptureUpstreamStreamError(c, frame, nil)
+		require.Nil(t, CapturedUpstreamError(c))
+	}
 	require.Equal(t, "[DONE]", SafeStreamErrorFrame(c, "[DONE]"))
 	require.Contains(t, SafeStreamErrorFrame(c, `{"type":"response.failed","response":{"error":{"message":"capacity exhausted"}}}`), `"type":"response.failed"`)
 	errorFrame := `{"provider":"HiddenRelay","error":{"code":"HiddenRelay.InvalidImage","message":"HiddenRelay requires image/jpeg","details":{"api_key":"secret-part","actual":"video/mp4"}}}`
