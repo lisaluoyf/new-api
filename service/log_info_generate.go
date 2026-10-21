@@ -47,6 +47,9 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	other["user_group_ratio"] = userGroupRatio
 	if relayInfo.PriceData.GroupRatioInfo.UserModelDiscount > 0 && relayInfo.PriceData.GroupRatioInfo.UserModelDiscount != 1 {
 		other["user_model_discount"] = relayInfo.PriceData.GroupRatioInfo.UserModelDiscount
+		if cacheReadUserDiscountScale(relayInfo) != 1 {
+			other["cache_read_user_discount_exempt"] = true
+		}
 		other["group_ratio"] = UserModelDiscountLogGroupRatio(relayInfo.PriceData.GroupRatioInfo)
 	}
 	other["frt"] = float64(relayInfo.FirstResponseTime.UnixMilli() - relayInfo.StartTime.UnixMilli())

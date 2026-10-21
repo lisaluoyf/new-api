@@ -279,3 +279,17 @@ Supported Opus fast mode requires both `param("speed") == "fast"` and the beta
 header; Opus 4.6/4.7 do not support premium fast mode. Official references:
 https://platform.claude.com/docs/en/about-claude/pricing and
 https://platform.claude.com/docs/en/build-with-claude/fast-mode.
+
+## Channel 204 DeepSeek Flash cache-read policy (2026-10-21)
+
+Only the exact client model `deepseek-flash` on the final selected channel 204
+keeps cache reads at their retail price before the personal user discount.
+Input, output and cache writes still receive the personal discount. Existing
+channel prices, group pricing and peak/off-peak schedules remain in effect.
+
+`service/cache_read_discount.go` uses the applied request discount frozen in
+`PriceData`, rather than re-reading user settings. Ratio settlement compensates
+only `CacheRatio`; expression settlement compensates only its additive `cr`
+price-bearing variable. Actual token usage and `len` remain unchanged.
+The exception runs only in retail settlement, leaving procurement untouched.
+Usage metadata records `cache_read_user_discount_exempt=true`.

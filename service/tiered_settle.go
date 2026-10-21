@@ -127,6 +127,10 @@ func TryTieredSettle(relayInfo *relaycommon.RelayInfo, params billingexpr.TokenP
 		requestInput = *relayInfo.BillingRequestInput
 	}
 
+	// DeepSeek Flash's additive cr term keeps its pre-discount price on
+	// channel 204. Only the local price-bearing variable is scaled; actual
+	// usage, context length, frozen tiers and procurement snapshots stay intact.
+	params.CR *= cacheReadUserDiscountScale(relayInfo)
 	tr, err := billingexpr.ComputeTieredQuotaWithRequest(snap, params, requestInput)
 	if err != nil {
 		quota = relayInfo.FinalPreConsumedQuota
