@@ -2,15 +2,18 @@ package dto
 
 import (
 	"encoding/json"
+	"github.com/QuantumNous/new-api/common"
 )
 
 type TaskError struct {
-	Code       string `json:"code"`
-	Message    string `json:"message"`
-	Data       any    `json:"data"`
-	StatusCode int    `json:"-"`
-	LocalError bool   `json:"-"`
-	Error      error  `json:"-"`
+	UpstreamError    *common.PublicUpstreamError `json:"upstream_error,omitempty"`
+	ErrorLogRecorded bool                        `json:"-"`
+	Code             string                      `json:"code"`
+	Message          string                      `json:"message"`
+	Data             any                         `json:"data"`
+	StatusCode       int                         `json:"-"`
+	LocalError       bool                        `json:"-"`
+	Error            error                       `json:"-"`
 }
 
 type TaskData interface {
@@ -55,20 +58,21 @@ type TaskDto struct {
 // UserTaskDto is the customer-facing task representation. Keep provider
 // payloads, channel identifiers and internal billing fields out of this DTO.
 type UserTaskDto struct {
-	ID         int64  `json:"id"`
-	CreatedAt  int64  `json:"created_at"`
-	UpdatedAt  int64  `json:"updated_at"`
-	TaskID     string `json:"task_id"`
-	Platform   string `json:"platform"`
-	Model      string `json:"model,omitempty"`
-	Action     string `json:"action"`
-	Status     string `json:"status"`
-	FailReason string `json:"fail_reason,omitempty"`
-	ResultURL  string `json:"result_url,omitempty"`
-	SubmitTime int64  `json:"submit_time"`
-	StartTime  int64  `json:"start_time"`
-	FinishTime int64  `json:"finish_time"`
-	Progress   string `json:"progress"`
+	Error      *OpenAIVideoError `json:"error,omitempty"`
+	ID         int64             `json:"id"`
+	CreatedAt  int64             `json:"created_at"`
+	UpdatedAt  int64             `json:"updated_at"`
+	TaskID     string            `json:"task_id"`
+	Platform   string            `json:"platform"`
+	Model      string            `json:"model,omitempty"`
+	Action     string            `json:"action"`
+	Status     string            `json:"status"`
+	FailReason string            `json:"fail_reason,omitempty"`
+	ResultURL  string            `json:"result_url,omitempty"`
+	SubmitTime int64             `json:"submit_time"`
+	StartTime  int64             `json:"start_time"`
+	FinishTime int64             `json:"finish_time"`
+	Progress   string            `json:"progress"`
 }
 
 type FetchReq struct {

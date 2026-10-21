@@ -10,8 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// PublicTaskError never returns raw provider envelopes. Unknown codes retain
-// the stable generic fallback rather than exposing arbitrary provider strings.
+// PublicTaskError keeps stable code/message semantics and adds complete,
+// redacted upstream failure diagnostics for every task model and channel.
 func PublicTaskError(task *Task) *dto.OpenAIVideoError {
 	return publicTaskErrorWithDB(DB, task)
 }
@@ -40,7 +40,21 @@ func publicTaskErrorWithDB(db *gorm.DB, task *Task) *dto.OpenAIVideoError {
 	if parts := strings.SplitN(code, ".", 2); len(parts) == 2 && sanitizeTaskFailure(parts[1], sensitive...) != parts[1] {
 		code = "task_failed"
 	}
-	return &dto.OpenAIVideoError{Code: code, Message: sanitizeTaskFailure(taskFailureReason(task), sensitive...)}
+	result := &dto.OpenAIVideoError{Code: code, Message: sanitizeTaskFailure(taskFailureReason(task), sensitive...)}
+	// All asynchronous adapters already persist the provider response in Data.
+	// Never expose a successful response or stale first-route diagnostics.
+	fallbackFailed := task.PrivateData.SeedanceFallback != nil && task.PrivateData.SeedanceFallback.Started && task.PrivateData.SeedanceFallback.Stage == "failed"
+	diagnostic := map[string]any{"message": taskFailureReason(task)}
+	if !fallbackFailed {
+		if response := common.FailureDiagnostics(task.Data); response != nil {
+			diagnostic["response"] = response
+		}
+	}
+	raw, _ := common.Marshal(diagnostic)
+	result.UpstreamError = common.NewPublicUpstreamError(0, raw, nil, sensitive...)
+	result.Message = common.SanitizeUpstreamErrorText(result.Message, result.UpstreamError.RedactionValues()...)
+	result.Code = common.PublicDiagnosticCode(result.Code, result.UpstreamError.RedactionValues()...)
+	return result
 }
 
 func SanitizeTaskFailure(reason string, sensitive ...string) string {
@@ -197,8 +211,9 @@ func taskFailureSensitiveValues(db *gorm.DB, task *Task) []string {
 	}
 	if task.ChannelId > 0 && db != nil && db.Migrator().HasTable(&Channel{}) {
 		var channel Channel
-		if err := db.Select("name", "key").Where("id = ?", task.ChannelId).First(&channel).Error; err == nil {
+		if err := db.Select("name", "key", "base_url", "type").Where("id = ?", task.ChannelId).First(&channel).Error; err == nil {
 			sensitive = append(sensitive, channel.Name, channel.Key)
+			sensitive = append(sensitive, common.UpstreamIdentityValues(channel.Name, channel.GetBaseURL(), task.Properties.UpstreamModelName, task.Properties.OriginModelName)...)
 			for _, part := range strings.FieldsFunc(channel.Name, func(r rune) bool { return r == '_' || r == '-' || unicode.IsSpace(r) }) {
 				if len(part) > 3 {
 					sensitive = append(sensitive, part)
@@ -332,4 +347,8 @@ func taskErrorMessage(value map[string]interface{}, depth int) string {
 		}
 	}
 	return ""
+}
+
+func TaskErrorRedactionValues(channelID int, key, publicModel string) []string {
+	return taskFailureSensitiveValues(DB, &Task{ChannelId: channelID, Properties: Properties{OriginModelName: publicModel, UpstreamModelName: publicModel}, PrivateData: TaskPrivateData{Key: key}})
 }

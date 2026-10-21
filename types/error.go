@@ -11,16 +11,18 @@ import (
 )
 
 type OpenAIError struct {
-	Message  string          `json:"message"`
-	Type     string          `json:"type"`
-	Param    string          `json:"param"`
-	Code     any             `json:"code"`
-	Metadata json.RawMessage `json:"metadata,omitempty"`
+	UpstreamError *common.PublicUpstreamError `json:"upstream_error,omitempty"`
+	Message       string                      `json:"message"`
+	Type          string                      `json:"type"`
+	Param         string                      `json:"param"`
+	Code          any                         `json:"code"`
+	Metadata      json.RawMessage             `json:"metadata,omitempty"`
 }
 
 type ClaudeError struct {
-	Type    string `json:"type,omitempty"`
-	Message string `json:"message,omitempty"`
+	UpstreamError *common.PublicUpstreamError `json:"upstream_error,omitempty"`
+	Type          string                      `json:"type,omitempty"`
+	Message       string                      `json:"message,omitempty"`
 }
 
 type ErrorType string
@@ -92,19 +94,21 @@ const (
 )
 
 type NewAPIError struct {
-	Err               error
-	RelayError        any
-	skipRetry         bool
-	recordErrorLog    *bool
-	errorType         ErrorType
-	errorCode         ErrorCode
-	StatusCode        int
-	Metadata          json.RawMessage
-	clientMessageKey  string
-	clientMessageArgs map[string]any
+	PublicRedactionValues []string `json:"-"`
+	Err                   error
+	RelayError            any
+	skipRetry             bool
+	recordErrorLog        *bool
+	errorType             ErrorType
+	errorCode             ErrorCode
+	StatusCode            int
+	Metadata              json.RawMessage
+	clientMessageKey      string
+	clientMessageArgs     map[string]any
 	// UpstreamResponseBody is retained for administrator diagnostics only.
 	// It must never be used as the client-facing error message.
 	UpstreamResponseBody string
+	UpstreamError        *common.PublicUpstreamError
 	// UpstreamFalseSuccess records an HTTP 2xx response that looked successful at
 	// the transport layer but was rejected before any usable output reached the
 	// client. It is persisted in the error log for fallback analysis.
@@ -238,7 +242,7 @@ func (e *NewAPIError) SetMessage(message string) {
 	e.Err = errors.New(message)
 }
 
-func (e *NewAPIError) ToOpenAIError() OpenAIError {
+func (e *NewAPIError) ToRawOpenAIError() OpenAIError {
 	var result OpenAIError
 	switch e.errorType {
 	case ErrorTypeOpenAIError:
@@ -271,7 +275,12 @@ func (e *NewAPIError) ToOpenAIError() OpenAIError {
 	if len(e.Metadata) > 0 {
 		result.Metadata = e.Metadata
 	}
+	result.UpstreamError = e.UpstreamError
 	return result
+}
+
+func (e *NewAPIError) ToOpenAIError() OpenAIError {
+	return e.sanitizePublicOpenAIError(e.ToRawOpenAIError())
 }
 
 func (e *NewAPIError) ToClaudeError() ClaudeError {
@@ -300,7 +309,8 @@ func (e *NewAPIError) ToClaudeError() ClaudeError {
 	if result.Message == "" {
 		result.Message = string(e.errorType)
 	}
-	return result
+	result.UpstreamError = e.UpstreamError
+	return e.sanitizePublicClaudeError(result)
 }
 
 type NewAPIErrorOptions func(*NewAPIError)
@@ -534,4 +544,61 @@ func IsRecordErrorLog(e *NewAPIError) bool {
 		return true
 	}
 	return *e.recordErrorLog
+}
+
+func (e *NewAPIError) sanitizePublicOpenAIError(result OpenAIError) OpenAIError {
+	originalCode := result.Code
+	values := append(append([]string(nil), e.PublicRedactionValues...), e.UpstreamError.RedactionValues()...)
+	raw, err := common.Marshal(result)
+	if err != nil {
+		return OpenAIError{Code: "upstream_error", Type: "upstream_error", Message: "Request failed"}
+	}
+	safe := common.NewPublicUpstreamError(0, raw, nil, values...)
+	result = OpenAIError{} // Never retain unredacted fields omitted by the byte budget.
+	raw, err = common.Marshal(safe.Body)
+	if err != nil || common.Unmarshal(raw, &result) != nil {
+		return OpenAIError{Code: "upstream_error", Type: "upstream_error", Message: "Request failed", UpstreamError: safe}
+	}
+	if safe.Truncated {
+		if result.UpstreamError == nil {
+			result.UpstreamError = &common.PublicUpstreamError{Body: "Diagnostic response exceeded the public limit"}
+		}
+		result.UpstreamError.Truncated = true
+	}
+	if result.Message == "" {
+		result.Message = "Request failed"
+	}
+	if result.Type == "" {
+		result.Type = "upstream_error"
+	}
+	if fmt.Sprint(result.Code) == fmt.Sprint(originalCode) {
+		result.Code = originalCode
+	}
+	return result
+}
+func (e *NewAPIError) sanitizePublicClaudeError(result ClaudeError) ClaudeError {
+	values := append(append([]string(nil), e.PublicRedactionValues...), e.UpstreamError.RedactionValues()...)
+	raw, err := common.Marshal(result)
+	if err != nil {
+		return ClaudeError{Type: "upstream_error", Message: "Request failed"}
+	}
+	safe := common.NewPublicUpstreamError(0, raw, nil, values...)
+	result = ClaudeError{} // Do not unmarshal into the original public-field values.
+	raw, err = common.Marshal(safe.Body)
+	if err != nil || common.Unmarshal(raw, &result) != nil {
+		return ClaudeError{Type: "upstream_error", Message: "Request failed", UpstreamError: safe}
+	}
+	if safe.Truncated {
+		if result.UpstreamError == nil {
+			result.UpstreamError = &common.PublicUpstreamError{Body: "Diagnostic response exceeded the public limit"}
+		}
+		result.UpstreamError.Truncated = true
+	}
+	if result.Message == "" {
+		result.Message = "Request failed"
+	}
+	if result.Type == "" {
+		result.Type = "upstream_error"
+	}
+	return result
 }

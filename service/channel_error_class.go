@@ -333,7 +333,7 @@ func isRateLimitCooldown(err *types.NewAPIError) bool {
 			strings.EqualFold(code, "rate_limit_exceeded") ||
 			strings.EqualFold(code, "luna_rpm_exceeded")
 	}
-	if isRateLimit(err.ToOpenAIError().Type, string(err.GetErrorCode())) {
+	if isRateLimit(err.ToRawOpenAIError().Type, string(err.GetErrorCode())) {
 		return true
 	}
 	var body struct {

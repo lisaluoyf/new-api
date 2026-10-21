@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"github.com/QuantumNous/new-api/common"
 	"strconv"
 	"strings"
 )
@@ -48,6 +49,7 @@ func NewOpenAIVideo() *OpenAIVideo {
 }
 
 type OpenAIVideoError struct {
-	Message string `json:"message"`
-	Code    string `json:"code"`
+	UpstreamError *common.PublicUpstreamError `json:"upstream_error,omitempty"`
+	Message       string                      `json:"message"`
+	Code          string                      `json:"code"`
 }

@@ -52,12 +52,18 @@ func RecordVideoSubmissionFailure(c *gin.Context, taskErr *dto.TaskError) {
 	if record == nil || taskErr == nil {
 		return
 	}
-	code := taskErr.Code
+	public := PublicTaskErrorView(c, taskErr)
+	code := public.Code
 	if !videoErrorIdentifier.MatchString(code) {
 		code = "video_service_error"
 	}
-	message := model.SanitizeTaskFailure(taskErr.Message, common.GetContextKeyString(c, constant.ContextKeyChannelKey))
-	if err := model.RecordVideoSubmissionError(record.ID, record.OwnerToken, taskErr.StatusCode, code, message, c.GetString("video_submit_error_reference")); err != nil {
+	message := model.SanitizeTaskFailure(public.Message, common.GetContextKeyString(c, constant.ContextKeyChannelKey))
+	diagnostic := ""
+	if public.UpstreamError != nil {
+		raw, _ := common.Marshal(public.UpstreamError)
+		diagnostic = string(raw)
+	}
+	if err := model.RecordVideoSubmissionError(record.ID, record.OwnerToken, taskErr.StatusCode, code, message, c.GetString("video_submit_error_reference"), diagnostic); err != nil {
 		common.SysError("video submission failure evidence could not be saved")
 	} else {
 		c.Set("video_submission_error_saved", true)
@@ -114,5 +120,11 @@ func VideoSubmissionPublicError(record *model.VideoSubmission) map[string]any {
 	if record.ErrorCode == "" || record.Status == model.VideoSubmissionAccepted {
 		return nil
 	}
-	return map[string]any{"code": record.ErrorCode, "message": model.SanitizeTaskFailure(record.ErrorMessage), "status_code": record.ErrorStatus}
+	values := model.TaskErrorRedactionValues(record.ChannelID, "", record.Model)
+	result := map[string]any{"code": common.PublicDiagnosticCode(record.ErrorCode, values...), "message": common.SanitizeUpstreamErrorText(model.SanitizeTaskFailure(record.ErrorMessage), values...), "status_code": record.ErrorStatus}
+	var detail common.PublicUpstreamError
+	if record.ErrorDetails != "" && common.UnmarshalJsonStr(record.ErrorDetails, &detail) == nil {
+		result["upstream_error"] = common.RedactPublicUpstreamError(&detail, values...)
+	}
+	return result
 }

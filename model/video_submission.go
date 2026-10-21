@@ -27,6 +27,7 @@ type VideoSubmission struct {
 	ErrorStatus            int    `json:"-"`
 	ErrorCode              string `json:"-" gorm:"size:128"`
 	ErrorMessage           string `json:"-" gorm:"size:1024"`
+	ErrorDetails           string `json:"-" gorm:"type:text"`
 	ErrorReference         string `json:"-" gorm:"size:128"`
 	ErrorRecordedAt        int64  `json:"-"`
 

@@ -316,7 +316,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 		_ = resp.Body.Close()
 		c.Set("seedance_confirmed_not_accepted", service.SeedanceExplicitSubmissionRejection(resp.StatusCode, responseBody))
-		return nil, service.PublicVideoSubmitError(resp.StatusCode, responseBody, common.GetContextKeyString(c, constant.ContextKeyChannelKey), info.ChannelId)
+		taskError := service.PublicVideoSubmitError(resp.StatusCode, responseBody, common.GetContextKeyString(c, constant.ContextKeyChannelKey), info.ChannelId)
+		taskError.UpstreamError = common.PublicUpstreamErrorFromResponse(resp, responseBody, common.GetContextKeyString(c, constant.ContextKeyChannelKey))
+		return nil, taskError
 	}
 
 	// 10. 返回 OtherRatios 给下游（header 必须在 DoResponse 写 body 之前设置）
@@ -328,7 +330,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	c.Header("X-New-Api-Other-Ratios", string(ratiosJSON))
 
 	// 11. 解析响应
+	service.ObserveTaskSubmissionResponse(c, resp, info.ApiKey)
 	upstreamTaskID, taskData, taskErr := adaptor.DoResponse(c, resp, info)
+	if taskErr != nil && taskErr.UpstreamError == nil {
+		taskErr.UpstreamError = service.CapturedUpstreamError(c)
+	}
 	if taskErr != nil {
 		return nil, taskErr
 	}

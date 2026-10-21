@@ -19,7 +19,11 @@ func seedanceLibraryError(c *gin.Context, err error) {
 		status, message = apiError.Status, apiError.Message
 		code = apiError.Code
 	}
-	c.JSON(status, gin.H{"error": gin.H{"message": message, "type": "media_library_error", "code": code, "trace_id": c.GetString(common.RequestIdKey)}})
+	body := gin.H{"message": message, "type": "media_library_error", "code": code, "trace_id": c.GetString(common.RequestIdKey)}
+	if apiError != nil && apiError.UpstreamError != nil {
+		body["upstream_error"] = apiError.UpstreamError
+	}
+	c.JSON(status, gin.H{"error": body})
 }
 
 func SubmitSeedanceAssets(c *gin.Context) {

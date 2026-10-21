@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -163,7 +164,9 @@ func TestEnrichUserTaskLogFailuresShowsHistoricalNestedReview(t *testing.T) {
 	for _, log := range logs[:2] {
 		other, _ := common.StrToMap(log.Other)
 		require.Equal(t, reason, other["task_fail_reason"])
-		require.Equal(t, "Task failed: "+reason, log.Content)
+		require.True(t, strings.HasPrefix(log.Content, "Task failed: "+reason))
+		require.Contains(t, log.Content, "upstream_error")
+		require.Contains(t, log.Other, "InputImageSensitiveContentDetected.PolicyViolation")
 	}
 	require.NotContains(t, logs[2].Other, "copyright")
 	other, _ := common.StrToMap(logs[0].Other)
