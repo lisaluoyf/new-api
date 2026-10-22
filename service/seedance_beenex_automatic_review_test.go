@@ -175,3 +175,30 @@ func TestBeeNexAutomaticReviewCancelledBeforeMaterials(t *testing.T) {
 	require.Error(t, err)
 	require.Zero(t, calls)
 }
+
+func TestBeeNexWrappedPrivacyRejection(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		unwrap     bool
+	}{
+		{"observed", `{"code":"fail_to_fetch_task","data":null,"message":"{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\"}}"}`, true},
+		{"copyright", `{"code":"fail_to_fetch_task","data":null,"message":"{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PolicyViolation\"}}"}`, false},
+		{"generic", `{"code":"fail_to_fetch_task","data":null,"message":"input image may contain real person"}`, false},
+		{"accepted_data", `{"code":"fail_to_fetch_task","data":{"id":"created"},"message":"{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\"}}"}`, false},
+		{"accepted_nested", `{"code":"fail_to_fetch_task","data":null,"message":"{\"id\":\"created\",\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\"}}"}`, false},
+		{"different_wrapper", `{"code":"unknown","data":null,"message":"{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\"}}"}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := NormalizeBeeNexAutomaticReviewResponse(&http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader(tc.body))})
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			raw, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			if tc.unwrap {
+				require.JSONEq(t, `{"error":{"code":"InputImageSensitiveContentDetected.PrivacyInformation"}}`, string(raw))
+			} else {
+				require.Equal(t, tc.body, string(raw))
+			}
+		})
+	}
+}

@@ -56,7 +56,7 @@ func TestBeeNexAutomaticReviewThroughAdaptor(t *testing.T) {
 						require.Equal(t, "Bearer video-key", r.Header.Get("Authorization"))
 						if sends == 1 {
 							status = 400
-							body = `{"error":{"code":"InputImageSensitiveContentDetected.PrivacyInformation"}}`
+							body = `{"code":"fail_to_fetch_task","data":null,"message":"{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\",\"message\":\"input image may contain real person\"}}"}`
 						} else {
 							require.Equal(t, 2, sends)
 							meta := fields["metadata"].(map[string]any)
