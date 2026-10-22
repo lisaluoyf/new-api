@@ -159,6 +159,7 @@ func main() {
 	service.StartVideoVerificationWorker()
 
 	// Platform billing hourly summary (平台账单)
+	service.StartCallCostAlertTask()
 	service.StartBillingSummaryTask()
 	service.StartDailyStatsTask()
 	controller.StartCryptoDepositReconcileTask()
