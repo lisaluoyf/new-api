@@ -27,6 +27,9 @@ func TestContentSafetyStopsAllRetryPlans(t *testing.T) {
 		{"english", "upstream_text_reply", "", "Your request was rejected by the safety system.", 502},
 		{"openai safety", "unknown", "", "Your request was rejected as a result of our safety system.", 400},
 		{"azure", "ResponsibleAIPolicyViolation", "", "Rejected", 400},
+		{"observed cyber policy", "cyber_policy", "invalid_request_error", "The request was rejected by a content policy.", 502},
+		{"observed cyber risk", "unknown_error", "invalid_request_error", "This content was flagged for possible cybersecurity risk.", 502},
+		{"observed network policy", "unknown_error", "invalid_request_error", "因为不符合网络安全策略，故本次请求拒绝", 403},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())

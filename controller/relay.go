@@ -1488,6 +1488,9 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 			other["request_path"] = c.Request.URL.Path
 		}
 		other["error_type"] = err.GetErrorType()
+		if service.IsOpaqueUpstreamRejection(err) {
+			other["error_category"] = "upstream_failure"
+		}
 		other["error_code"] = err.GetErrorCode()
 		other["status_code"] = err.StatusCode
 		other["channel_id"] = channelId

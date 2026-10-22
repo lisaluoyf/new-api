@@ -15,22 +15,25 @@ import (
 
 func TestModelNotFoundDisableProbeProtectsChannelModels(t *testing.T) {
 	for _, tc := range []struct {
-		name          string
-		model         string
-		probeOK       bool
-		wantProbes    int
-		wantDisable   bool
-		requestFailed bool
-		plainNotFound bool
+		name            string
+		model           string
+		probeOK         bool
+		wantProbes      int
+		wantDisable     bool
+		requestFailed   bool
+		plainNotFound   bool
+		opaqueRejection bool
 	}{
-		{"probe passes", "gpt-6-astra", true, 1, false, false, false},
-		{"probe confirms failure", "gpt-6-astra", false, 1, true, false, false},
-		{"user misspells model", "gpt-6-atsra", false, 0, false, false, false},
-		{"empty model", "", false, 0, false, false, false},
-		{"model request failure probe passes", "gpt-6-astra", true, 1, false, true, false},
-		{"model request failure probe confirms failure", "gpt-6-astra", false, 1, true, true, false},
-		{"plain model not found probe passes", "gpt-6-astra", true, 1, false, false, true},
-		{"plain model not found probe confirms failure", "gpt-6-astra", false, 1, true, false, true},
+		{"probe passes", "gpt-6-astra", true, 1, false, false, false, false},
+		{"probe confirms failure", "gpt-6-astra", false, 1, true, false, false, false},
+		{"user misspells model", "gpt-6-atsra", false, 0, false, false, false, false},
+		{"empty model", "", false, 0, false, false, false, false},
+		{"model request failure probe passes", "gpt-6-astra", true, 1, false, true, false, false},
+		{"model request failure probe confirms failure", "gpt-6-astra", false, 1, true, true, false, false},
+		{"plain model not found probe passes", "gpt-6-astra", true, 1, false, false, true, false},
+		{"plain model not found probe confirms failure", "gpt-6-astra", false, 1, true, false, true, false},
+		{"opaque rejection probe passes", "gpt-6-astra", true, 1, false, false, false, true},
+		{"opaque rejection probe confirms failure", "gpt-6-astra", false, 1, true, false, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := setupModelDataToggleTestDB(t)
@@ -73,6 +76,9 @@ func TestModelNotFoundDisableProbeProtectsChannelModels(t *testing.T) {
 			}
 			if tc.plainNotFound {
 				err = types.NewOpenAIError(errors.New("model not found"), types.ErrorCodeBadResponseStatusCode, http.StatusNotFound)
+			}
+			if tc.opaqueRejection {
+				err = types.WithOpenAIError(types.OpenAIError{Message: "请求被拒绝", Type: "invalid_request_error"}, http.StatusBadRequest)
 			}
 			probeBeforeDisablingChannel(types.ChannelError{ChannelId: channel.Id, ChannelName: channel.Name, AutoBan: true}, err, err.ErrorWithStatusCode(), tc.model)
 			require.Equal(t, tc.wantProbes, probeCount)

@@ -92,6 +92,12 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 		return CategorySkip
 	}
 
+	// A provider policy refusal remains request-specific even when a relay
+	// wraps it in HTTP 502. It is neither a retry candidate nor a health fault.
+	if types.IsContentSafetyRejection(string(code), err.ToRawOpenAIError().Type, err.Error()) {
+		return CategorySkip
+	}
+
 	msg := strings.ToLower(err.Error())
 	if isPlatformUserQuotaError(err) {
 		return CategorySkip
@@ -137,6 +143,10 @@ func ClassifyChannelError(err *types.NewAPIError) ChannelErrorCategory {
 
 	if isUpstreamRechargeError(err) {
 		return CategoryUpstreamRecharge
+	}
+
+	if IsOpaqueUpstreamRejection(err) {
+		return CategoryDisableWindow
 	}
 
 	if operation_setting.ShouldDisableByStatusCode(err.StatusCode) {
@@ -399,4 +409,23 @@ func IsHighConfidenceRecharge(err *types.NewAPIError) bool {
 		return true
 	}
 	return isHighConfidenceUpstreamRechargeMessage(strings.ToLower(err.Error()))
+}
+
+// IsOpaqueUpstreamRejection recognizes the observed relay refusal with no
+// actionable validation/policy diagnosis. Count it in the existing window,
+// then independently probe; one refusal must never disable a channel/model.
+func IsOpaqueUpstreamRejection(err *types.NewAPIError) bool {
+	if err == nil || err.StatusCode != 400 || err.GetErrorType() != types.ErrorTypeOpenAIError || types.IsSkipRetryError(err) {
+		return false
+	}
+	if code := strings.TrimSpace(string(err.GetErrorCode())); code != "" && code != "unknown_error" {
+		return false
+	}
+	raw := err.ToRawOpenAIError()
+	if raw.Type != "invalid_request_error" || strings.TrimSpace(raw.Param) != "" || len(raw.Metadata) != 0 {
+		return false
+	}
+	message := strings.TrimSpace(err.Error())
+	message = strings.TrimRight(message, ".。")
+	return message == "请求被拒绝"
 }

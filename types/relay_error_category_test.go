@@ -14,6 +14,8 @@ func TestRelayErrorCategories(t *testing.T) {
 		{"unsupported_reasoning_effort", "none", 400, "request_parameter"},
 		{"gpt_subscription_rolling_limit", "GPT Pass", 403, "quota_limit"},
 		{"unknown_error", "内容审计命中风险规则", 403, "content_policy"},
+		{"cyber_policy", "The request was rejected by a content policy.", 502, "content_policy"},
+		{"unknown_error", "因为不符合网络安全策略，故本次请求拒绝", 403, "content_policy"},
 		{"client_canceled", "context canceled", 499, "client_disconnect"},
 		{"unknown_error", "timeout", 524, "upstream_failure"},
 		{"insufficient_quota", "upstream quota exceeded", 429, "upstream_rate_limit"},
