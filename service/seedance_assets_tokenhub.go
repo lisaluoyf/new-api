@@ -36,11 +36,11 @@ func SupportsRetainedSeedanceAutomaticReview(channelID int) bool {
 	if channelID == 292 {
 		return true
 	}
-	if channelID != 297 && channelID != 298 {
+	if channelID != 274 && channelID != 297 && channelID != 298 {
 		return false
 	}
 	ch, err := model.GetChannelById(channelID, true)
-	return err == nil && ((channelID == 297 && isTokenHubSeedanceChannel(ch)) || isCtaiSeedanceChannel(ch))
+	return err == nil && ((channelID == 274 && (isBeeNexSeedanceChannel(ch))) || (channelID == 297 && isTokenHubSeedanceChannel(ch)) || isCtaiSeedanceChannel(ch))
 }
 func loadTokenHubAssetCredentials(channelID int) (tokenHubAssetCredentials, error) {
 	var c tokenHubAssetCredentials

@@ -48,7 +48,7 @@ func DoXingchiAutomaticReview(c *gin.Context, channelID int, name, key, taskID s
 			Code string `json:"code"`
 		} `json:"error"`
 	}
-	if common.Unmarshal(rejected, &envelope) != nil || envelope.ID != "" || envelope.TaskID != "" || envelope.UpstreamTaskID != "" || !retainedSeedancePrivacyRejection(channelID, envelope.Error.Code) || c.GetBool("xingchi_automatic_review_attempted") {
+	if common.Unmarshal(rejected, &envelope) != nil || envelope.ID != "" || envelope.TaskID != "" || envelope.UpstreamTaskID != "" || !retainedSeedancePrivacyRejection(channelID, envelope.Error.Code) || c.GetBool("xingchi_automatic_review_attempted") || (channelID == 274 && beeNexReviewHasTaskID(rejected)) {
 		return resp, nil
 	}
 	c.Set("xingchi_automatic_review_attempted", true)
@@ -97,6 +97,18 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 	if err := common.Unmarshal(raw, &fields); err != nil {
 		return nil, err
 	}
+	// BeeNex keeps reference content inside metadata. Preserve the original JSON
+	// representation, including large seeds and explicit false/zero values.
+	generationFields := fields
+	if channelID == 274 {
+		if !isBeeNexAutomaticReviewModel(name) {
+			return nil, seedanceError(400, "Unsupported BeeNex model", "invalid_asset_material")
+		}
+		generationFields = nil
+		if err := common.Unmarshal(fields["metadata"], &generationFields); err != nil || generationFields == nil {
+			return nil, seedanceError(400, "Invalid BeeNex metadata", "invalid_asset_material")
+		}
+	}
 	var moderation *SeedanceModeration
 	if isTokenHubSeedanceChannel(ch) {
 		// Automatic TokenHub ingestion defaults to Skip; explicit policies still
@@ -110,7 +122,7 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 		}
 	}
 	var content []map[string]json.RawMessage
-	if err := common.Unmarshal(fields["content"], &content); err != nil {
+	if err := common.Unmarshal(generationFields["content"], &content); err != nil {
 		return nil, err
 	}
 	type reference struct {
@@ -147,9 +159,18 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 90*time.Second)
 	defer cancel()
+	var beeNexContext model.SeedanceResource
+	if channelID == 274 {
+		if err := bindBeeNexAutomaticReviewContext(&beeNexContext); err != nil {
+			return nil, err
+		}
+	}
 	scope := strconv.Itoa(c.GetInt("id")) + ":" + name + ":" + SeedanceKeyFingerprint(key) + ":" + taskID
 	if channelID != 292 {
 		scope = strconv.Itoa(channelID) + ":" + scope
+	}
+	if channelID == 274 {
+		scope += ":" + beeNexContext.CredentialFingerprint
 	}
 	metadata, err := common.Marshal(map[string]any{"video_task_id": taskID, "automatic_review": true})
 	if err != nil {
@@ -160,6 +181,9 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 	}
 	group := resource("group", ":group")
 	group.Name = group.ID
+	if channelID == 274 {
+		group.ProjectName, group.CredentialFingerprint = beeNexContext.ProjectName, beeNexContext.CredentialFingerprint
+	}
 	if isTokenHubSeedanceChannel(ch) {
 		if err := bindTokenHubAssetContext(group); err != nil {
 			return nil, err
@@ -172,6 +196,7 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 		asset := resource("asset", fmt.Sprintf(":image:%d:%s", i, image.source))
 		asset.GroupID = group.ID
 		asset.CredentialFingerprint = group.CredentialFingerprint
+		asset.ProjectName = group.ProjectName
 		asset.SourceURL = image.source
 		asset.AssetType = "Image"
 		if image.kind == "video_url" {
@@ -218,6 +243,9 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 						sensitive = append(sensitive, creds.AccessKeyID, creds.SecretAccessKey)
 					}
 				}
+				if channelID == 274 {
+					sensitive = append(sensitive, beeNexAutomaticReviewSecrets()...)
+				}
 				asset.FailReason = xingchiAutomaticReviewFailure(message, sensitive...)
 				if asset.FailReason == "" || asset.FailReason == "Task failed" {
 					asset.FailReason = "Reference image did not pass material review"
@@ -254,9 +282,15 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 	}
 	// Every explicit false/zero, media role, text, video/audio reference and all
 	// other generation fields survive unchanged. Only image URL values change.
-	fields["content"], err = common.Marshal(content)
+	generationFields["content"], err = common.Marshal(content)
 	if err != nil {
 		return nil, err
+	}
+	if channelID == 274 {
+		fields["metadata"], err = common.Marshal(generationFields)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return common.Marshal(fields)
 }

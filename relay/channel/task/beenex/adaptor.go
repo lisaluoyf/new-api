@@ -250,7 +250,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	return bytes.NewReader(data), nil
 }
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, body io.Reader) (*http.Response, error) {
-	return channel.DoTaskApiRequest(a, c, info, body)
+	return service.DoXingchiAutomaticReview(c, info.ChannelId, info.OriginModelName, a.apiKey, info.PublicTaskID, body, func(reviewed io.Reader) (*http.Response, error) {
+		return channel.DoTaskApiRequest(a, c, info, reviewed)
+	})
 }
 func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (string, []byte, *dto.TaskError) {
 	defer resp.Body.Close()
