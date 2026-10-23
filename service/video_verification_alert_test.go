@@ -92,8 +92,8 @@ func TestVideoVerificationIncompleteEvidenceIsPreservedInAlert(t *testing.T) {
 	require.NoError(t, finishVideoVerification(context.Background(), state, task, status, reason, checks, now.Unix()))
 	var alert model.VideoVerificationAlert
 	require.NoError(t, db.First(&alert).Error)
-	require.Equal(t, "skipped", alert.Status)
-	require.Zero(t, alert.NextAt)
+	require.Equal(t, "pending", alert.Status)
+	require.Equal(t, evidenceFirst, alert.Reason)
 	var persisted []model.VideoFingerprintCheck
 	require.NoError(t, common.Unmarshal([]byte(alert.VideoChecksJSON), &persisted))
 	require.Equal(t, result.Checks, persisted)

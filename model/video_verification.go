@@ -107,11 +107,11 @@ type VideoVerificationAlert struct {
 	BaselineSHA256          string `gorm:"type:text"`
 	ID                      int64  `gorm:"primaryKey"`
 	TaskID                  int64  `gorm:"uniqueIndex"`
-	ChannelID               int
-	Model                   string `gorm:"type:varchar(64)"`
+	ChannelID               int    `gorm:"index:idx_video_alert_route_time,priority:1"`
+	Model                   string `gorm:"type:varchar(64);index:idx_video_alert_route_time,priority:2"`
 	Reason                  string `gorm:"type:varchar(64)"`
 	VideoChecksJSON         string `gorm:"type:text"`
-	DetectedAt              int64
+	DetectedAt              int64  `gorm:"index:idx_video_alert_route_time,priority:3"`
 	Attempts                int
 	NextAt                  int64 `gorm:"index"`
 	LeaseUntil              int64

@@ -194,7 +194,9 @@ func finishVideoVerification(ctx context.Context, state *model.VideoVerification
 			// Temporarily mute matching encoding families with incomplete evidence.
 			// Retain the result and evidence for audit and baseline collection.
 			if reason == "incomplete_evidence" {
-				alert.Status, alert.NextAt = "skipped", 0
+				if err := prepareIncompleteEvidenceAlert(tx, &alert); err != nil {
+					return err
+				}
 			}
 			return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&alert).Error
 		}
@@ -215,12 +217,15 @@ func deliverDueVideoVerificationAlerts() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	now := time.Now().Unix()
+	if err := enqueueEvidenceDailyDigest(model.DB.WithContext(ctx), time.Now()); err != nil {
+		common.SysError("video evidence digest enqueue failed; retrying next cycle")
+	}
 	var alerts []model.VideoVerificationAlert
 	if err := model.DB.WithContext(ctx).Where("status = ? AND next_at <= ? AND lease_until <= ?", "pending", now, now).Order("id ASC").Limit(10).Find(&alerts).Error; err != nil {
 		return err
 	}
 	for _, alert := range alerts {
-		if model.NormalizeAutomaticVerifiedVideoModel(alert.Model) == "" || alert.Reason == "incomplete_evidence" {
+		if !isEvidenceDigest(&alert) && (model.NormalizeAutomaticVerifiedVideoModel(alert.Model) == "" || alert.Reason == "incomplete_evidence") {
 			if err := model.DB.WithContext(ctx).Model(&alert).Where("status = ? AND lease_until <= ?", "pending", now).
 				Updates(map[string]any{"status": "skipped", "next_at": 0, "lease_until": 0}).Error; err != nil {
 				return err
@@ -258,6 +263,9 @@ func deliverDueVideoVerificationAlerts() error {
 var sendVideoVerificationAlert = func(alert *model.VideoVerificationAlert) error {
 	if common.FeishuAppID() == "" || common.FeishuAppSecret() == "" {
 		return errors.New("Feishu credentials unavailable")
+	}
+	if isEvidenceDigest(alert) {
+		return common.SendFeishuInteractiveCard(videoVerificationChat, evidenceDailyDigestCard(alert))
 	}
 	channelName := fmt.Sprintf("#%d", alert.ChannelID)
 	if channel, err := model.GetChannelById(alert.ChannelID, false); err == nil {
@@ -324,6 +332,12 @@ func videoVerificationAlertCard(alert *model.VideoVerificationAlert, channelName
 	case "known_fingerprint_failed":
 		title, color = "Seedance · 指纹不匹配", "red"
 		reason = "已知指纹的关键检测项未通过。"
+	case evidenceFirst:
+		title = "Seedance · 首次证据缺口"
+		reason = "该渠道、模型首次出现编码族相符但证据不完整。请核查代表视频；尚未确认模型真实。后续普通同类记录进入日报。"
+	case evidenceSurge:
+		title = "Seedance · 证据缺口增多"
+		reason = "该渠道、模型近一小时证据不完整达到至少 10 个，且不少于前一小时的两倍；同一路由提醒间隔至少 6 小时。请核查代表视频。"
 	case "incomplete_evidence":
 		reason = "交付编码族相符，但尺寸、时序或基线覆盖证据尚不完整；此状态不表示模型不匹配。缺口已纳入管理页，可去重后按代表任务补采。"
 	case "channel_unavailable":
