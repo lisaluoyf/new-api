@@ -478,7 +478,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	return common.Marshal(out)
 }
 func (a *TaskAdaptor) GetModelList() []string { return []string{Model} }
-func (a *TaskAdaptor) GetChannelName() string { return "APIMart Gemini Omni 3.1" }
+func (a *TaskAdaptor) GetChannelName() string { return "APIMart Gemini Omni 1.1" }
 
 func probeSeconds(ctx context.Context, raw string) (int, error) {
 	n, e := service.ProbeRemoteVideoDurationSecondsRound(ctx, raw)
