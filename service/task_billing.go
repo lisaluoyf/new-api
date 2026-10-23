@@ -244,7 +244,7 @@ func taskActualChannelCostUSD(task *model.Task) float64 {
 	if task == nil || len(task.Data) == 0 {
 		return 0
 	}
-	if task.Platform == constant.TaskPlatformApimartVideo {
+	if task.Platform == constant.TaskPlatformApimartVideo || task.Platform == "apimart-omni" {
 		if cost := apimartTaskDataNumber(task.Data, "cost"); cost > 0 {
 			return cost
 		}

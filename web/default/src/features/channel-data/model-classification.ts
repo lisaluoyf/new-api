@@ -95,6 +95,7 @@ export function modelMatchesCategory(
 }
 
 const NON_LLM_MODEL_IDS = new Set([
+  'gemini-omni-1.1-flash',
   'veo-3.1-generate-preview',
   'veo-3.1-fast-generate-preview',
   'veo-3.1-lite-generate-preview',
@@ -126,6 +127,7 @@ const NON_LLM_MODEL_IDS = new Set([
 ])
 
 const VIDEO_MODEL_IDS = new Set([
+  'gemini-omni-1.1-flash',
   'veo-3.1-generate-preview',
   'veo-3.1-fast-generate-preview',
   'veo-3.1-lite-generate-preview',

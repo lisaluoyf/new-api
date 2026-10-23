@@ -9,6 +9,17 @@ import (
 // applyVeo31Pricing exposes the same per-second resolution/audio ratios used by
 // task billing, scaled to this site's configured retail base price.
 func applyVeo31Pricing(pricing *Pricing, name string, base float64) bool {
+	if name == "gemini-omni-1.1-flash" {
+		if base <= 0 {
+			base = .10136
+		}
+		pricing.ModelPrice = base
+		pricing.ResolutionPrices = map[string]float64{"720P": base}
+		pricing.QuotaType, pricing.BillingUnit = 1, "second"
+		pricing.SupportedEndpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
+		return true
+	}
+
 	if name != "veo-3.1-generate-preview" && name != "veo-3.1-fast-generate-preview" && name != "veo-3.1-lite-generate-preview" {
 		return false
 	}

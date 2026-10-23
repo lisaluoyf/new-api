@@ -55,6 +55,7 @@ export function isLogMediaImageModel(modelName: string): boolean {
 export function isLogMediaVideoModel(modelName: string): boolean {
   const model = modelName.trim().toLowerCase()
   return (
+    model === 'gemini-omni-1.1-flash' ||
     model === 'veo-3.1-generate-preview' ||
     model === 'veo-3.1-fast-generate-preview' ||
     model === 'veo-3.1-lite-generate-preview' ||

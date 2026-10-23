@@ -164,6 +164,7 @@ describe('isLogMediaVideoModel', () => {
 
 test('Veo logs use authenticated video previews and hide failed outputs', () => {
   for (const model of [
+    'gemini-omni-1.1-flash',
     'veo-3.1-generate-preview',
     'veo-3.1-fast-generate-preview',
     'veo-3.1-lite-generate-preview',

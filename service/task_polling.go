@@ -590,6 +590,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 	if terminalLogged {
 		BackfillTaskLogOnComplete(ctx, task, taskResult)
+		if err := SyncOmniTaskAccounting(task, taskResult); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("Omni accounting %s: %v", task.TaskID, err))
+		}
 	}
 
 	return nil
@@ -604,7 +607,7 @@ func preserveTaskUpstreamCost(
 	status string,
 	previousData, currentData []byte,
 ) []byte {
-	if platform != constant.TaskPlatformApimartVideo || status == string(model.TaskStatusFailure) {
+	if (platform != constant.TaskPlatformApimartVideo && platform != "apimart-omni") || status == string(model.TaskStatusFailure) {
 		return currentData
 	}
 	result := currentData
