@@ -43,9 +43,19 @@ func TestKlingV4PayloadPricingAndPublicResult(t *testing.T) {
 func TestKlingV4UnconfiguredPriceFailsClosed(t *testing.T) {
 	old := common.OptionMap
 	t.Cleanup(func() { common.OptionMap = old })
-	common.OptionMap = map[string]string{}
+	common.OptionMap = map[string]string{"VideoModelPricing": `{"kling-v4":{"prices":{}}}`}
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest("POST", "/v1/videos/generations", strings.NewReader(`{"model":"kling-v4","prompt":"test"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	require.NotNil(t, (&TaskAdaptor{}).ValidateRequestAndSetAction(c, &relaycommon.RelayInfo{}))
+}
+
+func TestKlingV4OfficialBalanceBaseline(t *testing.T) {
+	old := common.OptionMap
+	t.Cleanup(func() { common.OptionMap = old })
+	common.OptionMap = map[string]string{}
+	for variant, want := range map[string]float64{"720p": .157, "1080p": .235, "720p-input": .094, "1080p-input": .141} {
+		require.Equal(t, want, Price(variant))
+	}
+	require.Zero(t, Price("4k"))
 }

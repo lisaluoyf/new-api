@@ -1,21 +1,19 @@
 # Kling V4 integration preflight — 2026-10-23
 
-Status: implementation prepared in isolated feature worktrees; not released or enabled.
+Status: official V4 Balance preview tariff verified; proceeding with configuration and publication.
 
-## Price source requiring confirmation
+## Verified official price source — correction
 
-The requested Kling developer pricing page (`https://kling.ai/dev/pricing`) currently lists Kling 3.0 Turbo, Kling 3.0 and Kling 3.0 Omni in both its English and Chinese configuration. No Kling V4 entry was present in the fetched page.
+A real browser rendering of https://kling.ai/dev/pricing shows V4 in the dynamically loaded Coming Soon table. The initial HTML configuration alone omitted this table; the earlier conclusion was incomplete. The Balance toggle explicitly displays USD/second, and uses a different conversion from the legacy V3 unit package.
 
-APIMart's public Kling 4.0 model page labels these as its "Official" reference prices (USD/billable second):
-
-| Variant | Supplier-labelled reference price |
+| Variant | Official Balance preview USD / billable second |
 |---|---:|
-| 720P | 0.19625 |
-| 1080P | 0.29375 |
-| 720P-input | 0.1175 |
-| 1080P-input | 0.17625 |
+| 720P | 0.157 |
+| 1080P | 0.235 |
+| 720P-input | 0.094 |
+| 1080P-input | 0.141 |
 
-These are not independently verified Kling-published V4 prices. The user has been asked whether to adopt them or supply Kling's tariff. No production price option or channel has been changed. Configuration requires an explicit price file and provenance; unconfigured variants fail closed.
+Checked 2026-10-23. The official page labels these preview rates and direct API access Coming Soon. User instructed using this official tariff as the baseline. The prior supplier-labelled reference values are superseded. Real upstream Diamond procurement is 90% of these official Balance rates; 3-second 720p cost USD 0.4239 confirms USD 0.1413/second.
 
 ## Implementation
 

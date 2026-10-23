@@ -39,8 +39,8 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.baseURL, a.apiKey = strings.TrimRight(info.ChannelBaseUrl, "/"), info.ApiKey
 }
 
-// Prices are explicitly configured from the verified tariff; an unconfigured
-// variant is unavailable rather than silently billed at another model's price.
+// Price uses the official Balance preview tariff unless an explicit local
+// configuration overrides it. Malformed or incomplete overrides fail closed.
 func Price(variant string) float64 {
 	common.OptionMapRWMutex.RLock()
 	raw := common.OptionMap["VideoModelPricing"]
@@ -48,10 +48,14 @@ func Price(variant string) float64 {
 	var all map[string]struct {
 		Prices map[string]float64 `json:"prices"`
 	}
-	if common.UnmarshalJsonStr(raw, &all) != nil {
+	if strings.TrimSpace(raw) != "" && common.UnmarshalJsonStr(raw, &all) != nil {
 		return 0
 	}
-	for k, p := range all[klingv4.Model].Prices {
+	prices := klingv4.OfficialPreviewPrices()
+	if configured, ok := all[klingv4.Model]; ok {
+		prices = configured.Prices
+	}
+	for k, p := range prices {
 		if strings.EqualFold(k, variant) && p > 0 {
 			return p
 		}
