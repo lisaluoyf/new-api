@@ -29,6 +29,7 @@ import { resetModelRatios } from '../api'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { ClaudeCachePricingSettings } from './claude-cache-pricing-settings'
+import { GeminiOmniPricingSettings } from './gemini-omni-pricing-settings'
 import { GroupRatioForm } from './group-ratio-form'
 import { ImagePricingForm } from './image-pricing-form'
 import { ModelRatioForm } from './model-ratio-form'
@@ -214,6 +215,7 @@ type RatioTabId =
   | 'groups'
   | 'image'
   | 'video-media'
+  | 'gemini-omni'
   | 'tool-prices'
   | 'upstream-sync'
 
@@ -475,6 +477,7 @@ export function RatioSettingsCard({
     groups: 'Group ratios',
     image: 'Image',
     'video-media': 'Video / media pricing',
+    'gemini-omni': 'Gemini Omni 1.1 Flash',
     'tool-prices': 'Tool prices',
     'upstream-sync': 'Upstream price sync',
   }
@@ -531,8 +534,14 @@ export function RatioSettingsCard({
     if (tab === 'tool-prices') {
       return <ToolPriceSettings defaultValue={toolPricesDefault} />
     }
+    if (tab === 'gemini-omni') return <GeminiOmniPricingSettings />
     if (tab === 'video-media') {
-      return <VideoMediaPricingForm defaultValue={videoMediaPricingDefault} />
+      return (
+        <div className='space-y-6'>
+          <GeminiOmniPricingSettings />
+          <VideoMediaPricingForm defaultValue={videoMediaPricingDefault} />
+        </div>
+      )
     }
     if (tab === 'image') {
       return <ImagePricingForm defaultValue={imagePricingDefault} />

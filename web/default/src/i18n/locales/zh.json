@@ -5225,7 +5225,11 @@
     "Official price reference": "官方价格来源",
     "Wan video": "Wan 视频",
     "Wan video base prices in USD per second. Final prices follow the configured group ratios.": "Wan 视频基础价按美元／秒设置，最终价格按已配置的用户组倍率计算。",
-    "Price must be greater than zero": "价格必须大于零"
+    "Price must be greater than zero": "价格必须大于零",
+    "Model base price (USD / second)": "模型基础价格（美元/秒）",
+    "Save Gemini Omni prices": "保存 Gemini Omni 价格",
+    "Omni route prices are APIMart golden procurement prices in USD per second, not Google list prices. Ext duration tiers show the effective price per second; task price = rate × duration. Channel and account ratios determine retail prices. Final charges reconcile provider usage.": "以下为 APIMart 黄金采购价格（美元/秒），并非 Google 官方价。Ext 时长档展示等效秒价，单次价格＝秒价×时长。售价叠加渠道及账号系数，最终按上游实际用量结算。",
+    "Google verified 720p video output baseline: $0.10136/second. Other Google resolution list prices are not configured. This base is shared with ModelPrice and video pricing; it is not the channel sale price.": "已核验的 Google 720p 视频输出基准为 $0.10136/秒，其他分辨率的 Google 官方价未配置。此基础价同步到模型基础价格和视频定价，不等同于渠道售价。"
   },
   "Coding Plan Users": "Coding Plan 用户",
   "Coding Plan Balance": "Coding Plan 余额",

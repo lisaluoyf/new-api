@@ -4838,7 +4838,11 @@
     "Official price reference": "Official price reference",
     "Wan video": "Wan video",
     "Wan video base prices in USD per second. Final prices follow the configured group ratios.": "Wan video base prices in USD per second. Final prices follow the configured group ratios.",
-    "Price must be greater than zero": "Price must be greater than zero"
+    "Price must be greater than zero": "Price must be greater than zero",
+    "Model base price (USD / second)": "Model base price (USD / second)",
+    "Save Gemini Omni prices": "Save Gemini Omni prices",
+    "Omni route prices are APIMart golden procurement prices in USD per second, not Google list prices. Ext duration tiers show the effective price per second; task price = rate × duration. Channel and account ratios determine retail prices. Final charges reconcile provider usage.": "Omni route prices are APIMart golden procurement prices in USD per second, not Google list prices. Ext duration tiers show the effective price per second; task price = rate × duration. Channel and account ratios determine retail prices. Final charges reconcile provider usage.",
+    "Google verified 720p video output baseline: $0.10136/second. Other Google resolution list prices are not configured. This base is shared with ModelPrice and video pricing; it is not the channel sale price.": "Google verified 720p video output baseline: $0.10136/second. Other Google resolution list prices are not configured. This base is shared with ModelPrice and video pricing; it is not the channel sale price."
   },
   "在线使用": "Dùng trực tuyến",
   "推广有礼": "Giới thiệu",
