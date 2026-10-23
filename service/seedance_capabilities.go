@@ -73,6 +73,10 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 		}
 		if isBeeNexSeedanceChannel(ch) && IsBeeNexSeedanceModel(name) {
 			if credentials, err := loadBeeNexAssetCredentials(ch.Id); err == nil {
+				if credentials.OfficialH5Enabled {
+					entry["method"], entry["hosted_callback"] = "official_h5", false
+					entry["reason"] = "Official H5 session creation and server-side result polling are configured; complete owner verification before using real-person materials"
+				}
 				entry["project_scope"] = credentials.ProjectMode
 				entry["project_name_available"] = credentials.ProjectMode == "named"
 				if at := beeNexMaterialVerifiedAt(credentials, name); at > 0 {
@@ -87,7 +91,7 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 					"ordinary_or_virtual": true, "upstream_group_type": "AIGC",
 					"upload": true, "review": true, "preview": true, "crud": true,
 					"generation_reference_acceptance": generationReference,
-					"official_h5":                     false, "liveness": false,
+					"official_h5":                     credentials.OfficialH5Enabled, "liveness": credentials.OfficialH5Enabled,
 				}
 			}
 			entry["generation_capabilities"] = BeeNexSeedanceCapabilities()

@@ -258,6 +258,13 @@ func bytePlusLibraryRequest(ctx context.Context, resource *model.SeedanceResourc
 					return nil, err
 				}
 				if asset.UpstreamID == "" {
+					if asset.ChannelID == constant.BeeNexSeedanceChannelID && asset.Status != "Failed" {
+						if err := recoverBeeNexAsset(ctx, asset); err != nil {
+							return nil, err
+						}
+					}
+				}
+				if asset.UpstreamID == "" {
 					items = append(items, map[string]any{"status": "SubmissionUnknown", "raw_response": map[string]any{"Result": map[string]any{"Name": id}}})
 					continue
 				}

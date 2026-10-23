@@ -48,6 +48,7 @@ func RememberVideoSubmitErrorReference(c *gin.Context, body []byte) {
 }
 
 func RecordVideoSubmissionFailure(c *gin.Context, taskErr *dto.TaskError) {
+	SaveFailedTaskRequestSnapshot(c, taskErr)
 	record := VideoSubmissionFromContext(c)
 	if record == nil || taskErr == nil {
 		return

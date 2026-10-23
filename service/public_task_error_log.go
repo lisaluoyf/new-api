@@ -11,6 +11,7 @@ import (
 // Logging is independent of channel-health/retry attribution: a local/material
 // rejection must still leave the customer a complete error record.
 func RecordPublicTaskErrorLog(c *gin.Context, failure *dto.TaskError) {
+	SaveFailedTaskRequestSnapshot(c, failure)
 	if failure == nil || failure.ErrorLogRecorded || !constant.ErrorLogEnabled || c.GetInt("id") <= 0 || model.LOG_DB == nil {
 		return
 	}

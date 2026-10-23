@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -24,6 +23,8 @@ type beeNexAssetCredentials struct {
 	bytePlusAssetCredentials
 	SigningHost                       string           `json:"signing_host,omitempty"`
 	ProjectMode                       string           `json:"project_mode,omitempty"`
+	AccountScopedProjects             []string         `json:"account_scoped_projects,omitempty"`
+	OfficialH5Enabled                 bool             `json:"official_h5_enabled,omitempty"`
 	MaterialVerifiedAt                int64            `json:"material_verified_at,omitempty"`
 	MaterialVerifiedFingerprint       string           `json:"material_verified_fingerprint,omitempty"`
 	MaterialVerifiedModels            map[string]int64 `json:"material_verified_models,omitempty"`
@@ -162,15 +163,31 @@ func beeNexAssetRequest(ctx context.Context, r *model.SeedanceResource, action s
 	if err != nil || len(body) > 4<<20 || common.Unmarshal(body, &envelope) != nil || envelope == nil {
 		return nil, seedanceError(502, "Invalid BeeNex asset response")
 	}
-	metadata, _ := envelope["ResponseMetadata"].(map[string]any)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 || metadata["Error"] != nil || envelope["error"] != nil {
-		return nil, seedanceError(502, fmt.Sprintf("BeeNex asset operation %s could not be confirmed; query existing resources before retrying", action))
+	if err := beeNexProtocolError(action, resp.StatusCode, envelope, body, resp.Header, c.AccessKeyID, c.SecretAccessKey, c.SessionToken, r.SourceURL); err != nil {
+		if action == "GetVisualValidateResult" {
+			metadata, _ := envelope["ResponseMetadata"].(map[string]any)
+			detail, _ := metadata["Error"].(map[string]any)
+			token := seedanceString(fields, "BytedToken")
+			if resp.StatusCode == 404 && token != "" && seedanceString(detail, "Code") == "NotFound."+token {
+				return nil, seedanceError(404, "Owner verification is not yet confirmed", "verification_pending")
+			}
+		}
+		return nil, err
 	}
 	result, _ := envelope["Result"].(map[string]any)
 	checkProject := func(item map[string]any) error {
 		project, present := item["ProjectName"]
 		if c.ProjectMode == "account_scoped" && (!present || project == nil || project == "") {
 			return nil
+		}
+		if c.ProjectMode == "account_scoped" {
+			if named, ok := project.(string); ok {
+				for _, allowed := range c.AccountScopedProjects {
+					if allowed != "" && named == allowed {
+						return nil
+					}
+				}
+			}
 		}
 		if named, ok := project.(string); !ok || c.ProjectMode != "named" || named != c.ProjectName {
 			return seedanceError(409, "BeeNex returned an incompatible asset project", "asset_context_incompatible")

@@ -25,6 +25,10 @@ func isXingchiyunSeedanceChannel(ch *model.Channel) bool {
 }
 
 func supportsSeedanceH5(ch *model.Channel) bool {
+	if isBeeNexSeedanceChannel(ch) {
+		credentials, err := loadBeeNexAssetCredentials(ch.Id)
+		return err == nil && credentials.OfficialH5Enabled
+	}
 	return isBytePlusSeedanceChannel(ch) || isXingchiyunSeedanceChannel(ch)
 }
 

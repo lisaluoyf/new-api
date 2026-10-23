@@ -570,6 +570,9 @@ func RefreshSeedanceAsset(c *gin.Context, asset *model.SeedanceResource) error {
 		return refreshUnifiedSeedanceAsset(c, asset)
 	}
 	if asset.UpstreamID == "" {
+		if asset.ChannelID == constant.BeeNexSeedanceChannelID && asset.Status != "Failed" {
+			return recoverBeeNexAsset(c.Request.Context(), asset)
+		}
 		return nil
 	}
 	envelope, err := seedanceProviderRequest(c.Request.Context(), asset, http.MethodGet, seedanceLibraryPath+"/assets/"+url.PathEscape(asset.UpstreamID), nil)

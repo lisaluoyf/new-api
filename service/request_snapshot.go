@@ -181,6 +181,7 @@ func captureReplayHeaders(c *gin.Context) map[string][]string {
 		"User-Agent":       true,
 		"X-Client-Name":    true,
 		"X-Client-Version": true,
+		"Idempotency-Key":  true,
 	}
 	for key, values := range c.Request.Header {
 		canonical := textproto.CanonicalMIMEHeaderKey(key)
@@ -234,6 +235,10 @@ func snapshotAlreadySaved(c *gin.Context, snapshotType string) bool {
 func BuildReplayRequest(snapshot *model.FailedRequestSnapshot, channelID int, token string) (*http.Request, error) {
 	if snapshot == nil {
 		return nil, fmt.Errorf("snapshot is nil")
+	}
+	var decision map[string]any
+	if common.UnmarshalJsonStr(snapshot.RetryDecision, &decision) == nil && decision["upstream_acceptance_unverified"] == true {
+		return nil, fmt.Errorf("upstream acceptance is unverified; query the original submission before replaying")
 	}
 	if snapshot.BodySize != int64(len(snapshot.Body)) {
 		return nil, fmt.Errorf("snapshot body was not retained: original size %d bytes", snapshot.BodySize)

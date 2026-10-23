@@ -74,7 +74,7 @@ func CreateSeedanceVerification(c *gin.Context, input SeedanceVerificationInput)
 	if err != nil {
 		return nil, err
 	}
-	gateway := isXingchiyunSeedanceChannel(ch)
+	gateway := isXingchiyunSeedanceChannel(ch) || isBeeNexSeedanceChannel(ch)
 	origin := os.Getenv("SEEDANCE_CALLBACK_ORIGIN")
 	if !gateway {
 		parsed, err := url.Parse(origin)
@@ -114,6 +114,9 @@ func CreateSeedanceVerification(c *gin.Context, input SeedanceVerificationInput)
 	if gateway {
 		fields = map[string]any{"Name": resource.Name}
 	}
+	if isBeeNexSeedanceChannel(ch) {
+		fields = map[string]any{} // The published BeeNex H5 contract requires {}.
+	}
 	envelope, err := seedanceActionRequest(c.Request.Context(), resource, "CreateVisualValidateSession", fields)
 	if err != nil {
 		resource.Status = "submission_unknown"
@@ -129,11 +132,11 @@ func CreateSeedanceVerification(c *gin.Context, input SeedanceVerificationInput)
 	resource.VerificationTokenHash = SeedanceKeyFingerprint(resource.UpstreamID)
 	link := seedanceString(result, "H5Link")
 	linkURL, linkErr := url.Parse(link)
-	if resource.UpstreamID == "" || (gateway && !validXingchiyunVerificationToken(resource.UpstreamID)) || (gateway && seedanceString(result, "Id") == "") || linkErr != nil || linkURL.Scheme != "https" || linkURL.Hostname() == "" || linkURL.User != nil {
+	if resource.UpstreamID == "" || (gateway && !validXingchiyunVerificationToken(resource.UpstreamID)) || (isXingchiyunSeedanceChannel(ch) && seedanceString(result, "Id") == "") || linkErr != nil || linkURL.Scheme != "https" || linkURL.Hostname() == "" || linkURL.User != nil {
 		resource.Status = "submission_unknown"
 	} else {
 		privateResult := map[string]any{"verification_url": link}
-		if gateway {
+		if isXingchiyunSeedanceChannel(ch) {
 			privateResult["upstream_group_id"] = seedanceString(result, "Id")
 		}
 		encoded, _ := common.Marshal(privateResult)
@@ -172,7 +175,7 @@ func confirmSeedanceVerification(c *gin.Context, resource *model.SeedanceResourc
 	}
 	envelope, err := seedanceActionRequest(c.Request.Context(), resource, "GetVisualValidateResult", map[string]any{"BytedToken": resource.UpstreamID})
 	if err != nil {
-		if apiErr, ok := err.(*SeedanceAPIError); ok && isXingchiyunSeedanceChannel(ch) {
+		if apiErr, ok := err.(*SeedanceAPIError); ok && (isXingchiyunSeedanceChannel(ch) || isBeeNexSeedanceChannel(ch)) {
 			if apiErr.Code == "verification_pending" {
 				return nil
 			}

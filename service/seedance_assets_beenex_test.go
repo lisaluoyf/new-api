@@ -18,7 +18,7 @@ import (
 )
 
 func TestBeeNexAssetSignedProxyAndOwnedLifecycle(t *testing.T) {
-	for _, scope := range []string{"named", "account_scoped"} {
+	for _, scope := range []string{"named", "account_scoped", "account_scoped_named_response"} {
 		for _, name := range []string{"seedance-2.0", "seedance-2.5"} {
 			t.Run(scope+"/"+name, func(t *testing.T) { testBeeNexAssetOwnedScope(t, scope, name) })
 		}
@@ -33,11 +33,19 @@ func testBeeNexAssetOwnedScope(t *testing.T, scope, name string) {
 	t.Setenv("BEENEX_ASSET_CREDENTIALS_DIR", dir)
 	project := "beenex-project"
 	var upstreamProject any = project
+	actualScope := scope
+	var allowedProjects []string
+	if scope == "account_scoped_named_response" {
+		actualScope = "account_scoped"
+		project = ""
+		upstreamProject = "ZCH"
+		allowedProjects = []string{"ZCH"}
+	}
 	if scope == "account_scoped" {
 		project = ""
 		upstreamProject = nil
 	}
-	config, err := common.Marshal(map[string]any{"access_key_id": "beenex-ak", "secret_access_key": "beenex-sk", "region": "cn-beijing", "project_name": project, "project_mode": scope})
+	config, err := common.Marshal(map[string]any{"access_key_id": "beenex-ak", "secret_access_key": "beenex-sk", "region": "cn-beijing", "project_name": project, "project_mode": actualScope, "account_scoped_projects": allowedProjects})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "channel-274.json"), config, 0600))
 	base := "https://beenexapi.phone580.com"
@@ -114,7 +122,7 @@ func testBeeNexAssetOwnedScope(t *testing.T, scope, name string) {
 	require.NoError(t, err)
 	require.Len(t, caps, 1)
 	require.Equal(t, true, caps[0]["configured"])
-	require.Equal(t, scope, caps[0]["project_scope"])
+	require.Equal(t, actualScope, caps[0]["project_scope"])
 	require.Equal(t, "not_tested", caps[0]["live_acceptance"])
 	require.Equal(t, false, caps[0]["real_person_verified"])
 	task, err := SubmitSeedanceAssets(c, SeedanceAssetSubmission{Model: name, Group: &SeedanceGroupInput{ChannelID: 274, Name: "Bee group", Purpose: "ordinary"}, Assets: []SeedanceAssetInput{{URL: "https://example.com/synthetic.png", Name: "Synthetic"}}})

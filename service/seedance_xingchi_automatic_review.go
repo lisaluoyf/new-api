@@ -58,7 +58,17 @@ func DoXingchiAutomaticReview(c *gin.Context, channelID int, name, key, taskID s
 		// not misclassify this confirmed rejection as an ambiguous paid submission.
 		c.Set("xingchi_automatic_review_rejected", true)
 		message := xingchiAutomaticReviewFailure(err.Error(), key)
-		encoded, marshalErr := common.Marshal(map[string]any{"error": map[string]any{"code": "invalid_asset_material", "message": message, "type": "BadRequest"}})
+		errorFields := map[string]any{"code": "invalid_asset_material", "message": message, "type": "BadRequest"}
+		if channelID == 274 {
+			if failure, ok := err.(*SeedanceAPIError); ok {
+				errorFields["upstream_error"] = failure.UpstreamError
+				if failure.Status == http.StatusTooManyRequests {
+					resp.StatusCode = http.StatusTooManyRequests
+					errorFields["code"] = "material_rate_limited"
+				}
+			}
+		}
+		encoded, marshalErr := common.Marshal(map[string]any{"error": errorFields})
 		if marshalErr != nil {
 			return nil, marshalErr
 		}
