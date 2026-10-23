@@ -24,8 +24,11 @@ func TestBeeNexRetainedAutomaticReview(t *testing.T) {
 			name, first, review                                               string
 			status, sends, actions                                            int
 			secondUnknown, materialUnknown, missingCredentials, existingAsset bool
+			transientRead, persistentRead                                     bool
 		}{
 			{name: "active", review: "Active", sends: 2, actions: 3},
+			{name: "transient_read", review: "Active", transientRead: true, sends: 2, actions: 4},
+			{name: "persistent_read", review: "Active", persistentRead: true, sends: 1, actions: 5},
 			{name: "rejected", review: "Failed", sends: 1, actions: 3},
 			{name: "copyright", first: `{"error":{"code":"InputImageSensitiveContentDetected.PolicyViolation"}}`, sends: 1},
 			{name: "generic_sensitive", first: `{"error":{"code":"InputImageSensitiveContentDetected"}}`, sends: 1},
@@ -49,6 +52,7 @@ func TestBeeNexRetainedAutomaticReview(t *testing.T) {
 				require.NoError(t, db.Create(&model.Channel{Id: 274, Type: 1, Status: 1, Key: "video-private-key", BaseURL: &base, Models: name, Group: "default"}).Error)
 				model.InitChannelCache()
 				actions := 0
+				reads := 0
 				old := http.DefaultTransport
 				http.DefaultTransport = beeNexReviewTransport(func(r *http.Request) (*http.Response, error) {
 					actions++
@@ -74,6 +78,11 @@ func TestBeeNexRetainedAutomaticReview(t *testing.T) {
 						require.Equal(t, "group-reviewed", fields["GroupId"])
 						body = `{"Result":{"Id":"asset-reviewed"}}`
 					case "GetAsset":
+						reads++
+						if tc.persistentRead || tc.transientRead && reads == 1 {
+							body = `{"Result":{"Error":{"Code":"InternalError","Message":"upstream request failed"}}}`
+							break
+						}
 						require.Equal(t, "asset-reviewed", fields["Id"])
 						body = `{"Result":{"Id":"asset-reviewed","ProjectName":"beenex-project","Status":"` + tc.review + `","Error":{"Message":"Image rejected beenex-ak beenex-sk video-private-key"}}}`
 					default:
@@ -126,6 +135,11 @@ func TestBeeNexRetainedAutomaticReview(t *testing.T) {
 					out, e := io.ReadAll(resp.Body)
 					require.NoError(t, e)
 					resp.Body.Close()
+					if tc.persistentRead {
+						require.Equal(t, 502, resp.StatusCode)
+						require.Contains(t, string(out), "material_query_unavailable")
+						require.True(t, c.GetBool("xingchi_automatic_review_rejected"))
+					}
 					if tc.review == "Failed" {
 						require.Contains(t, string(out), "Image rejected")
 						for _, secret := range []string{"beenex-ak", "beenex-sk", "video-private-key"} {
@@ -136,7 +150,7 @@ func TestBeeNexRetainedAutomaticReview(t *testing.T) {
 				}
 				require.Equal(t, tc.sends, sends)
 				require.Equal(t, tc.actions, actions)
-				if tc.review == "Active" {
+				if tc.review == "Active" && !tc.persistentRead {
 					var asset model.SeedanceResource
 					require.NoError(t, db.Where("channel_id = ? AND kind = ?", 274, "asset").First(&asset).Error)
 					require.Equal(t, "Active", asset.Status)

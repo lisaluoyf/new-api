@@ -65,6 +65,13 @@ func DoXingchiAutomaticReview(c *gin.Context, channelID int, name, key, taskID s
 				if failure.Status == http.StatusTooManyRequests {
 					resp.StatusCode = http.StatusTooManyRequests
 					errorFields["code"] = "material_rate_limited"
+				} else if failure.Status >= 500 {
+					resp.StatusCode = failure.Status
+					errorFields["type"] = "UpstreamError"
+					errorFields["code"] = failure.Code
+					if failure.Code == "" {
+						errorFields["code"] = "material_service_unavailable"
+					}
 				}
 			}
 		}
