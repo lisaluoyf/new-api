@@ -35,9 +35,13 @@ func beeNexProtocolError(action string, status int, envelope map[string]any, bod
 	if strings.Contains(strings.ToLower(code), "limit") || strings.Contains(strings.ToLower(code), "throttl") {
 		mapped = http.StatusTooManyRequests
 	}
-	if status >= 500 || status == 401 || status == 403 {
+	internal := strings.EqualFold(code, "InternalError") || strings.HasPrefix(strings.ToLower(code), "internalerror.")
+	if status >= 500 || status == 401 || status == 403 || internal {
 		mapped = http.StatusBadGateway
 		publicCode = "submission_unknown"
+		if action == "GetAsset" || action == "GetAssetGroup" || action == "ListAssets" || action == "ListAssetGroups" {
+			publicCode = "material_query_unavailable"
+		}
 	}
 	if message == "" {
 		message = "Material library operation was rejected"

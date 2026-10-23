@@ -39,3 +39,31 @@ func TestBeeNexNewAssetReadAfterWrite(t *testing.T) {
 	resource.Status = "Failed"
 	require.False(t, beeNexNewAssetReadPending(resource, "GetAsset", fields, failure))
 }
+
+func TestBeeNexTransientReadOnlyRecovery(t *testing.T) {
+	raw := []byte(`{"ResponseMetadata":{"RequestId":"observed-request"},"Result":{"Error":{"Code":"InternalError","Message":"upstream request failed"}}}`)
+	var envelope map[string]any
+	require.NoError(t, common.Unmarshal(raw, &envelope))
+	failure := beeNexProtocolError("GetAsset", 200, envelope, raw, http.Header{})
+	resource := &model.SeedanceResource{ChannelID: 274, Kind: "asset", Status: "Active", UpstreamID: "asset-existing", CreatedAt: time.Now().Add(-time.Hour).Unix()}
+	fields := map[string]any{"Id": resource.UpstreamID}
+	calls := 0
+	result, err := beeNexRetryNewAssetRead(context.Background(), resource, "GetAsset", fields, func() (map[string]any, error) {
+		calls++
+		if calls == 1 {
+			return nil, failure
+		}
+		return map[string]any{"Result": map[string]any{"Id": resource.UpstreamID, "Status": "Active"}}, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, calls)
+	require.Equal(t, "Active", seedanceString(seedanceResult(result), "Status"))
+	for _, action := range []string{"CreateAsset", "CreateAssetGroup", "DeleteAsset", "ListAssets"} {
+		require.False(t, beeNexTransientAssetRead(resource, action, fields, failure))
+	}
+	require.False(t, beeNexTransientAssetRead(resource, "GetAsset", map[string]any{"Id": "another-asset"}, failure))
+	auth := beeNexProtocolError("GetAsset", 401, map[string]any{}, []byte(`{}`), http.Header{})
+	require.False(t, beeNexTransientAssetRead(resource, "GetAsset", fields, auth))
+	resource.Status = "Failed"
+	require.False(t, beeNexTransientAssetRead(resource, "GetAsset", fields, failure))
+}

@@ -17,6 +17,9 @@ func TestBeeNexOperationErrorsAndResourceModeration(t *testing.T) {
 		{"active_empty_error", "GetAsset", `{"Result":{"Id":"asset-1","Status":"Active","Error":{"Code":"","Message":""}}}`, 200, 0},
 		{"failed_resource", "GetAsset", `{"Result":{"Id":"asset-1","Status":"Failed","Error":{"Code":"ModerationRejected","Message":"review failed"}}}`, 200, 0},
 		{"unknown_transport", "CreateAsset", `{"error":{"message":"private-secret unavailable"}}`, 503, 502},
+		{"internal_read", "GetAsset", `{"Result":{"Error":{"Code":"InternalError","Message":"private-secret upstream failed"}}}`, 200, 502},
+		{"internal_create", "CreateAsset", `{"Result":{"Error":{"Code":"InternalError","Message":"upstream failed"}}}`, 200, 502},
+		{"failed_resource_internal", "GetAsset", `{"Result":{"Id":"asset-1","Status":"Failed","Error":{"Code":"InternalError","Message":"material decoding failed"}}}`, 200, 0},
 		{"normal_create", "CreateAsset", `{"Result":{"Id":"asset-1"}}`, 200, 0},
 	}
 	for _, tc := range cases {
