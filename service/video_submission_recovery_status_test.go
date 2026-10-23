@@ -36,7 +36,7 @@ func TestVideoSubmissionRecoveryUnknownNeverPermitsReplacement(t *testing.T) {
 	require.Equal(t, false, VideoSubmissionRecoveryDTO(&row, now)["manual_review_required"])
 }
 
-func TestVideoSubmissionRecoveryFinalZeroRequiresFencedProviderAndRefund(t *testing.T) {
+func TestVideoSubmissionRecoveryRetryPermissionDoesNotProveSupplierZero(t *testing.T) {
 	row := model.VideoSubmission{TaskID: "task_original", ChannelID: 273, Status: model.VideoSubmissionNotAccepted}
 	row.ProviderLookupEnabled = true
 	row.ProviderLookupDone = true
@@ -51,10 +51,17 @@ func TestVideoSubmissionRecoveryFinalZeroRequiresFencedProviderAndRefund(t *test
 	save()
 	d := VideoSubmissionRecoveryDTO(&row, time.Now().Unix())
 	require.Equal(t, true, d["safe_new_attempt"])
-	require.Equal(t, true, d["original_generation_zero_net"])
-	require.Equal(t, "unverified", d["independent_asset_fees_status"])
+	require.Equal(t, false, d["original_generation_zero_net"])
+	require.Equal(t, false, d["original_generation_billing_final"])
+	require.Equal(t, true, d["customer_refund_completed"])
+	require.Equal(t, "free_per_provider_policy", d["independent_asset_fees_status"])
 	require.Equal(t, false, d["cancellation_supported"])
 	require.Nil(t, d["next_check_at"])
+	o.NewSubmissionSafe = false
+	save()
+	require.Equal(t, false, VideoSubmissionRecoveryDTO(&row, time.Now().Unix())["safe_new_attempt"])
+	o.NewSubmissionSafe = true
+	save()
 	row.ProviderRefundCompleted = false
 	require.Equal(t, false, VideoSubmissionRecoveryDTO(&row, time.Now().Unix())["safe_new_attempt"])
 	row.ProviderRefundCompleted = true

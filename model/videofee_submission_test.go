@@ -82,7 +82,7 @@ func lookupTestNotApplicable() VideoFeeBillingFacts {
 	return VideoFeeBillingFacts{Reservation: "none", Hold: f, Release: f, Charge: f, Refund: f}
 }
 
-func TestVideoFeeUnknownAndFencedRejectionNeedFinancialCompletion(t *testing.T) {
+func TestVideoFeeUnknownAndProviderRejectionNeedFinancialCompletion(t *testing.T) {
 	row := lookupTestOriginal(t, true)
 	for _, status := range []string{"acceptance_unknown", "processing"} {
 		o := VideoFeeSubmissionObservation{Object: "submission", Key: "test-original-key", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), Acceptance: status}
@@ -152,17 +152,18 @@ func TestVideoFeeMalformedConflictingAndStaleEvidenceFailsClosed(t *testing.T) {
 	require.Error(t, ApplyVideoFeeObservation(&row, &valid, valid.Key))
 }
 
-func TestVideoFeeUnfinishedRefundCannotPublishOrAuthorizeResubmit(t *testing.T) {
+func TestVideoFeeUnfinishedRefundPublishesOriginalWithoutNewCharge(t *testing.T) {
 	row := lookupTestOriginal(t, false)
 	o := lookupTestObservation()
 	require.NoError(t, ApplyVideoFeeObservation(&row, &o, o.Key))
 	var got VideoSubmission
 	require.NoError(t, DB.First(&got, "id = ?", row.ID).Error)
-	require.Equal(t, VideoSubmissionUnknown, got.Status)
-	require.False(t, got.TaskReady)
+	require.Equal(t, VideoSubmissionAccepted, got.Status)
+	require.True(t, got.TaskReady)
 	var count int64
 	require.NoError(t, DB.Model(&Task{}).Count(&count).Error)
-	require.Zero(t, count)
+	require.EqualValues(t, 1, count)
+	require.False(t, got.ProviderLookupDone)
 	require.NoError(t, DB.Model(&got).Update("provider_refund_completed", true).Error)
 	require.NoError(t, ApplyVideoFeeObservation(&row, &o, o.Key))
 	require.NoError(t, DB.First(&got, "id = ?", row.ID).Error)
@@ -171,4 +172,54 @@ func TestVideoFeeUnfinishedRefundCannotPublishOrAuthorizeResubmit(t *testing.T) 
 	var user User
 	require.NoError(t, DB.First(&user, 7).Error)
 	require.Equal(t, 9000, user.Quota)
+}
+
+func TestVideoFeeGenerationFinalDoesNotWaitForCustomerRefund(t *testing.T) {
+	row := lookupTestOriginal(t, false)
+	o := lookupTestObservation()
+	o.Status = "failed"
+	o.Task.Status = "failed"
+	o.Task.ErrorCode = "InputImageSensitiveContentDetected"
+	o.Task.ErrorMessage = "The input image was rejected by the safety review"
+	require.NoError(t, ApplyVideoFeeObservation(&row, &o, o.Key))
+	var saved VideoSubmission
+	require.NoError(t, DB.First(&saved, "id = ?", row.ID).Error)
+	require.Equal(t, VideoSubmissionAccepted, saved.Status)
+	require.True(t, saved.TaskReady)
+	require.False(t, saved.ProviderLookupDone)
+	require.False(t, saved.ProviderRefundCompleted)
+	var task Task
+	require.NoError(t, DB.Where("task_id = ?", row.TaskID).First(&task).Error)
+	require.EqualValues(t, TaskStatusFailure, task.Status)
+	require.Zero(t, task.Quota)
+	require.Equal(t, o.Task.ErrorMessage, task.FailReason)
+	require.NoError(t, DB.Model(&saved).Update("provider_refund_completed", true).Error)
+	require.NoError(t, ApplyVideoFeeObservation(&row, &o, o.Key))
+	require.NoError(t, DB.First(&saved, "id = ?", row.ID).Error)
+	require.True(t, saved.ProviderLookupDone)
+	var n int64
+	require.NoError(t, DB.Model(&Task{}).Where("task_id = ?", row.TaskID).Count(&n).Error)
+	require.EqualValues(t, 1, n)
+	var user User
+	require.NoError(t, DB.First(&user, row.UserID).Error)
+	require.Equal(t, 9000, user.Quota)
+}
+
+func TestVideoFeeLatestProtocolAmbiguousFailedIsNotARejection(t *testing.T) {
+	row := lookupTestOriginal(t, false)
+	require.NoError(t, DB.Model(&row).Update("provider_refund_completed", true).Error)
+	o := VideoFeeSubmissionObservation{Object: "submission", Key: "test-original-key", Status: "failed", Acceptance: "not_accepted", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), Reason: "EVIDENCE_CONFLICT"}
+	require.NoError(t, ApplyVideoFeeObservation(&row, &o, o.Key))
+	var saved VideoSubmission
+	require.NoError(t, DB.First(&saved, "id = ?", row.ID).Error)
+	require.Equal(t, VideoSubmissionUnknown, saved.Status)
+	require.False(t, saved.ProviderLookupDone)
+	o.Reason = "SUBMISSION_NOT_FOUND"
+	o.Error = &VideoFeeSubmissionError{Code: "SUBMISSION_NOT_FOUND", Message: "No submission record found"}
+	o.NewSubmissionSafe = true
+	o.Billing = lookupTestNotApplicable()
+	require.NoError(t, ApplyVideoFeeObservation(&row, &o, o.Key))
+	require.NoError(t, DB.First(&saved, "id = ?", row.ID).Error)
+	require.Equal(t, VideoSubmissionNotAccepted, saved.Status)
+	require.True(t, saved.ProviderLookupDone)
 }

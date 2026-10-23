@@ -172,3 +172,22 @@ func TestVideoFeeWorkerFindsOriginalWithoutCreationOrMoneyMutation(t *testing.T)
 	require.NoError(t, db.First(&user, 7).Error)
 	require.Equal(t, 7000, user.Quota)
 }
+
+func TestVideoFeeFailedTaskReceiptSeparatesMoneyAndRedactsIdentity(t *testing.T) {
+	id := "11111111-1111-4111-8111-111111111111"
+	row := model.VideoSubmission{TaskID: "task_original", ChannelID: 273, Status: model.VideoSubmissionAccepted, TaskReady: true}
+	row.ProviderLookupEnabled = true
+	o := model.VideoFeeSubmissionObservation{Object: "submission", Key: "private-supplier-key", Status: "failed", Acceptance: "accepted", TaskID: &id, Task: &model.VideoFeeTaskObservation{ID: id, Status: "failed", ErrorCode: "InputImageSensitiveContentDetected", ErrorMessage: "Rejected input; task " + id}}
+	raw, err := common.Marshal(o)
+	require.NoError(t, err)
+	row.ProviderObservation = model.VideoFeeEvidenceJSON(raw)
+	d := VideoSubmissionDTO(&row)
+	require.Equal(t, "failed", d["generation_status"])
+	recovery := d["recovery"].(map[string]any)
+	require.Equal(t, false, recovery["customer_refund_completed"])
+	require.Equal(t, false, recovery["safe_new_attempt"])
+	raw, err = common.Marshal(d)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), id)
+	require.NotContains(t, string(raw), "private-supplier-key")
+}

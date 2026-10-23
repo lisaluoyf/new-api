@@ -83,6 +83,20 @@ func fetchVideoFeeSubmission(ctx context.Context, client *http.Client, lookupKey
 	if common.Unmarshal(raw, &observation) != nil {
 		return nil, errors.New("invalid provider lookup JSON")
 	}
+	if observation.Task != nil {
+		private := []string{key}
+		if observation.TaskID != nil {
+			private = append(private, *observation.TaskID)
+		}
+		if observation.Task.ErrorCode != "" {
+			observation.Task.ErrorCode = common.PublicDiagnosticCode(observation.Task.ErrorCode, private...)
+		}
+		observation.Task.ErrorMessage = common.SanitizeUpstreamErrorText(model.SanitizeTaskFailure(observation.Task.ErrorMessage, private...), private...)
+	}
+	if observation.Error != nil {
+		observation.Error.Code = common.PublicDiagnosticCode(observation.Error.Code, key)
+		observation.Error.Message = common.SanitizeUpstreamErrorText(model.SanitizeTaskFailure(observation.Error.Message, key), key)
+	}
 	if err := observation.Validate(lookupKey, time.Now()); err != nil {
 		return nil, err
 	}
@@ -169,9 +183,22 @@ func videoFeeReconciliationDTO(row *model.VideoSubmission) map[string]any {
 	if common.UnmarshalJsonStr(string(row.ProviderObservation), &o) != nil {
 		return nil
 	}
-	d := map[string]any{"acceptance_status": o.Acceptance, "observed_at": o.ObservedAt, "next_check_at": row.ProviderLookupNext, "customer_settlement_status": "requires_review", "independent_asset_fees_confirmed": false}
+	d := map[string]any{"acceptance_status": o.Acceptance, "observed_at": o.ObservedAt, "next_check_at": row.ProviderLookupNext, "customer_settlement_status": "requires_review", "independent_asset_fees_confirmed": false, "generation_status": o.GenerationStatus(), "supplier_billing_final": false}
+	if o.Reason != "" {
+		d["reason"] = common.PublicDiagnosticCode(o.Reason)
+	}
 	if o.Task != nil {
 		d["task_status"] = o.Task.Status
+		if o.GenerationStatus() == "failed" {
+			private := []string{row.TaskID, row.RequestID}
+			if o.TaskID != nil {
+				private = append(private, *o.TaskID)
+			}
+			d["task_error"] = map[string]any{"code": common.PublicDiagnosticCode(o.Task.ErrorCode, private...), "message": common.SanitizeUpstreamErrorText(model.SanitizeTaskFailure(o.Task.ErrorMessage, private...), private...)}
+		}
+	}
+	if o.Error != nil {
+		d["submission_error"] = map[string]any{"code": common.PublicDiagnosticCode(o.Error.Code), "message": common.SanitizeUpstreamErrorText(model.SanitizeTaskFailure(o.Error.Message))}
 	}
 	if row.RecoverySettled {
 		d["customer_settlement_status"] = "original_reservation_committed"

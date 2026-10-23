@@ -12,7 +12,8 @@ const VideoSubmissionReviewAfterSeconds int64 = 30 * 60
 // A projection of persisted facts only. Review eligibility is not a ticket,
 // acceptance deadline, cancellation or permission to send a generation.
 func VideoSubmissionRecoveryDTO(row *model.VideoSubmission, now int64) map[string]any {
-	unresolved := row.Status == model.VideoSubmissionUnknown || row.Status == model.VideoSubmissionSubmitting || (row.Status == model.VideoSubmissionAccepted && !row.TaskReady)
+	financialPending := row.ChannelID == 273 && row.ProviderLookupEnabled && !row.ProviderLookupDone && row.ProviderObservation != "" && !row.ProviderRefundCompleted && !row.RecoverySettled
+	unresolved := financialPending || row.Status == model.VideoSubmissionUnknown || row.Status == model.VideoSubmissionSubmitting || (row.Status == model.VideoSubmissionAccepted && !row.TaskReady)
 	reviewAt := row.CreatedAt + VideoSubmissionReviewAfterSeconds
 	review := unresolved && row.CreatedAt > 0 && now >= reviewAt
 	state := "not_required"
@@ -23,7 +24,11 @@ func VideoSubmissionRecoveryDTO(row *model.VideoSubmission, now int64) map[strin
 		state = "manual_review_required"
 	}
 	finalAcceptance := row.Status == model.VideoSubmissionAccepted || row.Status == model.VideoSubmissionNotAccepted
-	zero := videoSubmissionFinalGenerationZero(row)
+	retryAllowed := videoSubmissionProviderRetryAllowed(row)
+	assetFees := "unverified"
+	if row.ChannelID == 273 {
+		assetFees = "free_per_provider_policy"
+	}
 	var next any
 	if row.ProviderLookupEnabled && row.ChannelID == 273 && !row.ProviderLookupDone && row.ProviderLookupNext > 0 {
 		next = row.ProviderLookupNext
@@ -38,10 +43,12 @@ func VideoSubmissionRecoveryDTO(row *model.VideoSubmission, now int64) map[strin
 	}
 	return map[string]any{
 		"acceptance_final":                  finalAcceptance,
-		"original_generation_billing_final": zero,
-		"original_generation_zero_net":      zero,
-		"safe_new_attempt":                  row.Status == model.VideoSubmissionNotAccepted && zero,
-		"independent_asset_fees_status":     "unverified",
+		"original_generation_billing_final": false,
+		"original_generation_zero_net":      false,
+		"safe_new_attempt":                  row.Status == model.VideoSubmissionNotAccepted && retryAllowed,
+		"independent_asset_fees_status":     assetFees,
+		"customer_refund_completed":         row.ProviderRefundCompleted,
+		"supplier_billing_final":            false,
 		"cancellation_supported":            false,
 		"manual_review_required":            review,
 		"escalation_status":                 state,
@@ -59,15 +66,14 @@ func VideoSubmissionRecoveryDTO(row *model.VideoSubmission, now int64) map[strin
 	}
 }
 
-// Only a validated durable provider fence AND completed customer refund prove
-// zero for the original generation. No empty/unknown ledger is treated as zero;
-// independent material certification fees remain outside this proof.
-func videoSubmissionFinalGenerationZero(row *model.VideoSubmission) bool {
+// Retry permission is a provider business rule plus completed customer refund.
+// It is neither a durable execution fence nor proof of the external supplier bill.
+func videoSubmissionProviderRetryAllowed(row *model.VideoSubmission) bool {
 	if row.Status != model.VideoSubmissionNotAccepted || row.TaskReady || row.UpstreamTaskID != "" || row.ChannelID != 273 || !row.ProviderLookupEnabled || !row.ProviderLookupDone || !row.ProviderRefundCompleted {
 		return false
 	}
 	var o model.VideoFeeSubmissionObservation
-	if common.UnmarshalJsonStr(string(row.ProviderObservation), &o) != nil || o.Acceptance != "not_accepted" {
+	if common.UnmarshalJsonStr(string(row.ProviderObservation), &o) != nil || !o.RejectedWithRetryPermission() {
 		return false
 	}
 	at, err := time.Parse(time.RFC3339Nano, o.ObservedAt)

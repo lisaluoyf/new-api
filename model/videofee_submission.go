@@ -61,14 +61,20 @@ type VideoFeeBillingFacts struct {
 	Refund      VideoFeeLedgerFacts `json:"refund"`
 }
 type VideoFeeTaskObservation struct {
-	ID         string  `json:"id"`
-	Model      string  `json:"model"`
-	Status     string  `json:"status"`
-	CreatedAt  string  `json:"created_at"`
-	FinishedAt *string `json:"finished_at"`
-	ResultURL  *string `json:"result_url"`
+	ID           string  `json:"id"`
+	Model        string  `json:"model"`
+	Status       string  `json:"status"`
+	CreatedAt    string  `json:"created_at"`
+	FinishedAt   *string `json:"finished_at"`
+	ResultURL    *string `json:"result_url"`
+	ErrorCode    string  `json:"error_code,omitempty"`
+	ErrorMessage string  `json:"error_message,omitempty"`
 }
 type VideoFeeSubmissionObservation struct {
+	Status            string                   `json:"status,omitempty"`
+	Reason            string                   `json:"reason,omitempty"`
+	SubmissionFound   *bool                    `json:"submission_found,omitempty"`
+	Error             *VideoFeeSubmissionError `json:"error,omitempty"`
 	Object            string                   `json:"object"`
 	Key               string                   `json:"idempotency_key"`
 	Acceptance        string                   `json:"acceptance_status"`
@@ -78,6 +84,33 @@ type VideoFeeSubmissionObservation struct {
 	Billing           VideoFeeBillingFacts     `json:"billing"`
 	NewSubmissionSafe bool                     `json:"new_submission_safe"`
 	RetryAfter        *int                     `json:"retry_after_seconds"`
+}
+
+// These are provider platform observations, not proof of external execution fencing.
+type VideoFeeSubmissionError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func (o *VideoFeeSubmissionObservation) GenerationStatus() string {
+	if o.Acceptance == "accepted" && o.Task != nil {
+		switch o.Task.Status {
+		case "succeeded":
+			return "success"
+		case "failed", "cancelled", "refunded":
+			return "failed"
+		default:
+			return "processing"
+		}
+	}
+	if o.Acceptance == "not_accepted" && o.NewSubmissionSafe {
+		return "failed"
+	}
+	return "unknown"
+}
+
+func (o *VideoFeeSubmissionObservation) RejectedWithRetryPermission() bool {
+	return o.Acceptance == "not_accepted" && o.NewSubmissionSafe && o.TaskID == nil && o.Task == nil
 }
 
 var videoFeeUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -106,8 +139,8 @@ func (o *VideoFeeSubmissionObservation) Validate(key string, now time.Time) erro
 			return errors.New("unknown provider task status")
 		}
 	case "not_accepted":
-		if !o.NewSubmissionSafe || o.TaskID != nil || o.Task != nil || o.Billing.Reservation != "none" {
-			return errors.New("unfenced rejection")
+		if o.TaskID != nil || o.Task != nil || (o.NewSubmissionSafe && o.Billing.Reservation != "none") {
+			return errors.New("conflicting provider rejection")
 		}
 	case "processing", "acceptance_unknown":
 		if o.NewSubmissionSafe || o.TaskID != nil || o.Task != nil {
@@ -116,9 +149,21 @@ func (o *VideoFeeSubmissionObservation) Validate(key string, now time.Time) erro
 	default:
 		return errors.New("unknown acceptance status")
 	}
+	if o.SubmissionFound != nil && o.Acceptance == "accepted" && !*o.SubmissionFound {
+		return errors.New("accepted task missing submission")
+	}
+	if o.Status != "" {
+		expected := o.GenerationStatus()
+		if expected == "unknown" {
+			expected = "failed"
+		}
+		if o.Status != expected {
+			return errors.New("conflicting provider display status")
+		}
+	}
 	seen := map[string]bool{}
 	for kind, facts := range map[string]VideoFeeLedgerFacts{"hold": o.Billing.Hold, "release": o.Billing.Release, "capture": o.Billing.Charge, "refund": o.Billing.Refund} {
-		if o.Acceptance == "not_accepted" && (facts.Status != "not_applicable" || len(facts.Entries) != 0) {
+		if o.RejectedWithRetryPermission() && (facts.Status != "not_applicable" || len(facts.Entries) != 0) {
 			return errors.New("rejection has applicable ledger")
 		}
 		if len(facts.Entries) > 0 && (facts.Status != "recorded" || o.Billing.Currency != "CNY") {
@@ -239,7 +284,7 @@ func ApplyVideoFeeObservation(row *VideoSubmission, o *VideoFeeSubmissionObserva
 		if refunded {
 			updates["provider_refund_completed"] = true
 		}
-		if o.Acceptance == "not_accepted" && refunded && current.UpstreamTaskID == "" && !current.TaskReady {
+		if o.RejectedWithRetryPermission() && refunded && current.UpstreamTaskID == "" && !current.TaskReady {
 			var count int64
 			if err := tx.Model(&Task{}).Where("task_id = ?", current.TaskID).Count(&count).Error; err != nil {
 				return err
@@ -250,7 +295,7 @@ func ApplyVideoFeeObservation(row *VideoSubmission, o *VideoFeeSubmissionObserva
 			updates["status"] = VideoSubmissionNotAccepted
 			updates["provider_lookup_done"] = true
 		}
-		if o.Acceptance == "accepted" && ready {
+		if o.Acceptance == "accepted" {
 			var tasks []Task
 			if err := tx.Where("task_id = ?", current.TaskID).Limit(2).Find(&tasks).Error; err != nil {
 				return err
@@ -262,7 +307,7 @@ func ApplyVideoFeeObservation(row *VideoSubmission, o *VideoFeeSubmissionObserva
 				return errors.New("local task identity conflict")
 			}
 			if len(tasks) == 1 && !tasks[0].PrivateData.ProviderObservationOnly {
-				updates["provider_lookup_done"] = true
+				updates["provider_lookup_done"] = ready
 			}
 			if len(tasks) == 0 || tasks[0].PrivateData.ProviderObservationOnly {
 				task := snapshot.Task
@@ -272,7 +317,7 @@ func ApplyVideoFeeObservation(row *VideoSubmission, o *VideoFeeSubmissionObserva
 				if task.SubmitTime == 0 {
 					task.SubmitTime = current.CreatedAt
 				}
-				if refunded {
+				if refunded || !current.RecoverySettled {
 					task.Quota = 0
 				} // Preserve original reservation in the snapshot, not as a new customer charge.
 				task.PrivateData = snapshot.PrivateData
@@ -291,20 +336,31 @@ func ApplyVideoFeeObservation(row *VideoSubmission, o *VideoFeeSubmissionObserva
 					// Use the authenticated original content endpoint. Cache delivery URLs may
 					// be absent, relative, expired or private; the worker never downloads them.
 					task.PrivateData.ResultURL = "https://seedance2026.vip/v1/videos/" + *o.TaskID + "/content"
-					updates["provider_lookup_done"] = true
+					updates["provider_lookup_done"] = ready
 				}
 				if o.Task.Status == "failed" || o.Task.Status == "cancelled" || o.Task.Status == "refunded" {
 					task.Status = TaskStatusFailure
 					task.Progress = "100%"
 					task.FailReason = "Original provider task ended without a result"
-					updates["provider_lookup_done"] = true
+					if o.Task.ErrorMessage != "" {
+						task.FailReason = SanitizeTaskFailure(o.Task.ErrorMessage, snapshot.PrivateData.Key, *o.TaskID)
+					}
+					updates["provider_lookup_done"] = ready
 				}
 				if task.Progress == "100%" && o.Task.FinishedAt != nil {
 					if at, e := time.Parse(time.RFC3339Nano, *o.Task.FinishedAt); e == nil {
 						task.FinishTime = at.Unix()
 					}
 				}
-				task.Data, _ = common.Marshal(map[string]any{"status": o.Task.Status, "model": current.Model})
+				taskData := map[string]any{"status": o.Task.Status, "model": current.Model}
+				if task.Status == TaskStatusFailure {
+					code := "task_failed"
+					if o.Task.ErrorCode != "" {
+						code = common.PublicDiagnosticCode(o.Task.ErrorCode, snapshot.PrivateData.Key, *o.TaskID)
+					}
+					taskData["error"] = map[string]any{"code": code, "message": task.FailReason}
+				}
+				task.Data, _ = common.Marshal(taskData)
 				if len(tasks) == 0 {
 					task.ID = 0
 					if err := tx.Create(&task).Error; err != nil {
@@ -312,7 +368,10 @@ func ApplyVideoFeeObservation(row *VideoSubmission, o *VideoFeeSubmissionObserva
 					}
 				} else {
 					existing := tasks[0]
-					if existing.Status != TaskStatusSuccess && existing.Status != TaskStatusFailure {
+					if (existing.Status == TaskStatusSuccess || existing.Status == TaskStatusFailure) && existing.Status != task.Status {
+						return errors.New("conflicting original terminal status")
+					}
+					if (existing.Status != TaskStatusSuccess && existing.Status != TaskStatusFailure) || (existing.Status == TaskStatusFailure && o.Task.ErrorMessage != "") {
 						task.ID = existing.ID
 						if err := tx.Model(&existing).Select("status", "progress", "finish_time", "fail_reason", "private_data", "data").Updates(&task).Error; err != nil {
 							return err

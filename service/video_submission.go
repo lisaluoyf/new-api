@@ -190,6 +190,7 @@ func VideoSubmissionDTO(record *model.VideoSubmission) map[string]any {
 	}
 	if reconciliation := videoFeeReconciliationDTO(record); reconciliation != nil {
 		data["reconciliation"] = reconciliation
+		data["generation_status"] = reconciliation["generation_status"]
 		if record.Status == model.VideoSubmissionUnknown && record.ProviderLookupEnabled {
 			data["next_action"] = "query_submission"
 		}
