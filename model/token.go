@@ -451,7 +451,9 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 }
 
 func increaseTokenQuota(id int, quota int) (err error) {
-	err = DB.Model(&Token{}).Where("id = ?", id).Updates(
+	// Refund/batch accounting can finish after a token is soft-deleted. Update
+	// its counters while retaining deleted_at, so it remains unusable for auth.
+	err = DB.Unscoped().Model(&Token{}).Where("id = ?", id).Updates(
 		map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota + ?", quota),
 			"used_quota":    gorm.Expr("used_quota - ?", quota),
