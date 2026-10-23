@@ -137,6 +137,12 @@ func chooseSeedanceFallbackChannel(c *gin.Context, task *model.Task) (*model.Cha
 			return false
 		}
 		for _, a := range assets {
+			if ch.Id == 272 {
+				if _, e := seedance272OriginalImage(c, a.ID); e != nil {
+					return false
+				}
+				continue
+			}
 			if !unifiedSeedanceLibraryEligible(c, ch, name) {
 				return false
 			}
@@ -375,6 +381,15 @@ func prepareSeedanceFallbackMaterials(c *gin.Context, task *model.Task, job *mod
 	assets, err := seedanceFallbackAssets(c, fields)
 	if err != nil {
 		return false, "", fmt.Errorf("Original material is unavailable for backup review")
+	}
+	if ch.Id == 272 && len(assets) > 0 {
+		for _, source := range assets {
+			if _, e := seedance272OriginalImage(c, source.ID); e != nil {
+				return false, "", e
+			}
+		}
+		key, _, e := ch.GetNextEnabledKey()
+		return e == nil, key, e
 	}
 	if len(assets) == 0 {
 		key, _, e := ch.GetNextEnabledKey()

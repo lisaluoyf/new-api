@@ -108,7 +108,7 @@ func seedanceChannelAllowed(c *gin.Context, ch *model.Channel, name string) bool
 }
 
 func selectSeedanceLibrary(c *gin.Context, name string) (*model.SeedanceResource, error) {
-	return selectSeedanceLibraryWithFilter(c, name, nil)
+	return selectSeedanceLibraryWithFilter(c, name, func(ch *model.Channel) bool { return ch != nil && ch.Id != 272 })
 }
 
 func selectSeedanceLibraryWithFilter(c *gin.Context, name string, capability func(*model.Channel) bool) (*model.SeedanceResource, error) {

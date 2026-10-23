@@ -24,11 +24,18 @@ func ShouldAutomaticallyReviewSeedance(channelID, status int, name string, body 
 		return false
 	}
 	var envelope struct {
+		ID             string `json:"id"`
+		TaskID         string `json:"task_id"`
+		UpstreamTaskID string `json:"upstreamTaskId"`
+		Data           struct {
+			ID     string `json:"id"`
+			TaskID string `json:"task_id"`
+		} `json:"data"`
 		Error struct {
 			Code string `json:"code"`
 		} `json:"error"`
 	}
-	return common.Unmarshal(body, &envelope) == nil && envelope.Error.Code == "InputImageSensitiveContentDetected.PrivacyInformation"
+	return common.Unmarshal(body, &envelope) == nil && envelope.ID == "" && envelope.TaskID == "" && envelope.UpstreamTaskID == "" && envelope.Data.ID == "" && envelope.Data.TaskID == "" && envelope.Error.Code == "InputImageSensitiveContentDetected.PrivacyInformation"
 }
 
 // This is intentionally bounded by the caller's request. Persistent per-video
@@ -237,6 +244,31 @@ func CleanupAutomaticSeedanceReviews(ctx context.Context) error {
 			err := seedanceDB().Where("user_id = ? AND task_id = ?", group.UserID, group.ParentID).First(&task).Error
 			if err == nil {
 				ready = task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure
+				if task.Status == model.TaskStatusFailure {
+					var meta struct {
+						Submitted bool   `json:"generation_submitted"`
+						TaskID    string `json:"generation_task_id"`
+					}
+					_ = common.UnmarshalJsonStr(group.ResultData, &meta)
+					if meta.Submitted {
+						id := meta.TaskID
+						if id == "" {
+							id = task.GetUpstreamTaskID()
+						}
+						ready = false
+						if id != "" {
+							terminal, e := automaticReviewUpstreamFinished(ctx, group, id)
+							if e != nil {
+								if firstError == nil {
+									firstError = e
+								}
+								continue
+							}
+							ready = terminal
+						}
+					}
+				}
+
 			} else if err != gorm.ErrRecordNotFound {
 				if firstError == nil {
 					firstError = err

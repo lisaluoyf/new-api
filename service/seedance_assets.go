@@ -105,6 +105,15 @@ func ValidateSeedanceAssetSubmission(input *SeedanceAssetSubmission) error {
 }
 
 func CreateSeedanceGroup(c *gin.Context, name string, input SeedanceGroupInput) (*model.SeedanceResource, error) {
+	if fixed, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok && input.ChannelID > 0 && fmt.Sprint(fixed) != fmt.Sprint(input.ChannelID) {
+		return nil, seedanceError(403, "Requested channel conflicts with this key")
+	}
+	if input.ChannelID == 272 {
+		return nil, seedance272ManualLibraryError()
+	}
+	if fixed, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok && fmt.Sprint(fixed) == "272" {
+		return nil, seedance272ManualLibraryError()
+	}
 	if input.ChannelID == 0 && input.Purpose == "" && !c.GetBool("seedance_replica_internal") {
 		if _, fixed := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); !fixed {
 			return createUnifiedSeedanceGroup(c, name, input)
@@ -211,6 +220,18 @@ func SubmitSeedanceAssets(c *gin.Context, input SeedanceAssetSubmission) (*model
 }
 
 func submitSeedanceAssetsSingle(c *gin.Context, input SeedanceAssetSubmission) (*model.SeedanceResource, error) {
+	if input.GroupID != "" {
+		if group, e := model.GetSeedanceResource(c.GetInt("id"), "group", input.GroupID); e == nil && group.ChannelID == 272 && group.GroupType != "real_person" {
+			return nil, seedance272ManualLibraryError()
+		}
+	}
+	if input.Group != nil && input.Group.ChannelID == 272 {
+		return nil, seedance272ManualLibraryError()
+	}
+	if fixed, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok && fmt.Sprint(fixed) == "272" && input.GroupID == "" {
+		return nil, seedance272ManualLibraryError()
+	}
+
 	if input.Moderation != nil {
 		channelID := 0
 		if input.Group != nil {

@@ -1,0 +1,11 @@
+# Channel 272 temporary material review — 2026-10-23
+
+Ordinary manual material review now uses other configured providers. Channel 272 is excluded from unified upload plans, readiness reconciliation, and legacy automatic manual-library selection. Explicit manual group/import requests to channel 272 return `automatic_review_only` before allocating provider resources. Official owner-verification flows retain their account-bound rules.
+
+An owned, active ordinary Image material ID can be used for channel 272 generation if its original public HTTP(S) source is retained. Outbound resolution uses the original source URL; stored public requests retain the public material ID. Foreign provider IDs, child replica IDs, pending/deleted/foreign-owner materials, video/audio and portrait/identity approval transfers are rejected.
+
+Normal video submission occurs first. Only the explicit task-less `InputImageSensitiveContentDetected.PrivacyInformation` HTTP 400 may trigger temporary review and a single reviewed generation submission. Transport ambiguity, HTTP 5xx and other policy/copyright failures never authorize another video POST. Temporary resources are persisted before provider creation and scoped to the exact public video request. They are cleaned after confirmed completion or explicit rejection; ambiguous submissions retain their resources for reconciliation. A local FAILURE does not allow cleanup while the upstream video remains processing. Other providers' assets and the original logical handle remain intact.
+
+Historical readiness plans no longer wait for channel 272 permanent replicas. Async fallback to 272 also resolves the source rather than allocating permanent copies. RomaAPI uses its existing account lock/capacity guards for temporary review; its old 24-hour cleanup excludes these per-video resources, which have a dedicated lifecycle worker on API-only nodes too.
+
+Validation covers no allocation during manual review, source resolution and preservation of explicit false/zero values, ownership and source/type rejection, historical readiness, temporary review and cleanup for terminal tasks, import ambiguity recovery, and retention when local failure precedes upstream completion. No live paid video is required for these tests.

@@ -73,6 +73,9 @@ func seedanceOwnedAsset(c *gin.Context, id string) (*model.SeedanceResource, err
 }
 
 func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.SeedanceResource, error) {
+	if a, e := seedance272TransientRoute(c, fields); e != nil || a != nil {
+		return a, e
+	}
 	if asset, err := chooseUnifiedSeedanceRoute(c, fields, nil); err != nil || asset != nil {
 		return asset, err
 	}
@@ -136,6 +139,15 @@ func SeedanceAssetRouting(c *gin.Context, fields map[string]any) (*model.Seedanc
 // APIMaster asset IDs, rather than the shared provider's private identifiers.
 func ResolveSeedanceAssetReferences(c *gin.Context, fields map[string]any, channelID int, key string) (map[string]any, error) {
 	value, err := visitSeedanceAssetURLs(fields, func(id string) (string, error) {
+		if channelID == 272 {
+			a, e := seedanceOwnedAsset(c, id)
+			if e != nil {
+				return "", e
+			}
+			if a.ChannelID != 272 || !IsSeedancePortraitAsset(a) {
+				return seedance272OriginalImage(c, id)
+			}
+		}
 		name := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 		if name == "" {
 			original, _ := fields["model"].(string)

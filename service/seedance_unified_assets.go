@@ -27,7 +27,7 @@ type unifiedSeedancePlan struct {
 // These managed virtual libraries deliberately include configured official
 // accounts, without changing the legacy auto_route_enabled or H5 policies.
 func unifiedSeedanceLibraryEligible(c *gin.Context, ch *model.Channel, name string) bool {
-	if ch == nil || !seedanceLibraryChannelAllowed(c, ch, name) || !ProviderChannelAllowed(ProviderPolicyForModel(c, name), ch.Id) {
+	if ch == nil || ch.Id == 272 || !seedanceLibraryChannelAllowed(c, ch, name) || !ProviderChannelAllowed(ProviderPolicyForModel(c, name), ch.Id) {
 		return false
 	}
 	if isBytePlusSeedanceChannel(ch) {
@@ -322,6 +322,9 @@ func pollUnifiedSeedanceTask(c *gin.Context, task *model.SeedanceResource) error
 		return err
 	}
 	for i := range children {
+		if children[i].ChannelID == 272 {
+			continue
+		}
 		if children[i].Status != "completed" && children[i].Status != "failed" {
 			_ = PollSeedanceAssetTask(c, &children[i])
 		}
@@ -385,6 +388,18 @@ func unifiedSeedanceAssetDTO(a *model.SeedanceResource) map[string]any {
 	states := map[string]string{}
 	complete := err == nil
 	for name, targets := range plan.Models {
+		persistent := []int{}
+		for _, ch := range targets {
+			if ch != 272 {
+				persistent = append(persistent, ch)
+			}
+		}
+		targets = persistent
+		if len(targets) == 0 {
+			states[name] = "preparing"
+			complete = false
+			continue
+		}
 		states[name] = "preparing"
 		ready := false
 		terminal := 0
@@ -518,6 +533,24 @@ func chooseUnifiedSeedanceRoute(c *gin.Context, fields map[string]any, banned []
 		if target := c.GetInt("seedance_fallback_target_channel"); target > 0 && ch.Id != target {
 			return false
 		}
+		if ch.Id == 272 {
+			if !seedanceChannelAllowed(c, ch, name) || !ProviderChannelAllowed(ProviderPolicyForModel(c, name), 272) || (filter != nil && !filter(ch)) {
+				return false
+			}
+			if cap, ok := c.Get("seedance_unified_price_cap"); ok {
+				base, _ := ratio_setting.GetVideoModelBasePrice(name)
+				price, e := ChannelBaseUserPriceResolved(ch.Id, name, base)
+				if e != nil || price > cap.(float64)+1e-12 {
+					return false
+				}
+			}
+			for _, id := range ids {
+				if _, e := seedance272OriginalImage(c, id); e != nil {
+					return false
+				}
+			}
+			return true
+		}
 		if !unifiedSeedanceLibraryEligible(c, ch, name) || (filter != nil && !filter(ch)) {
 			return false
 		}
@@ -575,7 +608,12 @@ func chooseUnifiedSeedanceRoute(c *gin.Context, fields map[string]any, banned []
 	if err != nil || ch == nil {
 		return nil, seedanceError(409, "No ready material replicas support this model and request; query material readiness", "asset_not_ready")
 	}
-	first, err := unifiedSeedanceCopy(c, ids[0], name, ch.Id)
+	var first *model.SeedanceResource
+	if ch.Id == 272 {
+		first = &model.SeedanceResource{UserID: c.GetInt("id"), ChannelID: 272, Model: name, GroupType: "transient_image", Status: "Active"}
+	} else {
+		first, err = unifiedSeedanceCopy(c, ids[0], name, ch.Id)
+	}
 	if err != nil {
 		return nil, err
 	}
