@@ -72,7 +72,7 @@ func TestNestedTaskResponses(t *testing.T) {
 	require.Equal(t, 4, result.BillableSeconds)
 	require.Zero(t, result.TotalTokens)
 	for status, want := range map[string]string{"QUEUED": model.TaskStatusQueued, "IN_PROGRESS": model.TaskStatusInProgress, "FAILURE": model.TaskStatusFailure, "CANCELLED": model.TaskStatusFailure} {
-		result, err = a.ParseTaskResult([]byte(`{"code":"success","data":{"status":"` + status + `","progress":"60%","fail_reason":"failure"}}`))
+		result, err = a.ParseTaskResult([]byte(`{"code":"success","data":{"task_id":"upstream-id","status":"` + status + `","progress":"60%","fail_reason":"failure"}}`))
 		require.NoError(t, err)
 		require.Equal(t, want, result.Status)
 	}
@@ -117,7 +117,11 @@ func TestSeedance25QueryUsesSoraAndRejectsHTML(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		require.Equal(t, "GET", r.Method)
-		require.Equal(t, "/v1/videos/task_existing", r.URL.Path)
+		if status == 200 {
+			require.Equal(t, "/v1/videos/task_existing", r.URL.Path)
+		} else {
+			require.Contains(t, []string{"/v1/videos/task_existing", "/v1/video/generations/task_existing"}, r.URL.Path)
+		}
 		require.Equal(t, "Bearer own-key", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", contentType)
 		w.WriteHeader(status)
@@ -145,7 +149,7 @@ func TestSeedance25QueryUsesSoraAndRejectsHTML(t *testing.T) {
 	_, err = a.FetchTask(server.URL, "own-key", map[string]any{"task_id": "task_existing", "origin_model_name": "seedance-2.5"}, "")
 	require.ErrorContains(t, err, "HTTP 502")
 	require.NotContains(t, err.Error(), "own-key")
-	require.Equal(t, 2, calls)
+	require.Equal(t, 4, calls)
 }
 
 func TestBeeNexUnsupportedEditAndMOVBeforeBilling(t *testing.T) {

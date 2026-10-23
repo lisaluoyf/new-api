@@ -21,7 +21,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
-	"github.com/tidwall/gjson"
 )
 
 // TaskAdaptor retains APIMaster's public validation and frozen per-second
@@ -290,11 +289,8 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 }
 func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy string) (*http.Response, error) {
 	a.baseURL = strings.TrimRight(baseURL, "/")
-	id, ok := body["task_id"].(string)
-	if !ok || id == "" {
-		return nil, fmt.Errorf("invalid task ID")
-	}
-	path := "/v1/video/generations/"
+	a.apiKey = key
+	id, _ := body["task_id"].(string)
 	protocol, _ := body["query_protocol"].(string)
 	if protocol == "" {
 		protocol = "video_generations"
@@ -302,69 +298,26 @@ func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy 
 			protocol = "sora"
 		}
 	}
-	if protocol != "sora" && protocol != "video_generations" {
-		return nil, fmt.Errorf("invalid BeeNex task query protocol configuration")
-	}
-	if protocol == "sora" {
-		path = "/v1/videos/"
-	}
 	ctx, _ := body["query_context"].(context.Context)
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	// The response body remains live for the caller, so cancellation is tied to Close.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+path+url.PathEscape(id), nil)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("Accept", "application/json")
 	client, err := service.GetHttpClientWithProxy(proxy)
-	if err != nil || client == nil {
-		cancel()
-		return nil, fmt.Errorf("BeeNex query HTTP client unavailable")
-	}
-	// Never forward the upstream bearer key through a redirect.
-	queryClient := *client
-	queryClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	response, err := queryClient.Do(req)
 	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("BeeNex task query transport unavailable")
+		return nil, &service.BeeNexTaskQueryError{Kind: "invalid_context"}
 	}
-	if response.StatusCode != http.StatusOK || !strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "json") {
-		response.Body.Close()
-		cancel()
-		return nil, &service.BeeNexTaskQueryError{Protocol: protocol, HTTPStatus: response.StatusCode}
-	}
-	response.Body = queryResponseBody{ReadCloser: struct {
-		io.Reader
-		io.Closer
-	}{io.LimitReader(response.Body, (4<<20)+1), response.Body}, cancel: cancel}
-	return response, nil
+	return service.QueryBeeNexTask(ctx, client, baseURL, key, id, protocol, a.ParseTaskResult)
 }
-
-type queryResponseBody struct {
-	io.ReadCloser
-	cancel context.CancelFunc
-}
-
-func (r queryResponseBody) Close() error { defer r.cancel(); return r.ReadCloser.Close() }
 func (a *TaskAdaptor) ParseTaskResult(raw []byte) (*relaycommon.TaskInfo, error) {
-	if len(raw) > 4<<20 || !gjson.ValidBytes(raw) || !gjson.ParseBytes(raw).IsObject() {
-		return nil, fmt.Errorf("invalid BeeNex task response")
-	}
-	data := gjson.ParseBytes(raw)
-	if nested := data.Get("data"); nested.IsObject() {
-		data = nested
+	data, err := service.DecodeBeeNexTaskResponse(raw, a.apiKey)
+	if err != nil {
+		return nil, err
 	}
 	result := &relaycommon.TaskInfo{TaskID: data.Get("task_id").String(), Progress: data.Get("progress").String(), CompletedAt: data.Get("completed_at").Int()}
 	if result.TaskID == "" {
 		result.TaskID = data.Get("id").String()
 	}
-	switch strings.ToUpper(data.Get("status").String()) {
+	switch strings.ToUpper(strings.TrimSpace(data.Get("status").String())) {
 	case "QUEUED", "PENDING", "SUBMITTED", "NOT_START":
 		result.Status = model.TaskStatusQueued
 	case "IN_PROGRESS", "PROCESSING", "RUNNING":
@@ -417,7 +370,7 @@ func (a *TaskAdaptor) ParseTaskResult(raw []byte) (*relaycommon.TaskInfo, error)
 			result.Reason = "Video generation failed"
 		}
 	default:
-		return nil, fmt.Errorf("unrecognized BeeNex task status")
+		return nil, &service.BeeNexTaskQueryError{HTTPStatus: 200, Kind: "unknown_status"}
 	}
 	if result.Progress == "" {
 		result.Progress = "0%"

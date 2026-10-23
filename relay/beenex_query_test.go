@@ -35,6 +35,10 @@ func TestBeeNexPublicQueryFailureDoesNotReturnCachedProgress(t *testing.T) {
 	require.NotNil(t, taskErr)
 	require.Equal(t, http.StatusBadGateway, taskErr.StatusCode)
 	require.Equal(t, "task_query_unavailable", taskErr.Code)
+	require.Equal(t, 274, c.GetInt("channel_id"))
+	require.Equal(t, task.TaskID, c.GetString("video_query_task_id"))
+	require.Equal(t, "no-store", c.Writer.Header().Get("Cache-Control"))
+	require.Equal(t, "2", c.Writer.Header().Get("Retry-After"))
 	var unchanged model.Task
 	require.NoError(t, db.First(&unchanged, task.ID).Error)
 	require.Equal(t, "50%", unchanged.Progress)

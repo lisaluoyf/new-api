@@ -25,6 +25,9 @@ func RecordPublicTaskErrorLog(c *gin.Context, failure *dto.TaskError) {
 	}
 	if record := VideoSubmissionFromContext(c); record != nil {
 		other["task_id"] = record.TaskID
+	} else if taskID := c.GetString("video_query_task_id"); taskID != "" {
+		other["task_id"] = taskID
+		other["task_operation"] = "query"
 	}
 	if err := model.RecordErrorLog(c, c.GetInt("id"), c.GetInt("channel_id"), c.GetString("original_model"), c.GetString("token_name"), content, c.GetInt("token_id"), 0, false, c.GetString("group"), other); err == nil {
 		failure.ErrorLogRecorded = true
