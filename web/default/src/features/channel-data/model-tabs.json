@@ -14,20 +14,56 @@
     "label": "Muse Spark 1.3 Contributor",
     "accent": "#ec4899"
   },
-  { "model_id": "claude-fable-5-1", "label": "Fable 5.1", "accent": "#a855f7" },
-  { "model_id": "claude-fable-5", "label": "Fable 5", "accent": "#a855f7" },
-  { "model_id": "claude-sonnet-5", "label": "Sonnet 5", "accent": "#a855f7" },
+  {
+    "model_id": "claude-fable-5-1",
+    "label": "Fable 5.1",
+    "accent": "#a855f7"
+  },
+  {
+    "model_id": "claude-fable-5",
+    "label": "Fable 5",
+    "accent": "#a855f7"
+  },
+  {
+    "model_id": "claude-sonnet-5",
+    "label": "Sonnet 5",
+    "accent": "#a855f7"
+  },
   {
     "model_id": "claude-sonnet-5-5",
     "label": "Sonnet 5.5",
     "accent": "#a855f7"
   },
-  { "model_id": "gpt-5.6-luna", "label": "GPT 5.6 Luna", "accent": "#22d3ee" },
-  { "model_id": "gpt-5.6-sol", "label": "GPT 5.6 Sol", "accent": "#22d3ee" },
-  { "model_id": "gpt-6-astra", "label": "GPT 6 Astra", "accent": "#22d3ee" },
-  { "model_id": "gpt-6-sol", "label": "GPT 6 Sol", "accent": "#22d3ee" },
-  { "model_id": "gpt-6.1-sol", "label": "GPT 6.1 Sol", "accent": "#22d3ee" },
-  { "model_id": "gpt-6-luna", "label": "GPT 6 Luna", "accent": "#22d3ee" },
+  {
+    "model_id": "gpt-5.6-luna",
+    "label": "GPT 5.6 Luna",
+    "accent": "#22d3ee"
+  },
+  {
+    "model_id": "gpt-5.6-sol",
+    "label": "GPT 5.6 Sol",
+    "accent": "#22d3ee"
+  },
+  {
+    "model_id": "gpt-6-astra",
+    "label": "GPT 6 Astra",
+    "accent": "#22d3ee"
+  },
+  {
+    "model_id": "gpt-6-sol",
+    "label": "GPT 6 Sol",
+    "accent": "#22d3ee"
+  },
+  {
+    "model_id": "gpt-6.1-sol",
+    "label": "GPT 6.1 Sol",
+    "accent": "#22d3ee"
+  },
+  {
+    "model_id": "gpt-6-luna",
+    "label": "GPT 6 Luna",
+    "accent": "#22d3ee"
+  },
   {
     "model_id": "gpt-5.6-terra",
     "label": "GPT 5.6 Terra",
@@ -38,11 +74,31 @@
     "label": "Sonnet 4.6",
     "accent": "#a855f7"
   },
-  { "model_id": "claude-opus-4-7", "label": "Opus 4.7", "accent": "#a855f7" },
-  { "model_id": "claude-opus-5", "label": "Opus 5", "accent": "#a855f7" },
-  { "model_id": "claude-opus-5-5", "label": "Opus 5.5", "accent": "#a855f7" },
-  { "model_id": "claude-opus-4-8", "label": "Opus 4.8", "accent": "#a855f7" },
-  { "model_id": "claude-haiku-4-5", "label": "Haiku 4.5", "accent": "#a855f7" },
+  {
+    "model_id": "claude-opus-4-7",
+    "label": "Opus 4.7",
+    "accent": "#a855f7"
+  },
+  {
+    "model_id": "claude-opus-5",
+    "label": "Opus 5",
+    "accent": "#a855f7"
+  },
+  {
+    "model_id": "claude-opus-5-5",
+    "label": "Opus 5.5",
+    "accent": "#a855f7"
+  },
+  {
+    "model_id": "claude-opus-4-8",
+    "label": "Opus 4.8",
+    "accent": "#a855f7"
+  },
+  {
+    "model_id": "claude-haiku-4-5",
+    "label": "Haiku 4.5",
+    "accent": "#a855f7"
+  },
   {
     "model_id": "deepseek-flash",
     "label": "DeepSeek V4.1 Flash",
@@ -73,7 +129,11 @@
     "label": "MiniMax M3.1 Flash",
     "accent": "#f97316"
   },
-  { "model_id": "MiniMax-M3", "label": "MiniMax M3", "accent": "#f97316" },
+  {
+    "model_id": "MiniMax-M3",
+    "label": "MiniMax M3",
+    "accent": "#f97316"
+  },
   {
     "model_id": "kimi-k2.7-code",
     "label": "Kimi K2.7 Code",
@@ -84,7 +144,11 @@
     "label": "Kimi K2.8 Preview",
     "accent": "#818cf8"
   },
-  { "model_id": "kimi-k3", "label": "Kimi K3", "accent": "#818cf8" },
+  {
+    "model_id": "kimi-k3",
+    "label": "Kimi K3",
+    "accent": "#818cf8"
+  },
   {
     "model_id": "mimo-v2.6-pro",
     "label": "MiMo v2.6 Pro",
@@ -95,14 +159,26 @@
     "label": "MiMo v2.6 Flash",
     "accent": "#fb923c"
   },
-  { "model_id": "qwen3.7-max", "label": "Qwen 3.7 Max", "accent": "#06b6d4" },
-  { "model_id": "qwen3.8-max", "label": "Qwen 3.8 Max", "accent": "#06b6d4" },
+  {
+    "model_id": "qwen3.7-max",
+    "label": "Qwen 3.7 Max",
+    "accent": "#06b6d4"
+  },
+  {
+    "model_id": "qwen3.8-max",
+    "label": "Qwen 3.8 Max",
+    "accent": "#06b6d4"
+  },
   {
     "model_id": "qwen3.8-flash",
     "label": "Qwen 3.8 Flash",
     "accent": "#06b6d4"
   },
-  { "model_id": "qwen3.7-plus", "label": "Qwen 3.7 Plus", "accent": "#06b6d4" },
+  {
+    "model_id": "qwen3.7-plus",
+    "label": "Qwen 3.7 Plus",
+    "accent": "#06b6d4"
+  },
   {
     "model_id": "doubao-seed-2-1-pro-260628",
     "label": "Doubao Seed 2.1 Pro",
@@ -133,11 +209,31 @@
     "label": "GLM 5.3 Flash",
     "accent": "#10b981"
   },
-  { "model_id": "glm-5.3", "label": "GLM 5.3", "accent": "#10b981" },
-  { "model_id": "glm-5.2", "label": "GLM 5.2", "accent": "#10b981" },
-  { "model_id": "grok-4.5", "label": "Grok 4.5", "accent": "#94a3b8" },
-  { "model_id": "grok-4.6", "label": "Grok 4.6", "accent": "#94a3b8" },
-  { "model_id": "grok-4.7", "label": "Grok 4.7", "accent": "#94a3b8" },
+  {
+    "model_id": "glm-5.3",
+    "label": "GLM 5.3",
+    "accent": "#10b981"
+  },
+  {
+    "model_id": "glm-5.2",
+    "label": "GLM 5.2",
+    "accent": "#10b981"
+  },
+  {
+    "model_id": "grok-4.5",
+    "label": "Grok 4.5",
+    "accent": "#94a3b8"
+  },
+  {
+    "model_id": "grok-4.6",
+    "label": "Grok 4.6",
+    "accent": "#94a3b8"
+  },
+  {
+    "model_id": "grok-4.7",
+    "label": "Grok 4.7",
+    "accent": "#94a3b8"
+  },
   {
     "model_id": "grok-imagine-video-1.5",
     "label": "Grok Imagine Video 1.5",
@@ -198,7 +294,11 @@
     "label": "Grok Imagine Image 2.0",
     "accent": "#64748b"
   },
-  { "model_id": "gpt-image-2", "label": "Image 2", "accent": "#22d3ee" },
+  {
+    "model_id": "gpt-image-2",
+    "label": "Image 2",
+    "accent": "#22d3ee"
+  },
   {
     "model_id": "gpt-image-2.5-sunburst",
     "label": "Image 2.5 Sunburst",
@@ -214,7 +314,11 @@
     "label": "Midjourney 8.2",
     "accent": "#10b981"
   },
-  { "model_id": "midjourney-niji-7", "label": "Niji 7", "accent": "#ec4899" },
+  {
+    "model_id": "midjourney-niji-7",
+    "label": "Niji 7",
+    "accent": "#ec4899"
+  },
   {
     "model_id": "gpt-image-2-fd",
     "label": "Image 2 FD",
@@ -229,6 +333,11 @@
     "model_id": "gpt-image-2.5-flare-fd",
     "label": "Image 2.5 Flare FD",
     "accent": "#22d3ee"
+  },
+  {
+    "model_id": "kling-v4",
+    "label": "Kling V4",
+    "accent": "#f97316"
   },
   {
     "model_id": "kling-v3-omni",
@@ -250,14 +359,26 @@
     "label": "Seedance 2.0 Mini",
     "accent": "#f97316"
   },
-  { "model_id": "minimax-h3", "label": "MiniMax-H3", "accent": "#f97316" },
-  { "model_id": "jev-latest", "label": "Jev", "accent": "#8b5cf6" },
+  {
+    "model_id": "minimax-h3",
+    "label": "MiniMax-H3",
+    "accent": "#f97316"
+  },
+  {
+    "model_id": "jev-latest",
+    "label": "Jev",
+    "accent": "#8b5cf6"
+  },
   {
     "model_id": "text-embedding-3-small",
     "label": "Text Embedding 3 Small",
     "accent": "#10b981"
   },
-  { "model_id": "bge-m3", "label": "BGE-M3", "accent": "#10b981" },
+  {
+    "model_id": "bge-m3",
+    "label": "BGE-M3",
+    "accent": "#10b981"
+  },
   {
     "model_id": "wan3.0-video-prime",
     "label": "Wan 3.0 Prime",
