@@ -17,9 +17,10 @@ import (
 )
 
 type callCostAlertRule struct {
-	ChannelID int             `json:"channel_id"`
-	DailyUSD  decimal.Decimal `json:"daily_usd"`
-	HourlyUSD decimal.Decimal `json:"hourly_usd"`
+	ChannelID     int             `json:"channel_id"`
+	DailyUSD      decimal.Decimal `json:"daily_usd"`
+	HourlyUSD     decimal.Decimal `json:"hourly_usd"`
+	FiveMinuteUSD decimal.Decimal `json:"five_minute_usd"`
 }
 
 func parseCallCostAlertRules(raw string) ([]callCostAlertRule, error) {
@@ -41,7 +42,7 @@ func parseCallCostAlertRules(raw string) ([]callCostAlertRule, error) {
 			return nil, fmt.Errorf("rule %d requires channel_id (0 means this gateway's total)", i+1)
 		}
 		for key, value := range field {
-			if (key != "channel_id" && key != "daily_usd" && key != "hourly_usd") || value == nil {
+			if (key != "channel_id" && key != "daily_usd" && key != "hourly_usd" && key != "five_minute_usd") || value == nil {
 				return nil, fmt.Errorf("rule %d contains an invalid field", i+1)
 			}
 		}
@@ -57,13 +58,13 @@ func parseCallCostAlertRules(raw string) ([]callCostAlertRule, error) {
 			return nil, fmt.Errorf("rule %d has a negative or duplicate channel_id", i+1)
 		}
 		seen[rule.ChannelID] = true
-		for _, amount := range []decimal.Decimal{rule.DailyUSD, rule.HourlyUSD} {
+		for _, amount := range []decimal.Decimal{rule.DailyUSD, rule.HourlyUSD, rule.FiveMinuteUSD} {
 			if amount.Exponent() < -10 || amount.Exponent() > 9 || amount.IsNegative() || amount.GreaterThan(maxAmount) {
 				return nil, fmt.Errorf("rule %d threshold must be between 0 and 1000000000 with at most 10 decimal places", i+1)
 			}
 		}
-		if rule.DailyUSD.IsZero() && rule.HourlyUSD.IsZero() {
-			return nil, fmt.Errorf("rule %d requires a positive daily_usd or hourly_usd", i+1)
+		if rule.DailyUSD.IsZero() && rule.HourlyUSD.IsZero() && rule.FiveMinuteUSD.IsZero() {
+			return nil, fmt.Errorf("rule %d requires a positive daily_usd, hourly_usd or five_minute_usd", i+1)
 		}
 	}
 	return rules, nil
@@ -82,12 +83,16 @@ func callCostAlertWindows(now time.Time) []callCostAlertWindow {
 	return []callCostAlertWindow{
 		{kind: "daily", label: "今日累计", start: day, end: local, nextSendAt: day.AddDate(0, 0, 1)},
 		{kind: "hourly", label: "最近 60 分钟", start: local.Add(-time.Hour), end: local, nextSendAt: local.Add(time.Hour)},
+		{kind: "five_minute", label: "最近 5 分钟", start: local.Add(-5 * time.Minute), end: local, nextSendAt: local.Add(5 * time.Minute)},
 	}
 }
 
 func (r callCostAlertRule) threshold(kind string) decimal.Decimal {
 	if kind == "daily" {
 		return r.DailyUSD
+	}
+	if kind == "five_minute" {
+		return r.FiveMinuteUSD
 	}
 	return r.HourlyUSD
 }
@@ -106,14 +111,17 @@ type callCostAlertRunner struct {
 }
 
 func (runner callCostAlertRunner) run(rules []callCostAlertRule, now time.Time) {
-	for _, window := range callCostAlertWindows(now) {
+	windows := callCostAlertWindows(now)
+	windowTotals := map[string]map[int]model.CallCostTotal{}
+	for _, window := range windows {
 		if !window.start.Before(window.end) {
 			continue
 		}
 		var channelIDs []int
 		allChannels, enabled := false, false
 		for _, rule := range rules {
-			if !rule.threshold(window.kind).IsPositive() {
+			// Always load the recent five minutes for the summary on every alert.
+			if window.kind != "five_minute" && !rule.threshold(window.kind).IsPositive() {
 				continue
 			}
 			enabled = true
@@ -145,17 +153,35 @@ func (runner callCostAlertRunner) run(rules []callCostAlertRule, now time.Time) 
 			total.UnknownRequests += row.UnknownRequests
 		}
 		totals[0] = total
+		windowTotals[window.kind] = totals
+	}
+	for _, window := range windows {
+		totals, loaded := windowTotals[window.kind]
+		if !loaded {
+			continue
+		}
 		for _, rule := range rules {
 			amount := totals[rule.ChannelID]
 			threshold := rule.threshold(window.kind)
-			if threshold.IsPositive() && amount.AmountUSD().GreaterThanOrEqual(threshold) {
-				runner.notify(rule, window, amount)
+			exceeded := amount.AmountUSD().GreaterThanOrEqual(threshold)
+			if window.kind == "five_minute" {
+				// The short-window rule is strictly greater than, unlike daily/hourly.
+				exceeded = amount.AmountUSD().GreaterThan(threshold)
+				logger.LogInfo(context.Background(), fmt.Sprintf("call-cost alert 5m summary: channel_id=%d cost_usd=%s requests=%d unknown=%d window_start=%d window_end=%d", rule.ChannelID, amount.AmountUSD().String(), amount.RequestCount, amount.UnknownRequests, window.start.Unix(), window.end.Unix()))
+			}
+			if threshold.IsPositive() && exceeded {
+				var recent *model.CallCostTotal
+				if fiveMinuteTotals, ok := windowTotals["five_minute"]; ok {
+					value := fiveMinuteTotals[rule.ChannelID]
+					recent = &value
+				}
+				runner.notify(rule, window, amount, recent)
 			}
 		}
 	}
 }
 
-func (runner callCostAlertRunner) notify(rule callCostAlertRule, window callCostAlertWindow, total model.CallCostTotal) {
+func (runner callCostAlertRunner) notify(rule callCostAlertRule, window callCostAlertWindow, total model.CallCostTotal, recent *model.CallCostTotal) {
 	key := callCostAlertKey(rule, window.kind)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	token, acquired, err := runner.acquire(ctx, key, runner.now())
@@ -175,7 +201,7 @@ func (runner callCostAlertRunner) notify(rule callCostAlertRule, window callCost
 			logger.LogWarn(context.Background(), fmt.Sprintf("call-cost alert finish failed: %v", err))
 		}
 	}()
-	if err := runner.send(runner.destination, buildCallCostAlertCard(rule, window, total)); err != nil {
+	if err := runner.send(runner.destination, buildCallCostAlertCard(rule, window, total, recent)); err != nil {
 		logger.LogWarn(context.Background(), fmt.Sprintf("call-cost alert send failed: %v", err))
 		return
 	}
@@ -185,19 +211,28 @@ func (runner callCostAlertRunner) notify(rule callCostAlertRule, window callCost
 	}
 }
 
-func buildCallCostAlertCard(rule callCostAlertRule, window callCostAlertWindow, total model.CallCostTotal) map[string]any {
+func buildCallCostAlertCard(rule callCostAlertRule, window callCostAlertWindow, total model.CallCostTotal, recent *model.CallCostTotal) map[string]any {
 	scope := "本网关全部渠道"
 	if rule.ChannelID > 0 {
 		scope = fmt.Sprintf("渠道 #%d", rule.ChannelID)
+	}
+	comparison := "≥"
+	if window.kind == "five_minute" {
+		comparison = ">"
 	}
 	lines := []string{
 		"**" + common.FeishuNotificationTitle("⚠️ 网关调用成本超限") + "**",
 		fmt.Sprintf("范围：%s｜%s", scope, window.label),
 		fmt.Sprintf("窗口：%s ～ %s（北京时间，结束时间不含）", window.start.Format("2006-01-02 15:04:05"), window.end.Format("2006-01-02 15:04:05")),
-		fmt.Sprintf("累计成本：%s U（折算）｜阈值：%s U", total.AmountUSD().String(), rule.threshold(window.kind).String()),
+		fmt.Sprintf("累计成本：%s U（折算）｜阈值：%s %s U", total.AmountUSD().String(), comparison, rule.threshold(window.kind).String()),
 		"",
 		"**本次统计明细**",
 		fmt.Sprintf("消费日志：%d 条｜成本未知：%d 条（未计入金额，不代表免费）", total.RequestCount, total.UnknownRequests),
+	}
+	if recent != nil {
+		lines = append(lines, fmt.Sprintf("最近 5 分钟消耗：%s U（折算）｜消费日志：%d 条｜成本未知：%d 条", recent.AmountUSD().String(), recent.RequestCount, recent.UnknownRequests))
+	} else {
+		lines = append(lines, "最近 5 分钟消耗：查询失败，暂不可用")
 	}
 	if server := strings.TrimSpace(os.Getenv("FEISHU_SERVER_NAME")); server != "" {
 		lines = append(lines, "服务器："+server)

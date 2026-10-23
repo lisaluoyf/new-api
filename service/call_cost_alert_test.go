@@ -20,11 +20,13 @@ func TestParseCallCostAlertRules(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, rules)
 	}
-	rules, err := parseCallCostAlertRules(`[{"channel_id":0,"daily_usd":100,"hourly_usd":"0.01"},{"channel_id":59,"daily_usd":50}]`)
+	rules, err := parseCallCostAlertRules(`[{"channel_id":0,"daily_usd":100,"hourly_usd":"0.01","five_minute_usd":50},{"channel_id":59,"daily_usd":50}]`)
 	require.NoError(t, err)
 	require.Len(t, rules, 2)
 	require.Equal(t, "0.01", rules[0].HourlyUSD.String())
+	require.Equal(t, "50", rules[0].FiveMinuteUSD.String())
 	for _, raw := range []string{
+		`[{"channel_id":0,"five_minute_usd":-1}]`, `[{"channel_id":0,"five_minute_usd":null}]`, `[{"channel_id":0,"five_minute_usd":0}]`,
 		`null`, `{}`, `[null]`, `[{"daily_usd":1}]`, `[{"channel_id":1,"day_usd":10}]`,
 		`[{"channel_id":-1,"daily_usd":1}]`, `[{"channel_id":1,"daily_usd":0}]`,
 		`[{"channel_id":1,"daily_usd":-1}]`, `[{"channel_id":1,"daily_usd":null}]`,
@@ -44,6 +46,8 @@ func TestCallCostWindowsUseBeijingDayAndRollingHour(t *testing.T) {
 	require.Equal(t, "2026-10-24 00:00", windows[0].nextSendAt.Format("2006-01-02 15:04"))
 	require.Equal(t, "2026-10-22 23:10", windows[1].start.Format("2006-01-02 15:04"))
 	require.Equal(t, time.Hour, windows[1].end.Sub(windows[1].start))
+	require.Equal(t, 5*time.Minute, windows[2].end.Sub(windows[2].start))
+	require.Equal(t, now.Add(5*time.Minute).Unix(), windows[2].nextSendAt.Unix())
 }
 
 func TestCallCostRunnerThresholdScopeRetryAndDedup(t *testing.T) {
@@ -80,6 +84,7 @@ func TestCallCostRunnerThresholdScopeRetryAndDedup(t *testing.T) {
 			content := fmt.Sprint(card)
 			require.Contains(t, content, "成本未知：2 条")
 			require.Contains(t, content, "累计成本：")
+			require.Contains(t, content, "最近 5 分钟消耗：")
 			for _, removed := range []string{"本次报警规则", "统计规则", "数据限制", "处理建议"} {
 				require.NotContains(t, content, removed)
 			}
@@ -103,7 +108,7 @@ func TestCallCostRunnerThresholdScopeRetryAndDedup(t *testing.T) {
 	now = now.Add(time.Hour)
 	runner.run(rules, now)
 	require.Equal(t, 5, attempts) // rolling-hour reminder after 60-minute cooldown
-	require.Equal(t, 8, loads)
+	require.Equal(t, 12, loads)
 	now = now.AddDate(0, 0, 1)
 	runner.run(rules, now)
 	require.Equal(t, 8, attempts) // next Beijing day resets daily notifications
@@ -120,7 +125,7 @@ func TestCallCostRunnerQueryFailureAndSingleChannelScope(t *testing.T) {
 	}}
 	// Other callbacks are nil: a failed query must never acquire/send a zero or partial result.
 	runner.run(rules, time.Now())
-	require.Equal(t, 1, loaded)
+	require.Equal(t, 2, loaded)
 }
 
 func TestCallCostAlertKeySeparatesRuleWindowsAndThresholds(t *testing.T) {
@@ -203,4 +208,120 @@ func TestCallCostSlaveSkipsInitializationAndPanicIsContained(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("optional task did not execute")
 	}
+}
+
+func TestCallCostFiveMinuteStrictThresholdRetryAndIndependentCooldown(t *testing.T) {
+	rules, err := parseCallCostAlertRules(`[{"channel_id":0,"daily_usd":1000,"hourly_usd":100,"five_minute_usd":50}]`)
+	require.NoError(t, err)
+	now := time.Date(2026, 10, 23, 4, 0, 0, 0, time.UTC)
+	shortCost := "50"
+	until := map[string]int64{}
+	attempts := map[string]int{}
+	failShort := true
+	runner := callCostAlertRunner{
+		now: func() time.Time { return now },
+		load: func(_ context.Context, start, end int64, ids []int) ([]model.CallCostTotal, error) {
+			require.Empty(t, ids)
+			cost := "1000"
+			if end-start == 300 {
+				cost = shortCost
+			}
+			return []model.CallCostTotal{{ChannelID: 59, CostUSD: decimal.RequireFromString(cost), RequestCount: 2}}, nil
+		},
+		acquire: func(_ context.Context, key string, at time.Time) (string, bool, error) {
+			return "lease", until[key] <= at.Unix(), nil
+		},
+		finish: func(_ context.Context, key, token string, next int64) error { until[key] = next; return nil },
+		send: func(_ string, card map[string]any) error {
+			content := fmt.Sprint(card)
+			require.Contains(t, content, "最近 5 分钟消耗："+shortCost+" U")
+			kind := "daily"
+			if strings.Contains(content, "全部渠道｜最近 60 分钟") {
+				kind = "hourly"
+			}
+			if strings.Contains(content, "全部渠道｜最近 5 分钟") {
+				kind = "five_minute"
+				require.Contains(t, content, "阈值：> 50 U")
+			}
+			attempts[kind]++
+			if kind == "five_minute" && failShort {
+				return errors.New("retry")
+			}
+			return nil
+		},
+	}
+	runner.run(rules, now)
+	require.Equal(t, map[string]int{"daily": 1, "hourly": 1}, attempts) // exactly 50 does not alert
+	shortCost = "50.0000000001"
+	now = now.Add(5 * time.Minute)
+	runner.run(rules, now)
+	require.Equal(t, 1, attempts["five_minute"])
+	require.Zero(t, until[callCostAlertKey(rules[0], "five_minute")]) // failure releases for retry
+	failShort = false
+	now = now.Add(5 * time.Minute)
+	runner.run(rules, now)
+	require.Equal(t, now.Add(5*time.Minute).Unix(), until[callCostAlertKey(rules[0], "five_minute")])
+	runner.run(rules, now)
+	require.Equal(t, 2, attempts["five_minute"]) // duplicate check suppressed
+	now = now.Add(5 * time.Minute)
+	runner.run(rules, now)
+	require.Equal(t, map[string]int{"daily": 1, "hourly": 1, "five_minute": 3}, attempts)
+	shortCost = "49.99"
+	now = now.Add(5 * time.Minute)
+	runner.run(rules, now)
+	require.Equal(t, 3, attempts["five_minute"])
+}
+
+func TestCallCostFiveMinuteOnlyAndCrossMidnight(t *testing.T) {
+	rules, err := parseCallCostAlertRules(`[{"channel_id":59,"five_minute_usd":50}]`)
+	require.NoError(t, err)
+	now := time.Date(2026, 10, 22, 16, 2, 0, 0, time.UTC) // Beijing 00:02
+	loads, sent := 0, 0
+	runner := callCostAlertRunner{
+		now: func() time.Time { return now },
+		load: func(_ context.Context, start, end int64, ids []int) ([]model.CallCostTotal, error) {
+			loads++
+			require.Equal(t, []int{59}, ids)
+			require.Equal(t, now.Add(-5*time.Minute).Unix(), start)
+			require.Equal(t, now.Unix(), end)
+			return []model.CallCostTotal{{ChannelID: 59, CostUSD: decimal.NewFromInt(51)}}, nil
+		},
+		acquire: func(context.Context, string, time.Time) (string, bool, error) { return "lease", true, nil },
+		finish:  func(context.Context, string, string, int64) error { return nil },
+		send: func(_ string, card map[string]any) error {
+			sent++
+			require.Contains(t, fmt.Sprint(card), "渠道 #59｜最近 5 分钟")
+			require.Contains(t, fmt.Sprint(card), "2026-10-22 23:57:00")
+			return nil
+		},
+	}
+	runner.run(rules, now)
+	require.Equal(t, 1, loads)
+	require.Equal(t, 1, sent)
+}
+
+func TestCallCostFiveMinuteQueryFailureDoesNotHideDailyAlert(t *testing.T) {
+	rules, err := parseCallCostAlertRules(`[{"channel_id":0,"daily_usd":1000,"five_minute_usd":50}]`)
+	require.NoError(t, err)
+	now := time.Date(2026, 10, 23, 4, 0, 0, 0, time.UTC)
+	sent := 0
+	runner := callCostAlertRunner{
+		now: func() time.Time { return now },
+		load: func(_ context.Context, start, end int64, _ []int) ([]model.CallCostTotal, error) {
+			if end-start == 300 {
+				return nil, errors.New("query timeout")
+			}
+			return []model.CallCostTotal{{ChannelID: 59, CostUSD: decimal.NewFromInt(1000)}}, nil
+		},
+		acquire: func(context.Context, string, time.Time) (string, bool, error) { return "lease", true, nil },
+		finish:  func(context.Context, string, string, int64) error { return nil },
+		send: func(_ string, card map[string]any) error {
+			sent++
+			require.Contains(t, fmt.Sprint(card), "今日累计")
+			require.Contains(t, fmt.Sprint(card), "最近 5 分钟消耗：查询失败，暂不可用")
+			return nil
+		},
+	}
+	runner.run(rules, now)
+	require.Equal(t, 1, sent)
 }
