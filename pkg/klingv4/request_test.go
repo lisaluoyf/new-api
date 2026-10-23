@@ -15,8 +15,8 @@ func TestKlingV4ModesAndMeasuredBilling(t *testing.T) {
 		omitted               bool
 	}{
 		{"text", `{"model":"kling-v4","prompt":"paper boat"}`, "text", 5, 0, 5, false},
-		{"frames without prompt", `{"image_urls":["https://example.com/a.png","https://example.com/b.png"]}`, "image", 5, 0, 5, false},
-		{"roles", `{"image_with_roles":[{"url":"https://example.com/a.png","role":"first_frame"},{"url":"https://example.com/b.png","role":"middle_frame"}]}`, "image", 5, 0, 5, false},
+		{"frames", `{"prompt":"Animate the image","image_urls":["https://example.com/a.png","https://example.com/b.png"]}`, "image", 5, 0, 5, false},
+		{"roles", `{"prompt":"Animate the frames","image_with_roles":[{"url":"https://example.com/a.png","role":"first_frame"},{"url":"https://example.com/b.png","role":"middle_frame"}]}`, "image", 5, 0, 5, false},
 		{"reference sums before ceil", `{"prompt":"test","video_urls":["https://example.com/a.mp4","https://example.com/b.mp4"],"duration":5}`, "reference", 5, 7, 12, false},
 		{"edit inherited duration", `{"prompt":"test","omni_reference_task_type":"edit","video_url":"https://example.com/a.mp4"}`, "edit", 4, 4, 8, true},
 		{"edit explicit output", `{"prompt":"test","omni_reference_task_type":"edit","video_url":"https://example.com/a.mp4","duration":5}`, "edit", 5, 4, 10, false},

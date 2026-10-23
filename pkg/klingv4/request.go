@@ -233,7 +233,7 @@ func Normalize(ctx context.Context, f map[string]any, probe Probe) (Spec, error)
 			return s, fmt.Errorf("prompt must be a string")
 		}
 	}
-	if s.Mode != "image" && strings.TrimSpace(prompt) == "" {
+	if strings.TrimSpace(prompt) == "" {
 		return s, fmt.Errorf("prompt is required for %s", s.Mode)
 	}
 	if _, ok := f["size"]; ok {

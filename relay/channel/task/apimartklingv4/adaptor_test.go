@@ -17,7 +17,7 @@ func TestKlingV4PayloadPricingAndPublicResult(t *testing.T) {
 	t.Cleanup(func() { common.OptionMap = old })
 	common.OptionMap = map[string]string{"VideoModelPricing": `{"kling-v4":{"prices":{"720P":0.2,"1080P":0.3,"720P-input":0.1,"1080P-input":0.15}}}`}
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("POST", "/v1/videos/generations", strings.NewReader(`{"model":"kling-v4","image_with_roles":[{"url":"https://example.com/start.png","role":"first_frame"},{"url":"https://example.com/mid.png","role":"keyframe"}],"duration":3,"resolution":"1080p","watermark":false}`))
+	c.Request = httptest.NewRequest("POST", "/v1/videos/generations", strings.NewReader(`{"model":"kling-v4","prompt":"Animate the frames","image_with_roles":[{"url":"https://example.com/start.png","role":"first_frame"},{"url":"https://example.com/mid.png","role":"keyframe"}],"duration":3,"resolution":"1080p","watermark":false}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	a := &TaskAdaptor{}
 	info := &relaycommon.RelayInfo{OriginModelName: "kling-v4", TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
@@ -58,4 +58,11 @@ func TestKlingV4OfficialBalanceBaseline(t *testing.T) {
 		require.Equal(t, want, Price(variant))
 	}
 	require.Zero(t, Price("4k"))
+}
+
+func TestKlingV4ImageRequiresPromptBeforeCharge(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/videos/generations", strings.NewReader(`{"model":"kling-v4","image_urls":["https://example.com/start.png"]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	require.NotNil(t, (&TaskAdaptor{}).ValidateRequestAndSetAction(c, &relaycommon.RelayInfo{}))
 }
