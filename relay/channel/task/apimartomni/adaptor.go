@@ -13,7 +13,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"io"
@@ -48,9 +47,19 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 // GoldenPriceUSD returns the APIMart golden tariff checked on 2026-10-23.
 func GoldenPriceUSD(res string, seconds int, ext, video bool) float64 {
-	return ratio_setting.GetGeminiOmniPrice(res, seconds, ext, video)
+	if !ext {
+		return map[string]float64{"360p": .0296, "720p": .088, "1080p": .132, "4k": .264}[res] * float64(seconds)
+	}
+	if video {
+		return map[string]float64{"360p": .04, "720p": .08, "1080p": .08, "4k": .24}[res] * float64(seconds)
+	}
+	base := map[string]float64{"360p": .15, "720p": .25, "1080p": .25, "4k": .75}[res]
+	step := .05
+	if res == "360p" {
+		step = .025
+	}
+	return base + float64(seconds-4)/2*step
 }
-
 func stringURLs(fields map[string]any, key string, limit int) ([]string, error) {
 	value, exists := fields[key]
 	if !exists {

@@ -8,10 +8,10 @@ import { Input } from '@/components/ui/input'
 import { getSystemOptions, updateSystemOption } from '../api'
 import {
   OMNI_MODEL,
-  OMNI_OPTION,
-  OMNI_TIERS,
-  mergeOmniBasePrice,
-  parseOmniPrices,
+  OMNI_RESOLUTIONS,
+  OMNI_TOKENS_PER_SECOND,
+  mergeOmniPrices,
+  readOmniPrices,
 } from './gemini-omni-pricing'
 
 export function GeminiOmniPricingSettings() {
@@ -23,33 +23,25 @@ export function GeminiOmniPricingSettings() {
     staleTime: 0,
   })
   const [draft, setDraft] = useState<Record<string, string> | null>(null)
-  const [baseDraft, setBaseDraft] = useState<string | null>(null)
   const options = Object.fromEntries(
     (query.data?.data ?? []).map((row) => [row.key, row.value])
   )
   let error = query.isError || query.data?.success === false
-  let stored: Record<string, number> = {}
-  let base = ''
+  let stored: Record<string, string> = {}
   try {
-    if (query.data?.success) {
-      stored = parseOmniPrices(options[OMNI_OPTION])
-      base = String(JSON.parse(options.ModelPrice || '{}')[OMNI_MODEL] ?? '')
-    }
+    if (query.data?.success) stored = readOmniPrices(options.VideoModelPricing)
   } catch {
     error = true
   }
-  const prices =
-    draft ??
-    Object.fromEntries(
-      Object.entries(stored).map(([key, value]) => [key, String(value)])
-    )
-  const basePrice = baseDraft ?? base
+  const prices = draft ?? stored
   const valid =
     !error &&
     query.data?.success &&
-    [basePrice, ...OMNI_TIERS.map((key) => prices[key])].every(
-      (value) =>
-        value?.trim() && Number.isFinite(Number(value)) && Number(value) > 0
+    OMNI_RESOLUTIONS.every(
+      (key) =>
+        prices[key]?.trim() &&
+        Number.isFinite(Number(prices[key])) &&
+        Number(prices[key]) > 0
     )
   const save = useMutation({
     mutationFn: async () => {
@@ -60,19 +52,12 @@ export function GeminiOmniPricingSettings() {
       const current = Object.fromEntries(
         fresh.data.map((row) => [row.key, row.value])
       )
-      const tariffs = Object.fromEntries(
-        OMNI_TIERS.map((key) => [key, Number(prices[key])])
-      )
-      parseOmniPrices(JSON.stringify(tariffs))
-      const updates = mergeOmniBasePrice(
+      const updates = mergeOmniPrices(
         current.ModelPrice,
         current.VideoModelPricing,
-        Number(basePrice)
+        prices
       )
-      for (const [key, value] of Object.entries({
-        ...updates,
-        [OMNI_OPTION]: JSON.stringify(tariffs),
-      })) {
+      for (const [key, value] of Object.entries(updates)) {
         const result = await updateSystemOption({ key, value })
         if (!result.success)
           throw new Error(result.message || 'Failed to update setting')
@@ -81,7 +66,6 @@ export function GeminiOmniPricingSettings() {
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ['system-options'] })
       setDraft(null)
-      setBaseDraft(null)
       toast.success(t('Saved'))
     },
     onError: () => toast.error(t('Failed to update setting')),
@@ -91,14 +75,29 @@ export function GeminiOmniPricingSettings() {
       className='space-y-4 rounded-md border p-4'
       aria-label='Gemini Omni pricing'
     >
-      <h3 className='font-semibold'>{OMNI_MODEL}</h3>
+      <h3 className='font-semibold'>
+        {OMNI_MODEL} · {t('Official prices')}
+      </h3>
       <Alert>
         <AlertDescription>
           {t(
-            'Omni route prices are APIMart golden procurement prices in USD per second, not Google list prices. Ext duration tiers show the effective price per second; task price = rate × duration. Channel and account ratios determine retail prices. Final charges reconcile provider usage.'
+            'These are Google official video output prices with audio, in USD per second. Procurement discounts belong to channel ratios. The 720p price is also saved as the model base price.'
           )}
         </AlertDescription>
       </Alert>
+      <p className='text-muted-foreground text-sm'>
+        {t(
+          'Google video output: $17.50 per million tokens. Input: $1.50 per million tokens; text output: $9 per million tokens, billed separately. Verified 2026-10-23.'
+        )}{' '}
+        <a
+          className='underline'
+          href='https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing#gemini-omni'
+          target='_blank'
+          rel='noreferrer'
+        >
+          {t('Official pricing source')}
+        </a>
+      </p>
       {error && (
         <Alert variant='destructive'>
           <AlertDescription>
@@ -108,51 +107,43 @@ export function GeminiOmniPricingSettings() {
       )}
       {query.isPending && <p>{t('Loading...')}</p>}
       <label className='block space-y-1'>
-        <span>{t('Model base price (USD / second)')}</span>
+        <span>{t('Model base price (USD / second)')} · 720p</span>
         <Input
           aria-label='Gemini Omni base price'
           type='number'
           min='0.000001'
           step='any'
-          value={basePrice}
+          value={prices['720P'] ?? ''}
           disabled={!query.data?.success || error || save.isPending}
-          onChange={(event) => setBaseDraft(event.target.value)}
+          onChange={(event) =>
+            setDraft({ ...prices, '720P': event.target.value })
+          }
         />
       </label>
-      <p className='text-muted-foreground text-sm'>
-        {t(
-          'Google verified 720p video output baseline: $0.10136/second. Other Google resolution list prices are not configured. This base is shared with ModelPrice and video pricing; it is not the channel sale price.'
-        )}
-      </p>
-      {['Official', 'Ext'].map((kind) => (
-        <div key={kind} className='space-y-2'>
-          <h4 className='font-medium'>
-            APIMart {kind} · {kind === 'Official' ? 4 : 20} {t('Specification')}
-          </h4>
-          <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-            {OMNI_TIERS.filter((key) => key.startsWith(kind + '-')).map(
-              (key) => (
-                <label key={key} className='block space-y-1 text-sm'>
-                  <span>{key.slice(kind.length + 1)}</span>
-                  <Input
-                    aria-label={`Gemini Omni ${key}`}
-                    type='number'
-                    min='0.000001'
-                    step='any'
-                    value={prices[key] ?? ''}
-                    disabled={!query.data?.success || error || save.isPending}
-                    onChange={(event) =>
-                      setDraft({ ...prices, [key]: event.target.value })
-                    }
-                  />
-                </label>
-              )
-            )}
-          </div>
-        </div>
-      ))}
+      <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+        {OMNI_RESOLUTIONS.map((key) => (
+          <label key={key} className='block space-y-1 text-sm'>
+            <span>
+              {key} · {OMNI_TOKENS_PER_SECOND[key]} token/s
+            </span>
+            <Input
+              aria-label={`Gemini Omni official ${key}`}
+              type='number'
+              min='0.000001'
+              step='any'
+              value={prices[key] ?? ''}
+              disabled={!query.data?.success || error || save.isPending}
+              onChange={(event) =>
+                setDraft({ ...prices, [key]: event.target.value })
+              }
+            />
+          </label>
+        ))}
+      </div>
       <Button onClick={() => save.mutate()} disabled={!valid || save.isPending}>
-        {save.isPending ? t('Saving...') : t('Save Gemini Omni prices')}
+        {save.isPending
+          ? t('Saving...')
+          : t('Save Gemini Omni official prices')}
       </Button>
     </section>
   )

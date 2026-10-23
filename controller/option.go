@@ -132,8 +132,8 @@ func UpdateOption(c *gin.Context) {
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
 	switch option.Key {
-	case ratio_setting.GeminiOmniPricingOption:
-		if err := ratio_setting.ValidateGeminiOmniPricing(option.Value.(string)); err != nil {
+	case "VideoModelPricing":
+		if err := ratio_setting.ValidateOmniOfficialVideoPricing(option.Value.(string)); err != nil {
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 			return
 		}

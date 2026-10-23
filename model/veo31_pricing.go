@@ -10,11 +10,30 @@ import (
 // task billing, scaled to this site's configured retail base price.
 func applyVeo31Pricing(pricing *Pricing, name string, base float64) bool {
 	if name == "gemini-omni-1.1-flash" {
-		if base <= 0 {
-			base = .10136
+		tiers := map[string]float64{"360P": .0337925, "720P": .10136, "1080P": .15204, "4K": .30408}
+		common.OptionMapRWMutex.RLock()
+		raw := common.OptionMap["VideoModelPricing"]
+		common.OptionMapRWMutex.RUnlock()
+		var configured map[string]struct {
+			Prices map[string]float64 `json:"prices"`
 		}
-		pricing.ModelPrice = base
-		pricing.ResolutionPrices = map[string]float64{"720P": base}
+		if common.UnmarshalJsonStr(raw, &configured) == nil {
+			for key, value := range configured[name].Prices {
+				for variant := range tiers {
+					if strings.EqualFold(key, variant) && value > 0 {
+						tiers[variant] = value
+					}
+				}
+			}
+		}
+		if base <= 0 {
+			base = tiers["720P"]
+		}
+		scale := base / tiers["720P"]
+		for key, value := range tiers {
+			tiers[key] = value * scale
+		}
+		pricing.ModelPrice, pricing.ResolutionPrices = base, tiers
 		pricing.QuotaType, pricing.BillingUnit = 1, "second"
 		pricing.SupportedEndpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
 		return true

@@ -28,3 +28,14 @@ func TestVeoPricingMetadataMatchesSecondBasedBilling(t *testing.T) {
 	require.False(t, applyVeo31Pricing(&p, "gpt-6-astra", 1))
 	require.Equal(t, before, p)
 }
+
+func TestOmniOfficialResolutionMetadata(t *testing.T) {
+	common.OptionMapRWMutex.Lock()
+	before := common.OptionMap
+	common.OptionMap = map[string]string{"VideoModelPricing": `{"gemini-omni-1.1-flash":{"prices":{"720P":0.10136}}}`}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() { common.OptionMapRWMutex.Lock(); common.OptionMap = before; common.OptionMapRWMutex.Unlock() })
+	var pricing Pricing
+	require.True(t, applyVeo31Pricing(&pricing, "gemini-omni-1.1-flash", .10136))
+	require.Equal(t, map[string]float64{"360P": .0337925, "720P": .10136, "1080P": .15204, "4K": .30408}, pricing.ResolutionPrices)
+}
