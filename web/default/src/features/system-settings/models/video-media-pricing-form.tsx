@@ -6,7 +6,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { getSystemOptions } from '../api'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { OMNI_MODEL, mergeOmniPrices } from './gemini-omni-pricing'
 
 type PricingRow = {
   id: number
@@ -224,7 +226,6 @@ export function VideoMediaPricingForm({
 
   useEffect(() => {
     const initial = objectToRows(parsePricing(defaultValue))
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRows(initial)
     setJsonText(JSON.stringify(rowsToObject(initial), null, 2))
     setJsonError('')
@@ -241,13 +242,18 @@ export function VideoMediaPricingForm({
   const updateRow = (id: number, patch: Partial<PricingRow>) =>
     syncRows(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)))
 
-  const updatePrice = (id: number, resolution: string, price: number) =>
-    updateRow(id, {
-      prices: {
-        ...rows.find((row) => row.id === id)?.prices,
-        [resolution]: price,
-      },
-    })
+  const updatePrice = (id: number, resolution: string, price: number) => {
+    const row = rows.find((item) => item.id === id)
+    if (!row) return
+    const patch: Partial<PricingRow> = {
+      prices: { ...row.prices, [resolution]: price },
+    }
+    if (row.model === OMNI_MODEL) {
+      patch.officialPrices = { ...row.officialPrices, [resolution]: price }
+      if (resolution === '720P') patch.basePrice = price
+    }
+    updateRow(id, patch)
+  }
 
   const updateOfficialPrice = (id: number, resolution: string, price: number) =>
     updateRow(id, {
@@ -323,10 +329,46 @@ export function VideoMediaPricingForm({
       toast.error(t('Please fix JSON errors before saving'))
       return
     }
-    await updateOption.mutateAsync({
-      key: 'VideoModelPricing',
-      value: JSON.stringify(currentValue),
-    })
+    let value = JSON.stringify(currentValue)
+    const omni = currentValue[OMNI_MODEL]
+    if (omni) {
+      const fresh = await getSystemOptions()
+      if (!fresh.success) {
+        toast.error(t('Failed to update setting'))
+        return
+      }
+      const current = Object.fromEntries(
+        fresh.data.map((row) => [row.key, row.value])
+      )
+      let updates: ReturnType<typeof mergeOmniPrices>
+      try {
+        updates = mergeOmniPrices(
+          current.ModelPrice,
+          value,
+          Object.fromEntries(
+            Object.entries(omni.prices).map(([key, price]) => [
+              key,
+              String(price),
+            ])
+          )
+        )
+      } catch {
+        toast.error(t('Invalid pricing configuration'))
+        return
+      }
+      value = updates.VideoModelPricing
+      const saved = await updateOption.mutateAsync({
+        key: 'VideoModelPricing',
+        value,
+      })
+      if (!saved.success) return
+      await updateOption.mutateAsync({
+        key: 'ModelPrice',
+        value: updates.ModelPrice,
+      })
+      return
+    }
+    await updateOption.mutateAsync({ key: 'VideoModelPricing', value })
   }
 
   const copyJson = async () => {
@@ -407,7 +449,14 @@ export function VideoMediaPricingForm({
             </p>
           )}
           {rows.map((row) => (
-            <div key={row.id} className='rounded-md border p-4'>
+            <div
+              key={row.id}
+              className='rounded-md border p-4'
+              role={row.model === OMNI_MODEL ? 'region' : undefined}
+              aria-label={
+                row.model === OMNI_MODEL ? 'Gemini Omni pricing' : undefined
+              }
+            >
               <div className='grid gap-3 md:grid-cols-[1fr_160px_auto]'>
                 <Input
                   value={row.model}
@@ -444,24 +493,32 @@ export function VideoMediaPricingForm({
                 </label>
                 <Input
                   id={`media-base-price-${row.id}`}
+                  aria-label={
+                    row.model === OMNI_MODEL
+                      ? 'Gemini Omni base price'
+                      : undefined
+                  }
                   type='number'
                   min={0}
-                  step='0.0001'
+                  step={row.model === OMNI_MODEL ? 'any' : '0.0001'}
                   value={row.basePrice ?? ''}
                   placeholder='0.142'
                   onChange={(e) =>
-                    updateRow(row.id, {
-                      basePrice:
-                        e.target.value === ''
-                          ? undefined
-                          : Number(e.target.value),
-                    })
+                    row.model === OMNI_MODEL
+                      ? updatePrice(row.id, '720P', Number(e.target.value) || 0)
+                      : updateRow(row.id, {
+                          basePrice:
+                            e.target.value === ''
+                              ? undefined
+                              : Number(e.target.value),
+                        })
                   }
                 />
                 <Input
                   value={row.baseVariant ?? ''}
                   placeholder='720P'
                   aria-label={t('Base Variant')}
+                  readOnly={row.model === OMNI_MODEL}
                   onChange={(e) =>
                     updateRow(row.id, { baseVariant: e.target.value })
                   }
@@ -469,20 +526,33 @@ export function VideoMediaPricingForm({
                 <span />
               </div>
               <div className='mt-3 space-y-2'>
-                <div className='text-muted-foreground hidden gap-2 text-xs md:grid md:grid-cols-[1fr_160px_160px_auto]'>
+                <div
+                  className={`text-muted-foreground hidden gap-2 text-xs md:grid ${row.model === OMNI_MODEL ? 'md:grid-cols-[1fr_160px]' : 'md:grid-cols-[1fr_160px_160px_auto]'}`}
+                >
                   <span>{t('Resolution')}</span>
-                  <span>{t('Procurement Price')}</span>
-                  <span>{t('Official Price')}</span>
-                  <span />
+                  <span>
+                    {t(
+                      row.model === OMNI_MODEL
+                        ? 'Official Price'
+                        : 'Procurement Price'
+                    )}
+                  </span>
+                  {row.model !== OMNI_MODEL && (
+                    <>
+                      <span>{t('Official Price')}</span>
+                      <span />
+                    </>
+                  )}
                 </div>
                 {Object.entries(row.prices).map(([resolution, price]) => (
                   <div
                     key={resolution}
-                    className='grid gap-2 md:grid-cols-[1fr_160px_160px_auto]'
+                    className={`grid gap-2 ${row.model === OMNI_MODEL ? 'md:grid-cols-[1fr_160px]' : 'md:grid-cols-[1fr_160px_160px_auto]'}`}
                   >
                     <Input
                       value={resolution}
                       aria-label={t('Resolution')}
+                      readOnly={row.model === OMNI_MODEL}
                       onChange={(e) => {
                         const prices = { ...row.prices }
                         const officialPrices = { ...row.officialPrices }
@@ -497,9 +567,13 @@ export function VideoMediaPricingForm({
                     <Input
                       type='number'
                       min={0}
-                      step='0.0001'
+                      step={row.model === OMNI_MODEL ? 'any' : '0.0001'}
                       value={price}
-                      aria-label={t('Price')}
+                      aria-label={
+                        row.model === OMNI_MODEL
+                          ? `Gemini Omni official ${resolution}`
+                          : t('Price')
+                      }
                       onChange={(e) =>
                         updatePrice(
                           row.id,
@@ -508,34 +582,39 @@ export function VideoMediaPricingForm({
                         )
                       }
                     />
-                    <Input
-                      type='number'
-                      min={0}
-                      step='0.0001'
-                      value={row.officialPrices[resolution] ?? 0}
-                      aria-label={t('Official Price')}
-                      onChange={(e) =>
-                        updateOfficialPrice(
-                          row.id,
-                          resolution,
-                          Number(e.target.value) || 0
-                        )
-                      }
-                    />
-                    <Button
-                      variant='ghost'
-                      size='icon'
-                      onClick={() => removeResolution(row.id, resolution)}
-                      aria-label={t('Delete')}
-                    >
-                      <Trash2 className='text-destructive h-4 w-4' />
-                    </Button>
+                    {row.model !== OMNI_MODEL && (
+                      <>
+                        <Input
+                          type='number'
+                          min={0}
+                          step={row.model === OMNI_MODEL ? 'any' : '0.0001'}
+                          value={row.officialPrices[resolution] ?? 0}
+                          aria-label={t('Official Price')}
+                          onChange={(e) =>
+                            updateOfficialPrice(
+                              row.id,
+                              resolution,
+                              Number(e.target.value) || 0
+                            )
+                          }
+                        />
+                        <Button
+                          variant='ghost'
+                          size='icon'
+                          onClick={() => removeResolution(row.id, resolution)}
+                          aria-label={t('Delete')}
+                        >
+                          <Trash2 className='text-destructive h-4 w-4' />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 ))}
                 <Button
                   variant='ghost'
                   size='sm'
                   onClick={() => addResolution(row.id)}
+                  disabled={row.model === OMNI_MODEL}
                 >
                   <Plus className='mr-2 h-4 w-4' />
                   {t('Add resolution')}

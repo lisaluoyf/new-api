@@ -134,7 +134,6 @@ const BILLING_SECTIONS = [
           'models',
           'image',
           'video-media',
-          'gemini-omni',
           'tool-prices',
           'upstream-sync',
         ]}
