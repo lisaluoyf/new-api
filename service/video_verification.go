@@ -191,6 +191,11 @@ func finishVideoVerification(ctx context.Context, state *model.VideoVerification
 		}
 		if status != "pass" && model.NormalizeAutomaticVerifiedVideoModel(state.Model) != "" {
 			alert := model.VideoVerificationAlert{TaskID: task.ID, ChannelID: task.ChannelId, Model: state.Model, Reason: reason, VideoChecksJSON: string(encoded), FingerprintModelVersion: provenance.FingerprintModelVersion, DetectorVersion: provenance.DetectorVersion, BaselineSHA256: provenance.BaselineSHA256, DetectedAt: now, NextAt: now, Status: "pending"}
+			// Temporarily mute matching encoding families with incomplete evidence.
+			// Retain the result and evidence for audit and baseline collection.
+			if reason == "incomplete_evidence" {
+				alert.Status, alert.NextAt = "skipped", 0
+			}
 			return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&alert).Error
 		}
 		return nil
@@ -215,7 +220,7 @@ func deliverDueVideoVerificationAlerts() error {
 		return err
 	}
 	for _, alert := range alerts {
-		if model.NormalizeAutomaticVerifiedVideoModel(alert.Model) == "" {
+		if model.NormalizeAutomaticVerifiedVideoModel(alert.Model) == "" || alert.Reason == "incomplete_evidence" {
 			if err := model.DB.WithContext(ctx).Model(&alert).Where("status = ? AND lease_until <= ?", "pending", now).
 				Updates(map[string]any{"status": "skipped", "next_at": 0, "lease_until": 0}).Error; err != nil {
 				return err

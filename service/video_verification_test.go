@@ -143,7 +143,7 @@ func TestVideoVerificationDoesNotNotifyQueuedMiniAndFast(t *testing.T) {
 	}
 	names := []string{"seedance-2.0-mini", "seedance-2.0-fast", "doubao-seedance-2.0-mini", "doubao-seedance-2.0-fast", "seedance-2.0", "seedance-2.5"}
 	for index, name := range names {
-		alert := model.VideoVerificationAlert{TaskID: int64(index + 1), Model: name, Reason: "incomplete_evidence", Status: "pending"}
+		alert := model.VideoVerificationAlert{TaskID: int64(index + 1), Model: name, Reason: "detector_unavailable", Status: "pending"}
 		require.NoError(t, db.Create(&alert).Error)
 	}
 	require.NoError(t, deliverDueVideoVerificationAlerts())
@@ -156,6 +156,30 @@ func TestVideoVerificationDoesNotNotifyQueuedMiniAndFast(t *testing.T) {
 		require.Zero(t, alert.Attempts)
 		require.Zero(t, alert.LeaseUntil)
 	}
+}
+
+func TestVideoVerificationSkipsQueuedIncompleteEvidence(t *testing.T) {
+	db := videoVerificationTestDB(t)
+	previous := sendVideoVerificationAlert
+	t.Cleanup(func() { sendVideoVerificationAlert = previous })
+	var sent []string
+	sendVideoVerificationAlert = func(alert *model.VideoVerificationAlert) error {
+		sent = append(sent, alert.Reason)
+		return nil
+	}
+	for index, reason := range []string{"incomplete_evidence", "version_mismatch", "known_fingerprint_failed", "detector_unavailable"} {
+		alert := model.VideoVerificationAlert{TaskID: int64(index + 1), Model: "seedance-2.0", Reason: reason, Status: "pending"}
+		require.NoError(t, db.Create(&alert).Error)
+	}
+	require.NoError(t, deliverDueVideoVerificationAlerts())
+	require.NoError(t, deliverDueVideoVerificationAlerts())
+	require.Equal(t, []string{"version_mismatch", "known_fingerprint_failed", "detector_unavailable"}, sent)
+	var alert model.VideoVerificationAlert
+	require.NoError(t, db.Where("reason = ?", "incomplete_evidence").First(&alert).Error)
+	require.Equal(t, "skipped", alert.Status)
+	require.Zero(t, alert.Attempts)
+	require.Zero(t, alert.NextAt)
+	require.Zero(t, alert.LeaseUntil)
 }
 
 func TestVideoVerificationDoesNotCreateMiniOrFastAlertOnCompletion(t *testing.T) {
