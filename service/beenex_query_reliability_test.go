@@ -202,3 +202,8 @@ func TestBeeNexConcurrentOwnerQueriesShareLiveRefresh(t *testing.T) {
 	require.Error(t, RefreshBeeNexSeedanceTask(context.Background(), &wrongOwner))
 	require.EqualValues(t, 1, calls.Load())
 }
+
+func TestBeeNexQueryPreservesProviderBackoff(t *testing.T) {
+	require.Equal(t, 2, BeeNexTaskQueryRetryAfter(errors.New("generic")))
+	require.Equal(t, 15, BeeNexTaskQueryRetryAfter(fmt.Errorf("query: %w", &BeeNexTaskQueryError{HTTPStatus: 429, RetryAfter: 15})))
+}

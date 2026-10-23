@@ -496,7 +496,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		if err := service.RefreshBeeNexSeedanceTask(c.Request.Context(), originTask); err != nil {
 			c.Header("X-Task-Status-Source", "upstream_query_failed")
 			c.Header("X-Task-Id", originTask.TaskID)
-			c.Header("Retry-After", "2")
+			c.Header("Retry-After", strconv.Itoa(service.BeeNexTaskQueryRetryAfter(err)))
 			c.Header("X-Task-Last-Persisted-At", strconv.FormatInt(originTask.UpdatedAt, 10))
 			logger.LogWarn(c.Request.Context(), fmt.Sprintf("BeeNex channel 274 task %s model %s query failed: %s", originTask.TaskID, originTask.Properties.OriginModelName, service.BeeNexTaskQueryFailureSummary(err)))
 			taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("Task status is temporarily unavailable; retry querying the same task ID without submitting a new generation"), "task_query_unavailable", http.StatusBadGateway)

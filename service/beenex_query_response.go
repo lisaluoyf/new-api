@@ -133,3 +133,12 @@ func DecodeBeeNexTaskResponse(raw []byte, secrets ...string) (gjson.Result, erro
 	}
 	return data, nil
 }
+
+// Preserve the provider's longer rate-limit delay in the public polling hint.
+func BeeNexTaskQueryRetryAfter(err error) int {
+	var detail *BeeNexTaskQueryError
+	if errors.As(err, &detail) && detail.RetryAfter > 2 {
+		return detail.RetryAfter
+	}
+	return 2
+}
