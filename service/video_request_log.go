@@ -16,6 +16,21 @@ func BuildVideoRequestDataForLog(req *relaycommon.TaskSubmitReq) map[string]inte
 		return nil
 	}
 
+	if req.Model == "kling-v4" {
+		if fields, ok := req.Metadata["public_request"].(map[string]any); ok {
+			data := map[string]any{}
+			for k, v := range fields {
+				if k != "webhook" {
+					data[k] = v
+				}
+			}
+			data["output_video_seconds"] = req.Duration
+			data["billable_seconds"] = req.Metadata["billable_seconds"]
+			data["billing_variant"] = req.Metadata["billing_variant"]
+			data["input_video_seconds"] = req.Metadata["input_video_seconds"]
+			return data
+		}
+	}
 	data := map[string]interface{}{}
 	if model := strings.TrimSpace(req.Model); model != "" {
 		data["model"] = model

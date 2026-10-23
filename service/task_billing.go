@@ -143,6 +143,25 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 			other["duration_seconds"] = accountingInput.DurationSeconds
 		}
 	}
+
+	if info.OriginModelName == "kling-v4" {
+		if req, err := relaycommon.GetTaskRequest(c); err == nil {
+			seconds := info.PriceData.OtherRatios["seconds"]
+			ratio := info.PriceData.OtherRatios["size"]
+			unit := info.PriceData.ModelPrice * ratio
+			accountingInput.BillingMode = accountingBillingModeDurationSeconds
+			accountingInput.DurationSeconds = int(seconds)
+			accountingInput.DurationUnitPrice = unit
+			accountingInput.DurationPriceVariant, _ = req.Metadata["billing_variant"].(string)
+			other["model_price"] = unit
+			other["media_type"] = "video"
+			other["billing_unit"] = "second"
+			other["duration_seconds"] = seconds
+			other["output_video_seconds"] = req.Duration
+			other["input_video_seconds"] = req.Metadata["input_video_seconds"]
+			other["billing_variant"] = req.Metadata["billing_variant"]
+		}
+	}
 	accounting := BuildConsumeAccountingFields(accountingInput)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId:  info.ChannelId,

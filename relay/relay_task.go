@@ -256,7 +256,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 
 	// 6. 将 OtherRatios 应用到基础额度
-	if service.IsVeo31VideoModel(modelName) {
+	if service.IsVeo31VideoModel(modelName) || modelName == "kling-v4" {
 		info.PriceData.Quota = veo31QuotaFromRatios(info)
 	} else if strings.EqualFold(modelName, "wan3.0-video-prime") {
 		quota := float64(info.PriceData.Quota)

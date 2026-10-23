@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"github.com/QuantumNous/new-api/relay/channel/task/apimartklingv4"
 	"github.com/QuantumNous/new-api/relay/channel/task/apimartveo"
 	"github.com/QuantumNous/new-api/relay/channel/task/gmiwan"
 	"strings"
@@ -22,6 +23,9 @@ func ResolveTaskAdaptor(c *gin.Context, platform constant.TaskPlatform, info *re
 	modelName := strings.TrimSpace(info.OriginModelName)
 	if modelName == "" {
 		modelName = peekTaskModel(c)
+	}
+	if apimartklingv4.IsChannel(info.ChannelBaseUrl) && apimartklingv4.IsModel(modelName) {
+		return &apimartklingv4.TaskAdaptor{}
 	}
 	if apimartveo.IsChannel(info.ChannelBaseUrl) && apimartveo.IsModel(modelName) {
 		return &apimartveo.TaskAdaptor{}
@@ -46,6 +50,9 @@ func ResolveTaskPlatform(c *gin.Context, platform constant.TaskPlatform, info *r
 	modelName := strings.TrimSpace(info.OriginModelName)
 	if modelName == "" {
 		modelName = peekTaskModel(c)
+	}
+	if apimartklingv4.IsChannel(info.ChannelBaseUrl) && apimartklingv4.IsModel(modelName) {
+		return apimartklingv4.Platform
 	}
 	if apimartveo.IsChannel(info.ChannelBaseUrl) && apimartveo.IsModel(modelName) {
 		return apimartveo.Platform

@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"github.com/QuantumNous/new-api/relay/channel/task/apimartklingv4"
 	"github.com/QuantumNous/new-api/relay/channel/task/apimartveo"
 	"github.com/QuantumNous/new-api/relay/channel/task/gmiwan"
 	"strconv"
@@ -142,6 +143,8 @@ func GetTaskPlatform(c *gin.Context) constant.TaskPlatform {
 
 func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 	switch platform {
+	case apimartklingv4.Platform:
+		return &apimartklingv4.TaskAdaptor{}
 	case apimartveo.Platform:
 		return &apimartveo.TaskAdaptor{}
 	case constant.TaskPlatformGMIWan:
