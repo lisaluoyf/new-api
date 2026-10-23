@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/task/apimartomni"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -783,6 +784,10 @@ func modelDataExtractKeyGroup(setting *string) string {
 // APIMart Ext always generates audio. Do not advertise silent tariffs on
 // those routes even though the shared Google model supports them via Official.
 func filterVeoMediaPricingForRoute(view *VideoMediaPricingView, modelName string, mapping *string) {
+	if view != nil && modelName == apimartomni.Model {
+		filterOmniMediaPricingForRoute(view, mapping)
+		return
+	}
 	if view == nil || !service.IsVeo31VideoModel(modelName) || mapping == nil {
 		return
 	}

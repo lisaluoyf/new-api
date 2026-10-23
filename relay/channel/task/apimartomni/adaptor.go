@@ -45,7 +45,8 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.baseURL, a.apiKey = strings.TrimRight(info.ChannelBaseUrl, "/"), info.ApiKey
 }
 
-func goldPrice(res string, seconds int, ext, video bool) float64 {
+// GoldenPriceUSD returns the APIMart golden tariff checked on 2026-10-23.
+func GoldenPriceUSD(res string, seconds int, ext, video bool) float64 {
 	if !ext {
 		return map[string]float64{"360p": .0296, "720p": .088, "1080p": .132, "4k": .264}[res] * float64(seconds)
 	}
@@ -328,7 +329,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	if ext {
 		base = ExtGoldBase
 	}
-	return map[string]float64{"seconds": float64(req.Duration), "size": goldPrice(res, req.Duration, ext, video) / float64(req.Duration) / base}
+	return map[string]float64{"seconds": float64(req.Duration), "size": GoldenPriceUSD(res, req.Duration, ext, video) / float64(req.Duration) / base}
 }
 func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, result *relaycommon.TaskInfo) int {
 	if task == nil || task.PrivateData.BillingContext == nil || result == nil || result.Status != model.TaskStatusSuccess {

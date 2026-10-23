@@ -75,13 +75,13 @@ func TestOmniInvalidBeforeBilling(t *testing.T) {
 func TestOmniGoldenTariffs(t *testing.T) {
 	for _, res := range []string{"360p", "720p", "1080p", "4k"} {
 		for _, seconds := range []int{4, 6, 8, 10} {
-			require.Positive(t, goldPrice(res, seconds, true, false))
-			require.Positive(t, goldPrice(res, seconds, false, false))
+			require.Positive(t, GoldenPriceUSD(res, seconds, true, false))
+			require.Positive(t, GoldenPriceUSD(res, seconds, false, false))
 		}
 	}
-	require.InDelta(t, .175, goldPrice("360p", 6, true, false), 1e-12)
-	require.InDelta(t, .75, goldPrice("4k", 4, true, false), 1e-12)
-	require.InDelta(t, .8, goldPrice("720p", 10, true, true), 1e-12)
+	require.InDelta(t, .175, GoldenPriceUSD("360p", 6, true, false), 1e-12)
+	require.InDelta(t, .75, GoldenPriceUSD("4k", 4, true, false), 1e-12)
+	require.InDelta(t, .8, GoldenPriceUSD("720p", 10, true, true), 1e-12)
 }
 func TestOmniActualSettlement(t *testing.T) {
 	for _, up := range []string{Model, Ext} {
