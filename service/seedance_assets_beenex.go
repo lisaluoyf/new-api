@@ -109,6 +109,12 @@ func validateBeeNexAssetContext(r *model.SeedanceResource, c beeNexAssetCredenti
 var beeNexAssetEndpoint = func(ch *model.Channel) string { return strings.TrimRight(ch.GetBaseURL(), "/") + "/post-proxy/" }
 
 func beeNexAssetRequest(ctx context.Context, r *model.SeedanceResource, action string, payload map[string]any) (map[string]any, error) {
+	return beeNexRetryNewAssetRead(ctx, r, action, payload, func() (map[string]any, error) {
+		return beeNexAssetRequestOnce(ctx, r, action, payload)
+	})
+}
+
+func beeNexAssetRequestOnce(ctx context.Context, r *model.SeedanceResource, action string, payload map[string]any) (map[string]any, error) {
 	ch, err := model.GetChannelById(r.ChannelID, true)
 	if err != nil || !isBeeNexSeedanceChannel(ch) {
 		return nil, seedanceError(503, "BeeNex media library channel is unavailable")
