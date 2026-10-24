@@ -217,10 +217,11 @@ func beeNexAssetRequestOnce(ctx context.Context, r *model.SeedanceResource, acti
 	return envelope, nil
 }
 
-func BeeNexSeedanceCapabilities() map[string]any {
+func BeeNexSeedanceCapabilities(names ...string) map[string]any {
+	advanced := len(names) > 0 && names[0] == "seedance-2.5"
 	return map[string]any{
-		"editing":        map[string]any{"supported": false, "reason": "No supported editing protocol is confirmed for this hy route"},
-		"extension":      map[string]any{"supported": false, "reason": "No distinct extension protocol is verified for this hy route"},
+		"editing":        map[string]any{"supported": advanced, "models": []string{"seedance-2.5"}, "duration": -1, "ratio": "adaptive", "task_type_source": "prompt"},
+		"extension":      map[string]any{"supported": advanced, "models": []string{"seedance-2.5"}, "ratio": "adaptive", "task_type_source": "prompt"},
 		"draft":          map[string]any{"supported": false, "reason": "Draft generation and upgrade have no verified protocol for this hy route"},
 		"output_formats": []string{"mp4"},
 		"mov":            map[string]any{"supported": false, "reason": "Verified BeeNex output is MP4; no platform remux is provided"},

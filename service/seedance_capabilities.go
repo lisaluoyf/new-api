@@ -94,7 +94,7 @@ func SeedancePortraitCapabilities(c *gin.Context, name string) ([]map[string]any
 					"official_h5":                     credentials.OfficialH5Enabled, "liveness": credentials.OfficialH5Enabled,
 				}
 			}
-			entry["generation_capabilities"] = BeeNexSeedanceCapabilities()
+			entry["generation_capabilities"] = BeeNexSeedanceCapabilities(name)
 			entry["generation_route_enabled"] = seedanceChannelAllowed(c, ch, name)
 			protocol, err := BeeNexTaskQueryProtocol(ch, name)
 			if err == nil {

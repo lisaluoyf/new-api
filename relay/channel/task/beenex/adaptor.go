@@ -27,8 +27,9 @@ import (
 // billing. Only the BeeNex transport and response envelope differ.
 type TaskAdaptor struct {
 	apimartvideo.TaskAdaptor
-	baseURL string
-	apiKey  string
+	baseURL       string
+	apiKey        string
+	nativeRequest bool
 }
 
 func IsModel(name string) bool { return name == "seedance-2.0" || name == "seedance-2.5" }
@@ -70,7 +71,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	}
 	// Validate the conversion before wallet reservation, preserving explicit
 	// false/zero options through maps rather than omitempty scalar fields.
-	if _, err = contentPayload(fields); err != nil {
+	a.nativeRequest = nativeGeneration(info.OriginModelName, fields)
+	if _, err = generationPayload(info.OriginModelName, fields); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
 	return nil
@@ -99,7 +101,7 @@ func validateBeeNexCapabilities(name string, fields map[string]any) *dto.TaskErr
 	if fields["output_format"] == "mov" {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("BeeNex Seedance currently delivers MP4; MOV and platform remux are unsupported"), "unsupported_output_format", http.StatusBadRequest)
 	}
-	if fields["duration"] == float64(-1) || fields["auto_duration"] == true || fields["draft_task_id"] != nil || fields["draft"] == true || fields["omni_reference_task_type"] == "edit" || fields["omni_reference_task_type"] == "extend" {
+	if fields["draft_task_id"] != nil || fields["draft"] == true || fields["auto_duration"] == true || ((fields["duration"] == float64(-1) || fields["omni_reference_task_type"] == "edit" || fields["omni_reference_task_type"] == "extend") && !nativeGeneration(name, fields)) {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("BeeNex Seedance editing and draft upgrade have no verified supported hy protocol"), "unsupported_editing", http.StatusBadRequest)
 	}
 	return nil
@@ -209,6 +211,9 @@ func contentPayload(fields map[string]any) (map[string]any, error) {
 }
 
 func (a *TaskAdaptor) BuildRequestURL(_ *relaycommon.RelayInfo) (string, error) {
+	if a.nativeRequest {
+		return a.baseURL + "/api/v3/contents/generations/tasks", nil
+	}
 	return a.baseURL + "/v1/video/generations", nil
 }
 func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
@@ -236,7 +241,8 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, err
 	}
 	fields = service.ResolveSeedanceDraftRequest(c, fields)
-	out, err := contentPayload(fields)
+	a.nativeRequest = nativeGeneration(info.OriginModelName, fields)
+	out, err := generationPayload(info.OriginModelName, fields)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +397,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	video.CompletedAt = task.FinishTime
 	video.SetProgressStr(task.Progress)
 	if task.ChannelId == 274 && task.Properties.OriginModelName == "seedance-2.5" {
-		video.SetMetadata("delivery_capabilities", service.BeeNexSeedanceCapabilities())
+		video.SetMetadata("delivery_capabilities", service.BeeNexSeedanceCapabilities(task.Properties.OriginModelName))
 		video.SetMetadata("requested_output_format", task.PrivateData.SeedanceRequest["output_format"])
 		video.SetMetadata("output_format", "mp4")
 		video.SetMetadata("seed_verification", "unavailable")

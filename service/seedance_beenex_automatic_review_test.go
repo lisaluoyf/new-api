@@ -25,8 +25,10 @@ func TestBeeNexRetainedAutomaticReview(t *testing.T) {
 			status, sends, actions                                            int
 			secondUnknown, materialUnknown, missingCredentials, existingAsset bool
 			transientRead, persistentRead                                     bool
+			native                                                            bool
 		}{
 			{name: "active", review: "Active", sends: 2, actions: 3},
+			{name: "native_active", native: true, review: "Active", sends: 2, actions: 3},
 			{name: "transient_read", review: "Active", transientRead: true, sends: 2, actions: 4},
 			{name: "persistent_read", review: "Active", persistentRead: true, sends: 1, actions: 5},
 			{name: "rejected", review: "Failed", sends: 1, actions: 3},
@@ -96,6 +98,9 @@ func TestBeeNexRetainedAutomaticReview(t *testing.T) {
 					source = "asset://already-reviewed"
 				}
 				raw := `{"model":"upstream-hy","seed":9223372036854775806,"prompt":"A synthetic character waves","metadata":{"content":[{"type":"image_url","role":"first_frame","image_url":{"url":"` + source + `","detail":"high"}},{"type":"audio_url","role":"reference_audio","audio_url":{"url":"https://example.com/audio.mp3"}}],"duration":4,"seed":0,"generate_audio":false,"watermark":false,"ratio":"9:16"}}`
+				if tc.native {
+					raw = `{"model":"upstream-hy","duration":-1,"seed":0,"generate_audio":false,"watermark":false,"ratio":"adaptive","content":[{"type":"text","text":"Edit video"},{"type":"image_url","role":"first_frame","image_url":{"url":"` + source + `","detail":"high"}},{"type":"audio_url","role":"reference_audio","audio_url":{"url":"https://example.com/audio.mp3"}}]}`
+				}
 				sends := 0
 				c := seedanceContext(1)
 				first := tc.first
@@ -115,7 +120,12 @@ func TestBeeNexRetainedAutomaticReview(t *testing.T) {
 						return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(first))}, nil
 					}
 					require.Contains(t, string(out), `"url":"asset://asset-reviewed"`)
-					require.Contains(t, string(out), `"seed":9223372036854775806`)
+					if !tc.native {
+						require.Contains(t, string(out), `"seed":9223372036854775806`)
+					} else {
+						require.NotContains(t, string(out), `"metadata"`)
+						require.Contains(t, string(out), `"duration":-1`)
+					}
 					require.Contains(t, string(out), `"seed":0`)
 					require.Contains(t, string(out), `"generate_audio":false`)
 					require.Contains(t, string(out), `"watermark":false`)

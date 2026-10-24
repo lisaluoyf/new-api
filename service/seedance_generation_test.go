@@ -107,7 +107,9 @@ func TestSeedanceApprovedVideoUsesRecordedDuration(t *testing.T) {
 	fields := map[string]any{"prompt": "Edit the colors", "omni_reference_task_type": "edit", "video_urls": []any{"asset://asset_video"}}
 	require.NoError(t, ValidateSeedanceVideoInputs(c, fields))
 	require.Equal(t, 4, c.GetInt("seedance_video_input_seconds"))
-	require.NoError(t, db.Model(&asset).Update("duration_seconds", 3).Error)
+	require.NoError(t, db.Model(&asset).Updates(map[string]any{"duration_seconds": 4, "measured_duration_seconds": 3.9}).Error)
+	require.ErrorContains(t, ValidateSeedanceVideoInputs(seedanceContext(1), fields), "4 to 30")
+	require.NoError(t, db.Model(&asset).Updates(map[string]any{"duration_seconds": 3, "measured_duration_seconds": 0}).Error)
 	require.ErrorContains(t, ValidateSeedanceVideoInputs(seedanceContext(1), fields), "4 to 30")
 	require.Error(t, ValidateSeedanceVideoInputs(seedanceContext(2), fields))
 }

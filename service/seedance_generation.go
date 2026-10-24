@@ -472,7 +472,7 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 		if fields["omni_reference_task_type"] == "edit" {
 			minimum = 4
 		}
-		if seconds < minimum || seconds > maximum {
+		if seconds < minimum || seconds > maximum || (minimum == 4 && measured != nil && *measured < 4) {
 			return fmt.Errorf("video_urls[%d] duration must be from %d to %d seconds", i, minimum, maximum)
 		}
 		total += seconds

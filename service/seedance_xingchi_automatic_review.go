@@ -117,13 +117,16 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 	// BeeNex keeps reference content inside metadata. Preserve the original JSON
 	// representation, including large seeds and explicit false/zero values.
 	generationFields := fields
+	_, beeNexMetadata := fields["metadata"]
 	if channelID == 274 {
 		if !isBeeNexAutomaticReviewModel(name) {
 			return nil, seedanceError(400, "Unsupported BeeNex model", "invalid_asset_material")
 		}
-		generationFields = nil
-		if err := common.Unmarshal(fields["metadata"], &generationFields); err != nil || generationFields == nil {
-			return nil, seedanceError(400, "Invalid BeeNex metadata", "invalid_asset_material")
+		if beeNexMetadata {
+			generationFields = nil
+			if err := common.Unmarshal(fields["metadata"], &generationFields); err != nil || generationFields == nil {
+				return nil, seedanceError(400, "Invalid BeeNex metadata", "invalid_asset_material")
+			}
 		}
 	}
 	var moderation *SeedanceModeration
@@ -303,7 +306,7 @@ func prepareRetainedSeedanceAutomaticReview(c *gin.Context, channelID int, name,
 	if err != nil {
 		return nil, err
 	}
-	if channelID == 274 {
+	if channelID == 274 && beeNexMetadata {
 		fields["metadata"], err = common.Marshal(generationFields)
 		if err != nil {
 			return nil, err

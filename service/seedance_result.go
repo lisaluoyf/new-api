@@ -49,7 +49,7 @@ func AddSeedanceResultFields(task *model.Task, out map[string]any) {
 		out["actual_time"] = task.FinishTime - task.SubmitTime
 	}
 	if task.ChannelId == constant.BeeNexSeedanceChannelID && IsBeeNexSeedanceModel(task.Properties.OriginModelName) {
-		out["delivery_capabilities"] = BeeNexSeedanceCapabilities()
+		out["delivery_capabilities"] = BeeNexSeedanceCapabilities(task.Properties.OriginModelName)
 		out["requested_output_format"] = task.PrivateData.SeedanceRequest["output_format"]
 		out["output_format"] = "mp4"
 		out["seed_verification"] = "unavailable"
