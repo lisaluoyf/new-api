@@ -74,7 +74,7 @@ func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {
 			return nil, fmt.Errorf("metadata must be a JSON object")
 		}
 	}
-	for _, key := range []string{"resolution", "aspect_ratio", "ratio", "duration", "seconds", "image_urls", "video_urls", "audio_urls", "video_list", "audio", "mode"} {
+	for _, key := range []string{"resolution", "aspect_ratio", "ratio", "duration", "seconds", "image_urls", "video_urls", "audio_urls", "video_list", "audio", "mode", "content", "omni_reference_task_type", "generate_audio", "watermark", "seed", "return_last_frame", "draft", "output_format"} {
 		if _, exists := fields[key]; !exists && md != nil {
 			if value, ok := md[key]; ok {
 				fields[key] = value
@@ -205,7 +205,7 @@ func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if isSeedance20Variant(model) && (n < 4 || n > 15) || isSeedance20(model) && (n < 4 || n > 30) || model == ModelSeedance25 && n != -1 && (n < 4 || n > 30) {
+		if isSeedance20Variant(model) && (n < 4 || n > 15) || isSeedance20(model) && !(n == -1 && c.GetBool("beenex_native_sd20")) && (n < 4 || n > 30) || model == ModelSeedance25 && n != -1 && (n < 4 || n > 30) {
 			return nil, fmt.Errorf("unsupported %s duration", model)
 		}
 		fields["duration"] = n
@@ -244,6 +244,9 @@ func normalizedGenerationJSON(c *gin.Context) ([]byte, error) {
 				return nil, fmt.Errorf("return_last_frame must be a boolean")
 			}
 		}
+	}
+	if c.GetBool("beenex_native_sd20") && fields["ratio"] == nil && fields["aspect_ratio"] == nil && (md == nil || (md["ratio"] == nil && md["aspect_ratio"] == nil)) {
+		aspect = "adaptive"
 	}
 	fields["resolution"], fields["aspect_ratio"] = resolution, aspect
 	delete(fields, "ratio")

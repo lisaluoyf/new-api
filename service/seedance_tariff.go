@@ -66,6 +66,9 @@ func PrepareSeedanceTaskBilling(c *gin.Context, info *relaycommon.RelayInfo) (ma
 		auto = true
 		seconds = 30
 	}
+	if auto && name == "seedance-2.0" {
+		seconds = 15
+	}
 	// Provider adapters may retain references in metadata or native content.
 	urls := seedanceTariffVideoURLs(fields)
 	if len(urls) == 0 {

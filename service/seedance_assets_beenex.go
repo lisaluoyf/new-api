@@ -218,10 +218,16 @@ func beeNexAssetRequestOnce(ctx context.Context, r *model.SeedanceResource, acti
 }
 
 func BeeNexSeedanceCapabilities(names ...string) map[string]any {
-	advanced := len(names) > 0 && names[0] == "seedance-2.5"
+	advanced := len(names) > 0 && IsBeeNexSeedanceModel(names[0])
+	var editDuration any = -1
+	var editRatio any = "adaptive"
+	if len(names) > 0 && names[0] == "seedance-2.0" {
+		editDuration = map[string]int{"min": 4, "max": 15, "automatic": -1}
+		editRatio = []string{"adaptive", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"}
+	}
 	return map[string]any{
-		"editing":        map[string]any{"supported": advanced, "models": []string{"seedance-2.5"}, "duration": -1, "ratio": "adaptive", "task_type_source": "prompt"},
-		"extension":      map[string]any{"supported": advanced, "models": []string{"seedance-2.5"}, "ratio": "adaptive", "task_type_source": "prompt"},
+		"editing":        map[string]any{"supported": advanced, "models": []string{"seedance-2.0", "seedance-2.5"}, "duration": editDuration, "ratio": editRatio, "task_type_source": "prompt"},
+		"extension":      map[string]any{"supported": advanced, "models": []string{"seedance-2.0", "seedance-2.5"}, "ratio": editRatio, "task_type_source": "prompt"},
 		"draft":          map[string]any{"supported": false, "reason": "Draft generation and upgrade have no verified protocol for this hy route"},
 		"output_formats": []string{"mp4"},
 		"mov":            map[string]any{"supported": false, "reason": "Verified BeeNex output is MP4; no platform remux is provided"},

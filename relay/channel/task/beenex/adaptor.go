@@ -53,6 +53,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			return err
 		}
 	}
+	rawFields, _ := service.SeedanceRequestFields(c)
+	c.Set("beenex_native_sd20", info.ChannelId == 274 && info.OriginModelName == "seedance-2.0" && nativeGeneration(info.OriginModelName, rawFields))
 	if err := a.TaskAdaptor.ValidateRequestAndSetAction(c, info); err != nil {
 		return err
 	}

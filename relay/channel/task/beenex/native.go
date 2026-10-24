@@ -1,13 +1,30 @@
 package beenex
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/QuantumNous/new-api/common"
+)
 
 // Editing and extension use BeeNex's verified Ark endpoint. Ordinary generation
 // retains the existing compatible transport. Task type is inferred upstream
 // from the caller's prompt; the provider rejects the explicit type parameter.
 func nativeGeneration(name string, fields map[string]any) bool {
-	if name != "seedance-2.5" {
+	if name != "seedance-2.5" && name != "seedance-2.0" {
 		return false
+	}
+	metadata, _ := fields["metadata"].(map[string]any)
+	if raw, ok := fields["metadata"].(string); ok {
+		_ = common.Unmarshal([]byte(raw), &metadata)
+	}
+	if len(metadata) > 0 {
+		merged := make(map[string]any, len(fields)+len(metadata))
+		for key, value := range metadata {
+			merged[key] = value
+		}
+		for key, value := range fields {
+			merged[key] = value
+		}
+		fields = merged
 	}
 	kind, _ := fields["omni_reference_task_type"].(string)
 	if kind == "edit" || kind == "extend" {
@@ -37,13 +54,19 @@ func generationPayload(name string, fields map[string]any) (map[string]any, erro
 	if err != nil || !nativeGeneration(name, fields) {
 		return compatible, err
 	}
+	if name == "seedance-2.0" {
+		duration, ok := fields["duration"].(float64)
+		if !ok || (duration != -1 && (duration < 4 || duration > 15)) {
+			return nil, fmt.Errorf("BeeNex Seedance 2.0 editing and extension require duration -1 or 4 to 15 seconds")
+		}
+	}
 	if lenVideoReferences(fields) == 0 {
 		return nil, fmt.Errorf("editing and extension require a reference video")
 	}
-	if fields["aspect_ratio"] != "adaptive" {
+	if name == "seedance-2.5" && fields["aspect_ratio"] != "adaptive" {
 		return nil, fmt.Errorf("editing and extension require adaptive ratio")
 	}
-	if fields["omni_reference_task_type"] == "edit" && fields["duration"] != float64(-1) {
+	if name == "seedance-2.5" && fields["omni_reference_task_type"] == "edit" && fields["duration"] != float64(-1) {
 		return nil, fmt.Errorf("edit duration must be -1")
 	}
 	if _, present := fields["seed"]; present {
@@ -56,7 +79,7 @@ func generationPayload(name string, fields map[string]any) (map[string]any, erro
 			out[key] = value
 		}
 	}
-	out["ratio"] = "adaptive"
+	out["ratio"] = fields["aspect_ratio"]
 	content := []any{map[string]any{"type": "text", "text": fields["prompt"]}}
 	if media, ok := metadata["content"].([]any); ok {
 		content = append(content, media...)

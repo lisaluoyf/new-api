@@ -161,8 +161,14 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 	if !IsVideoModel(body.Model) {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported model %q", body.Model), "invalid_model", http.StatusBadRequest)
 	}
-	body.Duration = normalizeVideoDuration(body.Model, body.Duration)
+	native20Auto := c.GetBool("beenex_native_sd20") && body.Model == "seedance-2.0" && body.Duration == -1
+	if !native20Auto {
+		body.Duration = normalizeVideoDuration(body.Model, body.Duration)
+	}
 	billingDuration := body.Duration
+	if native20Auto {
+		billingDuration = 15
+	}
 	if body.Model == ModelSeedance25 && billingDuration == -1 {
 		billingDuration = 30
 	}
@@ -217,7 +223,7 @@ func (a *TaskAdaptor) validateApimartJSON(c *gin.Context, info *relaycommon.Rela
 			"audio":         body.Audio != nil && *body.Audio,
 			"has_video":     len(body.VideoList) > 0 || len(body.VideoURLs) > 0,
 			"aspect_ratio":  body.AspectRatio,
-			"auto_duration": body.Model == ModelSeedance25 && body.Duration == -1,
+			"auto_duration": (body.Model == ModelSeedance25 && body.Duration == -1) || native20Auto,
 		},
 	}
 	if body.Model == ModelSeedance25 || isSeedance20(body.Model) {

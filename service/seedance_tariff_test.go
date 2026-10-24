@@ -60,7 +60,11 @@ func TestSeedanceTariffEstimateIncludesInputWithoutThirtySecondCap(t *testing.T)
 		c.Set("task_request", relaycommon.TaskSubmitReq{Model: name, Duration: 30, Metadata: map[string]any{"resolution": "720p", "has_video": true, "auto_duration": true}})
 		ratios, err := PrepareSeedanceTaskBilling(c, &relaycommon.RelayInfo{OriginModelName: name})
 		require.NoError(t, err)
-		require.Equal(t, 50.0, ratios["seconds"])
+		expected := 50.0
+		if name == "seedance-2.0" {
+			expected = 35
+		}
+		require.Equal(t, expected, ratios["seconds"])
 		snapshot, _ := c.Get("seedance_billing_snapshot")
 		require.Equal(t, 20, snapshot.(map[string]any)["video_input_seconds"])
 		require.Equal(t, "720p-input", snapshot.(map[string]any)["billing_variant"])

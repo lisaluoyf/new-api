@@ -155,7 +155,7 @@ func TestSeedance25QueryUsesSoraAndRejectsHTML(t *testing.T) {
 func TestBeeNexUnsupportedEditAndMOVBeforeBilling(t *testing.T) {
 	for _, name := range []string{"seedance-2.0", "seedance-2.5"} {
 		for _, extra := range []string{`"duration":-1,"aspect_ratio":"adaptive","video_urls":["https://example.com/source.mp4"]`, `"duration":4,"aspect_ratio":"16:9","output_format":"mov"`, `"duration":4,"return_last_frame":true`, `"duration":4,"draft":true`} {
-			if name == "seedance-2.5" && strings.Contains(extra, `"duration":-1`) {
+			if strings.Contains(extra, `"duration":-1`) {
 				continue
 			}
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())

@@ -421,6 +421,7 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 		return fmt.Errorf("video_urls supports at most %d videos", count)
 	}
 	total := 0
+	totalMeasured := 0.0
 	measurements := make([]model.SeedanceInputVideoMeasurement, 0, len(urls))
 	for i, v := range urls {
 		u, ok := v.(string)
@@ -469,16 +470,21 @@ func ValidateSeedanceVideoInputs(c *gin.Context, fields map[string]any) error {
 			}
 		}
 		minimum := 2
-		if fields["omni_reference_task_type"] == "edit" {
+		if fields["omni_reference_task_type"] == "edit" && fields["model"] == "seedance-2.5" {
 			minimum = 4
 		}
-		if seconds < minimum || seconds > maximum || (minimum == 4 && measured != nil && *measured < 4) {
+		actual := float64(seconds)
+		if measured != nil {
+			actual = *measured
+		}
+		if actual < float64(minimum) || actual > float64(maximum) {
 			return fmt.Errorf("video_urls[%d] duration must be from %d to %d seconds", i, minimum, maximum)
 		}
 		total += seconds
+		totalMeasured += actual
 		measurements = append(measurements, model.SeedanceInputVideoMeasurement{Index: i, MediaID: mediaID, MeasuredSeconds: measured, BillableSeconds: seconds, DurationSource: measurementSource})
 	}
-	if total > maximum {
+	if totalMeasured > float64(maximum) {
 		return fmt.Errorf("video_urls total duration must not exceed %d seconds", maximum)
 	}
 	c.Set("seedance_video_input_seconds", total)

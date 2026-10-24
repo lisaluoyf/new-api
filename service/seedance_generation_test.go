@@ -104,7 +104,7 @@ func TestSeedanceApprovedVideoUsesRecordedDuration(t *testing.T) {
 	asset := model.SeedanceResource{ID: "asset_video", Kind: "asset", UserID: 1, Status: "Active", AssetType: "Video", UpstreamID: "private-video", SourceURL: "https://unavailable.example/video.mp4", DurationSeconds: 4}
 	require.NoError(t, db.Create(&asset).Error)
 	c := seedanceContext(1)
-	fields := map[string]any{"prompt": "Edit the colors", "omni_reference_task_type": "edit", "video_urls": []any{"asset://asset_video"}}
+	fields := map[string]any{"model": "seedance-2.5", "prompt": "Edit the colors", "omni_reference_task_type": "edit", "video_urls": []any{"asset://asset_video"}}
 	require.NoError(t, ValidateSeedanceVideoInputs(c, fields))
 	require.Equal(t, 4, c.GetInt("seedance_video_input_seconds"))
 	require.NoError(t, db.Model(&asset).Updates(map[string]any{"duration_seconds": 4, "measured_duration_seconds": 3.9}).Error)
@@ -135,4 +135,22 @@ func TestSeedance20VariantsValidateCachedReferenceDurations(t *testing.T) {
 		f["video_urls"] = []any{"asset://asset_video8"}
 		require.Error(t, ValidateSeedanceVideoInputs(seedanceContext(2), f))
 	}
+}
+
+func TestSeedance20EditUsesOfficialMeasuredInputLimits(t *testing.T) {
+	db := seedanceTestDB(t)
+	asset := model.SeedanceResource{ID: "asset_sd20", Kind: "asset", UserID: 1, Status: "Active", AssetType: "Video", UpstreamID: "private-video", SourceURL: "https://unavailable.example/video.mp4", DurationSeconds: 2, MeasuredDurationSeconds: 2}
+	require.NoError(t, db.Create(&asset).Error)
+	fields := map[string]any{"model": "seedance-2.0", "prompt": "Edit colors", "omni_reference_task_type": "edit", "video_urls": []any{"asset://asset_sd20"}}
+	require.NoError(t, ValidateSeedanceVideoInputs(seedanceContext(1), fields))
+	require.NoError(t, db.Model(&asset).Updates(map[string]any{"duration_seconds": 2, "measured_duration_seconds": 1.99}).Error)
+	require.ErrorContains(t, ValidateSeedanceVideoInputs(seedanceContext(1), fields), "2 to 15")
+	require.NoError(t, db.Model(&asset).Updates(map[string]any{"duration_seconds": 8, "measured_duration_seconds": 7.1}).Error)
+	fields["video_urls"] = []any{"asset://asset_sd20", "asset://asset_sd20"}
+	c := seedanceContext(1)
+	require.NoError(t, ValidateSeedanceVideoInputs(c, fields))
+	// Input limits use actual duration; each input's billing still rounds up.
+	require.Equal(t, 16, c.GetInt("seedance_video_input_seconds"))
+	require.NoError(t, db.Model(&asset).Updates(map[string]any{"duration_seconds": 8, "measured_duration_seconds": 7.6}).Error)
+	require.ErrorContains(t, ValidateSeedanceVideoInputs(seedanceContext(1), fields), "15 seconds")
 }
