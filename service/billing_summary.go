@@ -42,13 +42,6 @@ func billingSummaryEffectiveEndTimestamp(endTimestamp int64) int64 {
 	return endTimestamp
 }
 
-func billingHourExpr(col string) string {
-	if common.UsingMySQL {
-		return fmt.Sprintf("(%s DIV 3600) * 3600", col)
-	}
-	return fmt.Sprintf("(%s / 3600) * 3600", col)
-}
-
 func billingDayStart(unixSeconds int64) int64 {
 	return ((unixSeconds + billingDayTZOffsetSeconds) / 86400 * 86400) - billingDayTZOffsetSeconds
 }
@@ -112,26 +105,7 @@ func runBillingSummaryOnce() {
 			since = oldest / 3600 * 3600
 		}
 	}
-	hourExpr := billingHourExpr("created_at")
-
-	var rows []model.BillingHourlySummary
-	err = model.LOG_DB.Table("logs").
-		Select(hourExpr+` as hour_bucket,
-		         model_name,
-		         channel_id,
-		         SUM(CASE WHEN accounting_status = 'ok' THEN accounting_channel_cost_amount_usd ELSE 0 END) as cost_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' THEN CASE WHEN other LIKE '%"billing_source":"subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE accounting_user_final_amount_usd END ELSE 0 END) as revenue_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN accounting_channel_cost_amount_usd * (quota - COALESCE(wallet_supplement_quota, 0)) * 1.0 / quota ELSE 0 END) as subscription_cost_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"billing_source":"subscription"%' THEN (quota - COALESCE(wallet_supplement_quota, 0)) * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as subscription_billing_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"gpt_subscription"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as paid_subscription_cost_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"gpt_subscription"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as paid_subscription_revenue_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"coding_plan"%' THEN accounting_channel_cost_amount_usd ELSE 0 END) as coding_plan_cost_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' AND other LIKE '%"subscription_type":"coding_plan"%' THEN quota * 1.0 / `+fmt.Sprintf("%v", common.QuotaPerUnit)+` ELSE 0 END) as coding_plan_revenue_usd,
-		         SUM(CASE WHEN accounting_status = 'ok' THEN 1 ELSE 0 END) as request_count,
-		         COUNT(*) as accounting_target_request_count`).
-		Where("type = ? AND quota > 0 AND accounting_status <> '' AND created_at >= ?", model.LogTypeConsume, since).
-		Group(hourExpr + ", model_name, channel_id").
-		Scan(&rows).Error
+	rows, err := model.BuildBillingHourlySummaries(since)
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("billing-summary: aggregate failed: %v", err))
 		return

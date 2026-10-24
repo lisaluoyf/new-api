@@ -149,20 +149,8 @@ func ReplaceBillingDailyUserActivities(day int64, rows []BillingDailyUserActivit
 }
 
 func BuildBillingDailyUserActivities(day, updatedAt int64) ([]BillingDailyUserActivity, error) {
-	dayExpr := billingDayExpr("created_at")
 	var rows []BillingDailyUserActivity
-	err := LOG_DB.Table("logs").
-		Select(dayExpr+` as day,
-			model_name,
-			channel_id,
-			user_id,
-			MAX(CASE WHEN `+billingWalletCondition()+` THEN 1 ELSE 0 END) as wallet,
-			MAX(CASE WHEN `+billingExperienceSubscriptionCondition()+` THEN 1 ELSE 0 END) as experience,
-			MAX(CASE WHEN `+billingGPTSubscriptionCondition()+` THEN 1 ELSE 0 END) as paid_subscription,
-			MAX(CASE WHEN `+billingCodingPlanCondition()+` THEN 1 ELSE 0 END) as coding_plan`).
-		Where("type = ? AND quota > 0 AND accounting_status = 'ok' AND created_at >= ? AND created_at < ?", LogTypeConsume, day, day+86400).
-		Group(dayExpr + ", model_name, channel_id, user_id").
-		Scan(&rows).Error
+	err := billingDailyUserActivityQuery(LOG_DB, day).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
