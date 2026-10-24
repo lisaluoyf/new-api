@@ -226,7 +226,7 @@ func BeeNexSeedanceCapabilities(names ...string) map[string]any {
 		"output_formats": []string{"mp4"},
 		"mov":            map[string]any{"supported": false, "reason": "Verified BeeNex output is MP4; no platform remux is provided"},
 		"last_frame":     map[string]any{"supported": false, "reason": "The verified task query does not return an upstream last-frame resource"},
-		"seed":           map[string]any{"accepted": true, "returned": false, "determinism_verified": false},
+		"seed":           map[string]any{"accepted": true, "returned": false, "determinism_verified": false, "native_edit_extension": false},
 	}
 }
 

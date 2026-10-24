@@ -46,9 +46,12 @@ func generationPayload(name string, fields map[string]any) (map[string]any, erro
 	if fields["omni_reference_task_type"] == "edit" && fields["duration"] != float64(-1) {
 		return nil, fmt.Errorf("edit duration must be -1")
 	}
+	if _, present := fields["seed"]; present {
+		return nil, fmt.Errorf("BeeNex native editing and extension do not support seed; omit seed")
+	}
 	metadata := compatible["metadata"].(map[string]any)
 	out := map[string]any{}
-	for _, key := range []string{"duration", "resolution", "generate_audio", "watermark", "seed"} {
+	for _, key := range []string{"duration", "resolution", "generate_audio", "watermark"} {
 		if value, exists := metadata[key]; exists {
 			out[key] = value
 		}

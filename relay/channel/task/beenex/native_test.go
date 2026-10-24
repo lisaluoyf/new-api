@@ -17,7 +17,7 @@ func TestNativeEditAndExtensionKeepMinusOneAndDoNotUseSeconds(t *testing.T) {
 			duration = "4"
 		}
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest("POST", "/v1/video/generations", strings.NewReader(`{"model":"seedance-2.5","prompt":"`+kind+` the reference video","duration":`+duration+`,"omni_reference_task_type":"`+kind+`","ratio":"adaptive","resolution":"480p","generate_audio":false,"watermark":false,"seed":0,"video_urls":["https://media.example/reference.mp4"]}`))
+		c.Request = httptest.NewRequest("POST", "/v1/video/generations", strings.NewReader(`{"model":"seedance-2.5","prompt":"`+kind+` the reference video","duration":`+duration+`,"omni_reference_task_type":"`+kind+`","ratio":"adaptive","resolution":"480p","generate_audio":false,"watermark":false,"video_urls":["https://media.example/reference.mp4"]}`))
 		c.Request.Header.Set("Content-Type", "application/json")
 		info := &relaycommon.RelayInfo{OriginModelName: "seedance-2.5", TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 274, ChannelBaseUrl: "https://beenexapi.phone580.com", UpstreamModelName: "doubao-seedance-2-5-260628-hy"}}
 		a := &TaskAdaptor{}
@@ -36,7 +36,7 @@ func TestNativeEditAndExtensionKeepMinusOneAndDoNotUseSeconds(t *testing.T) {
 		for _, key := range []string{"generate_audio", "watermark"} {
 			require.Equal(t, false, body[key])
 		}
-		require.EqualValues(t, 0, body["seed"])
+		require.NotContains(t, body, "seed")
 		require.Equal(t, "adaptive", body["ratio"])
 		if kind == "extend" {
 			require.EqualValues(t, 4, body["duration"])
@@ -48,4 +48,9 @@ func TestNativeEditAndExtensionKeepMinusOneAndDoNotUseSeconds(t *testing.T) {
 		require.Equal(t, "text", content[0].(map[string]any)["type"])
 		require.Equal(t, "reference_video", content[1].(map[string]any)["role"])
 	}
+}
+
+func TestNativeSeedIsRejectedBeforeReservation(t *testing.T) {
+	_, err := generationPayload("seedance-2.5", map[string]any{"prompt": "Edit colors", "duration": float64(-1), "omni_reference_task_type": "edit", "aspect_ratio": "adaptive", "seed": float64(0), "video_urls": []any{"https://media.example/video.mp4"}})
+	require.ErrorContains(t, err, "do not support seed")
 }
